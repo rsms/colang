@@ -1,0 +1,30 @@
+--- src/clang/driver.cc.orig	2021-02-08 11:13:07.000000000 -0800
++++ src/clang/driver.cc	2021-02-08 11:13:57.000000000 -0800
+@@ -207,8 +207,6 @@
+                     void *MainAddr);
+ extern int cc1as_main(ArrayRef<const char *> Argv, const char *Argv0,
+                       void *MainAddr);
+-extern int cc1gen_reproducer_main(ArrayRef<const char *> Argv,
+-                                  const char *Argv0, void *MainAddr);
+ 
+ static void insertTargetAndModeArgs(const ParsedClangName &NameParts,
+                                     SmallVectorImpl<const char *> &ArgVector,
+@@ -331,16 +329,14 @@
+   if (Tool == "-cc1as")
+     return cc1as_main(makeArrayRef(ArgV).slice(2), ArgV[0],
+                       GetExecutablePathVP);
+-  if (Tool == "-cc1gen-reproducer")
+-    return cc1gen_reproducer_main(makeArrayRef(ArgV).slice(2), ArgV[0],
+-                                  GetExecutablePathVP);
+   // Reject unknown tools.
+   llvm::errs() << "error: unknown integrated tool '" << Tool << "'. "
+                << "Valid tools include '-cc1' and '-cc1as'.\n";
+   return 1;
+ }
+ 
+-int main(int argc_, const char **argv_) {
++extern "C" int clang_main(int c, const char** v);
++int clang_main(int argc_, const char **argv_) {
+   noteBottomOfStack();
+   llvm::InitLLVM X(argc_, argv_);
+   llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL
