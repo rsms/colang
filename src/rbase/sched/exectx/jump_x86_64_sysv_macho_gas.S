@@ -24,53 +24,47 @@
  *                                                                                      *
  ****************************************************************************************/
 
+// [rsms] TODO: consider XMM registers. See:
+// https://github.com/rust-lang/rust/blob/3d0d144283959bf62368f6965aae14ce95ee286b\
+// /src/rt/arch/x86_64/_context.S
+
+// _exectx_jump(void* to_ctx [%rdi], void* data [%rsi]) -> {from_ctx, from_data} [%rax]
+//
+// 1. allocate 38 bytes on local stack
+// 2. save non-volatile register values on local stack
+// 3. restore non-volatile register values from to_ctx [%rdi]
+// 4. load user data [%rsi] into %rdx
+// 5. jump to restored return address
+
 .text
-.globl _make_fcontext
+.globl _exectx_jump
 .align 8
-_make_fcontext:
-    /* first arg of make_fcontext() == top of context-stack */
-    movq  %rdi, %rax
+_exectx_jump:
+    /* restore RSP (pointing to context-data) from RDI */
+    movq  %rdi, %rsp
 
-    /* shift address in RAX to lower 16 byte boundary */
-    andq  $-16, %rax
+    movq  0x38(%rsp), %r8  /* restore return-address */
 
-    /* reserve space for context-data on context-stack */
-    /* on context-function entry: (RSP -0x8) % 16 == 0 */
-    leaq  -0x40(%rax), %rax
+#if !defined(BOOST_USE_TSX)
+    ldmxcsr  (%rsp)     /* restore MMX control- and status-word */
+    fldcw    0x4(%rsp)  /* restore x87 control-word */
+#endif
 
-    /* third arg of make_fcontext() == address of context-function */
-    /* stored in RBX */
-    movq  %rdx, 0x28(%rax)
+    movq  0x8(%rsp), %r12  /* restore R12 */
+    movq  0x10(%rsp), %r13  /* restore R13 */
+    movq  0x18(%rsp), %r14  /* restore R14 */
+    movq  0x20(%rsp), %r15  /* restore R15 */
+    movq  0x28(%rsp), %rbx  /* restore RBX */
+    movq  0x30(%rsp), %rbp  /* restore RBP */
 
-    /* save MMX control- and status-word */
-    stmxcsr  (%rax)
-    /* save x87 control-word */
-    fnstcw   0x4(%rax)
+    leaq  0x40(%rsp), %rsp /* prepare stack */
 
-    /* compute abs address of label trampoline */
-    leaq  trampoline(%rip), %rcx
-    /* save address of trampoline as return-address for context-function */
-    /* will be entered after calling jump_fcontext() first time */
-    movq  %rcx, 0x38(%rax)
+    /* return transfer_t from jump */
+    /* RAX == fctx, RDX == data */
+    //movq  %rsi, %rdx
+    /* pass transfer_t as first arg in context function */
+    /* RDI == fctx, RSI == data */
+    movq  %rax, %rdi
 
-    /* compute abs address of label finish */
-    leaq  finish(%rip), %rcx
-    /* save address of finish as return-address for context-function */
-    /* will be entered after context-function returns */
-    movq  %rcx, 0x30(%rax)
-
-    ret /* return pointer to context-data */
-
-trampoline:
-    /* store return address on stack */
-    /* fix stack alignment */
-    push %rbp
-    /* jump to context-function */
-    jmp *%rbx
-
-finish:
-    /* exit code is zero */
-    xorq  %rdi, %rdi
-    /* exit application */
-    call  __exit
-    hlt
+    /* indirect jump to context */
+    jmp  *%r8

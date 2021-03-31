@@ -24,13 +24,13 @@
  *                                                                                      *
  ****************************************************************************************/
 
-.file "make_x86_64_sysv_elf_gas.S"
+.file "init_x86_64_sysv_elf_gas.S"
 .text
-.globl make_fcontext
-.type make_fcontext,@function
+.globl exectx_init
+.type exectx_init,@function
 .align 16
-make_fcontext:
-    /* first arg of make_fcontext() == top of context-stack */
+exectx_init:
+    /* first arg of exectx_init() == top of context-stack */
     movq  %rdi, %rax
 
     /* shift address in RAX to lower 16 byte boundary */
@@ -40,7 +40,7 @@ make_fcontext:
     /* on context-function entry: (RSP -0x8) % 16 == 0 */
     leaq  -0x40(%rax), %rax
 
-    /* third arg of make_fcontext() == address of context-function */
+    /* third arg of exectx_init() == address of context-function */
     /* stored in RBX */
     movq  %rdx, 0x28(%rax)
 
@@ -76,7 +76,7 @@ finish:
     /* exit application */
     call  _exit@PLT
     hlt
-.size make_fcontext,.-make_fcontext
+.size exectx_init,.-exectx_init
 
 /* Mark that we don't need executable stack. */
 .section .note.GNU-stack,"",%progbits

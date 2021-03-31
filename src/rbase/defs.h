@@ -119,19 +119,19 @@ void _errlog(const char* fmt, ...);
   #define dlog(fmt, ...) \
     fprintf(stderr, "\e[1m" fmt " \e[0;2m(%s)\e[0m\n", ##__VA_ARGS__, __FUNCTION__)
   #define errlog(fmt, ...) \
-    _errlog(fmt " (%s:%d)", ##__VA_ARGS__, __FILE__, __LINE__)
+    _errlog(fmt " (%s:%d)\n", ##__VA_ARGS__, __FILE__, __LINE__)
 #else
-  #define dlog(...)  do{}while(0)
-  #define errlog _errlog
+  #define dlog(...) do{}while(0)
+  #define errlog    _errlog(fmt "\n", ##__VA_ARGS__)
 #endif
 
 #define TODO_IMPL ({ \
-  _errlog("\e[1;33mTODO_IMPL %s\e[0m  %s:%d", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
+  _errlog("\e[1;33mTODO_IMPL %s\e[0m  %s:%d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
   abort(); \
 })
 
 #define UNREACHABLE ({ \
-  _errlog("UNREACHABLE %s %s:%d", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
+  _errlog("UNREACHABLE %s %s:%d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
   abort(); \
 })
 

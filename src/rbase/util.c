@@ -11,20 +11,20 @@ void writeline(int fd, const void* ptr, size_t len) {
 }
 
 void _errlog(const char* fmt, ...) {
+  FILE* fp = stderr;
+  flockfile(fp);
   va_list ap;
   va_start(ap, fmt);
-  vfprintf(stderr, fmt, ap);
+  vfprintf(fp, fmt, ap);
   va_end(ap);
   int err = errno;
   if (err != 0) {
     errno = 0;
     char buf[256];
-    if (strerror_r(err, buf, countof(buf)) == 0) {
-      fprintf(stderr, " ([%d] %s)\n", err, buf);
-      return;
-    }
+    if (strerror_r(err, buf, countof(buf)) == 0)
+      fprintf(fp, " ([%d] %s)\n", err, buf);
   }
-  putc('\n', stderr);
+  funlockfile(fp);
 }
 
 noreturn void panic(const char* msg) {

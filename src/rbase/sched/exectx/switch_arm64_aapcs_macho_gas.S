@@ -52,9 +52,9 @@
  *******************************************************/
 
 .text
-.globl _jump_fcontext
+.globl _exectx_switch
 .balign 16
-_jump_fcontext:
+_exectx_switch:
     ; prepare stack for GP + FPU
     sub  sp, sp, #0xb0
 

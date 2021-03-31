@@ -1,18 +1,14 @@
 #include "../rbase.h"
 #include "schedimpl.h"
-#include "fctx.h"
+#include "exectx/exectx.h"
 
 #if R_TARGET_OS_POSIX
   #include <signal.h>
 #endif
 
-#define SCHED_TRACE
-#ifdef SCHED_TRACE
-  #define trace(fmt, ...) \
-    fprintf(stderr, "sched trace \e[1;36m%-15s\e[39m " fmt "\e[0m\n", __FUNCTION__, ##__VA_ARGS__)
-#else
-  #define trace(...) do{}while(0)
-#endif
+// SCHED_TRACE: when defined, verbose log tracing on stderr is enabled.
+// The value is used as a prefix for log messages.
+#define SCHED_TRACE "♻ "
 
 // Array is a generic mutable array
 typedef struct Array {
@@ -106,6 +102,45 @@ static bool p_runqempty(P* p);
 static void s_checkdeadlock();
 static void m_park();
 static void m_semawakeup(M* mp);
+
+
+// trace(const char* fmt, ...) -- debug tracing
+#ifdef SCHED_TRACE
+  void _trace(const char* fmt, ...) {
+    T* _t_ = t_get();
+    FILE* fp = stderr;
+    flockfile(fp);
+    const char* prefix = SCHED_TRACE;
+    fwrite(prefix, strlen(prefix), 1, fp);
+    if (_t_ != NULL) {
+      if (_t_->m != NULL) {
+        int M_color = 6 - (int)(_t_->m->id % 6); // 3[6-1]
+        if (_t_->m->p != NULL) {
+          int P_color = 6 - (int)(_t_->m->p->id % 6); // 3[6–1]
+          fprintf(fp, "\e[1;4%dmM%lld\e[0m \e[1;4%dmP%u\e[0m T%-2llu ",
+            M_color, _t_->m->id,
+            P_color, _t_->m->p->id,
+            _t_->id);
+        } else {
+          fprintf(fp, "\e[1;4%dmM%lld\e[0m P- T%-2llu ", M_color, _t_->m->id, _t_->id);
+        }
+      } else {
+        fprintf(fp, "M- T% 2lld] ", (i64)_t_->id);
+      }
+    } else {
+      fprintf(fp, "M- T- ] ");
+    }
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(fp, fmt, ap);
+    va_end(ap);
+    funlockfile(fp);
+  }
+  #define trace(fmt, ...) \
+    _trace("\e[1;36m%-15s\e[39m " fmt "\e[0m\n", __FUNCTION__, ##__VA_ARGS__)
+#else
+  #define trace(...) do{}while(0)
+#endif
 
 
 static void vbm_resize(VarBitmap* bm, u32 nbits) {
@@ -602,13 +637,14 @@ static void t_casstatus(T* t, TStatus oldval, TStatus newval) {
 }
 
 // m_dropt removes the association between m and the current coroutine m->curt (T for short).
-// Typically a caller sets T's status away from Grunning and then immediately calls m_dropt
+// Typically a caller sets T's status away from TRunning and then immediately calls m_dropt
 // to finish the job. The caller is also responsible for arranging that T will be restarted
 // using ready at an appropriate time. After calling m_dropt and arranging for T to be
 // readied later, the caller can do other work but eventually should call schedule to restart
 // the scheduling of coroutines on this m.
 static void m_dropt() {
   T* _t_ = t_get();
+  trace("");
   assert(_t_->m->curt != _t_ /* current T should be different than m->curt */);
   _t_->m->curt->m = NULL;
   _t_->m->curt = NULL;
@@ -653,7 +689,7 @@ static void noreturn exitprog(int status) {
 }
 
 // t_main is the entry point for coroutines
-static void noreturn NO_INLINE t_main(fctx_transfer_t tr) {
+static void noreturn NO_INLINE t_main(exectx_t tr) {
   T* t = tr.data;
   assert(t_get() == t);
   if (t->parent == &t->m->t0) {
@@ -754,17 +790,19 @@ void t_yield() {
 
 // t_switch switches execution from _t_ to t.
 // It sets _t_ to t before switching and restores _t_ when t returns.
-// Returns the value passed to the yielding jump_fcontext.
+// Returns the value passed to the yielding exectx_switch.
 static void* t_switch(T* t) {
   T* _t_ = t_get();
 
-  // must never t_switch to t0 (use jump_fcontext instead).
+  // must never t_switch to t0 (use exectx_jump instead).
   // t0's stack context should not advance.
   assert(t != &t->m->t0);
 
-  trace("M#%lld : depart T#%llu -> T#%llu", _t_->m->id, _t_->id, t->id);
+  trace("M#%lld : depart T#%llu -> T#%llu (t0 SP %zu)",
+    _t_->m->id, _t_->id, t->id, _t_->m->t0.stack.hi - (uintptr_t)&_t_);
+
   _tlt = t;
-  fctx_transfer_t c = jump_fcontext(t->stackctx, t);
+  exectx_t c = exectx_switch(t->stackctx, t);
   t->stackctx = c.ctx;
   _tlt = _t_;
   trace("M#%lld : return T#%llu <- T#%llu", _t_->m->id, _t_->id, t->id);
@@ -823,9 +861,8 @@ static T* t_init(u8* lo, size_t stacksize) {
   // // Go records T there on gsignal stack during VDSO on ARM and ARM64.
   // *((uintptr_t*)&lo[stacksize - tsize - sizeof(void*)]) = 0;
 
-  // initialize stack data for context switching and save a pointer to it,
-  // for use with jump_fcontext.
-  newt->stackctx = make_fcontext(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
+  // initialize stack data for context switching and save a pointer to it
+  newt->stackctx = exectx_init(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
 
   return newt;
 }
@@ -1070,6 +1107,7 @@ static P* p_release() {
 
 
 static void p_startm_mspinning(void) {
+  trace("");
   // startm's caller incremented nmspinning. Set the new M's spinning.
   t_get()->m->spinning = true;
 }
@@ -1083,7 +1121,7 @@ static void p_startm_mspinning(void) {
 // either decrement nmspinning or set m->spinning in the newly started M.
 //
 // Callers passing a non-nil P must call from a non-preemptible context
-static void p_startm(P* _p_, bool spinning) {
+static void p_startm(P* _p_, bool spinning) { // [go: startm]
   // Disable preemption.
   //
   // Every owned P must have an owner that will eventually stop it in the
@@ -1102,6 +1140,7 @@ static void p_startm(P* _p_, bool spinning) {
   // disable preemption before acquiring a P from s_pidleget below.
   M* mp = m_acquire();
   mtx_lock(&S.lock);
+  trace("");
 
   if (!_p_) {
     _p_ = s_pidleget();
@@ -1251,7 +1290,7 @@ static T* p_runqget(P* p, bool* inheritTime) {
       return next;
     }
   }
-  trace("no runnext; try dequeue from p->runq");
+  trace("no runnext; trying dequeue p->runq");
 
   *inheritTime = false;
 
@@ -1260,10 +1299,10 @@ static T* p_runqget(P* p, bool* inheritTime) {
     u32 tail = p->runqtail;
     if (tail == head)
       return NULL;
-    trace("loop2 tail != head; load p->runq[%u]", head % P_RUNQSIZE);
+    // trace("loop2 tail != head; load p->runq[%u]", head % P_RUNQSIZE);
     T* tp = p->runq[head % P_RUNQSIZE];
-    trace("loop2 tp => %p", tp);
-    trace("loop2 tp => T#%llu", tp->id);
+    // trace("loop2 tp => %p", tp);
+    // trace("loop2 tp => T#%llu", tp->id);
     if (AtomicCASRel(&p->runqhead, &head, head + 1)) // cas-release, commits consume
       return tp;
     trace("CAS failure; retry");
@@ -1337,19 +1376,23 @@ static T* nullable p_runqsteal(P* _p_, P* p2, bool stealRunNextT) {
 // p_wake tries to add one more P to execute T's.
 // Called when a T is made runnable (newproc, ready).
 static void p_wake() {
-  if (AtomicLoad(&S.npidle) == 0) {
+  u32 npidle = AtomicLoad(&S.npidle);
+  trace("npidle=%u", npidle);
+  if (npidle == 0) {
     trace("none (S.npidle==0)");
     return;
   }
 
   // be conservative about spinning threads
   i32 z = 0;
-  if (AtomicLoad(&S.nmspinning) != 0 || !AtomicCAS(&S.nmspinning, &z, 1)) {
+  i32 nmspinning = AtomicLoad(&S.nmspinning);
+  if (nmspinning != 0 || !AtomicCAS(&S.nmspinning, &z, 1)) {
     trace("none (S.npidle>0 but S.nmspinning>0)");
     return;
   }
 
-  trace("deferring to p_startm");
+  // start a new M
+  trace("nmspinning=%d", nmspinning);
   p_startm(NULL, /*spinning*/ true);
 }
 
@@ -1461,10 +1504,9 @@ static void m_init_sigmask(M* _m_) {
 // m_start is the Go entry-point for new Ms.
 // May run during STW (because it doesn't have a P yet), so write barriers are not allowed.
 static void noreturn m_start() { // [go: runtime.mstart0]
-  T* _t_ = t_get();
-  trace("_t_ T#%llu (%p)", _t_->id, _t_);
+  T* t0 = t_get();
 
-  bool osStack = _t_->stack.lo == 0;
+  bool osStack = t0->stack.lo == 0;
   if (osStack) {
     // Initialize stack bounds from system stack.
     // Cgo may have left stack size in stack.hi.
@@ -1474,20 +1516,16 @@ static void noreturn m_start() { // [go: runtime.mstart0]
     // We set hi to &size, but there are things above
     // it. The 1024 is supposed to compensate this,
     // but is somewhat arbitrary.
-    uintptr_t size = _t_->stack.hi;
-    if (size == 0)
+    uintptr_t size = t0->stack.hi;
+    if (size == 0) // main thread:
       size = 8192 * STACK_GUARD_MULTIPLIER;
-    _t_->stack.hi = size; // uintptr(noescape(unsafe.Pointer(&size)))
-    _t_->stack.lo = _t_->stack.hi - size + 1024;
+    t0->stack.hi = (uintptr_t)&size; // uintptr(noescape(unsafe.Pointer(&size)))
+    t0->stack.lo = t0->stack.hi - size + 1024;
   }
+  trace("t0 stack: [lo=%p - hi=%p] (%zu B)",
+    t0->stack.lo, t0->stack.hi, (size_t)(t0->stack.hi - t0->stack.lo));
 
-  m_start1(_t_);
-  UNREACHABLE;
-  // // Exit this thread
-  // m_exit();
-}
-
-static NO_INLINE void m_start1(T* t0) { // [go: runtime.mstart1]
+  // begin [go: runtime.mstart1]
   M* _m_ = t0->m;
   if (t0 != &_m_->t0) {
     panic("bad mstart (_m_->t0 != t0)");
@@ -1504,21 +1542,21 @@ static NO_INLINE void m_start1(T* t0) { // [go: runtime.mstart1]
   // t0.sched.sp = getcallersp()
 
   // // experiment: setup t0 stack context for special finishing jump:
-  // static void m_start_steppingstone(fctx_transfer_t ctx) {
+  // static void m_start_steppingstone(exectx_t ctx) {
   //   trace("1");
-  //   jump_fcontext(ctx.ctx, NULL);
+  //   exectx_jump(ctx.ctx, NULL);
   //   trace("2");
   // }
   // auto newt = t_alloc(4096);
   // t0->stack = newt->stack;
   // uintptr_t stacksize = t0->stack.hi - t0->stack.lo;
-  // t0->stackctx = make_fcontext(
+  // t0->stackctx = exectx_init(
   //   &((u8*)t0->stack.lo)[stacksize - STACK_TSIZE],
   //   stacksize - STACK_TSIZE,
   //   m_start_steppingstone);
   // // int here = 0;
-  // // t0->stackctx = make_fcontext(&here, 4096, m_start_steppingstone);
-  // t0->stackctx = jump_fcontext(t0->stackctx, m_start_steppingstone).ctx;
+  // // t0->stackctx = exectx_init(&here, 4096, m_start_steppingstone);
+  // t0->stackctx = exectx_jump(t0->stackctx, m_start_steppingstone).ctx;
   // trace("return from m_start_steppingstone");
 
   // asminit(); // arch & OS specific per-thread initialization
@@ -1550,6 +1588,7 @@ static NO_INLINE void m_start1(T* t0) { // [go: runtime.mstart1]
   }
 
   schedule();
+  UNREACHABLE;
 }
 
 // p_handoff hands off P from syscall or locked M.
@@ -1611,10 +1650,16 @@ static void m_exit() {
 //
 static void m_call(void(*fn)(T*)) {
   T* _t_ = t_get();
-  trace("T#%llu", _t_->id);
+  trace("T#%llu >>>>>>>>>>>>>>>> t0", _t_->id);
   assert(_t_ != &_t_->m->t0);
   assert(_t_->m->t0.stackctx != NULL /* else: m_call not called from a valid coroutine */);
-  _t_->m->t0.stackctx = jump_fcontext(_t_->m->t0.stackctx, fn).ctx;
+  // 1. save current exection context
+  // 2. restore m->t0 exection context
+  // 3. resume m->t0 exection
+  _t_->m->t0.stackctx = exectx_switch(_t_->m->t0.stackctx, fn).ctx;
+  // exectx_switch(_t_->m->t0.stackctx, fn);
+  // exectx_jump(_t_->m->t0.stackctx, fn);
+  trace("T#%llu <<<<<<<<<<<<<<<< t0", _t_->id);
 }
 
 // m_dofixup runs any outstanding fixup function for the running m.
@@ -2278,6 +2323,7 @@ static inline T* s_stealwork(T* _t_, bool* inheritTime, bool* ranTimer) {
 // Tries to steal from other P's, get T from global queue, poll network.
 static T* s_findrunnable(bool* inheritTime) {
   T* _t_ = t_get();
+  trace("_t_ T#%llu", _t_->id);
 
 top: {}
   P* _p_ = _t_->m->p;
@@ -2482,6 +2528,7 @@ static void noreturn schedule() {
   // Otherwise two coroutines can completely occupy the local runqueue
   // by constantly respawning each other.
   if (pp->schedtick % 61 == 0 && S.runqsize > 0) {
+    trace("random global runq steal attempt");
     mtx_lock(&S.lock);
     t = s_runqget(pp, 1);
     mtx_unlock(&S.lock);
@@ -2502,8 +2549,7 @@ static void noreturn schedule() {
     trace("try s_findrunnable");
     t = s_findrunnable(&inheritTime); // blocks until work is available
     assert(t != NULL);
-    if (t)
-      trace("found T#%llu with s_findrunnable", t->id);
+    trace("found T#%llu with s_findrunnable", t->id);
   }
 
   // This thread is going to run a coroutine and is not spinning anymore,
@@ -2520,9 +2566,7 @@ static void noreturn schedule() {
     // goto top;
   }
 
-  trace("selected t %p", t);
   t_execute(t, inheritTime); // never returns
-
   UNREACHABLE;
 }
 
@@ -2590,6 +2634,8 @@ void sched_init() {
   const char* str = getenv("COMAXPROCS");
   if (!str || !parseu32(str, strlen(str), 10, &nprocs) || nprocs < 1)
     nprocs = sys_ncpu();
+
+  trace("COMAXPROCS=%u", nprocs);
 
   S.lastpoll = nanotime();
 

@@ -96,7 +96,7 @@ _watch_indicator_stop() {
 ATEXIT+=( "_pidfile_kill '$WATCH_INDICATOR_PIDFILE'" )
 while true; do
 	echo -e "\x1bc"  # clear screen ("scroll to top" style)
-	if make $MAKE_ARGS; then
+	if make $MAKE_ARGS && $RUN; then
 		_run_after_build
 	fi
 	_watch_indicator &
@@ -105,7 +105,7 @@ while true; do
 		--one-event \
 		--latency=0.2 \
 		--extended \
-		--exclude='.*' --include='\.(c|h)$' \
+		--exclude='.*' --include='\.(c|h|s|S)$' \
 		--recursive \
 		./src
 	_watch_indicator_stop

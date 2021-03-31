@@ -24,22 +24,10 @@
  *                                                                                      *
  ****************************************************************************************/
 
-// [rsms] TODO: consider XMM registers. See:
-// https://github.com/rust-lang/rust/blob/3d0d144283959bf62368f6965aae14ce95ee286b\
-// /src/rt/arch/x86_64/_context.S
-
-// _jump_fcontext(void* to_ctx [%rdi], void* data [%rsi]) -> {from_ctx, from_data} [%rax]
-//
-// 1. allocate 38 bytes on local stack
-// 2. save non-volatile register values on local stack
-// 3. restore non-volatile register values from to_ctx [%rdi]
-// 4. load user data [%rsi] into %rdx
-// 5. jump to restored return address
-
 .text
-.globl _jump_fcontext
+.globl _exectx_switch
 .align 8
-_jump_fcontext:
+_exectx_switch:
     leaq  -0x38(%rsp), %rsp /* prepare stack */
 
 #if !defined(BOOST_USE_TSX)

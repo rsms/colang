@@ -56,12 +56,14 @@ ifeq ($(SYSTEM),Darwin)
 	ifeq ($(ARCH),x86_64)
 		# see deps/context/build/Jamfile.v2
 		RBASE_SRC += \
-			src/rbase/sched/fctx/make_x86_64_sysv_macho_gas.S \
-			src/rbase/sched/fctx/jump_x86_64_sysv_macho_gas.S
+			src/rbase/sched/exectx/init_x86_64_sysv_macho_gas.S \
+			src/rbase/sched/exectx/switch_x86_64_sysv_macho_gas.S \
+			src/rbase/sched/exectx/jump_x86_64_sysv_macho_gas.S
 	else ifeq ($(ARCH),arm64)
 		RBASE_SRC += \
-   	  src/rbase/sched/fctx/make_arm64_aapcs_macho_gas.S \
-      src/rbase/sched/fctx/jump_arm64_aapcs_macho_gas.S
+   	  src/rbase/sched/exectx/init_arm64_aapcs_macho_gas.S \
+   	  src/rbase/sched/exectx/switch_arm64_aapcs_macho_gas.S \
+      src/rbase/sched/exectx/jump_arm64_aapcs_macho_gas.S
 	endif
 
 	CFLAGS += -mmacosx-version-min=10.15

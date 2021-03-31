@@ -24,12 +24,12 @@
  *                                                                                      *
  ****************************************************************************************/
 
-.file "jump_x86_64_sysv_elf_gas.S"
+.file "switch_x86_64_sysv_elf_gas.S"
 .text
-.globl jump_fcontext
-.type jump_fcontext,@function
+.globl exectx_switch
+.type exectx_switch,@function
 .align 16
-jump_fcontext:
+exectx_switch:
     leaq  -0x38(%rsp), %rsp /* prepare stack */
 
 #if !defined(BOOST_USE_TSX)
@@ -85,7 +85,7 @@ jump_fcontext:
 
     /* indirect jump to context */
     jmp  *%r8
-.size jump_fcontext,.-jump_fcontext
+.size exectx_switch,.-exectx_switch
 
 /* Mark that we don't need executable stack.  */
 .section .note.GNU-stack,"",%progbits
