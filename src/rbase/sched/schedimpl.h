@@ -207,10 +207,6 @@ typedef struct T {
   Stack stack;
   void* stackctx;  // execution context (stack, regs; fctx) of T or M
 
-  //void*     stackp;    // stack memory base
-  //size_t    stacksize; // size of stackp in bytes
-  //uintptr_t stackguard0; // [unused]
-
   T*               parent;    // task that spawned this task
   T*               schedlink; // next task to be scheduled
   _Atomic(TStatus) atomicstatus;

@@ -117,8 +117,9 @@ void _errlog(const char* fmt, ...);
 
 #ifdef DEBUG
   #define dlog(fmt, ...) \
-    fprintf(stderr, "\e[1;36m%-15s\e[39m " fmt "\e[0m\n", __FUNCTION__, ##__VA_ARGS__)
-  #define errlog(fmt, ...) _errlog(fmt " (%s:%d)", ##__VA_ARGS__, __FILE__, __LINE__)
+    fprintf(stderr, "\e[1m" fmt " \e[0;2m(%s)\e[0m\n", ##__VA_ARGS__, __FUNCTION__)
+  #define errlog(fmt, ...) \
+    _errlog(fmt " (%s:%d)", ##__VA_ARGS__, __FILE__, __LINE__)
 #else
   #define dlog(...)  do{}while(0)
   #define errlog _errlog

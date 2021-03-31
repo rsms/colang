@@ -6,6 +6,14 @@
   #include <signal.h>
 #endif
 
+#define SCHED_TRACE
+#ifdef SCHED_TRACE
+  #define trace(fmt, ...) \
+    fprintf(stderr, "sched trace \e[1;36m%-15s\e[39m " fmt "\e[0m\n", __FUNCTION__, ##__VA_ARGS__)
+#else
+  #define trace(...) do{}while(0)
+#endif
+
 // Array is a generic mutable array
 typedef struct Array {
   u8* ptr;
@@ -84,7 +92,6 @@ static inline void m_release(M* m);
 static void m_call(void(*fn)(T*));
 static void m_exit();
 static void m_start1();
-static void newproc(void(*fn)(void), void* argp, u32 argsize, size_t stacksize); // aka "go"
 static void noreturn schedule();
 static void p_runqput(P* p, T* t, bool next);
 static void p_tfree_put(P* _p_, T* t);
@@ -610,7 +617,7 @@ static void m_dropt() {
 // t_exit is called on M.t0's stack after t_main exits; to end t.
 static void noreturn t_exit(T* t) {
   T* _t_ = t_get();
-  dlog("T#%llu", t->id);
+  trace("T#%llu", t->id);
   assert(_t_ == &_t_->m->t0);
   assert(_t_ != t);
 
@@ -626,7 +633,7 @@ static void noreturn t_exit(T* t) {
   p_tfree_put(_t_->m->p, t);
 
   if (locked) {
-    dlog("lockedm");
+    trace("lockedm");
     // The coroutine may have locked this thread because it put it in an unusual kernel state.
     // Kill it rather than returning it to the thread pool.
 
@@ -639,8 +646,9 @@ static void noreturn t_exit(T* t) {
 }
 
 static void noreturn exitprog(int status) {
-  dlog("\e[1;35m" "PROGRAM EXIT");
-  dlog("TODO: close() child tasks");
+  trace("\e[1;35m" "PROGRAM EXIT");
+  trace("TODO: close() child tasks");
+  // TODO: consider returning from sched_main instead of exit()ing
   exit(status);
 }
 
@@ -652,9 +660,9 @@ static void noreturn NO_INLINE t_main(fctx_transfer_t tr) {
     // root coroutine spawned by M; save t0's stack context
     t->m->t0.stackctx = tr.ctx;
   }
-  dlog("T#%llu (%p) starting", t->id, t);
+  trace("T#%llu (%p) starting", t->id, t);
   t->fn();
-  dlog("T#%llu (%p) ended", t->id, t);
+  trace("T#%llu (%p) ended", t->id, t);
   if (t == t1)
     exitprog(0);
   m_call(t_exit);
@@ -729,7 +737,7 @@ static void noreturn NO_INLINE t_main(fctx_transfer_t tr) {
 // }
 
 static void t_yield1(T* t) {
-  dlog("T#%llu", t->id);
+  trace("T#%llu", t->id);
   P* p = t->m->p;
   t_casstatus(t, TRunning, TRunnable);
   m_dropt();
@@ -754,12 +762,12 @@ static void* t_switch(T* t) {
   // t0's stack context should not advance.
   assert(t != &t->m->t0);
 
-  dlog("M#%lld : depart T#%llu -> T#%llu", _t_->m->id, _t_->id, t->id);
+  trace("M#%lld : depart T#%llu -> T#%llu", _t_->m->id, _t_->id, t->id);
   _tlt = t;
   fctx_transfer_t c = jump_fcontext(t->stackctx, t);
   t->stackctx = c.ctx;
   _tlt = _t_;
-  dlog("M#%lld : return T#%llu <- T#%llu", _t_->m->id, _t_->id, t->id);
+  trace("M#%lld : return T#%llu <- T#%llu", _t_->m->id, _t_->id, t->id);
   return c.data;
 }
 
@@ -770,7 +778,7 @@ static void* t_switch(T* t) {
 static void noreturn t_execute(T *t, bool inheritTime) {
   T* _t_ = t_get();
   assert(_t_ == &_t_->m->t0);
-  dlog("T#%llu on M#%lld", t->id, _t_->m->id);
+  trace("T#%llu on M#%lld", t->id, _t_->m->id);
 
   // Assign t->m before entering TRunning so running Ts have an M
   _t_->m->curt = t;
@@ -793,15 +801,34 @@ static void noreturn t_execute(T *t, bool inheritTime) {
   assert(t_get() == _t_);
 
   // continuation from m_call
-  dlog("m_call from T#%llu; now on t0; calling m_call's fn", t->id);
+  trace("m_call from T#%llu; now on t0; calling m_call's fn", t->id);
   fn(t); // never returns
   UNREACHABLE;
 }
 
-void t_spawn(void(*fn)(void), size_t stacksize) {
-  newproc(fn, /* argptr= */ NULL, /* argc= */ 0, stacksize);
-}
+// t_init initializes a T at the bottom of stack memory starting at low address lo.
+// Note that the returned pointer will be at lo[stacksize - aligned16_sizeof(T)], not at lo.
+static T* t_init(u8* lo, size_t stacksize) {
+  T* newt = (T*)&lo[stacksize - STACK_TSIZE];
 
+  // initialize T
+  memset(newt, 0, sizeof(T));
+  newt->atomicstatus = TDead;
+  newt->stack.lo = (uintptr_t)lo;
+  newt->stack.hi = (uintptr_t)&lo[stacksize];
+  trace("T: %p, stack: [lo=%p - hi=%p] (%zu B, %g pages)",
+    newt, lo, &lo[stacksize], stacksize, (double)stacksize / mem_pagesize());
+
+  // // Clear the bottom word of the stack.
+  // // Go records T there on gsignal stack during VDSO on ARM and ARM64.
+  // *((uintptr_t*)&lo[stacksize - tsize - sizeof(void*)]) = 0;
+
+  // initialize stack data for context switching and save a pointer to it,
+  // for use with jump_fcontext.
+  newt->stackctx = make_fcontext(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
+
+  return newt;
+}
 
 // t_alloc allocates a new T, with a stack big enough for requested_stacksize bytes.
 // If requested_stacksize == 0, an sufficiently large, implementation-varying stack size is used.
@@ -833,36 +860,19 @@ static T* t_alloc(size_t requested_stacksize) {
   if (lo == NULL)
     return NULL; // most likely out of memory (see errno)
 
-  T* newt = (T*)&lo[stacksize - STACK_TSIZE];
-
-  // initialize T
-  memset(newt, 0, sizeof(T));
-  newt->stack.lo = (uintptr_t)lo;
-  newt->stack.hi = (uintptr_t)&lo[stacksize];
-  dlog("T: [%p - %p], stack: [lo=%p - hi=%p] (%zu)",
-    newt, &((u8*)newt)[sizeof(*newt)], lo, &lo[stacksize], stacksize);
-
-  // // Clear the bottom word of the stack.
-  // // Go records T there on gsignal stack during VDSO on ARM and ARM64.
-  // *((uintptr_t*)&lo[stacksize - tsize - sizeof(void*)]) = 0;
-
-  // initialize stack data for context switching and save a pointer to it,
-  // for use with jump_fcontext.
-  newt->stackctx = make_fcontext(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
-
-  return newt;
+  return t_init(lo, stacksize);
 }
 
 // t_free frees memory of T, including its stack
 static void t_free(T* t) {
   if (t->stack.lo == 0) {
     // no stack
-    dlog("T#%llu: [%p - %p], stack: NULL", t->id, t, &((u8*)t)[sizeof(*t)]);
+    trace("T#%llu: [%p - %p], stack: NULL", t->id, t, &((u8*)t)[sizeof(*t)]);
     t->stack.hi = 0;
   } else {
     void* lo = (void*)t->stack.lo;
     size_t stacksize = (size_t)(t->stack.hi - t->stack.lo);
-    dlog("T#%llu: [%p - %p], stack: [lo=%p - hi=%p] (%zu)",
+    trace("T#%llu: [%p - %p], stack: [lo=%p - hi=%p] (%zu)",
       t->id, t, &((u8*)t)[sizeof(*t)], (void*)t->stack.lo,
       &((u8*)t->stack.lo)[stacksize], stacksize);
     memset(t, 0, sizeof(*t));
@@ -883,12 +893,12 @@ static void allt_add(T* t) {
 
   mtx_lock(&allt.lock);
   if (allt.len == allt.cap) {
-    dlog("grow array");
+    trace("grow array");
     allt.cap = allt.cap + 64;
     allt.ptr = memrealloc(NULL, allt.ptr, allt.cap);
     AtomicStore(&allt.ptr, allt.ptr);
   }
-  dlog("add");
+  trace("add");
   allt.ptr[allt.len++] = t;
   AtomicStore(&allt.len, allt.len);
   mtx_unlock(&allt.lock);
@@ -968,7 +978,7 @@ static void p_tfree_put(P* _p_, T* t) {
   //}
   if (stksize != STACK_SIZE_DEFAULT) {
     // don't keep tasks with non-default stack sizes
-    dlog("non-standard stack size (%zu != %zu)", stksize, (size_t)STACK_SIZE_DEFAULT);
+    trace("non-standard stack size (%zu != %zu)", stksize, (size_t)STACK_SIZE_DEFAULT);
     t_free(t);
     return;
   }
@@ -1096,7 +1106,7 @@ static void p_startm(P* _p_, bool spinning) {
   if (!_p_) {
     _p_ = s_pidleget();
     if (!_p_) {
-      dlog("no idle P's");
+      trace("no idle P's");
       mtx_unlock(&S.lock);
       if (spinning) {
         // The caller incremented nmspinning, but there are no idle Ps,
@@ -1212,7 +1222,7 @@ static void p_runqput(P* p, T* t, bool next) {
     u32 head = AtomicLoadAcq(&p->runqhead);
     u32 tail = p->runqtail;
     if (tail - head < P_RUNQSIZE) {
-      dlog("put T#%llu at runq[%u]", tp->id, tail % P_RUNQSIZE);
+      trace("put T#%llu at runq[%u]", tp->id, tail % P_RUNQSIZE);
       p->runq[tail % P_RUNQSIZE] = tp;
       // store memory_order_release makes the item available for consumption
       AtomicStoreRel(&p->runqtail, tail + 1);
@@ -1241,7 +1251,7 @@ static T* p_runqget(P* p, bool* inheritTime) {
       return next;
     }
   }
-  dlog("no runnext; try dequeue from p->runq");
+  trace("no runnext; try dequeue from p->runq");
 
   *inheritTime = false;
 
@@ -1250,13 +1260,13 @@ static T* p_runqget(P* p, bool* inheritTime) {
     u32 tail = p->runqtail;
     if (tail == head)
       return NULL;
-    dlog("loop2 tail != head; load p->runq[%u]", head % P_RUNQSIZE);
+    trace("loop2 tail != head; load p->runq[%u]", head % P_RUNQSIZE);
     T* tp = p->runq[head % P_RUNQSIZE];
-    dlog("loop2 tp => %p", tp);
-    dlog("loop2 tp => T#%llu", tp->id);
+    trace("loop2 tp => %p", tp);
+    trace("loop2 tp => T#%llu", tp->id);
     if (AtomicCASRel(&p->runqhead, &head, head + 1)) // cas-release, commits consume
       return tp;
-    dlog("CAS failure; retry");
+    trace("CAS failure; retry");
   }
 }
 
@@ -1265,7 +1275,7 @@ static T* p_runqget(P* p, bool* inheritTime) {
 // Returns number of grabbed goroutines.
 // Can be executed by any P.
 static u32 p_runqgrab(P* _p_, T* batch[P_RUNQSIZE], u32 batchHead, bool stealRunNextT) {
-  dlog("P#%u", _p_->id);
+  trace("P#%u", _p_->id);
   while (1) {
     auto h = AtomicLoadAcq(&_p_->runqhead); // load-acquire, synchronize with other consumers
     auto t = AtomicLoadAcq(&_p_->runqtail); // load-acquire, synchronize with the producer
@@ -1328,18 +1338,18 @@ static T* nullable p_runqsteal(P* _p_, P* p2, bool stealRunNextT) {
 // Called when a T is made runnable (newproc, ready).
 static void p_wake() {
   if (AtomicLoad(&S.npidle) == 0) {
-    dlog("none (S.npidle==0)");
+    trace("none (S.npidle==0)");
     return;
   }
 
   // be conservative about spinning threads
   i32 z = 0;
   if (AtomicLoad(&S.nmspinning) != 0 || !AtomicCAS(&S.nmspinning, &z, 1)) {
-    dlog("none (S.npidle>0 but S.nmspinning>0)");
+    trace("none (S.npidle>0 but S.nmspinning>0)");
     return;
   }
 
-  dlog("deferring to p_startm");
+  trace("deferring to p_startm");
   p_startm(NULL, /*spinning*/ true);
 }
 
@@ -1398,9 +1408,9 @@ static u32 m_fastrand(M* _m_) {
   return s0 + s1;
 }
 
-// initsig implements part of mstart1 that only runs on the m0, to initialize signal handlers
+// initsig implements part of m_start1 that only runs on the m0, to initialize signal handlers
 static void m0_initsig() {
-  dlog("TODO");
+  trace("TODO");
   // TODO: install signal handlers
 }
 
@@ -1450,10 +1460,9 @@ static void m_init_sigmask(M* _m_) {
 
 // m_start is the Go entry-point for new Ms.
 // May run during STW (because it doesn't have a P yet), so write barriers are not allowed.
-// [go: runtime.mstart0]
-static void m_start() {
+static void noreturn m_start() { // [go: runtime.mstart0]
   T* _t_ = t_get();
-  dlog("_t_ T#%llu (%p)", _t_->id, _t_);
+  trace("_t_ T#%llu (%p)", _t_->id, _t_);
 
   bool osStack = _t_->stack.lo == 0;
   if (osStack) {
@@ -1473,32 +1482,32 @@ static void m_start() {
   }
 
   m_start1(_t_);
-
-  // Exit this thread
-  m_exit();
+  UNREACHABLE;
+  // // Exit this thread
+  // m_exit();
 }
 
-static NO_INLINE void m_start1(T* t0) {
+static NO_INLINE void m_start1(T* t0) { // [go: runtime.mstart1]
   M* _m_ = t0->m;
   if (t0 != &_m_->t0) {
     panic("bad mstart (_m_->t0 != t0)");
   }
 
   // // Set up m.t0.sched as a label returning to just
-  // // after the mstart1 call in mstart0 above, for use by goexit0 and mcall.
-  // // We're never coming back to mstart1 after we call schedule,
+  // // after the m_start1 call in m_start above, for use by goexit0 and mcall.
+  // // We're never coming back to m_start1 after we call schedule,
   // // so other calls can reuse the current frame.
-  // // And goexit0 does a gogo that needs to return from mstart1
-  // // and let mstart0 exit the thread.
+  // // And goexit0 does a gogo that needs to return from m_start1
+  // // and let m_start exit the thread.
   // t0.sched.g = guintptr(unsafe.Pointer(t0))
   // t0.sched.pc = getcallerpc()
   // t0.sched.sp = getcallersp()
 
   // // experiment: setup t0 stack context for special finishing jump:
   // static void m_start_steppingstone(fctx_transfer_t ctx) {
-  //   dlog("1");
+  //   trace("1");
   //   jump_fcontext(ctx.ctx, NULL);
-  //   dlog("2");
+  //   trace("2");
   // }
   // auto newt = t_alloc(4096);
   // t0->stack = newt->stack;
@@ -1510,7 +1519,7 @@ static NO_INLINE void m_start1(T* t0) {
   // // int here = 0;
   // // t0->stackctx = make_fcontext(&here, 4096, m_start_steppingstone);
   // t0->stackctx = jump_fcontext(t0->stackctx, m_start_steppingstone).ctx;
-  // dlog("return from m_start_steppingstone");
+  // trace("return from m_start_steppingstone");
 
   // asminit(); // arch & OS specific per-thread initialization
 
@@ -1546,7 +1555,7 @@ static NO_INLINE void m_start1(T* t0) {
 // p_handoff hands off P from syscall or locked M.
 // Always runs without a current P (_t_->m->p==NULL)
 static void p_handoff(P* _p_) {
-  dlog("TODO");
+  trace("TODO");
 }
 
 // m_exit tears down and exits the current thread.
@@ -1559,10 +1568,10 @@ static void p_handoff(P* _p_) {
 // It will release the P before exiting.
 static void m_exit() {
   M* m = t_get()->m;
-  dlog("M %p", m);
+  trace("M %p", m);
 
   if (m == &m0) {
-    dlog("main thread m0");
+    trace("main thread m0");
     // This is the main thread. Just wedge it.
     //
     // On Linux, exiting the main thread puts the process
@@ -1602,7 +1611,7 @@ static void m_exit() {
 //
 static void m_call(void(*fn)(T*)) {
   T* _t_ = t_get();
-  dlog("T#%llu", _t_->id);
+  trace("T#%llu", _t_->id);
   assert(_t_ != &_t_->m->t0);
   assert(_t_->m->t0.stackctx != NULL /* else: m_call not called from a valid coroutine */);
   _t_->m->t0.stackctx = jump_fcontext(_t_->m->t0.stackctx, fn).ctx;
@@ -1620,7 +1629,7 @@ static bool m_dofixup() {
 // only way that m's should park themselves.
 static void m_park() {
   T* _t_ = t_get();
-  dlog("T#%llu", _t_->id);
+  trace("T#%llu", _t_->id);
   while (1) {
     note_sleep(&_t_->m->park);
     note_clear(&_t_->m->park);
@@ -1634,7 +1643,7 @@ static void m_park() {
 static void m_stop() {
   T* _t_ = t_get();
   M* m = _t_->m;
-  dlog("m_stop M#%lld", m->id);
+  trace("m_stop M#%lld", m->id);
   assert(m->locks == 0); // still has locks
   assert(m->p == 0); // still holding P
   assert(!m->spinning);
@@ -1871,7 +1880,7 @@ static void spawn_osthread(M* mp) {
   if (pthread_attr_getstacksize(&attr, &stacksize) != 0)
     panic("pthread_attr_getstacksize");
 
-  dlog("OS thread stack size: %zu B", stacksize);
+  trace("OS thread stack size: %zu B", stacksize);
   mp->t0.stack.hi = stacksize; // for m_start
 
   // Tell the pthread library we won't join with this thread.
@@ -1900,7 +1909,7 @@ static void s_newm(P* _p_, void(*fn)(void), i64 id) {
   mp->doespark = _p_ != NULL;
   mp->nextp = _p_;
   mp->sigmask = initSigmask;
-  dlog("M#%llu", mp->id);
+  trace("M#%llu", mp->id);
   rwmtx_rlock(&execLock); // Prevent process clone
   spawn_osthread(mp);
   rwmtx_runlock(&execLock);
@@ -1928,7 +1937,7 @@ static void p_init(P* p, u32 id) {
 // The world is stopped.
 // Returns list of Ps with local work; they need to be scheduled by the caller.
 static P* s_procresize(u32 nprocs) {
-  dlog("S.maxprocs=%u, nprocs=%u", S.maxprocs, nprocs);
+  trace("S.maxprocs=%u, nprocs=%u", S.maxprocs, nprocs);
   u32 old = S.maxprocs;
   assert(nprocs > 0);
   assert(nprocs <= COMAXPROCS_MAX);
@@ -1936,7 +1945,7 @@ static P* s_procresize(u32 nprocs) {
 
   // grow allp if needed
   if (nprocs > S.maxprocs) {
-    dlog("grow allp");
+    trace("grow allp");
     // Synchronize with retake, which could be running concurrently since it doesn't run on a P
     mtx_lock(&S.allplock);
     vbm_resize(&idlepMask, nprocs);
@@ -2061,34 +2070,50 @@ static T* newproc1(
   u32 narg,
   T* callert,
   uintptr_t callerpc,
+  void* nullable stackmem,
   size_t stacksize )
 {
   T* _t_ = t_get();
   assert(fn != NULL);
 
   m_acquire(); // disable preemption because it can be holding p in a local var
-  u32 siz = (narg + 7) & ~7; // round up to nearest multiple of 8 (64 bit alignment)
 
-  // We could allocate a larger initial stack if necessary.
-  // Not worth it: this is almost always an error.
-  // 4*PtrSize: extra space added below
-  // PtrSize: caller's LR (arm) or return address (x86, in gostartcall).
-  if (siz >= STACK_MIN - 4*PTR_SIZE - PTR_SIZE) {
-    panic("newproc: function arguments too large for new coroutine");
-  }
+  // // TODO args
+  // u32 siz = (narg + 7) & ~7; // round up to nearest multiple of 8 (64 bit alignment)
+  //
+  // // We could allocate a larger initial stack if necessary.
+  // // Not worth it: this is almost always an error.
+  // // 4*PtrSize: extra space added below
+  // // PtrSize: caller's LR (arm) or return address (x86, in gostartcall).
+  // if (siz >= STACK_MIN - 4*PTR_SIZE - PTR_SIZE) {
+  //   panic("newproc: function arguments too large for new coroutine");
+  // }
 
   P* _p_ = _t_->m->p;
   T* newt = NULL;
-  if (stacksize == 0 || stacksize == STACK_SIZE_DEFAULT) {
-    newt = p_tfree_get(_p_);
-    dlog("p_tfree_get(_p_) => %p", newt);
-  }
-  if (newt == NULL) {
-    newt = t_alloc(stacksize);
-    t_setstatus(newt, TDead); // t_casstatus(newt, TIdle, TDead);
-    // allgadd(newt) publishes with a g->status of Gdead so GC scanner
-    // doesn't look at uninitialized stack
+  if (stackmem != NULL) {
+    // user provided custom memory. Align as needed.
+    uintptr_t lo = (uintptr_t)stackmem;
+    lo = align2(lo, STACK_ALIGN);
+    stacksize = stacksize - (lo - (uintptr_t)stackmem);
+    if (stacksize < STACK_MIN) {
+      errno = EINVAL; // "Invalid argument"
+      return NULL;
+    }
+    newt = t_init((u8*)lo, stacksize);
     allt_add(newt);
+  } else {
+    // managed memory
+    if (stacksize == 0 || stacksize == STACK_SIZE_DEFAULT) {
+      // default stack size
+      newt = p_tfree_get(_p_);
+      trace("p_tfree_get(_p_) => %p", newt);
+    } // else: custom stacksize (the T won't end up on tfree)
+    if (newt == NULL) {
+      newt = t_alloc(stacksize);
+      t_setstatus(newt, TDead); // t_casstatus(newt, TIdle, TDead);
+      allt_add(newt);
+    }
   }
 
   newt->fn = fn;
@@ -2144,7 +2169,7 @@ static T* newproc1(
 
   newt->id = AtomicAdd(&S.tidgen, 1);
   t_casstatus(newt, TDead, TRunnable);
-  dlog("readied task #%llu", newt->id);
+  trace("readied task #%llu", newt->id);
 
   m_release(_t_->m); // re-enable preemption
 
@@ -2154,26 +2179,30 @@ static T* newproc1(
 // newproc creates a new T running fn with argsize bytes of arguments.
 // stacksize is a requested minimum number of bytes to allocate for its stack. A stacksize
 // of 0 means to allocate a stack of default standard size.
+// If stackmem is not NULL, T and its stack will use that memory instead of memory managed
+// by the scheduler. The caller will be responsible for freeing that memory after the task ends.
 // Put it on the queue of T's waiting to run.
 // The compiler turns a go statement into a call to this.
-static void newproc(void(*fn)(void), void* argp, u32 argsize, size_t stacksize) {
+int newproc(void(*fn)(void), void* argp, u32 argc, void* nullable stackmem, size_t stacksize) {
   T* t = t_get();
   auto pc = getcallerpc();
-  T* newt = newproc1(fn, argp, argsize, t, pc, stacksize);
+  T* newt = newproc1(fn, argp, argc, t, pc, stackmem, stacksize);
+  if (newt == NULL)
+    return -1;
   P* p = t_get()->m->p;
   p_runqput(p, newt, true /* = puts T in p.runnext */);
-  dlog("added T#%llu to P#%u runq", newt->id, p->id);
-  if (mainStarted) {
-    // note: mainStarted=true is set in Go by the main coroutine (runtime.main)
+  trace("added T#%llu to P#%u runq", newt->id, p->id);
+  // note: mainStarted=true is set in Go by the main coroutine (runtime.main)
+  if (mainStarted)
     p_wake();
-  }
+  return 0;
 }
 
 // s_stealwork attempts to steal work from other P's
 static inline T* s_stealwork(T* _t_, bool* inheritTime, bool* ranTimer) {
   M* m = _t_->m;
   if (!m->spinning) {
-    dlog("marking M#%llu spinning", m->id);
+    trace("marking M#%llu spinning", m->id);
     m->spinning = true;
     AtomicAdd(&S.nmspinning, 1);
   }
@@ -2204,7 +2233,7 @@ static inline T* s_stealwork(T* _t_, bool* inheritTime, bool* ranTimer) {
       // timerpMask tells us whether the P may have timers at all. If it
       // can't, no need to check at all.
       if (stealTimersOrRunNextT && vbm_read(&timerpMask, randenum_pos(&e))) {
-        dlog("TODO: checkTimers");
+        trace("TODO: checkTimers");
         // tnow, w, ran := checkTimers(p2, now)
         // now = tnow
         // if w != 0 && (pollUntil == 0 || w < pollUntil) {
@@ -2228,16 +2257,16 @@ static inline T* s_stealwork(T* _t_, bool* inheritTime, bool* ranTimer) {
 
       // Don't bother to attempt to steal if p2 is idle.
       if (!vbm_read(&idlepMask, randenum_pos(&e))) {
-        dlog("try steal from P#%u", p2->id);
+        // trace("try steal from P#%u", p2->id);
         T* t = p_runqsteal(_p_, p2, stealTimersOrRunNextT);
         if (t) {
           *inheritTime = false;
-          dlog("found %p, %p", t, p2);
-          dlog("found T#%llu in P#%u", t->id, p2->id);
+          trace("found %p, %p", t, p2);
+          trace("found T#%llu in P#%u", t->id, p2->id);
           return t;
         }
       } else {
-        dlog("skip trying steal from non-idle P#%u", p2->id);
+        trace("skip trying steal from non-idle P#%u", p2->id);
       }
 
     } // for (; !randenum_done(&e); randenum_next(&e))
@@ -2258,13 +2287,13 @@ top: {}
   i64 pollUntil = 0;
 
   // local runq
-  dlog("try local runq");
+  trace("try local runq");
   T* tp = p_runqget(_p_, inheritTime);
   if (tp != NULL)
     return tp;
 
   // global runq
-  dlog("try global runq");
+  trace("try global runq");
   if (S.runqsize != 0) {
     mtx_lock(&S.lock);
     T* tp = s_runqget(_p_, /*max*/0);
@@ -2275,10 +2304,10 @@ top: {}
     }
   }
 
-  dlog("TODO: netpoll");
+  trace("TODO: netpoll");
 
   // Steal work from other P's
-  dlog("try steal from other P's");
+  trace("try steal from other P's");
   //
   // If number of spinning M's >= number of busy P's, block.
   // This is necessary to prevent excessive CPU consumption
@@ -2294,7 +2323,7 @@ top: {}
     goto top; // retry while loop
 
 stop: {}
-  dlog("stop; no work");
+  trace("stop; no work");
 
   i64 delta = -1;
   if (pollUntil != 0) {
@@ -2316,7 +2345,7 @@ stop: {}
   if (S.runqsize != 0) {
     T* t = s_runqget(_p_, 0);
     mtx_unlock(&S.lock);
-    dlog("found T#%llu in s_runqget(P#%u)", t->id, _p_->id);
+    trace("found T#%llu in s_runqget(P#%u)", t->id, _p_->id);
     *inheritTime = false;
     return t;
   }
@@ -2359,7 +2388,7 @@ stop: {}
           _t_->m->spinning = true;
           AtomicAdd(&S.nmspinning, 1);
         }
-        dlog("found idle P#%u -- retrying", _p_->id);
+        trace("found idle P#%u -- retrying", _p_->id);
         goto top;
       }
       break;
@@ -2405,7 +2434,7 @@ stop: {}
 
 
 static void m_resetspinning(M* m) {
-  dlog("m_resetspinning M#%lld", m->id);
+  trace("m_resetspinning M#%lld", m->id);
   assert(t_get()->m == m);
   assert(m->spinning);
   m->spinning = false;
@@ -2424,7 +2453,7 @@ static void m_resetspinning(M* m) {
 static void noreturn schedule() {
   T* _t_ = t_get();
   M* m = _t_->m;
-  dlog("_t_ T#%llu on M#%lld", _t_->id, m->id);
+  trace("_t_ T#%llu on M#%lld", _t_->id, m->id);
 
   assert(m->locks == 0);
 
@@ -2434,7 +2463,7 @@ static void noreturn schedule() {
     // execute(m->lockedt, false) // Never returns.
   }
 
-top: {}
+  // top: {}
   P* pp = m->p;
   pp->preempt = false;
 
@@ -2457,24 +2486,24 @@ top: {}
     t = s_runqget(pp, 1);
     mtx_unlock(&S.lock);
     if (t)
-      dlog("found T#%llu with s_runqget", t->id);
+      trace("found T#%llu with s_runqget", t->id);
   }
 
   if (t == NULL) {
-    dlog("try p_runqget P#%u", pp->id);
+    trace("try p_runqget P#%u", pp->id);
     t = p_runqget(pp, &inheritTime);
     // We can see t != NULL here even if the M is spinning,
     // if checkTimers added a local goroutine via goready.
     if (t)
-      dlog("found T#%llu with p_runqget", t->id);
+      trace("found T#%llu with p_runqget", t->id);
   }
 
   if (t == NULL) {
-    dlog("try s_findrunnable");
+    trace("try s_findrunnable");
     t = s_findrunnable(&inheritTime); // blocks until work is available
     assert(t != NULL);
     if (t)
-      dlog("found T#%llu with s_findrunnable", t->id);
+      trace("found T#%llu with s_findrunnable", t->id);
   }
 
   // This thread is going to run a coroutine and is not spinning anymore,
@@ -2491,7 +2520,7 @@ top: {}
     // goto top;
   }
 
-  dlog("selected t %p", t);
+  trace("selected t %p", t);
   t_execute(t, inheritTime); // never returns
 
   UNREACHABLE;
@@ -2577,7 +2606,7 @@ void sched_maincancel() {
 // This function creates a new coroutine with fn as the body and then enters the
 // (continuation passing) scheduler loop on the calling thread.
 void noreturn sched_main(void(*fn)(void)) {
-  newproc(fn, /* argptr= */ NULL, /* argc= */ 0, /* stacksize= */ 0);
+  newproc(fn, /*argptr*/NULL, /*argc*/0, /*stackmem*/NULL, /*stacksize*/ 0);
   t1 = m0.p->runnext;
   m_start(); // calls schedule(); never returns
   UNREACHABLE;

@@ -356,7 +356,6 @@ static bool init(const char* argv0) {
 }
 
 void t_yield();
-void t_spawn(void(*fn)(void), size_t stacksize);
 #define GREEN "\e[1;32m"
 #define YELLOW "\e[1;33m"
 
@@ -369,12 +368,15 @@ static void fn2() {
   dlog(YELLOW "EXIT");
 }
 
+static u8 smolstack[4096];
+
 static void fn1() {
   #define GREEN "\e[1;32m"
   dlog(GREEN "main coroutine");
 
   dlog(GREEN "spawn fn2");
-  t_spawn(fn2, /* stack size */4096*4);
+  //t_spawn_custom(fn2, /*stackmem*/NULL, /*stacksize*/4096*4);
+  t_spawn_custom(fn2, &smolstack[1], sizeof(smolstack)-1);
 
   // msleep(1000);
 

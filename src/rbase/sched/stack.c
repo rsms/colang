@@ -81,8 +81,6 @@ void* stackalloc(size_t reqsize, size_t* stacksize_out, size_t* guardsize_out) {
   if (reqsize > 0 && reqsize != STACK_SIZE_DEFAULT)
     stacksize = MIN(stacksize_limit, align2(reqsize, pagesize) + stack_guard_size);
 
-  dlog("allocating %zu B (%zu pages)", stacksize, stacksize / pagesize);
-
   // allocate stack memory
   #ifdef USE_MMAP
     #if R_TARGET_OS_DARWIN && defined(VM_PROT_DEFAULT)
