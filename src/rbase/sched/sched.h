@@ -13,14 +13,14 @@ typedef void(*EntryFun)(uintptr_t arg1);
 // Scheduler entry point. fn is the main coroutine body. Never returns.
 void noreturn sched_main(EntryFun fn, uintptr_t arg1);
 
-// newproc schedules a new coroutine.
+// sched_spawn schedules a new coroutine.
 // Returns 0 on success and -1 on error, in which case errno is set.
-int newproc(EntryFun fn, uintptr_t arg1, void* nullable stackmem, size_t stacksize);
+int sched_spawn(EntryFun fn, uintptr_t arg1, void* nullable stackmem, size_t stacksize);
 
 #define t_spawn(fn, arg1) \
-  newproc(fn, arg1, /*stackmem*/NULL, /*stacksize*/0);
+  sched_spawn(fn, arg1, /*stackmem*/NULL, /*stacksize*/0);
 
 #define t_spawn_custom(fn, arg1, stackmem, stacksize) \
-  newproc(fn, arg1, stackmem, stacksize);
+  sched_spawn(fn, arg1, stackmem, stacksize);
 
 ASSUME_NONNULL_END

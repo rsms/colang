@@ -360,16 +360,22 @@ void t_yield();
 #define YELLOW "\e[1;33m"
 #define PURPLE "\e[1;35m"
 
+#define REINTERPRET_CAST(dsttype, value) \
+  ({ __typeof__(value) v = value; *((dsttype*)&v); })
+
+
 static void fn3(uintptr_t arg1) {
-  dlog(PURPLE "fn3 coroutine. arg1=%f", (double)arg1);
+  dlog(PURPLE "fn3 coroutine. arg1=%f", REINTERPRET_CAST(double, arg1));
   dlog(PURPLE "EXIT");
 }
 
 static void fn2() {
   dlog(YELLOW "fn2 coroutine");
-  // dlog(YELLOW "calling t_yield()");
-  // t_yield();
-  // dlog(YELLOW "back from yield");
+  dlog(YELLOW "spawn fn3");
+  t_spawn(fn3, REINTERPRET_CAST(uintptr_t, 12.34));
+  dlog(YELLOW "calling t_yield()");
+  t_yield();
+  dlog(YELLOW "back from yield");
   // // msleep(1000);
   dlog(YELLOW "EXIT");
 }
@@ -378,11 +384,9 @@ static void fn1(uintptr_t arg1) {
   #define GREEN "\e[1;32m"
   dlog(GREEN "main coroutine");
 
-  // dlog(GREEN "spawn fn2");
+  dlog(GREEN "spawn fn2");
+  t_spawn(fn2, 0);
 
-  // double 12.34
-
-  t_spawn(fn3, (uintptr_t)12.34);
   // // t_spawn_custom(fn2, /*stackmem*/NULL, /*stacksize*/4096*4);
 
   // static u8 smolstack[4096];
@@ -401,8 +405,8 @@ static void fn1(uintptr_t arg1) {
 
   dlog(GREEN "calling t_yield()");
   t_yield();
-  // dlog(GREEN "back from yield; calling t_yield()");
-  // t_yield();
+  dlog(GREEN "back from yield; calling t_yield()");
+  t_yield();
   dlog(GREEN "back from yield");
 
   dlog(GREEN "EXIT");

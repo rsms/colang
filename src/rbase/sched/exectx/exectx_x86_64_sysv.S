@@ -50,9 +50,10 @@
 // Addressing modes:
 //   movl $1, 0x604892          Direct (address is constant value)
 //   movl $1, (%rax)            Indirect (address is in register %rax)
-//   movl $1, -24(%rbp)         Indirect with displacement (address = base %rbp + displ -24)
+//   movl $1, -24(%rbp)         Indirect with displacement
+//                                (addr = base %rbp + displ -24)
 //   movl $1, 8(%rsp, %rdi, 4)  Indirect with displacement and scaled-index
-//                              (addr = base %rsp + displ 8 + index %rdi * scale 4)
+//                                (addr = base %rsp + displ 8 + index %rdi * scale 4)
 //   movl $1, (%rax, %rcx, 8)   Special case scaled-index, displ assumed 0
 //   movl $1, 0x8(, %rdx, 4)    Special case scaled-index, base assumed 0
 //   movl $1, 0x4(%rax, %rcx)   Special case scaled-index, scale assumed 1
