@@ -1,5 +1,8 @@
 #pragma once
 
+#include "exectx/exectx.h"
+
+#include <setjmp.h>
 #if R_TARGET_OS_POSIX
   #include <signal.h> // sigset_t
 #endif
@@ -80,10 +83,10 @@ ASSUME_NONNULL_BEGIN
 // STACK_ALIGN is the required alignment of the SP register.
 // The stack must be at least word aligned, but some architectures require more.
 // The values comes from go runtime/internal/sys/arch_*.go
-#if R_TARGET_ARCH_ARM64 /* || TODO: R_TARGET_ARCH_PPC64 in target.h */
+#if defined(__x86_64__) || defined(__arm64__) || defined(__ARM_ARCH_7K__)
   #define STACK_ALIGN  16
 #else
-  // 386, x86_64,
+  // i386, etc
   #define STACK_ALIGN  sizeof(void*)
 #endif
 
@@ -144,6 +147,10 @@ typedef enum TStatus {
   TDead, // 5
 } TStatus;
 
+typedef enum TFlag {
+  TFlUserStack = 1 << 0, // allocated in user-provided stack memory
+} TFlag;
+
 typedef enum PStatus {
   // P status
   PIdle      = 0,
@@ -159,11 +166,6 @@ typedef struct Stack {
   uintptr_t lo;
   uintptr_t hi;
 } Stack;
-
-typedef struct StackFreelist {
-  void*  list; // linked list of free stacks
-  size_t size;   // total size of stacks in list
-} StackFreelist;
 
 // task stack memory
 typedef struct TStackMem {
@@ -204,15 +206,25 @@ typedef struct T {
   M*  m;
   M*  lockedm;
 
-  Stack stack;
-  void* stackctx;  // execution context (stack, regs; fctx) of T or M
-
   T*               parent;    // task that spawned this task
   T*               schedlink; // next task to be scheduled
   _Atomic(TStatus) atomicstatus;
   u64              waitsince; // approx time when the T became blocked
-  TFun             fn;        // entry point
-} T;
+  // TFun             fn;        // entry point
+
+  TFlag fl; // flags (immutable during T life)
+
+  // stack addresses
+  // TODO: stack.hi==(&T + STACK_TSIZE) so we could probably get away with
+  //       simply storing the stack size or stack base (low address.)
+  //       However, m_start uses both stack.lo and stack.hi to pass information
+  //       about OS stack or managed stack.
+  struct { uintptr_t lo, hi; } stack;
+  // uintptr_t stacklo;
+
+  // execution context state of T
+  exectx_state_t exectx;
+} __attribute__((__aligned__(STACK_ALIGN))) T;
 
 typedef struct M {
   u64        procid;      // process identifier, for debugging (==thrd_current())
@@ -233,6 +245,9 @@ typedef struct M {
   Note       park;
   bool       doespark; // non-P running threads: sysmon and newmHandoff never use .park
   SigSet     sigmask;  // storage for saved signal mask
+
+  // XXX TMP stack switch t0
+  exectx_state_t t0exebuf; // TODO use t0.exectx
 
   // mstartfn, if set, runs in m_start1 on the OS thread stack
   void(*mstartfn)(void);
@@ -288,8 +303,6 @@ struct P {
   // timersLock is the lock for timers. We normally access the timers while running
   // on this P, but the scheduler can also do it from a different P.
   mtx_t timersLock;
-
-  StackFreelist stackcache[3]; // 0=STACK_SIZE_DEFAULT
 };
 
 struct S {
@@ -321,9 +334,8 @@ struct S {
   // tfree is the global cache of dead T's
   struct {
     mtx_t lock;
-    TList stack;   // Ts with stacks
-    TList noStack; // Ts without stacks
-    u32   n;       // total count of Ts in stack & noStack
+    TList l;
+    u32   n;   // total count of Ts
   } tfree;
 
   // runnable queue

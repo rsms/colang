@@ -361,10 +361,10 @@ void t_yield();
 
 static void fn2() {
   dlog(YELLOW "fn2 coroutine");
-  dlog(YELLOW "calling t_yield()");
-  t_yield();
-  dlog(YELLOW "back from yield");
-  msleep(1000);
+  // dlog(YELLOW "calling t_yield()");
+  // t_yield();
+  // dlog(YELLOW "back from yield");
+  // // msleep(1000);
   dlog(YELLOW "EXIT");
 }
 
@@ -374,17 +374,19 @@ static void fn1() {
   #define GREEN "\e[1;32m"
   dlog(GREEN "main coroutine");
 
-  dlog(GREEN "spawn fn2");
-  //t_spawn_custom(fn2, /*stackmem*/NULL, /*stacksize*/4096*4);
-  t_spawn_custom(fn2, &smolstack[1], sizeof(smolstack)-1);
+  // dlog(GREEN "spawn fn2");
+  // t_spawn(fn2);
+  // // t_spawn_custom(fn2, /*stackmem*/NULL, /*stacksize*/4096*4);
+  // // t_spawn_custom(fn2, &smolstack[1], sizeof(smolstack)-1);
 
   // msleep(1000);
 
   dlog(GREEN "calling t_yield()");
   t_yield();
-  dlog(GREEN "back from yield; calling t_yield()");
-  t_yield();
+  // dlog(GREEN "back from yield; calling t_yield()");
+  // t_yield();
   dlog(GREEN "back from yield");
+
   dlog(GREEN "EXIT");
 }
 

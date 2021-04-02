@@ -2,10 +2,6 @@
 #include "schedimpl.h"
 #include "exectx/exectx.h"
 
-#if R_TARGET_OS_POSIX
-  #include <signal.h>
-#endif
-
 // SCHED_TRACE: when defined, verbose log tracing on stderr is enabled.
 // The value is used as a prefix for log messages.
 #define SCHED_TRACE "♻ "
@@ -85,9 +81,8 @@ static inline ALWAYS_INLINE T* t_get();
 
 static inline M* m_acquire();
 static inline void m_release(M* m);
-static void m_call(void(*fn)(T*));
-static void m_exit();
-static void m_start1();
+static void m_call(T* _t_, void(*fn)(T*));
+static void noreturn m_exit(bool osStack);
 static void noreturn schedule();
 static void p_runqput(P* p, T* t, bool next);
 static void p_tfree_put(P* _p_, T* t);
@@ -106,7 +101,7 @@ static void m_semawakeup(M* mp);
 
 // trace(const char* fmt, ...) -- debug tracing
 #ifdef SCHED_TRACE
-  void _trace(const char* fmt, ...) {
+  static void _trace(const char* fmt, ...) {
     T* _t_ = t_get();
     FILE* fp = stderr;
     flockfile(fp);
@@ -586,6 +581,11 @@ static inline ALWAYS_INLINE T* t_get() {
   return _tlt;
 }
 
+// t_stacksize returns T's stack size
+static inline size_t t_stacksize(T* t) {
+  return (size_t)(t->stack.hi - t->stack.lo);
+}
+
 // t_readstatus returns the value of t->atomicstatus using a relaxed atomic memory operation.
 // On many archs, including x86, this is just a plain load.
 static TStatus t_readstatus(T* t) {
@@ -663,7 +663,7 @@ static void noreturn t_exit(T* t) {
   t->m = NULL;
   t->lockedm = NULL;
   t->parent = NULL;
-  t->fn = NULL;
+  // t->fn = NULL;
 
   m_dropt();
   p_tfree_put(_t_->m->p, t);
@@ -681,6 +681,15 @@ static void noreturn t_exit(T* t) {
   UNREACHABLE;
 }
 
+// _t_exit0 finishes execution of the current coroutine.
+// It is called when the coroutine's function returns.
+// This function is link exported because it's called from assembly.
+void noreturn _t_exit0() {
+  trace("");
+  m_call(t_get(), t_exit);
+  UNREACHABLE;
+}
+
 static void noreturn exitprog(int status) {
   trace("\e[1;35m" "PROGRAM EXIT");
   trace("TODO: close() child tasks");
@@ -688,22 +697,42 @@ static void noreturn exitprog(int status) {
   exit(status);
 }
 
-// t_main is the entry point for coroutines
-static void noreturn NO_INLINE t_main(exectx_t tr) {
-  T* t = tr.data;
-  assert(t_get() == t);
-  if (t->parent == &t->m->t0) {
-    // root coroutine spawned by M; save t0's stack context
-    t->m->t0.stackctx = tr.ctx;
-  }
-  trace("T#%llu (%p) starting", t->id, t);
-  t->fn();
-  trace("T#%llu (%p) ended", t->id, t);
-  if (t == t1)
-    exitprog(0);
-  m_call(t_exit);
-  UNREACHABLE;
-}
+// // t_main is the entry point for coroutines
+// static void noreturn NO_INLINE t_main(exectx_t tr) {
+//   T* t = tr.data;
+//   assert(t_get() == t);
+//   if (t->parent == &t->m->t0) {
+//     // root coroutine spawned by M; save t0's stack context
+//     t->m->t0.stackctx = tr.ctx;
+//   }
+//   trace("T#%llu (%p) starting", t->id, t);
+//   t->fn();
+//   trace("T#%llu (%p) ended", t->id, t);
+//   if (t == t1)
+//     exitprog(0);
+//   m_call(t, t_exit);
+//   UNREACHABLE;
+// }
+
+// // t_main is the entry point for coroutines
+// static void noreturn NO_INLINE t_main2(T* t) {
+//   int thing = 0;
+//   fprintf(stderr, "MAIN2 arg1=%p stack %p\n", t, &thing);
+//   trace("");
+//   // T* t = tr.data;
+//   // assert(t_get() == t);
+//   // if (t->parent == &t->m->t0) {
+//   //   // root coroutine spawned by M; save t0's stack context
+//   //   t->m->t0.stackctx = tr.ctx;
+//   // }
+//   // trace("T#%llu (%p) starting", t->id, t);
+//   t->fn();
+//   // trace("T#%llu (%p) ended", t->id, t);
+//   // if (t == t1)
+//   //   exitprog(0);
+//   // m_call(t_exit);
+//   // UNREACHABLE;
+// }
 
 // // Mark gp ready to run.
 // func ready(gp *g, traceskip int, next bool) {
@@ -785,35 +814,38 @@ static void t_yield1(T* t) {
 // (instead of the globrunq, as sched_sched does)
 void t_yield() {
   // checkTimeouts()
-  m_call(t_yield1);
-}
-
-// t_switch switches execution from _t_ to t.
-// It sets _t_ to t before switching and restores _t_ when t returns.
-// Returns the value passed to the yielding exectx_switch.
-static void* t_switch(T* t) {
   T* _t_ = t_get();
-
-  // must never t_switch to t0 (use exectx_jump instead).
-  // t0's stack context should not advance.
-  assert(t != &t->m->t0);
-
-  trace("M#%lld : depart T#%llu -> T#%llu (t0 SP %zu)",
-    _t_->m->id, _t_->id, t->id, _t_->m->t0.stack.hi - (uintptr_t)&_t_);
-
-  _tlt = t;
-  exectx_t c = exectx_switch(t->stackctx, t);
-  t->stackctx = c.ctx;
-  _tlt = _t_;
-  trace("M#%lld : return T#%llu <- T#%llu", _t_->m->id, _t_->id, t->id);
-  return c.data;
+  if (exectx_save(_t_->exectx) == 0)
+    m_call(_t_, t_yield1);
+  // resumed
 }
+
+// // t_switch switches execution from _t_ to t.
+// // It sets _t_ to t before switching and restores _t_ when t returns.
+// // Returns the value passed to the yielding exectx_switch.
+// static void* t_switch(T* t) {
+//   T* _t_ = t_get();
+
+//   // must never t_switch to t0 (use exectx_jump instead).
+//   // t0's stack context should not advance.
+//   assert(t != &t->m->t0);
+
+//   trace("M#%lld : depart T#%llu -> T#%llu (t0 SP %zu)",
+//     _t_->m->id, _t_->id, t->id, _t_->m->t0.stack.hi - (uintptr_t)&_t_);
+
+//   _tlt = t;
+//   exectx_t c = exectx_switch(t->stackctx, t);
+//   t->stackctx = c.ctx;
+//   _tlt = _t_;
+//   trace("M#%lld : return T#%llu <- T#%llu", _t_->m->id, _t_->id, t->id);
+//   return c.data;
+// }
 
 // t_execute schedules t to run on the current M.
 // If inheritTime is true, t inherits the remaining time in the current time slice.
 // Otherwise, it starts a new time slice.
 // Never returns.
-static void noreturn t_execute(T *t, bool inheritTime) {
+static void noreturn t_execute(T* t, bool inheritTime) {
   T* _t_ = t_get();
   assert(_t_ == &_t_->m->t0);
   trace("T#%llu on M#%lld", t->id, _t_->m->id);
@@ -833,14 +865,19 @@ static void noreturn t_execute(T *t, bool inheritTime) {
   // gogo switches stacks in Go. It's implemented in runtime/asm_ARCH.s
   // gogo(&t->sched)
 
-  // t_switch switches stacks; restores t's register state and resumes execution of t->fn
-  auto fn = (void(*)(T*)) t_switch(t);
+  trace("exectx_resume");
+  _tlt = t;
+  exectx_resume(t->exectx, (uintptr_t)t);
 
-  assert(t_get() == _t_);
+  // // t_switch switches stacks; restores t's register state and resumes execution of t->fn
+  // auto fn = (void(*)(T*)) t_switch(t);
 
-  // continuation from m_call
-  trace("m_call from T#%llu; now on t0; calling m_call's fn", t->id);
-  fn(t); // never returns
+  // assert(t_get() == _t_);
+
+  // // continuation from m_call
+  // trace("m_call from T#%llu; now on t0; calling m_call's fn", t->id);
+  // fn(t); // never returns
+
   UNREACHABLE;
 }
 
@@ -854,6 +891,7 @@ static T* t_init(u8* lo, size_t stacksize) {
   newt->atomicstatus = TDead;
   newt->stack.lo = (uintptr_t)lo;
   newt->stack.hi = (uintptr_t)&lo[stacksize];
+
   trace("T: %p, stack: [lo=%p - hi=%p] (%zu B, %g pages)",
     newt, lo, &lo[stacksize], stacksize, (double)stacksize / mem_pagesize());
 
@@ -862,7 +900,7 @@ static T* t_init(u8* lo, size_t stacksize) {
   // *((uintptr_t*)&lo[stacksize - tsize - sizeof(void*)]) = 0;
 
   // initialize stack data for context switching and save a pointer to it
-  newt->stackctx = exectx_init(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
+  // newt->stackctx = exectx_init(&lo[stacksize - STACK_TSIZE], stacksize - STACK_TSIZE, t_main);
 
   return newt;
 }
@@ -902,19 +940,27 @@ static T* t_alloc(size_t requested_stacksize) {
 
 // t_free frees memory of T, including its stack
 static void t_free(T* t) {
-  if (t->stack.lo == 0) {
-    // no stack
-    trace("T#%llu: [%p - %p], stack: NULL", t->id, t, &((u8*)t)[sizeof(*t)]);
-    t->stack.hi = 0;
-  } else {
-    void* lo = (void*)t->stack.lo;
-    size_t stacksize = (size_t)(t->stack.hi - t->stack.lo);
-    trace("T#%llu: [%p - %p], stack: [lo=%p - hi=%p] (%zu)",
-      t->id, t, &((u8*)t)[sizeof(*t)], (void*)t->stack.lo,
-      &((u8*)t->stack.lo)[stacksize], stacksize);
-    memset(t, 0, sizeof(*t));
-    stackfree(lo, stacksize);
-  }
+  assert((t->fl & TFlUserStack) == 0 /* must not free T with user-provided stack */);
+
+  trace("T#%llu: [%p - %p], stack: [lo=%zx - hi=%zx] (%zu)",
+    t->id, t, &((u8*)t)[sizeof(*t)], t->stack.lo, t->stack.hi, t_stacksize(t));
+
+  // memset(t, 0, sizeof(*t));
+  stackfree((void*)t->stack.lo, t_stacksize(t));
+
+  // if (t->stack.lo == 0) {
+  //   // no stack
+  //   trace("T#%llu: [%p - %p], stack: NULL", t->id, t, &((u8*)t)[sizeof(*t)]);
+  //   t->stack.hi = 0;
+  // } else {
+  //   void* lo = (void*)t->stack.lo;
+  //   size_t stacksize = (size_t)(t->stack.hi - t->stack.lo);
+  //   trace("T#%llu: [%p - %p], stack: [lo=%p - hi=%p] (%zu)",
+  //     t->id, t, &((u8*)t)[sizeof(*t)], (void*)t->stack.lo,
+  //     &((u8*)t->stack.lo)[stacksize], stacksize);
+  //   memset(t, 0, sizeof(*t));
+  //   stackfree(lo, stacksize);
+  // }
 }
 
 
@@ -950,19 +996,14 @@ static void allt_add(T* t) {
 static T* nullable p_tfree_get(P* _p_) {
   while (1) { // loop for retrying
 
-    if (TListEmpty(&_p_->tfree) &&
-        (!TListEmpty(&S.tfree.stack) || !TListEmpty(&S.tfree.noStack)) )
-    {
+    if (TListEmpty(&_p_->tfree) && !TListEmpty(&S.tfree.l)) {
       mtx_lock(&S.tfree.lock);
       // Move a batch of free Gs to the P.
       while (_p_->tfreecount < 32) {
         // Prefer Gs with stacks
-        T* t = TListPop(&S.tfree.stack);
-        if (t == NULL) {
-          t = TListPop(&S.tfree.noStack);
-          if (t == NULL)
-            break;
-        }
+        T* t = TListPop(&S.tfree.l);
+        if (t == NULL)
+          break;
         S.tfree.n--;
         TListPush(&_p_->tfree, t);
         _p_->tfreecount++;
@@ -1003,24 +1044,24 @@ static T* nullable p_tfree_get(P* _p_) {
 static void p_tfree_put(P* _p_, T* t) {
   assert(t_readstatus(t) == TDead);
 
-  uintptr_t stksize = t->stack.hi - t->stack.lo;
+  uintptr_t stacksize = t_stacksize(t);
 
   // See note about Go's implementation of separate storage for T and its stack in p_tfree_get
-  //if (stksize != FIXED_STACK) {
+  //if (stacksize != FIXED_STACK) {
   //  // non-standard stack size - free it.
   //  stack_free(t->stack);
   //  t->stack.lo = 0;
   //  t->stack.hi = 0;
   //  t->stackguard0 = 0;
   //}
-  if (stksize != STACK_SIZE_DEFAULT) {
+  if (stacksize != STACK_SIZE_DEFAULT) {
     // don't keep tasks with non-default stack sizes
-    trace("non-standard stack size (%zu != %zu)", stksize, (size_t)STACK_SIZE_DEFAULT);
+    trace("non-standard stack size (%zu != %zu)", stacksize, (size_t)STACK_SIZE_DEFAULT);
     t_free(t);
     return;
   }
 
-  t->fn = NULL;
+  // t->fn = NULL;
 
   TListPush(&_p_->tfree, t);
   _p_->tfreecount++;
@@ -1028,21 +1069,15 @@ static void p_tfree_put(P* _p_, T* t) {
   // If local list is too long, transfer a batch to the global list
   if (_p_->tfreecount >= 64) {
     u32 inc = 0;
-    TQueue stackQ = {0};
-    TQueue noStackQ = {0};
+    TQueue q = {0};
     while (_p_->tfreecount >= 32) {
       t = TListPop(&_p_->tfree);
       _p_->tfreecount--;
-      if (t->stack.lo == 0) {
-        TQueuePush(&noStackQ, t);
-      } else {
-        TQueuePush(&stackQ, t);
-      }
+      TQueuePush(&q, t);
       inc++;
     }
     mtx_lock(&S.tfree.lock);
-    TListPushAll(&S.tfree.noStack, &noStackQ);
-    TListPushAll(&S.tfree.stack, &stackQ);
+    TListPushAll(&S.tfree.l, &q);
     S.tfree.n += inc;
     mtx_unlock(&S.tfree.lock);
   }
@@ -1051,21 +1086,15 @@ static void p_tfree_put(P* _p_, T* t) {
 // p_tfree_purge purges all cached T's from P's tfree list to the global list S.tfree
 static void p_tfree_purge(P* _p_) {
   u32 inc = 0;
-  TQueue stackQ = {0};
-  TQueue noStackQ = {0};
+  TQueue q = {0};
   while (!TListEmpty(&_p_->tfree)) {
     T* t = TListPop(&_p_->tfree);
     _p_->tfreecount--;
-    if (t->stack.lo == 0) {
-      TQueuePush(&noStackQ, t);
-    } else {
-      TQueuePush(&stackQ, t);
-    }
+    TQueuePush(&q, t);
     inc++;
   }
   mtx_lock(&S.tfree.lock);
-  TListPushAll(&S.tfree.noStack, &noStackQ);
-  TListPushAll(&S.tfree.stack, &stackQ);
+  TListPushAll(&S.tfree.l, &q);
   S.tfree.n += inc;
   mtx_unlock(&S.tfree.lock);
 }
@@ -1501,36 +1530,8 @@ static void m_init_sigmask(M* _m_) {
   // sigprocmask(SIG_SETMASK, &nmask, NULL);
 }
 
-// m_start is the Go entry-point for new Ms.
-// May run during STW (because it doesn't have a P yet), so write barriers are not allowed.
-static void noreturn m_start() { // [go: runtime.mstart0]
-  T* t0 = t_get();
-
-  bool osStack = t0->stack.lo == 0;
-  if (osStack) {
-    // Initialize stack bounds from system stack.
-    // Cgo may have left stack size in stack.hi.
-    // minit may update the stack bounds.
-    //
-    // Note: these bounds may not be very accurate.
-    // We set hi to &size, but there are things above
-    // it. The 1024 is supposed to compensate this,
-    // but is somewhat arbitrary.
-    uintptr_t size = t0->stack.hi;
-    if (size == 0) // main thread:
-      size = 8192 * STACK_GUARD_MULTIPLIER;
-    t0->stack.hi = (uintptr_t)&size; // uintptr(noescape(unsafe.Pointer(&size)))
-    t0->stack.lo = t0->stack.hi - size + 1024;
-  }
-  trace("t0 stack: [lo=%p - hi=%p] (%zu B)",
-    t0->stack.lo, t0->stack.hi, (size_t)(t0->stack.hi - t0->stack.lo));
-
-  // begin [go: runtime.mstart1]
-  M* _m_ = t0->m;
-  if (t0 != &_m_->t0) {
-    panic("bad mstart (_m_->t0 != t0)");
-  }
-
+// m_start1 is called by m_start
+static void noreturn NO_INLINE m_start1(M* _m_) {
   // // Set up m.t0.sched as a label returning to just
   // // after the m_start1 call in m_start above, for use by goexit0 and mcall.
   // // We're never coming back to m_start1 after we call schedule,
@@ -1540,6 +1541,8 @@ static void noreturn m_start() { // [go: runtime.mstart0]
   // t0.sched.g = guintptr(unsafe.Pointer(t0))
   // t0.sched.pc = getcallerpc()
   // t0.sched.sp = getcallersp()
+  // _m_->t0pc = exectx_callerpc();
+  // _m_->t0sp = exectx_callersp();
 
   // // experiment: setup t0 stack context for special finishing jump:
   // static void m_start_steppingstone(exectx_t ctx) {
@@ -1591,6 +1594,43 @@ static void noreturn m_start() { // [go: runtime.mstart0]
   UNREACHABLE;
 }
 
+// m_start is the entry-point for new M's. M doesn't have a P yet.
+static void noreturn NO_INLINE m_start(M* _m_) { // [go: runtime.mstart0]
+  T* t0 = &_m_->t0;
+  assert(t_get() == t0);
+
+  bool osStack = t0->stack.lo == 0;
+  if (osStack) {
+    // Initialize stack bounds from system stack.
+    // Cgo may have left stack size in stack.hi.
+    // minit may update the stack bounds.
+    //
+    // Note: these bounds may not be very accurate.
+    // We set hi to &size, but there are things above
+    // it. The 1024 is supposed to compensate this,
+    // but is somewhat arbitrary.
+    uintptr_t size = t0->stack.hi;
+    if (size == 0) // main thread:
+      size = 8192 * STACK_GUARD_MULTIPLIER;
+    t0->stack.hi = (uintptr_t)&size; // uintptr(noescape(unsafe.Pointer(&size)))
+    t0->stack.lo = t0->stack.hi - size + 1024;
+  }
+
+  trace("t0 stack: [lo=%p - hi=%p] (%zu B)",
+    t0->stack.lo, t0->stack.hi, (size_t)(t0->stack.hi - t0->stack.lo));
+
+  // Set up _m_->t0exebuf as a label returning to just after the m_start1 call,
+  // for use by [goexit0] and m_call.
+  // In m_start1 we're never coming back after we call schedule, so other calls
+  // can reuse the current frame. And goexit0 does a gogo that needs to return from m_start1
+  // and let this function (m_start) exit the thread.
+  uintptr_t x = exectx_save(_m_->t0exebuf);
+  if (x == 0)
+    m_start1(_m_);
+
+  m_exit(osStack);
+}
+
 // p_handoff hands off P from syscall or locked M.
 // Always runs without a current P (_t_->m->p==NULL)
 static void p_handoff(P* _p_) {
@@ -1605,7 +1645,7 @@ static void p_handoff(P* _p_) {
 //
 // It is entered with m->p != NULL, so write barriers are allowed.
 // It will release the P before exiting.
-static void m_exit() {
+static void noreturn m_exit(bool osStack) {
   M* m = t_get()->m;
   trace("M %p", m);
 
@@ -1632,11 +1672,11 @@ static void m_exit() {
   }
 
   TODO_IMPL;
+  UNREACHABLE;
 }
 
 // m_call switches from the current T _t_ to the t0 stack and invokes fn(_t_),
 // where T is the coroutine that made the call.
-// The current T's state is saved in T.stackctx so that it can be restored later.
 //
 // It is up to fn to arrange for that later execution, typically by recording
 // T in a data structure, causing something to call ready(T) later.
@@ -1646,20 +1686,38 @@ static void m_exit() {
 //
 // m_call can only be called from T stacks (not t0, not gsignal).
 //
+// If _t_ is to be resumed later, the caller is responsible for saving _t_'s state
+// using exectx_save before calling m_call.
+//
 // fn must never return. It should t_switch(T) to keep running T.
 //
-static void m_call(void(*fn)(T*)) {
-  T* _t_ = t_get();
-  trace("T#%llu >>>>>>>>>>>>>>>> t0", _t_->id);
+static void noreturn m_call(T* _t_, void(*fn)(T*)) {
+  trace("T#%llu -> M#%lld (t0)", _t_->id, _t_->m->id);
   assert(_t_ != &_t_->m->t0);
-  assert(_t_->m->t0.stackctx != NULL /* else: m_call not called from a valid coroutine */);
+
+  // assert(_t_->m->t0.stackctx != NULL /* else: m_call not called from a valid coroutine */);
   // 1. save current exection context
   // 2. restore m->t0 exection context
   // 3. resume m->t0 exection
-  _t_->m->t0.stackctx = exectx_switch(_t_->m->t0.stackctx, fn).ctx;
+  // _t_->m->t0.stackctx = exectx_switch(_t_->m->t0.stackctx, fn).ctx;
+
+  // set fn as the jump-to point and use the stack of _t_->m->t0exebuf
+
+  // TODO: simplify this. Doing quite a lot of unnecessary work here.
+  // Note that Go implements m_call as a dedicated assembly routine.
+
+  T* t0 = &_t_->m->t0;
+  size_t stacksize = (size_t)(t0->stack.hi - t0->stack.lo);
+  void* sp = (void*)&((u8*)t0->stack.lo)[stacksize - STACK_TSIZE];
+  exectx_setup(_t_->m->t0exebuf, sp, (void(*)(uintptr_t))fn);
+
+  _tlt = t0;
+  exectx_resume(_t_->m->t0exebuf, (uintptr_t)_t_);
+
   // exectx_switch(_t_->m->t0.stackctx, fn);
   // exectx_jump(_t_->m->t0.stackctx, fn);
-  trace("T#%llu <<<<<<<<<<<<<<<< t0", _t_->id);
+  // trace("T#%llu <<<<<<<<<<<<<<<< t0", _t_->id);
+  UNREACHABLE;
 }
 
 // m_dofixup runs any outstanding fixup function for the running m.
@@ -1909,7 +1967,7 @@ static M* s_allocm(P* _p_, void(*mstartfn)(void), i64 id) {
 // m_start_stub is the OS thread entry point
 static void* m_start_stub(M* m) {
   _tlt = &m->t0;
-  m_start();
+  m_start(m);
   return NULL;
 }
 
@@ -2123,7 +2181,20 @@ static T* newproc1(
 
   m_acquire(); // disable preemption because it can be holding p in a local var
 
-  // // TODO args
+  // TODO arguments to the coroutine entry function:
+  //
+  // a) We can use va_list since that's always on the stack, BUT that would require
+  //    coroutine entry functions to use va_list and friends which is awkward.
+  //
+  // b) We can use a macro for the "spawn" function which does something like this:
+  //      #define spawn(expr) ({
+  //         newproc(&&label1, NULL, 0);
+  //         label1:{ expr ; }
+  //      })
+  //    Then use it like this:
+  //      spawn(foo(123, 4))
+  //
+  //
   // u32 siz = (narg + 7) & ~7; // round up to nearest multiple of 8 (64 bit alignment)
   //
   // // We could allocate a larger initial stack if necessary.
@@ -2137,7 +2208,7 @@ static T* newproc1(
   P* _p_ = _t_->m->p;
   T* newt = NULL;
   if (stackmem != NULL) {
-    // user provided custom memory. Align as needed.
+    // user-provided memory. Align as needed.
     uintptr_t lo = (uintptr_t)stackmem;
     lo = align2(lo, STACK_ALIGN);
     stacksize = stacksize - (lo - (uintptr_t)stackmem);
@@ -2146,6 +2217,7 @@ static T* newproc1(
       return NULL;
     }
     newt = t_init((u8*)lo, stacksize);
+    newt->fl |= TFlUserStack;
     allt_add(newt);
   } else {
     // managed memory
@@ -2161,7 +2233,20 @@ static T* newproc1(
     }
   }
 
-  newt->fn = fn;
+  // newt->fn = fn;
+
+  // exectx_save(newt->exectx);
+  // stacksize = newt->stack.hi - newt->stack.lo;
+  // newt->stacksize = newt->stack.hi - newt->stack.lo;
+  // newt->stacklo = newt->stack.lo;
+  // t_stacksize(newt);
+  // void* sp = (void*)&((u8*)newt->stack.lo)[stacksize - STACK_TSIZE];
+  void* sp = (void*)newt; // T is allocated at the top of the stack
+  trace("setup sp %p (T %p)", sp, newt);
+  exectx_setup(newt->exectx, sp, (void(*)(uintptr_t))fn);
+  // trace("JUMP");
+  // _tlt = newt;
+  // exectx_resume(newt->exectx, (uintptr_t)newt);
 
   assert(newt->stack.hi != 0 /* else: newt missing stack */);
   assert(t_readstatus(newt) == TDead);
@@ -2654,6 +2739,6 @@ void sched_maincancel() {
 void noreturn sched_main(void(*fn)(void)) {
   newproc(fn, /*argptr*/NULL, /*argc*/0, /*stackmem*/NULL, /*stacksize*/ 0);
   t1 = m0.p->runnext;
-  m_start(); // calls schedule(); never returns
+  m_start(&m0); // calls schedule(); never returns
   UNREACHABLE;
 }
