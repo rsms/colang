@@ -356,8 +356,14 @@ static bool init(const char* argv0) {
 }
 
 void t_yield();
-#define GREEN "\e[1;32m"
+#define GREEN  "\e[1;32m"
 #define YELLOW "\e[1;33m"
+#define PURPLE "\e[1;35m"
+
+static void fn3(uintptr_t arg1) {
+  dlog(PURPLE "fn3 coroutine. arg1=%f", (double)arg1);
+  dlog(PURPLE "EXIT");
+}
 
 static void fn2() {
   dlog(YELLOW "fn2 coroutine");
@@ -368,16 +374,28 @@ static void fn2() {
   dlog(YELLOW "EXIT");
 }
 
-static u8 smolstack[4096];
-
-static void fn1() {
+static void fn1(uintptr_t arg1) {
   #define GREEN "\e[1;32m"
   dlog(GREEN "main coroutine");
 
   // dlog(GREEN "spawn fn2");
-  // t_spawn(fn2);
+
+  // double 12.34
+
+  t_spawn(fn3, (uintptr_t)12.34);
   // // t_spawn_custom(fn2, /*stackmem*/NULL, /*stacksize*/4096*4);
-  // // t_spawn_custom(fn2, &smolstack[1], sizeof(smolstack)-1);
+
+  // static u8 smolstack[4096];
+  // t_spawn_custom(fn2, 0, 0, smolstack, sizeof(smolstack));
+
+  // // test to ensure user stacks are correctly aligned:
+  // t_spawn_custom(fn2, &smolstack[1], sizeof(smolstack)-1);
+
+  // #define spawnb(expr) ({ \
+  //   newproc((EntryFun)&&label1, NULL, 0, NULL, 0); \
+  //   label1: expr; \
+  // })
+  // spawnb(fn3(123, 4.56));
 
   // msleep(1000);
 
@@ -393,8 +411,7 @@ static void fn1() {
 int main(int argc, const char* argv[argc+1]) {
   if (!init(argv[0]))
     return 1;
-  sched_init();
-  sched_main(fn1); // never returns
+  sched_main(fn1, 0); // never returns
   return 0;
 }
 

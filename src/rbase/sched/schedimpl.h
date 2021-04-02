@@ -210,20 +210,11 @@ typedef struct T {
   T*               schedlink; // next task to be scheduled
   _Atomic(TStatus) atomicstatus;
   u64              waitsince; // approx time when the T became blocked
-  // TFun             fn;        // entry point
 
   TFlag fl; // flags (immutable during T life)
 
-  // stack addresses
-  // TODO: stack.hi==(&T + STACK_TSIZE) so we could probably get away with
-  //       simply storing the stack size or stack base (low address.)
-  //       However, m_start uses both stack.lo and stack.hi to pass information
-  //       about OS stack or managed stack.
-  struct { uintptr_t lo, hi; } stack;
-  // uintptr_t stacklo;
-
-  // execution context state of T
-  exectx_state_t exectx;
+  struct { uintptr_t lo, hi; } stack;  // stack addresses
+  exectx_state_t               exectx; // execution context state
 } __attribute__((__aligned__(STACK_ALIGN))) T;
 
 typedef struct M {
@@ -245,9 +236,6 @@ typedef struct M {
   Note       park;
   bool       doespark; // non-P running threads: sysmon and newmHandoff never use .park
   SigSet     sigmask;  // storage for saved signal mask
-
-  // XXX TMP stack switch t0
-  exectx_state_t t0exebuf; // TODO use t0.exectx
 
   // mstartfn, if set, runs in m_start1 on the OS thread stack
   void(*mstartfn)(void);

@@ -86,7 +86,10 @@ typedef int exectx_state_t[(14 + 8 + 2) * 2]; // 192 B
 //
 
 
-void exectx_setup(exectx_state_t s, void* sp, void(*fn)(uintptr_t saveret));
+void exectx_setup(exectx_state_t s, void(*fn)(uintptr_t arg), uintptr_t arg, void* sp);
+
+// exectx_call calls fn with arg on stack sp
+void exectx_call(uintptr_t arg, void(*fn)(uintptr_t arg), void* sp);
 
 
 // exectx_save saves the callers execution context into s and returns twice:
