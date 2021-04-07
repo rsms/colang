@@ -1,4 +1,7 @@
 #pragma once
+#if defined(__gnu_linux__) || defined(__linux__)
+  #define _GNU_SOURCE 1
+#endif
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -9,7 +12,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <limits.h>
-#include <sys/errno.h>
+#include <errno.h>
 #include <sys/types.h>
 #ifndef __cplusplus
   #include <stdatomic.h>
@@ -30,6 +33,8 @@ typedef double                 f64;
 typedef unsigned int           uint;
 typedef unsigned long          size_t;
 typedef signed long            ssize_t;
+typedef unsigned long          uintptr_t;
+typedef signed long            intptr_t;
 
 #ifndef __cplusplus
   typedef _Atomic(i8)      atomic_i8;
@@ -47,7 +52,46 @@ typedef signed long            ssize_t;
   typedef _Atomic(ssize_t) atomic_ssize;
 #endif
 
-#define auto          __auto_type
+// compiler feature test macros
+#ifndef __has_attribute
+  #define __has_attribute(x)  0
+#endif
+#ifndef __has_extension
+  #define __has_extension   __has_feature
+#endif
+#ifndef __has_feature
+  #define __has_feature(x)  0
+#endif
+#ifndef __has_include
+  #define __has_include(x)  0
+#endif
+#ifndef __has_builtin
+  #define __has_builtin(x)  0
+#endif
+
+#define auto __auto_type
+
+// nullability
+#if defined(__clang__) && __has_feature(nullability)
+  #define ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
+  #define ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
+  #define __NULLABILITY_PRAGMA_PUSH _Pragma("clang diagnostic push")  \
+    _Pragma("clang diagnostic ignored \"-Wnullability-completeness\"")
+  #define __NULLABILITY_PRAGMA_POP _Pragma("clang diagnostic pop")
+#else
+  #define _Nullable
+  #define _Nonnull
+  #define _Null_unspecified
+  #define __NULLABILITY_PRAGMA_PUSH
+  #define __NULLABILITY_PRAGMA_POP
+  #define ASSUME_NONNULL_BEGIN
+  #define ASSUME_NONNULL_END
+#endif
+
+#define _DIAGNOSTIC_IGNORE_PUSH(x) _Pragma("GCC diagnostic push") _Pragma(#x)
+#define DIAGNOSTIC_IGNORE_PUSH(x)  _DIAGNOSTIC_IGNORE_PUSH(GCC diagnostic ignored #x)
+#define DIAGNOSTIC_IGNORE_POP      _Pragma("GCC diagnostic pop")
+
 #define nullable      _Nullable
 #define nonull        _Nonnull
 #define nonnullreturn __attribute__((returns_nonnull))
@@ -55,20 +99,17 @@ typedef signed long            ssize_t;
 #ifndef __cplusplus
   #define auto        __auto_type
   #define noreturn    _Noreturn
+#endif
 
-  #if __has_c_attribute(fallthrough)
-    #define FALLTHROUGH [[fallthrough]]
-  #else
-    #define FALLTHROUGH
-  #endif
+#if __has_attribute(fallthrough)
+  #define FALLTHROUGH [[fallthrough]]
+#else
+  #define FALLTHROUGH
 #endif
 
 #ifndef thread_local
   #define thread_local _Thread_local
 #endif
-
-#define ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
-#define ASSUME_NONNULL_END   _Pragma("clang assume_nonnull end")
 
 #ifdef __cplusplus
   #define EXTERN_C extern "C"
@@ -121,8 +162,8 @@ void _errlog(const char* fmt, ...);
   #define errlog(fmt, ...) \
     _errlog(fmt " (%s:%d)\n", ##__VA_ARGS__, __FILE__, __LINE__)
 #else
-  #define dlog(...) do{}while(0)
-  #define errlog    _errlog(fmt "\n", ##__VA_ARGS__)
+  #define dlog(...)        do{}while(0)
+  #define errlog(fmt, ...) _errlog(fmt "\n", ##__VA_ARGS__)
 #endif
 
 #define TODO_IMPL ({ \

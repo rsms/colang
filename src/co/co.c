@@ -360,8 +360,12 @@ void t_yield();
 #define YELLOW "\e[1;33m"
 #define PURPLE "\e[1;35m"
 
-#define REINTERPRET_CAST(dsttype, value) \
-  ({ __typeof__(value) v = value; *((dsttype*)&v); })
+#define REINTERPRET_CAST(dsttype, value) ({ \
+  DIAGNOSTIC_IGNORE_PUSH(-Wstrict-aliasing) \
+  __typeof__(value) v = value; dsttype v2 = *((dsttype*)&v); \
+  DIAGNOSTIC_IGNORE_POP \
+  v2; \
+})
 
 
 static void fn3(uintptr_t arg1) {
