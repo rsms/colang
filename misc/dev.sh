@@ -42,6 +42,9 @@ $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1"
 ! $OPT_CLEAN || make clean
 
 WATCH_INDICATOR_PIDFILE="$(_tmpfile).pid"
+WATCHER_FILE="$(_tmpfile)"
+WATCHER_LOGFILE="$WATCHER_FILE.log"
+WATCHER_PIDFILE="$WATCHER_FILE.pid"
 
 RUN_PIDFILE=
 if $RUN; then
@@ -93,6 +96,11 @@ _watch_indicator_stop() {
 	printf "\r"
 }
 
+if ! command -v fswatch >/dev/null; then
+	ATEXIT+=( "_pidfile_kill '$WATCHER_PIDFILE'" )
+	ATEXIT+=( "rm -f '$WATCHER_LOGFILE'" )
+fi
+
 ATEXIT+=( "_pidfile_kill '$WATCH_INDICATOR_PIDFILE'" )
 while true; do
 	echo -e "\x1bc"  # clear screen ("scroll to top" style)
@@ -101,13 +109,29 @@ while true; do
 	fi
 	_watch_indicator &
 	echo $! > "$WATCH_INDICATOR_PIDFILE"
-	fswatch \
-		--one-event \
-		--latency=0.2 \
-		--extended \
-		--exclude='.*' --include='\.(c|h|s|S)$' \
-		--recursive \
-		./src
+
+	if command -v fswatch >/dev/null; then
+		fswatch \
+			--one-event \
+			--latency=0.2 \
+			--extended \
+			--exclude='.*' --include='\.(c|h|s|S)$' \
+			--recursive \
+			./src
+	else
+		# fall back on inotifytools's inotifywatch
+		while true; do
+			inotifywatch --recursive -P --include '\.(c|h|s|S)$' src > "$WATCHER_LOGFILE" 2>/dev/null &
+			watcher_pid=$!
+			echo $watcher_pid > "$WATCHER_PIDFILE"
+			sleep 1
+			kill -HUP $watcher_pid
+			wait $watcher_pid
+			if grep -q -v "No events" "$WATCHER_LOGFILE"; then
+				break
+			fi
+		done
+	fi
 	_watch_indicator_stop
 	echo "———————————————————— restarting ————————————————————"
 done

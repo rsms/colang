@@ -31,8 +31,12 @@ __atexit() {
   fi
   set -e
 }
+_onsigint() {
+  echo
+  exit
+}
 trap __atexit EXIT
-trap exit SIGINT
+trap _onsigint SIGINT
 
 _err() {
   echo "$ARGV0:" "$@" >&2
@@ -190,7 +194,7 @@ _pidfile_kill() {
   if [ -f "$pidfile" ]; then
     local pid=$(cat "$pidfile" 2>/dev/null)
     # echo "_pidfile_kill pid=$pid"
-    [ -z "$pid" ] || kill $pid || true
+    [ -z "$pid" ] || kill $pid 2>/dev/null || true
     rm -f "$pidfile"
   fi
 }
