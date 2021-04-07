@@ -60,7 +60,7 @@ u64 _nanotime(void) {
   #else
   assert(clock_gettime(CLOCK_MONOTONIC, &ts) == 0);
   #endif
-  return (u64(ts.tv_sec) * 1000000000) + ts.tv_nsec;
+  return ((u64)(ts.tv_sec) * 1000000000) + ts.tv_nsec;
 // #elif (defined _MSC_VER && (defined _M_IX86 || defined _M_X64))
   // TODO: QueryPerformanceCounter
 #else
@@ -70,7 +70,7 @@ u64 _nanotime(void) {
   #else
   assert(gettimeofday(&tv, nullptr) == 0);
   #endif
-  return (u64(tv.tv_sec) * 1000000000) + (u64(tv.tv_usec) * 1000);
+  return ((u64)(tv.tv_sec) * 1000000000) + ((u64)(tv.tv_usec) * 1000);
 #endif
 }
 

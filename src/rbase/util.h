@@ -18,11 +18,6 @@ void writeline(int fd, const void* ptr, size_t len);
 // fmthex writes len*2 bytes to out, encoding indata in hexadecimal form
 void fmthex(char* out, const u8* indata, int len);
 
-// msleep sleeps for some number of milliseconds
-// It may sleep for less time if a signal was delivered.
-// Returns 0 when sleept for the requested time, -1 when interrupted.
-int msleep(uint64_t milliseconds);
-
 // fmtduration appends human-readable time duration to buf
 int fmtduration(char* buf, int bufsize, u64 timeduration);
 

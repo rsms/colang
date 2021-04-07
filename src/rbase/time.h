@@ -8,7 +8,7 @@ u64 nanotime();
 // msleep sleeps for some number of milliseconds
 // It may sleep for less time if a signal was delivered.
 // Returns 0 when sleept for the requested time, -1 when interrupted.
-int msleep(uint64_t milliseconds);
+int msleep(u64 milliseconds);
 
 // fmtduration appends human-readable time duration to buf
 int fmtduration(char* buf, int bufsize, u64 timeduration);
