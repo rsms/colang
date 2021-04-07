@@ -67,6 +67,7 @@ ASSUME_NONNULL_BEGIN
 // (In Go this is called MinFrameSize.)
 #if R_TARGET_ARCH_X86
   #define FRAME_SIZE_MIN  0
+  #define STACK_USES_LR   0
 #elif R_TARGET_ARCH_PPC
   #define FRAME_SIZE_MIN  (sizeof(void*)*4)
 #else
@@ -74,10 +75,8 @@ ASSUME_NONNULL_BEGIN
 #endif
 
 // STACK_USES_LR ? ("usesLR" in Go)
-#if FRAME_SIZE_MIN
+#ifndef STACK_USES_LR
   #define STACK_USES_LR 1
-#else
-  #define STACK_USES_LR 0
 #endif
 
 // STACK_ALIGN is the required alignment of the SP register.
