@@ -25,8 +25,8 @@ typedef struct VarBitmap {
 
 // RandomOrder & RandomEnum are helper types for randomized work stealing.
 // They allow to enumerate all Ps in different pseudo-random orders without repetitions.
-// The algorithm is based on the fact that if we have X such that X and GOMAXPROCS
-// are coprime, then a sequences of (i + X) % GOMAXPROCS gives the required enumeration.
+// The algorithm is based on the fact that if we have X such that X and COMAXPROCS
+// are coprime, then a sequences of (i + X) % COMAXPROCS gives the required enumeration.
 typedef struct RandomOrder {
   u32   count;
   Array coprimes;
