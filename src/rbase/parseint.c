@@ -84,7 +84,7 @@ R_UNIT_TEST(parseint, {
     bool ok = parseu32(cstr, strlen(cstr), base, &result); \
     assert(ok || !cstr); \
     if (result != expectnum) { fprintf(stderr, "result: 0x%X\n", result); } \
-    assert(result == expectnum || !"got: "&& result); \
+    assert(result == expectnum || !("got: "&& result)); \
   }))
 
   #define T64(cstr, base, expectnum) (({ \
@@ -92,7 +92,7 @@ R_UNIT_TEST(parseint, {
     bool ok = parseu64(cstr, strlen(cstr), base, &result); \
     assert(ok || !cstr); \
     if (result != expectnum) { fprintf(stderr, "result: 0x%llX\n", result); } \
-    assert(result == expectnum || !"got: "&& result); \
+    assert(result == expectnum || !("got: "&& result)); \
   }))
 
   T32("FFAA3191", 16, 0xFFAA3191);
