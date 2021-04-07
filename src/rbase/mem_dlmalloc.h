@@ -33,6 +33,8 @@
   // attempt to free a pointer in one mspace which was allocated in another.
   #define FOOTERS 1
 #endif
+// disable sbrk (not available in musl and always disabled on macOS)
+#define HAVE_MORECORE 0
 
 #ifdef __cplusplus
 extern "C" {
