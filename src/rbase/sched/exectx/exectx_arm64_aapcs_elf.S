@@ -135,7 +135,7 @@ ENTRY_POINT(exectx_call)
 exectx_call_end:
     // abort's location is not known until link time, thus the label
     bl   abort
-    wfi
+    wfi         // wait for interrupt (like halt on x86)
 
 // void exectx_setup(exectx_state_t, void(*fn)(uintptr_t arg), uintptr_t arg, void* sp)
 // Note: This function is intimately connected with _exectx_resume
