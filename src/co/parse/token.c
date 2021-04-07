@@ -17,4 +17,5 @@ const char* TokName(Tok t) {
 
     case TMax: return "TMax";
   }
+  return "?"; // TODO
 }
