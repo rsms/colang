@@ -69,8 +69,6 @@ typedef signed long            intptr_t;
   #define __has_builtin(x)  0
 #endif
 
-#define auto __auto_type
-
 // nullability
 #if defined(__clang__) && __has_feature(nullability)
   #define ASSUME_NONNULL_BEGIN _Pragma("clang assume_nonnull begin")
@@ -87,14 +85,13 @@ typedef signed long            intptr_t;
   #define ASSUME_NONNULL_BEGIN
   #define ASSUME_NONNULL_END
 #endif
+#define nullable      _Nullable
+#define nonull        _Nonnull
+#define nonnullreturn __attribute__((returns_nonnull))
 
 #define _DIAGNOSTIC_IGNORE_PUSH(x) _Pragma("GCC diagnostic push") _Pragma(#x)
 #define DIAGNOSTIC_IGNORE_PUSH(x)  _DIAGNOSTIC_IGNORE_PUSH(GCC diagnostic ignored #x)
 #define DIAGNOSTIC_IGNORE_POP      _Pragma("GCC diagnostic pop")
-
-#define nullable      _Nullable
-#define nonull        _Nonnull
-#define nonnullreturn __attribute__((returns_nonnull))
 
 #ifndef __cplusplus
   #define auto        __auto_type
@@ -292,12 +289,12 @@ void _errlog(const char* fmt, ...);
 
 #define AtomicCAS(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_acq_rel, memory_order_release)
+    (p), (oldval), (newval), memory_order_relaxed, memory_order_relaxed)
 
 #define AtomicCASRel(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_release, memory_order_release)
+    (p), (oldval), (newval), memory_order_release, memory_order_consume)
 
 #define AtomicCASAcqRel(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_acq_rel, memory_order_release)
+    (p), (oldval), (newval), memory_order_acq_rel, memory_order_consume)
