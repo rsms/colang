@@ -386,7 +386,7 @@ static void fn2() {
 
 static void fn1(uintptr_t arg1) {
   #define GREEN "\e[1;32m"
-  dlog(GREEN "main coroutine");
+  dlog(GREEN "main coroutine. arg1=%zu", arg1);
 
   dlog(GREEN "spawn fn2");
   t_spawn(fn2, 0);
@@ -419,7 +419,7 @@ static void fn1(uintptr_t arg1) {
 int main(int argc, const char* argv[argc+1]) {
   if (!init(argv[0]))
     return 1;
-  sched_main(fn1, 0); // never returns
+  sched_main(fn1, 123); // never returns
   return 0;
 }
 
