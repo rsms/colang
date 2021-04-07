@@ -21,14 +21,16 @@ typedef struct DirEntry {
 } DirEntry;
 //
 // d_type values:
-//   DT_UNKNOWN 0   unknown
-//   DT_FIFO    1   named pipe or FIFO
-//   DT_CHR     2   character device
-//   DT_DIR     4   directory
-//   DT_BLK     6   block device
-//   DT_REG     8   regular file
-//   DT_LNK     10  symbolic link
-//   DT_SOCK    12  local-domain socket
+#ifndef DT_UNKNOWN
+  #define DT_UNKNOWN 0   /* unknown */
+  #define DT_FIFO    1   /* named pipe or FIFO */
+  #define DT_CHR     2   /* character device */
+  #define DT_DIR     4   /* directory */
+  #define DT_BLK     6   /* block device */
+  #define DT_REG     8   /* regular file */
+  #define DT_LNK     10  /* symbolic link */
+  #define DT_SOCK    12  /* local-domain socket */
+#endif
 
 // fs_readdir is a portable readdir(). Populates ent on success.
 // Returns 1 when a new entry was read and ent was populated.
