@@ -30,8 +30,11 @@
   };
 
   #include "thread_pthread.h"
+
+  #define THRD_NULLABLE nullable
 #else
   #include <threads.h>
+  #define THRD_NULLABLE
 #endif
 
 // function overview:
@@ -95,9 +98,9 @@ typedef enum ThreadStatus {
 
 typedef thrd_t Thread;
 
-ThreadStatus    ThreadStart(Thread* nonull t, thrd_start_t nonull fn, void* nullable arg);
-Thread nullable ThreadSpawn(thrd_start_t nonull fn, void* nullable arg); // null on error
-int             ThreadAwait(Thread t);
+ThreadStatus         ThreadStart(Thread* nonull t, thrd_start_t nonull fn, void* nullable arg);
+Thread THRD_NULLABLE ThreadSpawn(thrd_start_t nonull fn, void* nullable arg); // null on error
+int                  ThreadAwait(Thread t);
 
 static inline int rwmtx_init(rwmtx_t* m, int type) {
   // AtomicStore(&m->r, 0);
