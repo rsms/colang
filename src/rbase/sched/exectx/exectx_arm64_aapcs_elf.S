@@ -35,7 +35,7 @@
 //   r4    5th argument or return value
 //   r5    6th argument or return value
 //   r6    7th argument or return value
-//   r7    7th argument or return value
+//   r7    8th argument or return value
 //   r8    General purpose (May be used as Indirect result location register)
 //   r9    General purpose
 //   ...   ...
@@ -134,7 +134,7 @@ ENTRY_POINT(exectx_call)
 
 exectx_call_end:
     // abort's location is not known until link time, thus the label
-    bl  abort
+    bl   abort
     wfi
 
 // void exectx_setup(exectx_state_t, void(*fn)(uintptr_t arg), uintptr_t arg, void* sp)
