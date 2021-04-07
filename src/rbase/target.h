@@ -40,9 +40,10 @@
       defined(_M_AMD64)
   #define R_TARGET_ARCH_X86 1
   #define R_TARGET_ARCH_X86_64 1
-#elif defined(__arm__) || defined(__arm) || defined(__ARM__) || defined(__ARM) || defined(__arm64__)
+#elif defined(__arm__) || defined(__arm) || defined(__ARM__) || defined(__ARM) \
+      || defined(__arm64__) || defined(__aarch64__)
   #define R_TARGET_ARCH_ARM 1
-  #if defined(__arm64__)
+  #if defined(__arm64__) || defined(__aarch64__)
     #define R_TARGET_ARCH_ARM64 1
   #endif
 #elif defined(__ppc__) || defined(__ppc) || defined(__PPC__) || \
