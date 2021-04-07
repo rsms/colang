@@ -174,6 +174,7 @@ ENTRY_POINT(_exectx_resume)
     ldp  d14, d15,  [x0, JMP_d14_d15]
     ldp  x2,  x3,   [x0, JMP_sp_pc]   // load stack pointer and PC
     mov  sp,  x2                      // set stack pointer
+    mov  x0,  x1                      // set return arg for exectx_save
     br   x3                           // branch to PC
 
 
