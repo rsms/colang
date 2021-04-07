@@ -1,4 +1,5 @@
-#pragma once
+#ifndef _RBASE_H_
+#define _RBASE_H_
 #include "defs.h"
 
 #ifdef __cplusplus
@@ -21,3 +22,4 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
+#endif /* _RBASE_H_ */
