@@ -29,7 +29,7 @@ typedef int exectx_state_t[16 + 2]; // 72 B
 // (Note: musl reserves 292 B)
 typedef int exectx_state_t[10 + 16 + 2]; // 112 B
 
-#elif defined(__arm64__) || defined(__ARM_ARCH_7K__)
+#elif defined(__arm64__) || defined(__aarch64__) || defined(__ARM_ARCH_7K__)
 // r21-r29, sp, fp, lr == 12 registers, 8 bytes each. d8-d15
 // are another 8 registers, each 8 bytes long. (aapcs64 specifies
 // that only 64-bit versions of FP registers need to be saved).
