@@ -1,6 +1,9 @@
 #include "../rbase.h"
 #include "schedimpl.h"
 #include "exectx/exectx.h"
+#include <pthread.h>
+
+_Pragma("GCC diagnostic ignored \"-Wunused-function\"")
 
 // SCHED_TRACE: when defined, verbose log tracing on stderr is enabled.
 // The value is used as a prefix for log messages.
@@ -227,8 +230,8 @@ static const char* TStatusName(TStatus s) {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - Note
+// ===============================================================================================
+// Note
 
 #define NOTE_LOCKED  ((uintptr_t)(-1))
 
@@ -276,8 +279,8 @@ static void note_wakeup(Note* n) {
   }
 }
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - TQueue and TList
+// ===============================================================================================
+// TQueue and TList
 
 // TQueueEmpty reports whether q is empty
 static inline bool TQueueEmpty(const TQueue* q) {
@@ -366,8 +369,8 @@ static T* nullable TListPop(TList* l) {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - RandomOrder
+// ===============================================================================================
+// RandomOrder
 
 
 static u32 gcd(u32 a, u32 b) {
@@ -416,8 +419,8 @@ static inline u32 randenum_pos(const RandomEnum* e) {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - misc crypto
+// ===============================================================================================
+// misc crypto
 
 static int rand_read(void* buf, size_t size) {
   int fd = open("/dev/urandom", O_RDONLY, 0);
@@ -535,8 +538,8 @@ static void m_semawakeup(M* mp) {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - stack
+// ===============================================================================================
+// stack
 
 
 // stackalloc allocates stack memory of approximately reqsize size (aligned to memory page size.)
@@ -554,8 +557,8 @@ u8* stackalloc(size_t reqsize, size_t* size_outsize_t, size_t* guardsize_out);
 bool stackfree(void* lo, size_t size); // implemented in stack_*.c
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - T
+// ===============================================================================================
+// T
 
 
 // t_get returns the current task
@@ -781,8 +784,10 @@ static void t_yield1(T* t) {
 void t_yield() {
   // checkTimeouts()
   T* _t_ = t_get();
+  trace("exectx_save");
   if (exectx_save(_t_->exectx) == 0)
     m_call(_t_, t_yield1);
+  trace("resumed");
   // resumed
 }
 
@@ -915,8 +920,8 @@ static void t_free(T* t) {
 
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - allt
+// ===============================================================================================
+// allt
 
 
 // allt_add adds t to allt
@@ -938,8 +943,8 @@ static void allt_add(T* t) {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - P
+// ===============================================================================================
+// P
 
 
 // p_tfree_get gets a T from tfree list. Returns NULL if no free T was available.
@@ -1377,8 +1382,8 @@ static void p_wake() {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - M
+// ===============================================================================================
+// M
 
 
 
@@ -1660,8 +1665,8 @@ static void m_stop() {
 }
 
 
-// -----------------------------------------------------------------------------------------------
-#pragma mark - S
+// ===============================================================================================
+// S
 
 
 // s_mcount returns the number of active M's
@@ -1893,6 +1898,7 @@ static void spawn_osthread(M* mp) {
   if (err != 0)
     panic("pthread_create");
 }
+
 
 // s_newm creates & spawns a new M.
 // It will start off with a call to fn, or the scheduler if NULL.
