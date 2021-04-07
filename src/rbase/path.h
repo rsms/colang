@@ -22,9 +22,5 @@ char* path_join(Mem nullable mem, const char* path1, const char* path2);
 // path_dir returns the directory part of filename (i.e. "foo/bar/baz" => "foo/bar")
 char* path_dir(Mem nullable mem, const char* filename);
 char* path_dir_mut(char* filename);
-// #define path_dir(mem, filename) _Generic((filename), \
-//   const char*:        path_dir_copy(mem, filename), \
-//   char*:              path_dir_mut(filename) \
-// )
 
 ASSUME_NONNULL_END
