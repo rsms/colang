@@ -1,14 +1,19 @@
 LLVM_PREFIX := deps/llvm
 SYSTEM      := $(shell uname -s)
 ARCH        := $(shell uname -m)
-CC          := $(LLVM_PREFIX)/bin/clang
-CXX         := $(LLVM_PREFIX)/bin/clang++
-AR          := $(LLVM_PREFIX)/bin/llvm-ar
-STRIP       := $(LLVM_PREFIX)/bin/llvm-strip
-LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
 SRCROOT     := $(shell pwd)
-RBASE_SRC   := $(wildcard src/rbase/*.c src/rbase/*/*.c)
-CO_SRC      := $(wildcard src/co/*.c src/co/*/*.c)
+
+RBASE_SRC      := $(wildcard src/rbase/*.c)
+RBASE_PCH_DEPS := $(wildcard src/rbase/*.h)
+RT_SRC         := $(wildcard src/rt/*.c src/rt/exectx/*.c)
+RT_TEST_SRC    := $(wildcard src/rt-test/*.c)
+CO_SRC         := $(wildcard src/co/*.c src/co/*/*.c)
+
+# CC          ?= $(LLVM_PREFIX)/bin/clang
+# CXX         ?= $(LLVM_PREFIX)/bin/clang++
+# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
+# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
+# LLVM_CONFIG ?= $(LLVM_PREFIX)/bin/llvm-config
 
 CFLAGS := \
 	-std=c17 \
@@ -17,11 +22,8 @@ CFLAGS := \
 	-Isrc \
 	-ffile-prefix-map=$(SRCROOT)/= \
 	-fstrict-aliasing \
-	-fcolor-diagnostics \
 	-Wall \
-	-Wunused \
-	-Wno-nullability-completeness \
-	-Wno-nullability-inferred-on-nested-type \
+	-Wunused
 
 CXXFLAGS := \
 	-std=c++17 \
@@ -29,7 +31,7 @@ CXXFLAGS := \
 	-fno-exceptions \
 	-fno-rtti \
 
-LDFLAGS := -Wl,-rpath,@loader_path/. -Wl,-w -dead_strip
+LDFLAGS := -dead_strip
 
 FLAVOR := release
 ifneq ($(DEBUG),)
@@ -53,37 +55,58 @@ ifneq ($(SANITIZE),)
 endif
 
 ifeq ($(SYSTEM),Darwin)
+	CC  := $(LLVM_PREFIX)/bin/clang
+	CXX := $(LLVM_PREFIX)/bin/clang++
+	AR  := $(LLVM_PREFIX)/bin/llvm-ar
 	ifeq ($(ARCH),x86_64)
-		# see deps/context/build/Jamfile.v2
-		RBASE_SRC += \
-			src/rbase/sched/exectx/exectx_x86_64_sysv.S
-	else ifeq ($(ARCH),arm64)
-		RBASE_SRC += \
-   	  src/rbase/sched/exectx/init_arm64_aapcs_macho_gas.S \
-   	  src/rbase/sched/exectx/switch_arm64_aapcs_macho_gas.S \
-      src/rbase/sched/exectx/jump_arm64_aapcs_macho_gas.S
+		RT_SRC += src/rt/exectx/exectx_x86_64_sysv.S
+	else
+		RT_SRC += UNSUPPORTED_PLATFORM
 	endif
-
-	CFLAGS += -mmacosx-version-min=10.15
+	CFLAGS += -mmacosx-version-min=10.15 \
+	          -fcolor-diagnostics
   LDFLAGS += -mmacosx-version-min=10.15 \
-  	-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+  	         -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+else ifeq ($(SYSTEM),Linux)
+	ifeq ($(ARCH),x86_64)
+		RT_SRC += src/rt/exectx/exectx_x86_64_sysv.S
+	else ifeq ($(ARCH),aarch64)
+		RT_SRC += src/rt/exectx/exectx_arm64_aapcs_elf.S
+	else
+		RT_SRC += UNSUPPORTED_PLATFORM
+	endif
 endif
 
-BUILDDIR   := .build/$(FLAVOR)
-OBJDIR     := $(BUILDDIR)
-CO_OBJS    := $(patsubst %,$(OBJDIR)/%.o,$(CO_SRC))
-RBASE_OBJS := $(patsubst %,$(OBJDIR)/%.o,$(RBASE_SRC))
-RBASE_PCH  := $(BUILDDIR)/rbase.pch
-RBASE_PCH_DEPS := $(wildcard src/rbase/*.h src/rbase/*/*.h)
+# clang-spcific options (TODO: fix makefile check to look for *"/clang" || "clang")
+ifeq ($(notdir $(CC)),clang)
+	CFLAGS += \
+	  -Wno-nullability-completeness \
+	  -Wno-nullability-inferred-on-nested-type
+endif
 
-all: bin/co
+BUILDDIR     := .build/$(FLAVOR)
+OBJDIR       := $(BUILDDIR)
+CO_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(CO_SRC))
+RT_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(RT_SRC))
+RT_TEST_OBJS := $(patsubst %,$(OBJDIR)/%.o,$(RT_TEST_SRC))
+RBASE_OBJS   := $(patsubst %,$(OBJDIR)/%.o,$(RBASE_SRC))
+RBASE_PCH    := $(BUILDDIR)/rbase.pch
+
+all: bin/co bin/rt-test
 
 bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a | $(RBASE_PCH)
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	@mkdir -p "$(dir $@)"
-	@$(CXX) $(LDFLAGS) $(SKIA_LIB_LDFLAGS) -o $@ $^ $(BUILDDIR)/rbase.a
+	@$(CC) $(LDFLAGS) -o $@ $^
 
-lib_rbase: $(BUILDDIR)/rbase.a
+bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a | $(RBASE_PCH)
+	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
+	@mkdir -p "$(dir $@)"
+	$(CC) $(LDFLAGS) -o $@ $^
+
+$(BUILDDIR)/rt.a: $(RT_OBJS)
+	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
+	@$(AR) rcs $@ $^
 
 $(BUILDDIR)/rbase.a: $(RBASE_OBJS) | $(RBASE_PCH)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
@@ -97,17 +120,13 @@ $(RBASE_PCH): src/rbase/rbase.h $(RBASE_PCH_DEPS)
 $(OBJDIR)/%.c.o: %.c | $(RBASE_PCH)
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
-	@$(CC) $(CFLAGS) -include-pch $(RBASE_PCH) -o $@ -c $<
+	@$(CC) -I$(dir $(RBASE_PCH)) $(CFLAGS) -o $@ -c $<
 
 $(OBJDIR)/%.S.o: %.S
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
 	@$(CC) $(CFLAGS) -o $@ -c $<
 
-# $(OBJDIR)/%.cc.o: %.cc | $(RBASE_PCH)
-# 	@echo "cc $<"
-# 	@mkdir -p "$(dir $@)"
-# 	@$(CXX) $(CFLAGS) $(CXXFLAGS) -include-pch $(RBASE_PCH) -o $@ -c $<
 
 dev:
 	./misc/dev.sh -run
@@ -115,7 +134,7 @@ dev:
 clean:
 	rm -rf bin/co .build
 
-DEPS := ${RBASE_OBJS:.o=.d} ${CO_OBJS:.o=.d}
+DEPS := ${RBASE_OBJS:.o=.d} ${CO_OBJS:.o=.d} ${RT_TEST_OBJS:.o=.d}
 -include $(DEPS)
 
-.PHONY: all clean
+.PHONY: all dev clean

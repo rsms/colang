@@ -1,4 +1,5 @@
-#include "../rbase.h"
+#include <rbase/rbase.h>
+#include "sched.h"
 #include "schedimpl.h"
 #include "exectx/exectx.h"
 #include <pthread.h>

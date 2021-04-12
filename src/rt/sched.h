@@ -23,4 +23,7 @@ int sched_spawn(EntryFun fn, uintptr_t arg1, void* nullable stackmem, size_t sta
 #define t_spawn_custom(fn, arg1, stackmem, stacksize) \
   sched_spawn(fn, arg1, stackmem, stacksize);
 
+void t_yield();
+
+
 ASSUME_NONNULL_END

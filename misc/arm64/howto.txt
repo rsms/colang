@@ -1,0 +1,11 @@
+Get files from https://github.com/rsms/qemu-macos-x86-arm64
+
+Terminal 1:
+  qemu-arm64.sh
+
+Terminal 2:
+  # wait for qemu-arm64.sh to finish launching, then:
+  sshfs root@localhost: ~/src/co/a64 -f -p 10022 -o sshfs_sync -o cache=no
+
+Terminal 3: (optional)
+  ssh root@localhost -p10022

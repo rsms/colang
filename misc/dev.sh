@@ -6,7 +6,7 @@ set -e
 
 HELP=false
 RUN=false
-RUN_EXE=bin/co
+RUN_EXE=
 RUN_ARGS="build ./example"
 OPT_CLEAN=false
 OPT_RELEASE=false
@@ -20,7 +20,10 @@ while [[ $# -gt 0 ]]; do
 	-clean)     OPT_CLEAN=true; shift ;;
 	-release)   OPT_RELEASE=true; shift ;;
 	--)         MAKE_ARGS="$MAKE_ARGS $@"; break ;;
-	*)          MAKE_ARGS="$MAKE_ARGS $1"; shift ;;
+	-*)         MAKE_ARGS="$MAKE_ARGS $1"; shift ;;
+	*)
+		[ -n "$RUN_EXE" ] || RUN_EXE=$1
+		MAKE_ARGS="$MAKE_ARGS $1"; shift ;;
 	esac
 done
 if $HELP; then
@@ -35,6 +38,8 @@ if $HELP; then
 	EOF
 	exit 0
 fi
+
+[ -n "$RUN_EXE" ] || RUN_EXE=bin/co
 
 # $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1 SANITIZE=1" # asan not compat with coco
 $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1"

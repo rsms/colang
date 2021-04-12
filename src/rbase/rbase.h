@@ -16,7 +16,6 @@ extern "C" {
 #include "path.h"
 #include "fs.h"
 #include "mpscq.h"
-#include "sched/sched.h"
 #include "chan.h"
 
 #ifdef __cplusplus

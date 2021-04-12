@@ -125,55 +125,5 @@ void _exectx_resume(exectx_state_t s, uintptr_t saveret);
 // Calling exectx_switch or exectx_jump with the returned handle will execute fn.
 void* exectx_init(void* sp, size_t size, void(*fn)(exectx_t));
 
-
-
-
-// exectx_t ontop_fcontext(void* const to, void* data, exectx_t(*fn)(exectx_t) );
-
-// exectx_switch saves the current (caller) execution context on the caller stack, then
-// restores registers from ctx and finally jumps to wherever ctx left off (or fn from exectx_init
-// if switch has not been called before for this ctx.)
-// Effectively it both does exectx_save and exectx_jump
-exectx_t exectx_switch(void* const ctx, void* data);
-
-// exectx_jump restores exection at ctx, replacing the current exection context
-exectx_t noreturn exectx_jump(void* const ctx, void* data);
-
-// exectx_callerpc returns the program counter (PC) of its caller's caller.
-// exectx_callersp returns the stack pointer (SP) of its caller's caller.
-// The implementation may be a compiler intrinsic; there is not
-// necessarily code implementing this on every platform.
-//
-// For example:
-//
-//  static void f(int arg1, int arg2, int arg3) {
-//    uintptr_t pc = exectx_callerpc();
-//    uintptr_t sp = exectx_callersp();
-//  }
-//
-// These two lines find the PC and SP immediately following
-// the call to f (where f will return).
-//
-// The call to exectx_callerpc and exectx_callersp must be done in the
-// frame being asked about.
-//
-// The result of exectx_callersp is correct at the time of the return,
-// but it may be invalidated by any subsequent call to a function
-// that might relocate the stack in order to grow or shrink it.
-// A general rule is that the result of exectx_callersp should be used
-// immediately and can only be passed to nosplit functions.
-//
-//void* exectx_callerpc();
-//uintptr_t exectx_callersp();
-
-// void * __builtin_return_address (unsigned int level)
-
-#define exectx_callerpc() \
-  (uintptr_t)(__builtin_return_address(0))
-
-#define exectx_callersp() \
-  (uintptr_t)(0) /* TODO */
-
-// #define dill_setsp(x) \
-//     asm(""::"r"(alloca(sizeof(size_t))));\
-//     asm volatile("leaq (%%rax), %%rsp"::"rax"(x));
+// #define exectx_callerpc() (uintptr_t)(__builtin_return_address(0))
+// #define exectx_callersp() (uintptr_t)(0) /* TODO */
