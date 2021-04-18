@@ -1,5 +1,8 @@
 #pragma once
-// Defines the Tok enum
+#include "../source/source.h"
+#include "sym.h"
+
+typedef struct Node Node;
 
 // scanner tokens
 #define TOKENS(_)  \
@@ -86,6 +89,7 @@
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
 
+// Tok enum
 typedef enum {
   #define I_ENUM(name, str) name,
   TOKENS(I_ENUM)
@@ -103,8 +107,64 @@ typedef enum {
 
   TMax
 } Tok;
-
+// We only have 5 bits to encode tokens in Sym. Additionally, the value 0 is reserved
+// for "not a keyword", leaving the max number of values at 31 (i.e. 2^5=32-1).
 static_assert(TKeywordsEnd - TKeywordsStart <= 32, "too many keywords");
 
-// Get printable name
+// TokName returns a printable name for a token
 const char* TokName(Tok);
+
+
+// ErrorHandler callback type
+typedef void(ErrorHandler)(const Source*, SrcPos, const Str msg, void* userdata);
+
+// ParseFlags are flags for parser and scanner
+typedef enum {
+  ParseFlagsDefault = 0,
+  ParseComments     = 1 << 1, // parse comments, populating S.comments
+  ParseOpt          = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
+} ParseFlags;
+
+// Comment is a scanned comment
+typedef struct Comment {
+  struct Comment* next; // next comment in linked list
+  Source*         src;  // source
+  const u8*       ptr;  // ptr into source
+  size_t          len;  // byte length
+} Comment;
+
+// Scanner reads source code and produces tokens
+typedef struct Scanner {
+  Mem        mem;
+  Source*    src;          // input source
+  const u8*  inp;          // input buffer current pointer
+  const u8*  inp0;         // input buffer previous pointer
+  const u8*  inend;        // input buffer end
+  ParseFlags flags;
+
+  Tok       tok;           // current token
+  const u8* tokstart;      // start of current token
+  const u8* tokend;        // end of current token
+  Sym       name;          // Current name (valid for TIdent and keywords)
+
+  bool      insertSemi;    // insert a semicolon before next newline
+
+  Comment*  comments;      // linked list head of comments scanned so far
+  Comment*  comments_tail; // linked list tail of comments scanned so far
+
+  u32       lineno;     // source position line
+  const u8* linestart;  // source position line start pointer (for column)
+
+  ErrorHandler* errh;
+  void*         userdata;
+} Scanner;
+
+// ScannerInit initializes a scanner. Returns false on failure.
+bool ScannerInit(Scanner*, Mem, Source*, ParseFlags, ErrorHandler*, void* userdata);
+
+// ScannerNext scans the next token
+Tok ScannerNext(Scanner*);
+
+// ScannerSrcPos returns the source position of s->tok (current token)
+SrcPos ScannerSrcPos(Scanner* s);
+

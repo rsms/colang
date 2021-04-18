@@ -7,7 +7,9 @@ extern "C" {
 #endif
 
 #include "mem.h"
+#include "hash.h"
 #include "str.h"
+#include "unicode.h"
 #include "parseint.h"
 #include "testing.h"
 #include "util.h"

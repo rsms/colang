@@ -1,5 +1,5 @@
 #include <rbase/rbase.h>
-#include "token.h"
+#include "parse.h"
 
 const char* TokName(Tok t) {
   switch (t) {

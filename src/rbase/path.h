@@ -17,10 +17,10 @@ ASSUME_NONNULL_BEGIN
 bool path_isabs(const char* filename);
 
 // path_join returns a new string of path1 + PATH_SEPARATOR + path2
-char* path_join(Mem nullable mem, const char* path1, const char* path2);
+Str path_join(const char* path1, const char* path2);
 
 // path_dir returns the directory part of filename (i.e. "foo/bar/baz" => "foo/bar")
-char* path_dir(Mem nullable mem, const char* filename);
+Str path_dir(const char* filename);
 char* path_dir_mut(char* filename);
 
 ASSUME_NONNULL_END

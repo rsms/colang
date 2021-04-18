@@ -1,5 +1,4 @@
 #include <rbase/rbase.h>
-#include "pkg.h"
 #include "source.h"
 
 bool PkgAddSource(Pkg* pkg, const char* filename) {

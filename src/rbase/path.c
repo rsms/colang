@@ -8,30 +8,21 @@ bool path_isabs(const char* filename) {
   return z == 0 || filename[0] == PATH_SEPARATOR;
 }
 
-// strjoinc joins s1 & s2 using glue, allocating memory in mem
-static char* strjoinc(Mem mem, const char* s1, const char* s2, char glue) {
-  auto z1 = strlen(s1);
-  auto z2 = strlen(s2);
-  auto joined = (char*)memdup2(mem, s1, z1, z2 + 2);
-  joined[z1] = glue;
-  z1++;
-  memcpy(&joined[z1], s2, z2);
-  joined[z1+z2] = '\0';
-  return joined;
+Str path_join(const char* path1, const char* path2) {
+  size_t len1 = strlen(path1);
+  size_t len2 = strlen(path2);
+  auto s = str_new(len1 + len2 + 1);
+  s = str_appendn(s, path1, len1);
+  s = str_appendc(s, PATH_SEPARATOR);
+  s = str_appendn(s, path2, len2);
+  return s;
 }
 
-char* path_join(Mem mem, const char* path1, const char* path2) {
-  return strjoinc(mem, path1, path2, PATH_SEPARATOR);
-}
-
-char* path_dir(Mem nullable mem, const char* filename) {
+Str path_dir(const char* filename) {
   auto p = strrchr(filename, PATH_SEPARATOR);
-  size_t z = 1;
-  if (p)
-    z = (size_t)p - (size_t)filename;
-  else
-    filename = ".";
-  return (char*)memdup(mem, filename, z);
+  if (p == NULL)
+    return str_cpycstr(".");
+  return str_cpyn(filename, (u32)((uintptr_t)p - (uintptr_t)filename));
 }
 
 char* path_dir_mut(char* filename) {

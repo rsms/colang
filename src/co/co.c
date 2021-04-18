@@ -1,6 +1,5 @@
 #include <rbase/rbase.h>
-#include "pkg.h"
-#include "source.h"
+#include "parse/parse.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -191,7 +190,7 @@ static bool init(const char* argv0) {
       buf[len] = '\0';
       auto pch = realpath(buf, NULL);
       if (pch)
-        COROOT = path_dir(NULL, pch);
+        COROOT = path_dir(pch);
     }
     if (!COROOT) {
       errlog("unable to infer COROOT; set it in env");
@@ -200,10 +199,10 @@ static bool init(const char* argv0) {
   }
 
   if (!COPATH || strlen(COPATH) == 0)
-    COPATH = path_join(NULL, user_home_dir(), ".co");
+    COPATH = path_join(user_home_dir(), ".co");
 
   if (!COCACHE || strlen(COCACHE) == 0)
-    COCACHE = path_join(NULL, COPATH, "cache");
+    COCACHE = path_join(COPATH, "cache");
 
   dlog("COROOT=%s", COROOT);
   dlog("COPATH=%s", COPATH);

@@ -17,23 +17,20 @@ ASSUME_NONNULL_BEGIN
 #endif
 #if R_UNIT_TEST_ENABLED
   #define R_UNIT_TEST(name, body) \
-  __attribute__((constructor)) static void unittest_##name() { \
-    if (testing_mode() != TestingNone) {       \
-      printf("TEST " #name " %s\n", __FILE__); \
-      body                                     \
-    }                                          \
+  __attribute__((constructor,used)) static void unittest_##name() { \
+    if (testing_should_run(#name)) {                            \
+      printf("TEST " #name " %s\n", __FILE__);                      \
+      body                                                          \
+    }                                                               \
+    return;                                                         \
   }
 #else
   #define R_UNIT_TEST(name, body)
 #endif
-typedef enum TestingMode {
-  TestingNone = 0,  // testing disabled
-  TestingOn,        // testing enabled
-  TestingExclusive, // only test; don't run main function
-} TestingMode;
 
-// testing_mode retrieves the effective TestingMode parsed from
-// environment variable {value of R_UNIT_TEST_ENV_NAME}
-TestingMode testing_mode();
+// testing_on returns true if the environment variable R_UNIT_TEST_ENV_NAME is 1
+// or a test name prefix.
+bool testing_on();
+bool testing_should_run(const char* testname);
 
 ASSUME_NONNULL_END
