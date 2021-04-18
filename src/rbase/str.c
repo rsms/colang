@@ -4,7 +4,7 @@
 #define ALLOC_MIN sizeof(size_t) /* smallest new string */
 
 // DEBUG_STR_TRACE_MEM: define to trace memory allocations and deallocations
-#define DEBUG_STR_TRACE_MEM
+// #define DEBUG_STR_TRACE_MEM
 #ifdef DEBUG_STR_TRACE_MEM
   #define memtrace dlog
 #else
