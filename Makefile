@@ -31,12 +31,14 @@ CXXFLAGS := \
 	-fno-exceptions \
 	-fno-rtti \
 
-LDFLAGS := -dead_strip
+LDFLAGS :=
 
 FLAVOR := release
 ifneq ($(DEBUG),)
 	FLAVOR := debug
 	CFLAGS += -DDEBUG
+else
+	LDFLAGS += -dead_strip
 endif
 
 # enable memory sanitizer
@@ -54,6 +56,8 @@ ifneq ($(SANITIZE),)
 	CXX := /usr/bin/clang++
 endif
 
+BUILDDIR := .build/$(FLAVOR)
+
 ifeq ($(SYSTEM),Darwin)
 	CC  := $(LLVM_PREFIX)/bin/clang
 	CXX := $(LLVM_PREFIX)/bin/clang++
@@ -67,6 +71,10 @@ ifeq ($(SYSTEM),Darwin)
 	          -fcolor-diagnostics
   LDFLAGS += -mmacosx-version-min=10.15 \
   	         -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+	ifneq ($(DEBUG),)
+		# force_load is required for unit tests to be included (force_load is clang-specific)
+		LDFLAGS += -Wl,-force_load,$(BUILDDIR)/rbase.a
+	endif
 else ifeq ($(SYSTEM),Linux)
 	ifeq ($(ARCH),x86_64)
 		RT_SRC += src/rt/exectx/exectx_x86_64_sysv.S
@@ -74,6 +82,10 @@ else ifeq ($(SYSTEM),Linux)
 		RT_SRC += src/rt/exectx/exectx_arm64_aapcs_elf.S
 	else
 		RT_SRC += UNSUPPORTED_PLATFORM
+	endif
+	ifneq ($(DEBUG),)
+		# whole-archive is required for unit tests to be included (whole-archive is GCC-specific)
+		LDFLAGS += -Wl,--whole-archive $(BUILDDIR)/rbase.a -Wl,--no-whole-archive
 	endif
 endif
 
@@ -84,7 +96,6 @@ ifeq ($(notdir $(CC)),clang)
 	  -Wno-nullability-inferred-on-nested-type
 endif
 
-BUILDDIR     := .build/$(FLAVOR)
 OBJDIR       := $(BUILDDIR)
 CO_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(CO_SRC))
 RT_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(RT_SRC))

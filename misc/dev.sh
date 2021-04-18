@@ -58,6 +58,7 @@ if $RUN; then
 fi
 
 [ -n "$COMAXPROCS" ] || export COMAXPROCS=4
+[ -n "$R_UNIT_TEST" ] || export R_UNIT_TEST=1
 
 _run_after_build() {
 	_pidfile_kill "$RUN_PIDFILE"
@@ -66,6 +67,7 @@ _run_after_build() {
 	local cmd=$(_relpath "$RUN_EXE")
 	# echo "$cmd" $RUN_ARGS
 	[[ "$cmd" == "/" ]] || cmd="./$cmd"
+	echo "$cmd" $RUN_ARGS
 	( "$cmd" $RUN_ARGS &
 		echo $! > "$RUN_PIDFILE"
 		wait
