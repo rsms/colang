@@ -14,7 +14,7 @@ typedef struct PoolEntry {
 
 struct _PoolHead {
   PoolEntry* ptr;
-  uintptr_t      tag;
+  uintptr_t  tag;
 };
 
 // Pool should be zero-initialized
