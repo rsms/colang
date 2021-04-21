@@ -331,7 +331,7 @@ static inline void HamtFuzzTest(unsigned int randseed) {
   };
   Hamt h = hamt_new(&ctx);
 
-  TestValue values[100];
+  TestValue values[1000];
   char strs[countof(values)][17]; // "0000000000000000"-"ffffffffffffffff"
 
   // seed the pseudo-random number generator to make tests predictable
@@ -385,6 +385,10 @@ static inline void HamtFuzzTest(unsigned int randseed) {
     auto v = randvals[i];
     assert(hamt_del(&h, v));
     asserteq(hamt_count(h), countof(values) - i - 1);
+    // TestValueReset should have been called when node_release decremented
+    // the refcount of the value. TestValueReset zeroes the value, so we check for that:
+    assert(v->key == 0);
+    assert(v->str == NULL);
   }
 
   assert(hamt_empty(h));
