@@ -91,7 +91,7 @@ bool SourceTranspile(Source* src, FILE* f) {
 
 bool compile_source(const Pkg* pkg, Source* src) {
   if (!SourceOpenBody(src))
-    panic(src->filename);
+    panic("SourceOpenBody %s", src->filename);
 
   // compute SHA-1 checksum of file contents
   SourceChecksum(src);
@@ -112,7 +112,7 @@ bool compile_source(const Pkg* pkg, Source* src) {
   if (!f) {
     // if file exists already the cache is up to date
     if (errno != EEXIST)
-      panic(outfile);
+      panic("fopen \"%s\" (errno #%d %s)", outfile, errno, strerror(errno));
   } else {
     ok = SourceTranspile(src, f);
     ok = fclose(f) == 0 && ok;
@@ -140,7 +140,7 @@ int cmd_build(int argc, const char** argv) {
 
   pkg.dir = argv[2];
   if (!PkgScanSources(&pkg))
-    panic(pkg.dir);
+    panic("PkgScanSources %s", pkg.dir);
 
   // process source files
   bool ok = true;

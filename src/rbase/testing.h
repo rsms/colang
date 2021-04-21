@@ -6,11 +6,14 @@ ASSUME_NONNULL_BEGIN
 //   R_UNIT_TEST_ENABLED is defined for "test" and "debug" targets (since DEBUG is.)
 //   R_UNIT_TEST(name, body) defines a unit test to be run before main()
 #ifndef R_UNIT_TEST_ENABLED
-  #if DEBUG
+  #if DEBUG && !defined(NDEBUG)
     #define R_UNIT_TEST_ENABLED 1
   #else
     #define R_UNIT_TEST_ENABLED 1
   #endif
+#endif
+#if R_UNIT_TEST_ENABLED && defined(NDEBUG)
+  #warning "R_UNIT_TEST_ENABLED is enabled while NDEBUG is defined; tests will likely fail"
 #endif
 #ifndef R_UNIT_TEST_ENV_NAME
   #define R_UNIT_TEST_ENV_NAME "R_UNIT_TEST"

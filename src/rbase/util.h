@@ -1,20 +1,12 @@
 #pragma once
 ASSUME_NONNULL_BEGIN
 
-// panic prints msg (and errno, if non-zero) to stderr and calls exit(2)
-#define panic(msg) _panic(msg, __FILE__, __LINE__)
-noreturn void _panic(const char* msg, const char* filename, int lineno);
-
 // os_mempagesize returns the memory page size
 size_t os_mempagesize();
 
 // sys_ncpu returns the number of hardware threads.
 // Returns 0 when the number of CPUs could not be determined.
 u32 sys_ncpu();
-
-// stacktrace_fwrite attempts to produce and write a stack backtrace to fp.
-// Its ouput is system-dependent. Returns true on success or false if nothing was written.
-bool stacktrace_fwrite(FILE* fp, int offset_frames);
 
 // fmthex writes len*2 bytes to out, encoding indata in hexadecimal form
 void fmthex(char* out, const u8* indata, int len);

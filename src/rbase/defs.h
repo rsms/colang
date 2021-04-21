@@ -150,29 +150,6 @@ typedef signed long            intptr_t;
   #define NO_INLINE
 #endif
 
-// _errlog is implemented in util.c
-void _errlog(const char* fmt, ...);
-
-#ifdef DEBUG
-  #define dlog(fmt, ...) \
-    fprintf(stderr, "\e[1m" fmt " \e[0;2m(%s)\e[0m\n", ##__VA_ARGS__, __FUNCTION__)
-  #define errlog(fmt, ...) \
-    _errlog(fmt " (%s:%d)\n", ##__VA_ARGS__, __FILE__, __LINE__)
-#else
-  #define dlog(...)        do{}while(0)
-  #define errlog(fmt, ...) _errlog(fmt "\n", ##__VA_ARGS__)
-#endif
-
-#define TODO_IMPL ({ \
-  _errlog("\e[1;33mTODO_IMPL %s\e[0m  %s:%d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
-  abort(); \
-})
-
-#define UNREACHABLE ({ \
-  _errlog("UNREACHABLE %s %s:%d\n", __PRETTY_FUNCTION__, __FILE__, __LINE__); \
-  abort(); \
-})
-
 #ifndef offsetof
   #define offsetof(st, m) ((size_t)&(((st*)0)->m))
 #endif
@@ -201,16 +178,13 @@ void _errlog(const char* fmt, ...);
   unsigned char:      "%C", \
   const char*:        "%s", \
   char*:              "%s", \
+  bool:               "%d", \
+  float:              "%f", \
+  double:             "%f", \
   void*:              "%p", \
   const void*:        "%p", \
   default:            "%p" \
 )
-
-// len retrieves the length of x
-#define len(x) _Generic((x), \
-  const char*:        strlen, \
-  char*:              strlen \
-)(x)
 
 // T align2<T>(T x, T y) rounds up n to closest boundary w (w must be a power of two)
 //

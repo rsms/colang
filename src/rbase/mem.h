@@ -95,7 +95,7 @@ inline static void memfree(Mem nullable mem, void* ptr) {
 }
 
 inline static char* memstrdup(Mem nullable mem, const char* pch) {
-  size_t z = len(pch);
+  size_t z = strlen(pch);
   char* s = (char*)memdup2(mem, pch, z, 1);
   s[z] = 0;
   return s;

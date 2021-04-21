@@ -6,6 +6,8 @@
 extern "C" {
 #endif
 
+#include "panic.h"
+#include "debug.h"
 #include "mem.h"
 #include "hash.h"
 #include "str.h"

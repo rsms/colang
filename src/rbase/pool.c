@@ -164,11 +164,7 @@ R_UNIT_TEST(Pool, {
     for (u32 i = 0; i < numthreads; i++) {
       memfree(NULL, threads[i].entriesv);
     }
-
-    dlog("Pool thread test OK");
   }
-
-  dlog("");
 });
 
 #endif /*R_UNIT_TEST_ENABLED*/
