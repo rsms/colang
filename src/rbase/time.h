@@ -11,7 +11,7 @@ u64 nanotime();
 int msleep(u64 milliseconds);
 
 // fmtduration appends human-readable time duration to buf
-int fmtduration(char* buf, int bufsize, u64 timeduration);
+int fmtduration(char* buf, int bufsize, u64 duration_ns);
 
 
 ASSUME_NONNULL_END

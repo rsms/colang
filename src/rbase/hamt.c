@@ -139,40 +139,89 @@ void _hamt_free(Hamt h) {
   node_free(h.ctx, (Node*)h.root);
 }
 
-// node_clone makes a copy of a node.
-// bi: skip copying this entry (leave m2->entries[bi] uninitialized).
-//     set to HAMT_BRANCHES+1 to copy all entries.
+// node_clone makes a copy of a THamt or TCollision node, including entries.
 //
-// node_clone(m1, HAMT_BRANCHES+1, 0)  identical clone
-// node_clone(m1, 2, 0)                clone with entries[2] uninitialized
-// node_clone(m1, 2, -1)               clone without entries[2]
-// node_clone(m1, 2, 3)                clone with entries[2] uninitialized and 3 extra slots at end
+//                 A B C     A B  C                  len(src)+dstlendelta
+//                 | | |     | |  |                           |
+// node_clone([0,1,2,3,4,5], 2,3, 4, 0)   =>  [0,1] + [ , ,3,4]
+//                           | |  |                |       |
+//                           | |  +- dstoffs       |       +- dstoffs
+//                           | +- srcsplit2        |       +- srcsplit2
+//                           +- srcsplit1          +- srcsplit1
 //
-// Returns a new Hamt with a +1 reference count.
-static Node* node_clone(Node* m1, u32 bi, i32 lendelta) {
-  u32 len1 = NODE_LEN(m1);
-  assert(-lendelta <= (i32)len1); // when reducing len, lendelta must not pass len1
-  u32 len2 = (u32)((i32)len1 + lendelta);
-  Node* m2 = node_alloc(len2, NODE_TYPE(m1));
-  m2->bmap = m1->bmap;
+// Examples:
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 0)   =>  [0,1] + [2,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,2, 3, 0)   =>  [0,1] + [ ,2,3,4]
+//   node_clone([0,1,2,3,4,5], 2,2, 4, 0)   =>  [0,1] + [ , ,2,3]
+//   node_clone([0,1,2,3,4,5], 2,2, 5, 0)   =>  [0,1] + [ , , ,2]
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 0)   =>  [0,1] + [2,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,3, 2, 0)   =>  [0,1] + [3,4,5, ]
+//   node_clone([0,1,2,3,4,5], 2,4, 2, 0)   =>  [0,1] + [3,4, , ]
+//   node_clone([0,1,2,3,4,5], 2,5, 2, 0)   =>  [0,1] + [3, , , ]
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 0)   =>  [0,1] + [2,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 1)   =>  [0,1] + [2,3,4,5, ]
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 2)   =>  [0,1] + [2,3,4,5, , ]
+//   node_clone([0,1,2,3,4,5], 2,2, 2, -1)  =>  [0,1] + [2,3,4]
+//   node_clone([0,1,2,3,4,5], 2,2, 2, -2)  =>  [0,1] + [2,3]
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, -1)  =>  [0,1] + [2,3,4]
+//   node_clone([0,1,2,3,4,5], 2,2, 3, -1)  =>  [0,1] + [ ,2,3]
+//   node_clone([0,1,2,3,4,5], 2,2, 4, -1)  =>  [0,1] + [ , ,2]
+//   node_clone([0,1,2,3,4,5], 2,2, 5, -1)  =>  [0,1] + [ , , ]
+//
+//   node_clone([0,1,2,3,4,5], 2,3, 2, -1)  =>  [0,1] + [3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,3, 2, -2)  =>  [0,1] + [3,4]
+//   node_clone([0,1,2,3,4,5], 2,3, 2, -3)  =>  [0,1] + [3]
+//
+//   node_clone([0,1,2,3,4,5], 2,3, 2, -1)  =>  [0,1] + [3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,4, 2, -2)  =>  [0,1] + [4,5]
+//   node_clone([0,1,2,3,4,5], 2,4, 2, -3)  =>  [0,1] + [5]
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 0)   =>  [0,1] + [2,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,3, 3, 0)   =>  [0,1] + [ ,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,4, 4, 0)   =>  [0,1] + [ , ,3,4]
+//   node_clone([0,1,2,3,4,5], 2,5, 5, 0)   =>  [0,1] + [ , , ,3]
+//
+//   node_clone([0,1,2,3,4,5], 2,2, 2, 1)   =>  [0,1] + [2,3,4,5, ]
+//   node_clone([0,1,2,3,4,5], 2,2, 3, 1)   =>  [0,1] + [ ,2,3,4,5]
+//   node_clone([0,1,2,3,4,5], 2,2, 4, 1)   =>  [0,1] + [ , ,2,3,4]
+//   node_clone([0,1,2,3,4,5], 2,2, 5, 1)   =>  [0,1] + [ , , ,2,3]
+//
+static Node* node_clone(Node* src, u32 srcsplit1, u32 srcsplit2, u32 dstoffs, i32 dstlendelta) {
+  u32 srclen = NODE_LEN(src);
+  u32 dstlen = (u32)MAX(0, (i32)srclen + dstlendelta);
+  u32 srcend = (u32)((i32)srclen + MIN(0, dstlendelta + (srcsplit2 - srcsplit1)));
 
-  // dlog("node_clone len1: %u, len2: %u, bi: %u, lendelta: %d", len1, len2, bi, lendelta);
+  assertop(srcsplit1, <= ,srclen);
+  assertop(srcsplit2, <= ,srclen);
+  assertop(srcsplit1, <= ,srcsplit2);
 
-  // copy [0..bi] or [0..len2]
-  u32 i1 = 0;
-  for (; i1 < MIN(len2, bi); i1++) {
-    // dlog("clone (A) m2->entries[%u] <= m1->entries[%u]", i1, i1);
-    m2->entries[i1] = node_retain(m1->entries[i1]);
+  // dlog("\nnode_clone(src %p  srcsplit %u:%u  dstoffs %u  dstlendelta %d)  srclen %u  dstlen %u",
+  //   src, srcsplit1, srcsplit2, dstoffs, dstlendelta, srclen, dstlen);
+
+  Node* dst = node_alloc(dstlen, NODE_TYPE(src));
+  dst->bmap = src->bmap;
+
+  u32 srci = 0;
+  // dlog("  segment A: dst[0:%u] <= src[0:%u]", srcsplit1, srcsplit1);
+  for (; srci < srcsplit1; srci++) {
+    // dlog("    copy dst->entries[%u] <= src->entries[%u]  %p", srci, srci, src->entries[srci]);
+    dst->entries[srci] = node_retain(src->entries[srci]);
   }
 
-  // copy [bi + (-lendelta)..end]
-  i1 = (u32)MAX(0, (i32)i1 - lendelta);
-  for (u32 i2 = bi; i2 < len2; ) {
-    // dlog("clone (B) m2->entries[%u] <= m1->entries[%u]", i2, i1);
-    m2->entries[i2++] = node_retain(m1->entries[i1++]);
+  u32 dsti = dstoffs;
+  srci = srcsplit2;
+  // dlog("  segment B: dst[%u:%u] <= src[%u:%u]", dsti, dstlen, srci, srcend);
+  for (; srci < srcend; srci++, dsti++) {
+    // dlog("    copy dst->entries[%u] <= src->entries[%u]  %p", dsti, srci, src->entries[srci]);
+    assert(dsti < dstlen);
+    dst->entries[dsti] = node_retain(src->entries[srci]);
   }
 
-  return m2;
+  return dst;
 }
 
 
@@ -303,6 +352,7 @@ static Node* make_branch(u32 shift, HamtUInt key1, Node* v1, Node* v2) {
 // steals ref to v2
 static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didadd) {
   assert(NODE_TYPE(m) == THamt);
+  assert(v2 != NULL);
 
   u32 bitpos = 1u << ((NODE_KEY(v2) >> shift) & HAMT_MASK);  // key bit position
   u32 bi     = bitindex(m->bmap, bitpos);  // bucket index
@@ -336,7 +386,7 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
   if ((m->bmap & bitpos) == 0) {
     // empty; index bit not set in bmap. Set the bit and append value to entries list.
     // copy entries in m2 with +1 space for slot at bi
-    Node* m2 = node_clone(m, bi, 1);
+    Node* m2 = node_clone(m, bi,bi, bi+1, 1); // e.g. [1,2,3,4] => [1,2, ,3,4] where bi=2
     m2->bmap = m->bmap | bitpos; // mark bi as being occupied
     m2->entries[bi] = v2;
     return m2;
@@ -344,7 +394,7 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
 
   // An entry or branch occupies the slot; replace m2->entries[bi]
 
-  Node* m2 = node_clone(m, bi, 0);
+  Node* m2 = node_clone(m, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
   Node* v1 = m->entries[bi]; // current entry
   Node* newobj; // to be assigned as m2->entries[bi]
 
@@ -405,10 +455,10 @@ static Node* collision_without(HamtCtx* ctx, Node* c1, const void* refentry) {
     if (ctx->enteq(ctx, (const void*)v1->entries[0], refentry)) {
       if (len == 2) {
         // collapse the collision set; return the other entry
-        return c1->entries[!i]; // !i = (i == 0 ? 1 : 0)
+        return node_retain(c1->entries[!i]); // !i = (i == 0 ? 1 : 0)
       }
       // clone without entry i
-      return node_clone(c1, i, -1);
+      return node_clone(c1, i,i+1, i, -1);  // e.g. [1,2,3,4] => [1,2,4] where bi=2
     }
   }
   return c1;
@@ -441,7 +491,7 @@ static Node* hamt_remove(
       // Note: consider making this iterative; non-recursive.
       Node* m3 = hamt_remove(ctx, n, key, refentry, shift + HAMT_BITS);
       if (m3 != n) {
-        Node* m2 = node_clone(m1, bi, 0);
+        Node* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
         if (NODE_LEN(m3) == 1 && NODE_TYPE(m3->entries[0]) != THamt) {
           // collapse path
           m2->entries[bi] = node_retain(m3->entries[0]);
@@ -458,7 +508,7 @@ static Node* hamt_remove(
       Node* v2 = collision_without(ctx, n, refentry);
       if (v2 != n) { // found & removed
         // Note: NODE_TYPE(v2) is either TCollision or TValue
-        Node* m2 = node_clone(m1, bi, 0);
+        Node* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
         m2->entries[bi] = v2;
         return m2;
       }
@@ -473,7 +523,7 @@ static Node* hamt_remove(
           m1 = node_retain(&_empty_hamt);
         } else {
           // make a copy of m1 without entries[bi]
-          Node* m2 = node_clone(m1, bi, -1);
+          Node* m2 = node_clone(m1, bi,bi+1, bi, -1); // e.g. [1,2,3,4] => [1,2,4] where bi=2
           m2->bmap = m1->bmap & ~bitpos;
           return m2;
         }
@@ -643,6 +693,7 @@ static Str node_repr(
   Str        indent,
   u32        rindex)
 {
+  assert(n != NULL);
   assert(level <= HAMT_MAXDEPTH + 1);
 
   u32 indent_len = str_len(indent);
@@ -685,7 +736,7 @@ static Str node_repr(
           s = str_appendfmt(s, "%p", n->entries[0]);
         }
       } else {
-        s = str_appendfmt(s, "Value %p %s", n->entries[0], fmt_key(NODE_KEY(n)));
+        s = str_appendfmt(s, "Value %p %s", n, fmt_key(NODE_KEY(n)));
         if (entrepr) {
           s = str_appendc(s, ' ');
           s = entrepr(s, n->entries[0]);

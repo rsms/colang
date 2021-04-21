@@ -18,16 +18,16 @@ int msleep(u64 milliseconds) {
   return nanosleep(&rqtp, NULL);
 }
 
-int fmtduration(char* buf, int bufsize, u64 timeduration) {
+int fmtduration(char* buf, int bufsize, u64 duration_ns) {
   const char* fmt = "%.0fns";
-  double d = timeduration;
-  if (timeduration >= 1000000000) {
+  double d = duration_ns;
+  if (duration_ns >= 1000000000) {
     d /= 1000000000;
     fmt = "%.1fs";
-  } else if (timeduration >= 1000000) {
+  } else if (duration_ns >= 1000000) {
     d /= 1000000;
     fmt = "%.1fms";
-  } else if (timeduration >= 1000) {
+  } else if (duration_ns >= 1000) {
     d /= 1000;
     fmt = "%.0fus";
   }

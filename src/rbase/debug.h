@@ -26,13 +26,15 @@ ASSUME_NONNULL_BEGIN
     if (!(cond)) panic("Assertion failed: %s", #cond); \
   }while(0)
 
-  #define asserteq(a,b) ({                                      \
-    __typeof__(a) A = a;                                        \
-    __typeof__(b) B = b;                                        \
-    if (A != B)                                                 \
-      panic("Assertion failed: %s != %s (%s != %s)",            \
-            #a, #b, debug_quickfmt(0,A), debug_quickfmt(1,B));  \
+  #define assertop(a,op,b) ({                                             \
+    __typeof__(a) A = a;                                                  \
+    __typeof__(b) B = b;                                                  \
+    if (!(A op B))                                                        \
+      panic("Assertion failed: %s %s %s (%s %s %s)",                      \
+            #a, #op, #b, debug_quickfmt(0,A), #op, debug_quickfmt(1,B));  \
   })
+
+  #define asserteq(a,b) assertop(a,==,b)
 
 #else /* !defined(NDEBUG) */
   #ifndef assert

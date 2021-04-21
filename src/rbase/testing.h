@@ -20,12 +20,13 @@ ASSUME_NONNULL_BEGIN
 #endif
 #if R_UNIT_TEST_ENABLED
   #define R_UNIT_TEST(name, body) \
-  __attribute__((constructor,used)) static void unittest_##name() { \
-    if (testing_should_run(#name)) {                            \
-      printf("TEST " #name " %s\n", __FILE__);                      \
-      body                                                          \
-    }                                                               \
-    return;                                                         \
+  __attribute__((constructor,used)) static void unittest_##name() {  \
+    for (auto t = _testing_start_run(#name, __FILE__); t != 0 ;) {   \
+      body                                                           \
+      _testing_end_run(#name, t);                                    \
+      break;                                                         \
+    }                                                                \
+    return;                                                          \
   }
 #else
   #define R_UNIT_TEST(name, body)
@@ -34,6 +35,7 @@ ASSUME_NONNULL_BEGIN
 // testing_on returns true if the environment variable R_UNIT_TEST_ENV_NAME is 1
 // or a test name prefix.
 bool testing_on();
-bool testing_should_run(const char* testname);
+u64 _testing_start_run(const char* testname, const char* filename);
+void _testing_end_run(const char* testname, u64 starttime);
 
 ASSUME_NONNULL_END

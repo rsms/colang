@@ -21,14 +21,22 @@ bool testing_on() {
   return (bool)on;
 }
 
-bool testing_should_run(const char* testname) {
+u64 _testing_start_run(const char* testname, const char* filename) {
   if (!testing_on())
-    return false;
+    return 0;
   if (filter_prefix &&
       ( filter_prefix_len > strlen(testname) ||
         memcmp(filter_prefix, testname, filter_prefix_len) != 0) )
   {
-    return false;
+    return 0;
   }
-  return true;
+  fprintf(stderr, "TEST %s %s\n", testname, filename);
+  return MAX(1, nanotime());
+}
+
+void _testing_end_run(const char* testname, u64 starttime) {
+  auto timespent = nanotime() - starttime;
+  char buf[128];
+  fmtduration(buf, sizeof(buf), timespent);
+  fprintf(stderr, "TEST %s \e[1;32mOK\e[0m (%s)\n", testname, buf);
 }
