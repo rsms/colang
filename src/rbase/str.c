@@ -129,50 +129,70 @@ Str str_appendfill(Str s, u32 n, char c) {
   return &h->p[0];
 }
 
+static inline bool ishexdigit(char c) {
+  return (
+    ('0' <= c && c <= '9') ||
+    ('A' <= c && c <= 'F') ||
+    ('a' <= c && c <= 'f')
+  );
+}
+
 
 // str_appendrepr appends a human-readable representation of data to dst as C-format ASCII
 // string literals, with "special" bytes escaped (e.g. \n, \xFE, etc.)
 Str str_appendrepr(Str s, const char* data, u32 len) {
-  assert((u64)len <= ((u64)UINT32_MAX) * 5);
-  s = str_makeroom(s, len * 5);
-  char* dst = (char*)s;
-  char* dstend = &dst[str_avail(s)];
-  char* dstlinestart = dst;
-
-  for (u32 srci = 0; srci < len; srci++) {
-    if (dst == dstend)
-      break; // dst not large enough
-    if (dst - dstlinestart >= 80) {
-      *dst++ = '\n';
-      dstlinestart = dst;
+  assert((u64)len <= ((u64)UINT32_MAX) * 8);
+  u32 morelen = len * 4;
+  char* dst;
+  bool prevesc = false; // true when an escape sequence was written
+  while (1) {
+    s = str_makeroom(s, morelen);
+    dst = (char*)s + str_len(s);
+    char* dstend = &dst[str_avail(s)];
+    char* dstlinestart = dst;
+    for (u32 srci = 0; srci < len; srci++) {
       if (dst == dstend)
-        break; // dst not large enough
+        goto retry;
+      if (dst - dstlinestart >= 80) {
+        *dst++ = '\n';
+        dstlinestart = dst;
+        if (dst == dstend)
+          goto retry;
+      }
+      char c = data[srci];
+      if (c == ' ' || (c != '"' && !isspace(c) && isprint(c))) {
+        // In case we just wrote a hex escape sequence, make sure we don't write a
+        // third hex digit. This confuses compilers when the result is used as a C literal.
+        if (!prevesc || !ishexdigit(c)) {
+          *dst++ = c;
+          prevesc = false;
+          continue;
+        }
+      }
+      if (dst + 2 > dstend)
+        goto retry;
+      *dst++ = '\\';
+      // prevesc = false;
+      switch (c) {
+        case '\t': *dst++ = 't'; break;
+        case '\n': *dst++ = 'n'; break;
+        case '\r': *dst++ = 'r'; break;
+        case '"':  *dst++ = c; break;
+        default: // \xHH
+          if (dst + 3 > dstend)
+            goto retry;
+          sprintf(dst, "x%X02", c);
+          dst += 3;
+          prevesc = true;
+          break;
+      }
     }
-    char c = data[srci];
-    if (c == ' ' || (c != '"' && !isspace(c) && isprint(c))) {
-      *dst++ = c;
-      continue;
-    }
-    if (dst + 2 > dstend)
-      break; // dst not large enough
-    *dst++ = '\\';
-    switch (c) {
-      case '\t': *dst++ = 't'; break;
-      case '\n': *dst++ = 'n'; break;
-      case '\r': *dst++ = 'r'; break;
-      case ' ':  *dst++ = 's'; break;
-      case '"':  *dst++ = c; break;
-      default: // \xHH
-        if (dst + 3 > dstend)
-          goto end; // dst not large enough
-        sprintf(dst, "x%X02", c);
-        dst += 3;
-        break;
-    }
+    break;
+retry:
+    // dst not large enough
+    morelen *= 2;
   }
- end:
-  *dst = 0;
-  // return (ssize_t)dsti;
+  str_setlen(s, (u32)(dst - s));
   return s;
 }
 

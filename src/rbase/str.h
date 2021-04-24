@@ -2,6 +2,7 @@
 ASSUME_NONNULL_BEGIN
 
 typedef char* Str;
+typedef const char* ConstStr;
 
 // creating new strings
 Str        str_new(u32 cap);
@@ -12,13 +13,13 @@ Str        str_cpyn(const char* p, u32 len);
 static Str str_cpycstr(const char* cstr);
 
 // properties of a string
-static u32  str_len(const Str s);
-static u32  str_cap(const Str s); // does not include terminating \0
-static u32  str_avail(const Str s);
+static u32  str_len(ConstStr s);
+static u32  str_cap(ConstStr s); // does not include terminating \0
+static u32  str_avail(ConstStr s);
 static Str  str_setlen(Str s, u32 len); // returns s as a convenience
 
 // appending to a string
-static Str str_append(Str s, Str suffix);
+static Str str_append(Str s, ConstStr suffix);
 Str        str_appendn(Str s, const char* p, u32 len);
 static Str str_appendcstr(Str s, const char* cstr);
 Str        str_appendc(Str s, char c);
@@ -71,9 +72,9 @@ struct __attribute__ ((__packed__)) StrHeader {
 
 #define STR_HEADER(s) ((struct StrHeader*)( ((char*)s) - sizeof(struct StrHeader) ))
 
-inline static u32 str_len(Str s) { return STR_HEADER(s)->len; }
-inline static u32 str_cap(Str s) { return STR_HEADER(s)->cap; }
-inline static u32 str_avail(Str s) { return str_cap(s) - str_len(s); }
+inline static u32 str_len(ConstStr s) { return STR_HEADER(s)->len; }
+inline static u32 str_cap(ConstStr s) { return STR_HEADER(s)->cap; }
+inline static u32 str_avail(ConstStr s) { return str_cap(s) - str_len(s); }
 inline static Str str_setlen(Str s, u32 len) {
   assert(len <= str_cap(s));
   STR_HEADER(s)->len = len;
@@ -84,7 +85,7 @@ inline static Str str_setlen(Str s, u32 len) {
 inline static Str str_cpy(Str s) { return str_cpyn(s, str_len(s)); }
 inline static Str str_cpycstr(const char* cstr) { return str_cpyn(cstr, strlen(cstr)); }
 
-inline static Str str_append(Str s, Str suffix) {
+inline static Str str_append(Str s, ConstStr suffix) {
   return str_appendn(s, suffix, str_len(suffix));
 }
 inline static Str str_appendcstr(Str s, const char* cstr) {
@@ -98,25 +99,5 @@ inline static const char* str_splitcstr(StrSlice* sl, char delim, const char* cs
   return str_splitn(sl, delim, cstr, strlen(cstr));
 }
 
-
-// inline static char* str_reserve(Str** s, u32 space) {
-//   // TODO FIXME
-//   return &s->p[s->len];
-// }
-
-// inline static Str* str_printf(Str* s, const char* fmt, ...) {
-//   int vsnprintf(char * restrict str, size_t size, const char * restrict format, va_list ap);
-// }
-
-// static const Str StrEmpty = {{1},0};
-
-// Str* StrNewLen(Mem mem, const void* data, size_t z);
-
-// static const char* CStr(Str* s);
-// static size_t StrLen(Str* s);
-
-
-// static inline const char* CStr(Str* s) { return s->p; }
-// static inline size_t StrLen(Str* s) { return s->len; }
 
 ASSUME_NONNULL_END

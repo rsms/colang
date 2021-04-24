@@ -4,6 +4,7 @@
 //
 // Entries must inherit PoolEntry or begin with POOL_ENTRY_HEAD
 //
+ASSUME_NONNULL_BEGIN
 
 #define POOL_ENTRY_HEAD \
   _Atomic(void*) PoolNext; // initialize to NULL
@@ -31,3 +32,5 @@ PoolEntry* nullable PoolTake(Pool* fl);
 // PoolHead is useful for traversing the list when there's no contention
 // (e.g. to destroy remaining nodes)
 PoolEntry* PoolHead(const Pool* fl);
+
+ASSUME_NONNULL_END

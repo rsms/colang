@@ -21,10 +21,10 @@ ASSUME_NONNULL_BEGIN
 #if R_UNIT_TEST_ENABLED
   #define R_UNIT_TEST(name, body) \
   __attribute__((constructor,used)) static void unittest_##name() {  \
-    for (auto t = _testing_start_run(#name, __FILE__); t != 0 ;) {   \
+    Testing t = { #name, __FILE__ };                                 \
+    if (_testing_start_run(&t)) {                                    \
       body                                                           \
-      _testing_end_run(#name, t);                                    \
-      break;                                                         \
+      _testing_end_run(&t);                                          \
     }                                                                \
     return;                                                          \
   }
@@ -32,10 +32,18 @@ ASSUME_NONNULL_BEGIN
   #define R_UNIT_TEST(name, body)
 #endif
 
+typedef struct Testing {
+  const char* name;
+  const char* file;
+  u64         startat;
+  long        fpos;
+  bool        isatty;
+} Testing;
+
 // testing_on returns true if the environment variable R_UNIT_TEST_ENV_NAME is 1
 // or a test name prefix.
 bool testing_on();
-u64 _testing_start_run(const char* testname, const char* filename);
-void _testing_end_run(const char* testname, u64 starttime);
+bool _testing_start_run(Testing* t);
+void _testing_end_run(Testing* t);
 
 ASSUME_NONNULL_END

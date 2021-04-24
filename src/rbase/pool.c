@@ -68,14 +68,14 @@ static int test_thread(void* arg) {
   for (u32 i = 0; i < t->entriesc; i++) {
     t->entriesv[i] = (TestEntry*)PoolTake(t->fl);
   }
-  msleep(rand() % 10);
-  // thrd_yield();
+  // msleep(rand() % 10);
+  thrd_yield();
   for (u32 i = 0; i < t->entriesc; i++) {
     if (t->entriesv[i] != NULL)
       PoolAdd(t->fl, (PoolEntry*)t->entriesv[i]);
   }
-  // thrd_yield();
-  msleep((rand() % 10) + 1);
+  thrd_yield();
+  // msleep((rand() % 10) + 1);
   u32 entriesc = 0;
   for (u32 i = 0; i < t->entriesc; i++) {
     auto e = (TestEntry*)PoolTake(t->fl);

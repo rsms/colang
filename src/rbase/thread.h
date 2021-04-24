@@ -70,45 +70,31 @@
 // void   call_once(once_flag *flag, void (*func)(void));
 //
 
-// rwmtx_t is a read-write mutex modelled on top of mtx_t
-//
-// NOTE: The implementation is not complete;
-// currently this behaves the same as mtx_t
-//
+// rwmtx_t is a read-write mutex.
+// There can be many concurrent readers but only one writer.
+// While no write lock is held, up to 16777214 read locks may be held.
+// While a write lock is held no read locks or other write locks can be held.
 typedef struct rwmtx_t {
-  mtx_t      m;
-  // atomic_u32 r; // read locks
+  mtx_t      w; // writer lock
+  atomic_u32 r; // reader count
 } rwmtx_t;
-static int  rwmtx_init(rwmtx_t* m, int type);
+static int  rwmtx_init(rwmtx_t* m, int wtype);
 static void rwmtx_destroy(rwmtx_t* m);
-static int  rwmtx_rlock(rwmtx_t* m); // read-only lock
-static int  rwmtx_runlock(rwmtx_t* m); // read-only unlock
-static int  rwmtx_lock(rwmtx_t* m); // read-write lock
-static int  rwmtx_unlock(rwmtx_t* m); // read-write unlock
+int rwmtx_rlock(rwmtx_t* m);     // acquire read-only lock (blocks until acquired)
+int rwmtx_tryrlock(rwmtx_t* m);  // attempt to acquire read-only lock (non-blocking)
+int rwmtx_runlock(rwmtx_t* m);   // release read-only lock
+int rwmtx_lock(rwmtx_t* m);      // acquire read+write lock (blocks until acquired)
+int rwmtx_trylock(rwmtx_t* m);   // attempt to acquire read+write lock (non-blocking)
+int rwmtx_unlock(rwmtx_t* m);    // release read+write lock
 
-// --------------------------------------
+// ----------------------------------------------------------------------------
+//  inline implementations
 
-typedef enum ThreadStatus {
-  ThreadSuccess  = thrd_success,
-  ThreadNomem    = thrd_nomem,
-  ThreadTimedout = thrd_timedout,
-  ThreadBusy     = thrd_busy,
-  ThreadError    = thrd_error,
-} ThreadStatus;
-
-typedef thrd_t Thread;
-
-ThreadStatus         ThreadStart(Thread* nonull t, thrd_start_t nonull fn, void* nullable arg);
-Thread THRD_NULLABLE ThreadSpawn(thrd_start_t nonull fn, void* nullable arg); // null on error
-int                  ThreadAwait(Thread t);
-
-static inline int rwmtx_init(rwmtx_t* m, int type) {
-  // AtomicStore(&m->r, 0);
-  return mtx_init(&m->m, type);
+static inline int rwmtx_init(rwmtx_t* m, int wtype) {
+  assert(wtype != mtx_timed /* not supported */);
+  AtomicStore(&m->r, 0);
+  return mtx_init(&m->w, wtype);
 }
-static inline void rwmtx_destroy(rwmtx_t* m) { mtx_destroy(&m->m); }
-static inline int rwmtx_rlock(rwmtx_t* m) { return mtx_lock(&m->m); }
-static inline int rwmtx_runlock(rwmtx_t* m) { return mtx_unlock(&m->m); }
-static inline int rwmtx_lock(rwmtx_t* m) { return mtx_lock(&m->m); }
-static inline int rwmtx_unlock(rwmtx_t* m) { return mtx_unlock(&m->m); }
+static inline void rwmtx_destroy(rwmtx_t* m) { mtx_destroy(&m->w); }
+
 

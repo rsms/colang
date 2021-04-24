@@ -1,8 +1,7 @@
 #pragma once
 //
 // This implements an immutable persistent Hash Array Mapped Trie (HAMT) data structure.
-// It's inspired by Clojure's data structures and is efficient in time and space.
-// The implementation makes use of free lists (pool.h) to minimize memory thrash.
+// It's inspired by Clojure's data structures and is efficient in both time and space.
 //
 ASSUME_NONNULL_BEGIN
 

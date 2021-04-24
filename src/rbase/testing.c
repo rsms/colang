@@ -1,8 +1,16 @@
 #include "rbase.h"
+#include <unistd.h>  // for isatty()
 
 static int on = -1;
 static const char* filter_prefix = NULL;
 static size_t filter_prefix_len = 0;
+
+// typedef struct Testing {
+//   const char* testname;
+//   const char* filename;
+//   u64         starttime;
+//   long        fpos;
+// } Testing;
 
 bool testing_on() {
   if (on == -1) {
@@ -21,22 +29,44 @@ bool testing_on() {
   return (bool)on;
 }
 
-u64 _testing_start_run(const char* testname, const char* filename) {
+bool _testing_start_run(Testing* t) {
   if (!testing_on())
-    return 0;
+    return false;
   if (filter_prefix &&
-      ( filter_prefix_len > strlen(testname) ||
-        memcmp(filter_prefix, testname, filter_prefix_len) != 0) )
+      ( filter_prefix_len > strlen(t->name) ||
+        memcmp(filter_prefix, t->name, filter_prefix_len) != 0) )
   {
-    return 0;
+    return false;
   }
-  fprintf(stderr, "TEST %s %s\n", testname, filename);
-  return MAX(1, nanotime());
+  t->isatty = isatty(2);
+  fprintf(stderr, "TEST   %s %s ...\n", t->name, t->file);
+  if (t->isatty)
+    t->fpos = ftell(stderr);
+  t->startat = nanotime();
+  return true;
 }
 
-void _testing_end_run(const char* testname, u64 starttime) {
-  auto timespent = nanotime() - starttime;
-  char buf[128];
-  fmtduration(buf, sizeof(buf), timespent);
-  fprintf(stderr, "TEST %s \e[1;32mOK\e[0m (%s)\n", testname, buf);
+void _testing_end_run(Testing* t) {
+  auto timespent = nanotime() - t->startat;
+  char durbuf[128];
+  fmtduration(durbuf, sizeof(durbuf), timespent);
+
+  if (t->isatty) {
+    long fpos = ftell(stderr);
+    if (fpos == t->fpos) {
+      // nothing has been printed since _testing_start_run; clear line
+      // \33[A    = move to previous line
+      // \33[2K\r = clear line
+      fprintf(stderr, "\33[A\33[2K\r");
+    }
+  }
+
+  const char* greenstyle = "";
+  const char* nostyle = "";
+  if (t->isatty) {
+    greenstyle = "\e[1;32m";
+    nostyle = "\e[0m";
+  }
+
+  fprintf(stderr, "TEST ✓ %s%s%s %s (%s)\n", greenstyle, t->name, nostyle, t->file, durbuf);
 }
