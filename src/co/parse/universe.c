@@ -152,7 +152,7 @@ static SymRBNode n_continue = { sym_continue, false, &n_nil, &n_uint };
 static SymRBNode n_in = { sym_in, false, &n_type, &n_continue };
 static SymRBNode n_as = { sym_as, false, &n_case, &n_in };
 
-const SymPool universe_syms = { .root = &n_as };
+static SymRBNode* _symroot = &n_as;
 
 Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
   (Node*)&_Type_bool,    // TypeCode_bool
@@ -184,17 +184,22 @@ static const char* const debugSymCheck =
 
 //-- END gen_constants() at src/co/parse/universe.c:518
 
-
+const SymPool* universe_syms() {
+  static SymPool p = {};
+  if (p.root == NULL)
+    sympool_init(&p, NULL, NULL, _symroot);
+  return &p;
+}
 
 
 // ---------------------------------------------------------------------------------------
 // test
 
-// R_UNIT_TEST(universe, {
-//   auto s = sympool_repr(&universe_syms, str_new(0));
+// R_UNIT_TEST(universe) {
+//   auto s = sympool_repr(&_universe_syms, str_new(0));
 //   dlog("%s", s);
 //   str_free(s);
-// })
+// }
 
 
 // ---------------------------------------------------------------------------------------
@@ -451,7 +456,7 @@ __attribute__((constructor,used)) static void gen_constants() {
 
   printf("\n%s\n", fmt_nodes(root, str_new(0)));
 
-  printf("const SymPool universe_syms = { .root = &n_%s };\n", root->key);
+  printf("static SymRBNode* _symroot = &n_%s;\n", root->key);
 
 
   // ---------------------------------------------------------------------------------------------

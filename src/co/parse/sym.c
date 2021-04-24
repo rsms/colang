@@ -40,7 +40,7 @@ static int RBCmp(Sym a, Sym b, Mem mem) {
 }
 
 
-void sympool_init(SymPool* p, SymPool* base, Mem mem, SymRBNode* root) {
+void sympool_init(SymPool* p, const SymPool* base, Mem mem, SymRBNode* root) {
   p->root = root;
   p->base = base;
   p->mem = mem;
@@ -120,11 +120,11 @@ Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
 
 
 Sym symgeth(SymPool* p, const char* data, size_t len, u32 hash) {
-  SymPool* rp = p;
+  const SymPool* rp = p;
   while (rp) {
-    rwmtx_rlock(&rp->mu);
+    rwmtx_rlock((rwmtx_t*)&rp->mu);
     auto s = symlookup((RBNode*)rp->root, data, len, hash);
-    rwmtx_runlock(&rp->mu);
+    rwmtx_runlock((rwmtx_t*)&rp->mu);
     if (s)
       return s;
     // look in base pool
@@ -198,7 +198,7 @@ Str sympool_repr(const SymPool* p, Str s) {
 // ----------------------------------------------------------------------------
 // unit tests
 
-R_UNIT_TEST(sym, {
+R_UNIT_TEST(sym) {
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
 
@@ -232,13 +232,13 @@ R_UNIT_TEST(sym, {
   str_free(s);
 
   sympool_dispose(&syms);
-})
+}
 
 // inline static Str rbkeyfmt(Str s, RBKEY k) {
 //   return str_appendfmt(s, "Sym(\"%s\" %x)", k, symhash(k));
 // }
 
-R_UNIT_TEST(sym_base_pool, {;
+R_UNIT_TEST(sym_base_pool) {
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;
@@ -271,4 +271,4 @@ R_UNIT_TEST(sym_base_pool, {;
   sympool_dispose(&syms1);
   sympool_dispose(&syms2);
   sympool_dispose(&syms3);
-})
+}

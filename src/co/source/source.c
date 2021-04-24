@@ -5,20 +5,22 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-bool SourceOpen(Pkg* pkg, Source* src, const char* filename) {
+static void SourceInit(Pkg* pkg, Source* src, const char* filename) {
   memset(src, 0, sizeof(Source));
-
   auto namelen = strlen(filename);
   if (namelen == 0)
     panic("empty filename");
-
   if (!strchr(filename, PATH_SEPARATOR)) { // foo.c -> pkgdir/foo.c
     src->filename = path_join(pkg->dir, filename);
   } else {
     src->filename = str_cpyn(filename, namelen+1);
   }
-
   src->pkg = pkg;
+}
+
+bool SourceOpen(Pkg* pkg, Source* src, const char* filename) {
+  SourceInit(pkg, src, filename);
+
   src->fd = open(src->filename, O_RDONLY);
   if (src->fd < 0)
     return false;
@@ -33,6 +35,13 @@ bool SourceOpen(Pkg* pkg, Source* src, const char* filename) {
   src->len = (size_t)st.st_size;
 
   return true;
+}
+
+void SourceInitMem(Pkg* pkg, Source* src, const char* filename, const char* text, size_t len) {
+  SourceInit(pkg, src, filename);
+  src->fd = -1;
+  src->body = (const u8*)text;
+  src->len = len;
 }
 
 bool SourceOpenBody(Source* src) {
@@ -59,8 +68,10 @@ bool SourceCloseBody(Source* src) {
 
 bool SourceClose(Source* src) {
   auto ok = SourceCloseBody(src);
-  ok = close(src->fd) != 0 && ok;
-  src->fd = -1;
+  if (src->fd > -1) {
+    ok = close(src->fd) != 0 && ok;
+    src->fd = -1;
+  }
   return ok;
 }
 
@@ -146,18 +157,6 @@ LineCol SrcPosLineCol(SrcPos pos) {
 }
 
 
-Str SrcPosFmt(SrcPos pos) {
-  const char* filename = "<input>";
-  size_t filenameLen = strlen("<input>");
-  if (pos.src) {
-    filename = pos.src->filename;
-    filenameLen = strlen(filename);
-  }
-  auto l = SrcPosLineCol(pos);
-  return str_fmt("%s:%u:%u", filename, l.line + 1, l.col + 1);
-}
-
-
 static const u8* lineContents(Source* s, u32 line, u32* out_len) {
   if (!s->lineoffs)
     computeLineOffsets(s);
@@ -178,23 +177,19 @@ static const u8* lineContents(Source* s, u32 line, u32* out_len) {
 }
 
 
-Str SrcPosMsg(SrcPos pos, const char* message) {
-  auto l = SrcPosLineCol(pos);
-
+Str SrcPosFmtv(SrcPos pos, Str s, const char* fmt, va_list ap) {
   TStyleTable style = TStyle16;
 
-  Str s = str_fmt("%s%s:%u:%u: %s%s\n",
-    style[TStyle_bold],
-    pos.src ? pos.src->filename : "<input>",
-    l.line + 1,
-    l.col + 1,
-    message ? message : "",
-    style[TStyle_none]
-  );
+  s = str_appendcstr(s, style[TStyle_bold]);
+  s = SrcPosStr(pos, s);
+  s = str_appendcstr(s, ": ");
+  s = str_appendvfmt(s, fmt, ap);
+  s = str_appendcstr(s, style[TStyle_none]);
 
   // include line contents
   if (pos.src) {
     u32 linelen;
+    auto l = SrcPosLineCol(pos);
     auto lineptr = lineContents(pos.src, l.line, &linelen);
     if (lineptr)
       s = str_appendn(s, (const char*)lineptr, linelen);
@@ -213,3 +208,62 @@ Str SrcPosMsg(SrcPos pos, const char* message) {
 
   return s;
 }
+
+
+Str SrcPosFmt(SrcPos pos, Str s, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  s = SrcPosFmtv(pos, s, fmt, ap);
+  va_end(ap);
+  return s;
+}
+
+
+Str SrcPosStr(SrcPos pos, Str s) {
+  const char* filename = "<input>";
+  size_t filenameLen = strlen("<input>");
+  if (pos.src) {
+    filename = pos.src->filename;
+    filenameLen = strlen(filename);
+  }
+  auto l = SrcPosLineCol(pos);
+  return str_appendfmt(s, "%s:%u:%u", filename, l.line + 1, l.col + 1);
+}
+
+
+// Str SrcPosMsg(SrcPos pos, const char* message) {
+//   auto l = SrcPosLineCol(pos);
+
+//   TStyleTable style = TStyle16;
+
+//   Str s = str_fmt("%s%s:%u:%u: %s%s\n",
+//     style[TStyle_bold],
+//     pos.src ? pos.src->filename : "<input>",
+//     l.line + 1,
+//     l.col + 1,
+//     message ? message : "",
+//     style[TStyle_none]
+//   );
+
+//   // include line contents
+//   if (pos.src) {
+//     u32 linelen;
+//     auto lineptr = lineContents(pos.src, l.line, &linelen);
+//     if (lineptr)
+//       s = str_appendn(s, (const char*)lineptr, linelen);
+//     s = str_appendc(s, '\n');
+
+//     // draw a squiggle (or caret when span is unknown) decorating the interesting range
+//     if (l.col > 0)
+//       s = str_appendfill(s, str_len(s) + l.col, ' '); // indentation
+//     if (pos.span > 0) {
+//       s = str_appendfill(s, str_len(s) + pos.span + 1, '~'); // squiggle
+//       s[str_len(s) - 1] = '\n';
+//     } else {
+//       s = str_appendcstr(s, "^\n");
+//     }
+//   }
+
+//   return s;
+// }
+

@@ -67,7 +67,7 @@ typedef struct Scope {
 } Scope;
 
 typedef struct Node Node;
-Scope* ScopeNew(const Scope* parent, Mem nullable mem);
+Scope* ScopeNew(const Scope* nullable parent, Mem nullable mem);
 void ScopeFree(Scope*, Mem nullable mem);
 const Node* ScopeAssoc(Scope*, Sym, const Node* value); // Returns replaced value or NULL
 const Node* ScopeLookup(const Scope*, Sym);

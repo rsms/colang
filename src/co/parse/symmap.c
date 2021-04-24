@@ -21,7 +21,7 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
   (*n)++;
 }
 
-R_UNIT_TEST(SymMap, {;
+R_UNIT_TEST(SymMap) {
   auto m = SymMapNew(64, NULL);
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
@@ -228,6 +228,6 @@ R_UNIT_TEST(SymMap, {;
   assert(SymMapGet(m, SYM("int"))         == 0);
 
   SymMapFree(m);
-})
+}
 
 #endif /* R_UNIT_TEST_ENABLED */

@@ -1,17 +1,20 @@
 #include <rbase/rbase.h>
 #include "source.h"
 
-bool PkgAddSource(Pkg* pkg, const char* filename) {
+void PkgAddSource(Pkg* pkg, Source* src) {
+  if (pkg->srclist)
+    src->next = pkg->srclist;
+  pkg->srclist = src;
+}
+
+bool PkgAddFileSource(Pkg* pkg, const char* filename) {
   auto src = memalloct(pkg->mem, Source);
   if (!SourceOpen(pkg, src, filename)) {
     memfree(pkg->mem, src);
     errlog("failed to open %s", filename);
     return false;
   }
-  // add source to package's list of source files
-  if (pkg->srclist)
-    src->next = pkg->srclist;
-  pkg->srclist = src;
+  PkgAddSource(pkg, src);
   return true;
 }
 
@@ -30,7 +33,7 @@ bool PkgScanSources(Pkg* pkg) {
       case DT_LNK:
       case DT_UNKNOWN:
         if (e.d_namlen > 3 && e.d_name[0] != '.' && strcmp(&e.d_name[e.d_namlen-2], ".c") == 0)
-          ok = PkgAddSource(pkg, e.d_name) && ok;
+          ok = PkgAddFileSource(pkg, e.d_name) && ok;
         break;
       default:
         break;

@@ -60,10 +60,10 @@ typedef struct Node Node;
   _( TAndAnd        , "&&")  \
   _( TPipePipe      , "||")  \
   _( TRArr          , "->")  \
-  _( TIdent         , "identifier") \
-  _( TIntLit        , "int")        \
-  _( TFloatLit      , "float")      \
-  _( TComment       , "comment")    \
+  _( TIdent         , "ident")   \
+  _( TIntLit        , "int")     \
+  _( TFloatLit      , "float")   \
+  _( TComment       , "comment") \
 /*END TOKENS*/
 #define TOKEN_KEYWORDS(_) \
   _( as,          TAs)          \
@@ -115,12 +115,13 @@ typedef enum {
 // for "not a keyword", leaving the max number of values at 31 (i.e. 2^5=32-1).
 static_assert(TKeywordsEnd - TKeywordsStart <= 32, "too many keywords");
 
-// TokName returns a printable name for a token
+// TokName returns a printable name for a token (second part in TOKENS definition)
 const char* TokName(Tok);
 
 
 // ErrorHandler callback type
-typedef void(ErrorHandler)(const Source*, SrcPos, const Str msg, void* userdata);
+// msg is a preformatted error message and is only valid until this function returns
+typedef void(ErrorHandler)(const Source* src, SrcPos pos, const Str msg, void* userdata);
 
 // ParseFlags are flags for parser and scanner
 typedef enum {
@@ -139,7 +140,7 @@ typedef struct Comment {
 
 // Scanner reads source code and produces tokens
 typedef struct Scanner {
-  Mem        mem;
+  Mem        mem;          // memory to use for allocations
   Source*    src;          // input source
   SymPool*   syms;         // symbol pool
   const u8*  inp;          // input buffer current pointer
@@ -147,32 +148,62 @@ typedef struct Scanner {
   const u8*  inend;        // input buffer end
   ParseFlags flags;
 
-  Tok       tok;           // current token
-  const u8* tokstart;      // start of current token
-  const u8* tokend;        // end of current token
-  Sym       name;          // Current name (valid for TIdent and keywords)
+  Tok        tok;           // current token
+  const u8*  tokstart;      // start of current token
+  const u8*  tokend;        // end of current token
+  Sym        name;          // Current name (valid for TIdent and keywords)
 
-  bool      insertSemi;    // insert a semicolon before next newline
+  bool       insertSemi;    // insert a semicolon before next newline
 
-  Comment*  comments;      // linked list head of comments scanned so far
-  Comment*  comments_tail; // linked list tail of comments scanned so far
+  Comment*   comments;      // linked list head of comments scanned so far
+  Comment*   comments_tail; // linked list tail of comments scanned so far
 
-  u32       lineno;     // source position line
-  const u8* linestart;  // source position line start pointer (for column)
+  u32        lineno;        // source position line
+  const u8*  linestart;     // source position line start pointer (for column)
 
-  ErrorHandler* errh;
-  void*         userdata;
+  ErrorHandler* errh;       // error handler
+  void*         userdata;   // custom user data to pass to error handler
 } Scanner;
 
-// ScannerInit initializes a scanner. Returns false on failure.
-bool ScannerInit(Scanner*, Mem nullable mem, Source*, ParseFlags, ErrorHandler*, void* userdata);
+// ScannerInit initializes a scanner. Returns false if SourceOpenBody fails.
+bool ScannerInit(
+  Scanner*               scanner,
+  Mem nullable           mem,
+  SymPool*               syms,
+  ErrorHandler* nullable errh,
+  Source*                src,
+  ParseFlags             flags,
+  void*                  userdata);
 
 // ScannerNext scans the next token
 Tok ScannerNext(Scanner*);
 
 // ScannerSrcPos returns the source position of s->tok (current token)
-SrcPos ScannerSrcPos(Scanner* s);
+static SrcPos ScannerSrcPos(const Scanner* s);
 
+// ScannerTokStr returns a token's string value and length, which is a pointer
+// into the source's body.
+static const u8* ScannerTokStr(const Scanner* s, size_t* len_out);
+
+
+// ---------------------------------------------------------------------------------
+// implementations
+
+inline static const u8* ScannerTokStr(const Scanner* s, size_t* len_out) {
+  *len_out = (size_t)(s->tokend - s->tokstart);
+  return s->tokstart;
+}
+
+// ScannerSrcPos returns the source position of s->tok (current token)
+inline static SrcPos ScannerSrcPos(const Scanner* s) {
+  // assert(s->tokstart >= s->src->body);
+  // assert(s->tokstart < (s->src->body + s->src->len));
+  // assert(s->tokend >= s->tokstart);
+  // assert(s->tokend <= (s->src->body + s->src->len));
+  size_t offs = (size_t)(s->tokstart - s->src->body);
+  size_t len = (size_t)(s->tokend - s->tokstart);
+  return (SrcPos){ s->src, offs, len };
+}
 
 ASSUME_NONNULL_END
 

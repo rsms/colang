@@ -7,10 +7,10 @@
 typedef const char* Sym;
 
 // SYM_FLAGS_MAX defines the largest possible flags value
-#define SYM_FLAGS_MAX 15
+#define SYM_FLAGS_MAX 31
 
 // SYM_LEN_MAX defines the largest possible length of a symbol
-#define SYM_LEN_MAX 0xfffffff /* 268 435 455 (28 bits) */
+#define SYM_LEN_MAX 0x7ffffff /* 134 217 727 (27 bits) */
 
 // SymRBNode is a red-black tree node
 typedef struct SymRBNode {
@@ -23,10 +23,10 @@ typedef struct SymRBNode {
 // SymPool holds a set of syms unique to the pool
 typedef struct SymPool SymPool;
 typedef struct SymPool {
-  SymRBNode*        root;
-  SymPool* nullable base;
-  Mem nullable      mem;
-  rwmtx_t           mu;
+  SymRBNode*              root;
+  const SymPool* nullable base;
+  Mem nullable            mem;
+  rwmtx_t                 mu;
 } SymPool;
 
 // sympool_init initialized a SymPool
@@ -34,7 +34,8 @@ typedef struct SymPool {
 //   when a symbol is not found in the pool.
 // mem is the memory to use for SymRBNodes.
 // root may be a preallocated red-black tree. Be mindful of interactions with sympool_dispose.
-void sympool_init(SymPool* p, SymPool* nullable base, Mem nullable mem, SymRBNode* nullable root);
+void sympool_init(
+  SymPool* p, const SymPool* nullable base, Mem nullable mem, SymRBNode* nullable root);
 
 // sympool_dispose frees up memory used by p (but does not free p itself)
 // When a SymPool has been disposed, all symbols in it becomes invalid.
@@ -101,7 +102,7 @@ typedef struct __attribute__((__packed__)) SymHeader {
 #if defined(__ARMEB__) || defined(__ppc__) || defined(__powerpc__)
 #error "big-endian arch not supported"
 #endif
-#define _SYM_FLAG_BITS 4
+#define _SYM_FLAG_BITS 5
 #define _SYM_FLAG_MASK ((1 << _SYM_FLAG_BITS) - 1)    /* e.g. 0b11110000...0000 */
 #define _SYM_LEN_MASK  (0xffffffff >> _SYM_FLAG_BITS) /* e.g. 0b00001111...1111 */
 
@@ -129,6 +130,7 @@ inline static u8 symflags(Sym s) {
 // sym_dangerously_set_flags mutates a Sym by setting its flags.
 // Use with caution as Syms are assumed to be constant and immutable.
 inline static Sym sym_dangerously_set_flags(Sym s, u8 flags) {
+  assert(flags <= SYM_FLAGS_MAX);
   u32 u = str_len((Str)s);
   u = (u32)((flags << (32 - _SYM_FLAG_BITS)) & _SYM_FLAG_MASK) | (u & _SYM_LEN_MASK);
   return (Sym)str_setlen((Str)s, u);

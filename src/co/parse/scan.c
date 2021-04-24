@@ -1,7 +1,7 @@
 #include <rbase/rbase.h>
 #include "parse.h"
 
-// Enable to print "D >> TOKEN VALUE at SOURCELOC" on each call to SNext
+// Enable to dlog ">> TOKEN VALUE at SOURCELOC" on each call to SNext
 // #define SCANNER_DEBUG_TOKEN_PRODUCTION
 
 
@@ -13,47 +13,48 @@
 //
 static u8 charflags[256] = {
         /* 0 1 2 3 4 5 6 7 8 9 A B C D E F */
-        // <CTRL> ...    9=TAB, A=LF, D=CR
+//         <CTRL> ...    9=TAB, A=LF, D=CR
 /* 0x00 */ 0,0,0,0,0,0,0,0,0,2,2,0,0,2,0,0,
-        // <CTRL> ...
+//         <CTRL> ...
 /* 0x10 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        //   ! " # $ % & ' ( ) * + , - . /
+//           ! " # $ % & ' ( ) * + , - . /
 /* 0x20 */ 2,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0,
-        // 0 1 2 3 4 5 6 7 8 9 : ; < = > ?
+//         0 1 2 3 4 5 6 7 8 9 : ; < = > ?
 /* 0x30 */ 1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
-        // @ A B C D E F G H I J K L M N O
+//         @ A B C D E F G H I J K L M N O
 /* 0x40 */ 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-        // P Q R S T U V W X Y Z [ \ ] ^ _
+//         P Q R S T U V W X Y Z [ \ ] ^ _
 /* 0x50 */ 1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,1,
-        // ` a b c d e f g h i j k l m n o
+//         ` a b c d e f g h i j k l m n o
 /* 0x60 */ 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,
-        // p q r s t u v w x y z { | } ~ <DEL>
+//         p q r s t u v w x y z { | } ~ <DEL>
 /* 0x70 */ 1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,
-        // <CTRL> ...
+//         <CTRL> ...
 /* 0x80 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // <CTRL> ...
+//         <CTRL> ...
 /* 0x90 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-   // <NBSP> ¡ ¢ £ ¤ ¥ ¦ § ¨ © ª « ¬ <SOFTHYPEN> ® ¯
+//    <NBSP> ¡ ¢ £ ¤ ¥ ¦ § ¨ © ª « ¬ <SOFTHYPEN> ® ¯
 /* 0xA0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // ° ± ² ³ ´ µ ¶ · ¸ ¹ º » ¼ ½ ¾ ¿
+//         ° ± ² ³ ´ µ ¶ · ¸ ¹ º » ¼ ½ ¾ ¿
 /* 0xB0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // À Á Â Ã Ä Å Æ Ç È É Ê Ë Ì Í Î Ï
+//         À Á Â Ã Ä Å Æ Ç È É Ê Ë Ì Í Î Ï
 /* 0xC0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // Ð Ñ Ò Ó Ô Õ Ö × Ø Ù Ú Û Ü Ý Þ ß
+//         Ð Ñ Ò Ó Ô Õ Ö × Ø Ù Ú Û Ü Ý Þ ß
 /* 0xD0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // à á â ã ä å æ ç è é ê ë ì í î ï
+//         à á â ã ä å æ ç è é ê ë ì í î ï
 /* 0xE0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-        // ð ñ ò ó ô õ ö ÷ ø ù ú û ü ý þ ÿ
+//         ð ñ ò ó ô õ ö ÷ ø ù ú û ü ý þ ÿ
 /* 0xF0 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 };
 
 
 bool ScannerInit(
   Scanner*      s,
-  Mem           mem,
+  Mem nullable  mem,
+  SymPool*      syms,
+  ErrorHandler* errh,
   Source*       src,
   ParseFlags    flags,
-  ErrorHandler* errh,
   void*         userdata)
 {
   memset(s, 0, sizeof(Scanner));
@@ -63,6 +64,7 @@ bool ScannerInit(
 
   s->mem   = mem;
   s->src   = src;
+  s->syms  = syms;
   s->inp   = src->body;
   s->inp0  = src->body;
   s->inend = src->body + src->len;
@@ -81,28 +83,17 @@ bool ScannerInit(
   return true;
 }
 
-// ScannerSrcPos returns the source position of s->tok (current token)
-SrcPos ScannerSrcPos(Scanner* s) {
-  assert(s->tokstart >= s->src->body);
-  assert(s->tokstart < (s->src->body + s->src->len));
-  assert(s->tokend >= s->tokstart);
-  assert(s->tokend <= (s->src->body + s->src->len));
-  size_t offs = s->tokstart - s->src->body;
-  SrcPos p = { s->src, offs, s->tokend - s->tokstart };
-  return p;
-}
 
-
+// serr is called when an error occurs. It invokes s->errh
 static void serr(Scanner* s, const char* format, ...) {
   auto pos = ScannerSrcPos(s);
-  auto msg = SrcPosFmt(pos);
-  msg = str_appendcstr(msg, ": ");
 
   va_list ap;
   va_start(ap, format);
-  msg = str_appendvfmt(msg, format, ap);
+  auto msg = SrcPosFmtv(pos, str_new(64), format, ap);
   va_end(ap);
 
+  // either pass to error handler or print to stderr as a fallback
   if (s->errh) {
     s->errh(s->src, pos, msg, s->userdata);
   } else {
@@ -234,7 +225,11 @@ Tok ScannerNext(Scanner* s) {
         s->tokend = s->tokstart;
         s->inp++;
         #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
-          dlog(">> %s\t\tat %s", TokName(TSemi), SrcPosFmt(sdsempty(), ScannerSrcPos(s)));
+        {
+          auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
+          dlog(">> %-7s\tat %s", TokName(TSemi), posstr);
+          str_free(posstr);
+        }
         #endif
         return s->tok = TSemi;
       }
@@ -406,11 +401,13 @@ Tok ScannerNext(Scanner* s) {
 
 
   #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
-  dlog(">> %s \"%.*s\"\tat %s",
-    TokName(s->tok),
-    (int)(s->tokend - s->tokstart),
-    s->tokstart,
-    SrcPosFmt(sdsempty(), ScannerSrcPos(s)));
+  {
+    auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
+    size_t vallen;
+    const char* valptr = ScannerTokStr(s, &vallen);
+    dlog(">> %-7s \"%.*s\"\tat %s", TokName(s->tok), (int)vallen, valptr, posstr);
+    str_free(posstr);
+  }
   #endif
 
 

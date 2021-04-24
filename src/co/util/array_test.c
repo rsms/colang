@@ -3,7 +3,7 @@
 
 #define ARRAY_CAP_STEP 32 /* copied from array.c */
 
-R_UNIT_TEST(Array, {
+R_UNIT_TEST(Array) {
 
   { // starts empty and immediately becomes fully heap allocated
     Array a = Array_INIT;
@@ -138,4 +138,4 @@ R_UNIT_TEST(Array, {
     ArrayFree(&a, NULL);
   }
 
-})
+}

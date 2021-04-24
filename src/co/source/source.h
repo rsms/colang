@@ -9,7 +9,8 @@ typedef struct Pkg {
   Source*     srclist; // linked list of sources
 } Pkg;
 
-bool PkgAddSource(Pkg* pkg, const char* filename);
+bool PkgAddFileSource(Pkg* pkg, const char* filename);
+void PkgAddSource(Pkg* pkg, Source* src);
 bool PkgScanSources(Pkg* pkg);
 
 
@@ -30,6 +31,7 @@ typedef struct Source {
 } Source;
 
 bool SourceOpen(Pkg* pkg, Source* src, const char* filename);
+void SourceInitMem(Pkg* pkg, Source* src, const char* filename, const char* text, size_t len);
 bool SourceOpenBody(Source* src);
 bool SourceCloseBody(Source* src);
 bool SourceClose(Source* src);
@@ -52,7 +54,11 @@ typedef struct {
 
 // LineCol
 typedef struct { u32 line; u32 col; } LineCol;
-
-Str SrcPosMsg(SrcPos, const char* nullable message);
-Str SrcPosFmt(SrcPos pos); // appends "<file>:<line>:<col>" to dst
 LineCol SrcPosLineCol(SrcPos);
+
+// SrcPosFmt appends "file:line:col: format ..." to s including contextual source details
+Str SrcPosFmt(SrcPos, Str s, const char* fmt, ...) ATTR_FORMAT(printf, 3, 4);
+Str SrcPosFmtv(SrcPos, Str s, const char* fmt, va_list);
+
+// SrcPosStr appends "file:line:col" to s
+Str SrcPosStr(SrcPos, Str s);

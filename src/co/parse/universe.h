@@ -16,8 +16,8 @@
 //   Node* Const_nil
 //
 
-// universe_syms holds all predefined symbols of the language
-extern const SymPool universe_syms;
+// universe_syms() returns a read-only SymPool which holds all predefined symbols of the language
+const SymPool* universe_syms();
 
 // TypeCodeToTypeNode returns the type Node for TypeCode t.
 static Node* TypeCodeToTypeNode(TypeCode t);
