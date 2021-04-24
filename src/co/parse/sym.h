@@ -48,12 +48,11 @@ Str sympool_repr(const SymPool* p, Str s);
 // All symget functions are thread safe.
 Sym symget(SymPool* p, const char* data, size_t len);
 
-// symgeth is like symget but allows you to provide a precomputed hash.
-// The hash must be an xxHash32 using sym_xxhash32_seed.
-Sym symgeth(SymPool* p, const char* data, size_t len, u32 hash);
-
 // symgetcstr is a convenience around symget for C-strings (calls strlen for you.)
 static Sym symgetcstr(SymPool* p, const char* cstr);
+
+// symfind looks up a symbol but does not add it if missing
+Sym nullable symfind(SymPool* p, const char* data, size_t len);
 
 // symadd adds a symbol to p unless it already exists in p in which case the existing symbol
 // is returned. The difference between symget and symadd is what happens when a base pool is used:
@@ -63,10 +62,6 @@ static Sym symgetcstr(SymPool* p, const char* cstr);
 // exists in base pools. Additionally, the implementation of this function assumes that the
 // common case is that there's no symbol for data.
 Sym symadd(SymPool* p, const char* data, size_t len);
-
-// symaddh is like symadd but allows you to provide a precomputed hash.
-// The hash must be an xxHash32 using sym_xxhash32_seed.
-Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash);
 
 // symaddcstr is a convenience around symadd for C-strings (calls strlen for you.)
 static Sym symaddcstr(SymPool* p, const char* cstr);
@@ -83,9 +78,6 @@ static u32 symlen(Sym s);
 
 // symflags returns a symbols flags
 static u8 symflags(Sym s);
-
-// sym_xxhash32_seed is the xxHash seed used for hashing sym data
-static const u32 sym_xxhash32_seed = 578;
 
 // ---------------------------------------------------------------------------
 // implementation

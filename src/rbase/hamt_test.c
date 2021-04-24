@@ -1,9 +1,6 @@
 #include "rbase.h"
 #include "hamt.h"
 
-#define XXH_INLINE_ALL
-#include <xxhash/xxhash.h>
-
 // define to silence all dlog messages for these tests
 #define SILENCE_LOG
 
@@ -406,30 +403,6 @@ R_UNIT_TEST(HamtFuzz) {
   auto starttm = nanotime();
   for (u32 i = 1; nanotime() - starttm < max_time_spend_ns; i++) {
     HamtFuzzTest(/* randseed */ i);
-  }
-}
-
-R_UNIT_TEST(xxHash) {
-  const char* buffer = "hello";
-  size_t size = strlen(buffer);
-
-  XXH32_hash_t seed32 = 1;
-
-  { // oneshot
-    XXH32_hash_t hash32 = XXH32(buffer, size, seed32);
-    dlog("hash32 oneshot: %x", hash32);
-  }
-
-  { // state approach piece by piece
-    XXH32_state_t* hstate = XXH32_createState();
-    XXH32_reset(hstate, seed32);
-    size_t len1 = size / 2;
-    size_t len2 = size - len1;
-    XXH32_update(hstate, buffer, len1);
-    XXH32_update(hstate, &buffer[len1], len2);
-    XXH32_hash_t hash32 = XXH32_digest(hstate);
-    dlog("hash32 state:  %x", hash32);
-    XXH32_freeState(hstate);
   }
 }
 

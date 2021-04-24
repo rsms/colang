@@ -83,6 +83,16 @@ bool ScannerInit(
   return true;
 }
 
+void ScannerDispose(Scanner* s) {
+  // free comments
+  while (1) {
+    auto c = ScannerCommentPopFront(s);
+    if (!c)
+      break;
+    memfree(s->mem, c);
+  }
+}
+
 
 // serr is called when an error occurs. It invokes s->errh
 static void serr(Scanner* s, const char* format, ...) {
@@ -181,15 +191,8 @@ static void snameuni(Scanner* s) {
 
 // read ASCII name (may switch over to snameuni)
 static void sname(Scanner* s) {
-  // names are pre-hashed and then converted into interned Sym objects.
-  const u32 prime = 0x01000193; // FNV1a prime
-  u32 hash = 0x811C9DC5; // FNV1a seed
-  hash = (*(s->inp-1) ^ hash) * prime; // hash first byte (sname called after first byte)
-
-  while (s->inp < s->inend && charflags[*s->inp] & CH_IDENT) {
-    hash = (*s->inp ^ hash) * prime;
+  while (s->inp < s->inend && charflags[*s->inp] & CH_IDENT)
     s->inp++;
-  }
 
   if (*s->inp >= RuneSelf && s->inp < s->inend) {
     // s->inp = s->tokstart;
@@ -197,11 +200,8 @@ static void sname(Scanner* s) {
   }
 
   s->tokend = s->inp;
-  s->name = symgeth(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart, hash);
+  s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = sym_langtok(s->name); // TIdent or a T* keyword
-
-  // dlog("got name %s \t%p\t%s\thash=%u", sdscatrepr(sdsempty(), s->name, symlen(s->name)),
-  //   s->name, TokName(s->tok), hash);
 }
 
 

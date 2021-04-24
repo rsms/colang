@@ -16,6 +16,11 @@
 
 static_assert(sizeof(SymRBNode) == sizeof(RBNode), "");
 
+// sym_xxhash32_seed is the xxHash seed used for hashing sym data
+static const u32 sym_xxhash32_seed = 578;
+
+#define HASH_SYM_DATA(data, len) XXH32((const char*)(data), (len), sym_xxhash32_seed)
+
 inline static RBNode* RBAllocNode(Mem mem) {
   return (RBNode*)memalloct(mem, RBNode);
 }
@@ -78,7 +83,7 @@ inline static Sym symlookup(const RBNode* node, const char* data, size_t len, u3
 }
 
 
-Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
+static Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
   assert(len <= 0xFFFFFFFF);
 
   // allocate a new Sym
@@ -119,7 +124,24 @@ Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
 }
 
 
-Sym symgeth(SymPool* p, const char* data, size_t len, u32 hash) {
+Sym nullable symfind(SymPool* p, const char* data, size_t len) {
+  u32 hash = HASH_SYM_DATA(data, len);
+  const SymPool* rp = p;
+  while (rp) {
+    rwmtx_rlock((rwmtx_t*)&rp->mu);
+    auto s = symlookup((RBNode*)rp->root, data, len, hash);
+    rwmtx_runlock((rwmtx_t*)&rp->mu);
+    if (s)
+      return s;
+    // look in base pool
+    rp = rp->base;
+  }
+  return NULL;
+}
+
+
+Sym symget(SymPool* p, const char* data, size_t len) {
+  u32 hash = HASH_SYM_DATA(data, len);
   const SymPool* rp = p;
   while (rp) {
     rwmtx_rlock((rwmtx_t*)&rp->mu);
@@ -134,14 +156,8 @@ Sym symgeth(SymPool* p, const char* data, size_t len, u32 hash) {
   return symaddh(p, data, len, hash);
 }
 
-
-Sym symget(SymPool* p, const char* data, size_t len) {
-  XXH32_hash_t h = XXH32((const char*)data, len, sym_xxhash32_seed);
-  return symgeth(p, data, len, h);
-}
-
 Sym symadd(SymPool* p, const char* data, size_t len) {
-  XXH32_hash_t h = XXH32((const char*)data, len, sym_xxhash32_seed);
+  u32 h = HASH_SYM_DATA(data, len);
   return symaddh(p, data, len, h);
 }
 
@@ -234,9 +250,10 @@ R_UNIT_TEST(sym) {
   sympool_dispose(&syms);
 }
 
-// inline static Str rbkeyfmt(Str s, RBKEY k) {
-//   return str_appendfmt(s, "Sym(\"%s\" %x)", k, symhash(k));
-// }
+__attribute__((used))
+inline static Str rbkeyfmt(Str s, RBKEY k) {
+  return str_appendfmt(s, "Sym(\"%s\" %x)", k, symhash(k));
+}
 
 R_UNIT_TEST(sym_base_pool) {
   SymPool syms1;
@@ -246,14 +263,14 @@ R_UNIT_TEST(sym_base_pool) {
   sympool_init(&syms2, &syms1, NULL, NULL);
   sympool_init(&syms3, &syms2, NULL, NULL);
 
-  auto A1 = symaddh(&syms1, "A", 1, 1);
-  symaddh(&syms1, "B", 1, 2);
-  symaddh(&syms1, "C", 1, 3);
+  auto A1 = symadd(&syms1, "A", 1);
+  symadd(&syms1, "B", 1);
+  symadd(&syms1, "C", 1);
 
-  auto B2 = symaddh(&syms2, "B", 1, 2);
-  symaddh(&syms2, "C", 1, 3);
+  auto B2 = symadd(&syms2, "B", 1);
+  symadd(&syms2, "C", 1);
 
-  auto C3 = symaddh(&syms3, "C", 1, 3);
+  auto C3 = symadd(&syms3, "C", 1);
 
   // auto s = str_new(0);
   // s = RBRepr((const RBNode*)syms1.root, s, 0, rbkeyfmt);
@@ -264,11 +281,33 @@ R_UNIT_TEST(sym_base_pool) {
   // dlog("syms3: %s", s);
   // str_free(s);
 
-  asserteq(C3, symgeth(&syms3, "C", 1, 3)); // found in syms3
-  asserteq(B2, symgeth(&syms3, "B", 1, 2)); // not found in syms3, but found in syms2
-  asserteq(A1, symgeth(&syms3, "A", 1, 1)); // not found in syms3 or syms2, but found in syms1
+  asserteq(C3, symget(&syms3, "C", 1)); // found in syms3
+  asserteq(B2, symget(&syms3, "B", 1)); // not found in syms3, but found in syms2
+  asserteq(A1, symget(&syms3, "A", 1)); // not found in syms3 or syms2, but found in syms1
 
   sympool_dispose(&syms1);
   sympool_dispose(&syms2);
   sympool_dispose(&syms3);
+}
+
+R_UNIT_TEST(sym_xxhash) {
+  const char* buffer = "hello";
+  size_t size = strlen(buffer);
+
+  // oneshot
+  XXH32_hash_t hash1 = XXH32(buffer, size, sym_xxhash32_seed);
+  dlog("hash1 oneshot: %x", hash1);
+
+  { // state approach piece by piece
+    XXH32_state_t* hstate = XXH32_createState();
+    XXH32_reset(hstate, sym_xxhash32_seed);
+    size_t len1 = size / 2;
+    size_t len2 = size - len1;
+    XXH32_update(hstate, buffer, len1);
+    XXH32_update(hstate, &buffer[len1], len2);
+    XXH32_hash_t hash2 = XXH32_digest(hstate);
+    dlog("hash32 state:  %x", hash2);
+    asserteq(hash2, hash1);
+    XXH32_freeState(hstate);
+  }
 }

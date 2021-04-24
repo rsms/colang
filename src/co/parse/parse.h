@@ -143,10 +143,10 @@ typedef struct Scanner {
   Mem        mem;          // memory to use for allocations
   Source*    src;          // input source
   SymPool*   syms;         // symbol pool
+  ParseFlags flags;
   const u8*  inp;          // input buffer current pointer
   const u8*  inp0;         // input buffer previous pointer
   const u8*  inend;        // input buffer end
-  ParseFlags flags;
 
   Tok        tok;           // current token
   const u8*  tokstart;      // start of current token
@@ -174,6 +174,9 @@ bool ScannerInit(
   Source*                src,
   ParseFlags             flags,
   void*                  userdata);
+
+// ScannerDispose frees internal memory of s
+void ScannerDispose(Scanner* s);
 
 // ScannerNext scans the next token
 Tok ScannerNext(Scanner*);
