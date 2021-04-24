@@ -113,17 +113,26 @@ static void serr(Scanner* s, const char* format, ...) {
 // }
 
 
-static void addComment(Scanner* s) {
+Comment* ScannerCommentPopFront(Scanner* s) {
+  auto c = s->comments_head;
+  if (c) {
+    s->comments_head = c->next;
+    c->next = NULL;
+  }
+  return c;
+}
+
+
+static void comments_push_back(Scanner* s) {
   auto c = (Comment*)memalloc(s->mem, sizeof(Comment));
   c->next = NULL;
   c->src = s->src;
   c->ptr = s->tokstart;
   c->len = s->tokend - s->tokstart;
-
-  if (s->comments) {
+  if (s->comments_head) {
     s->comments_tail->next = c;
   } else {
-    s->comments = c;
+    s->comments_head = c;
   }
   s->comments_tail = c;
 }
@@ -136,9 +145,8 @@ static void scomment(Scanner* s) {
     s->inp++;
   }
   s->tokend = s->inp;
-  if (s->flags & ParseComments) {
-    addComment(s);
-  }
+  if (s->flags & ParseComments)
+    comments_push_back(s);
 }
 
 

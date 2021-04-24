@@ -155,7 +155,7 @@ typedef struct Scanner {
 
   bool       insertSemi;    // insert a semicolon before next newline
 
-  Comment*   comments;      // linked list head of comments scanned so far
+  Comment*   comments_head; // linked list head of comments scanned so far
   Comment*   comments_tail; // linked list tail of comments scanned so far
 
   u32        lineno;        // source position line
@@ -184,6 +184,10 @@ static SrcPos ScannerSrcPos(const Scanner* s);
 // ScannerTokStr returns a token's string value and length, which is a pointer
 // into the source's body.
 static const u8* ScannerTokStr(const Scanner* s, size_t* len_out);
+
+// ScannerCommentPopFront removes and returns the least recently scanned comment.
+// The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
+Comment* nullable ScannerCommentPopFront(Scanner* s);
 
 
 // ---------------------------------------------------------------------------------
