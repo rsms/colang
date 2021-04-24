@@ -88,82 +88,82 @@ static int test_thread(void* arg) {
   return 0;
 }
 
-R_UNIT_TEST(Pool) {
-  { // test basic functionality, without contention
-    TestEntry e1 = { .value = 1 };
-    TestEntry e2 = { .value = 2 };
-    TestEntry e3 = { .value = 3 };
-    TestEntry e4 = { .value = 4 };
+R_UNIT_TEST(pool) {
+  // test basic functionality, without contention
+  TestEntry e1 = { .value = 1 };
+  TestEntry e2 = { .value = 2 };
+  TestEntry e3 = { .value = 3 };
+  TestEntry e4 = { .value = 4 };
 
-    Pool fl = {};
+  Pool fl = {};
 
-    PoolAdd(&fl, (PoolEntry*)&e1);
-    PoolAdd(&fl, (PoolEntry*)&e2);
-    PoolAdd(&fl, (PoolEntry*)&e3);
-    PoolAdd(&fl, (PoolEntry*)&e4);
+  PoolAdd(&fl, (PoolEntry*)&e1);
+  PoolAdd(&fl, (PoolEntry*)&e2);
+  PoolAdd(&fl, (PoolEntry*)&e3);
+  PoolAdd(&fl, (PoolEntry*)&e4);
 
-    assert(PoolTake(&fl) == (PoolEntry*)&e4);
-    assert(PoolTake(&fl) == (PoolEntry*)&e3);
-    assert(PoolTake(&fl) == (PoolEntry*)&e2);
-    assert(PoolTake(&fl) == (PoolEntry*)&e1);
+  assert(PoolTake(&fl) == (PoolEntry*)&e4);
+  assert(PoolTake(&fl) == (PoolEntry*)&e3);
+  assert(PoolTake(&fl) == (PoolEntry*)&e2);
+  assert(PoolTake(&fl) == (PoolEntry*)&e1);
+}
+
+R_UNIT_TEST(pool_fuzz_mt) {
+  // test fuzzing with threads
+  const u32 numthreads = 10;
+  const u32 numentries = 10; // per thread
+  Pool fl = {};
+  TestThread threads[numthreads];
+  TestEntry entries[numentries * numthreads];
+
+  // create entries that will be shared amongst the threads
+  size_t expectedTallyIdSum = 0;
+  for (u32 i = 0; i < numentries * numthreads; i++) {
+    entries[i].value = i + 1; // 1-based for tallyIdSum
+    expectedTallyIdSum += i + 1;
+    PoolAdd(&fl, (PoolEntry*)&entries[i]);
   }
 
-  { // test fuzzing with threads
-    const u32 numthreads = 10;
-    const u32 numentries = 10; // per thread
-    Pool fl = {};
-    TestThread threads[numthreads];
-    TestEntry entries[numentries * numthreads];
+  // dlog("spawning %u threads", numthreads);
+  for (u32 i = 0; i < numthreads; i++) {
+    TestThread* t = &threads[i];
+    t->id = i;
+    t->fl = &fl;
+    t->entriesv = memalloc(NULL, sizeof(void*) * numentries);
+    t->entriesc = numentries;
+    assert(thrd_create(&t->t, test_thread, t) == thrd_success);
+  }
 
-    // create entries that will be shared amongst the threads
-    size_t expectedTallyIdSum = 0;
-    for (u32 i = 0; i < numentries * numthreads; i++) {
-      entries[i].value = i + 1; // 1-based for tallyIdSum
-      expectedTallyIdSum += i + 1;
-      PoolAdd(&fl, (PoolEntry*)&entries[i]);
+  // dlog("awaiting %u threads", numthreads);
+  TestEntry* tallyv[numentries * numthreads * 2];
+  u32 tallyc = 0;
+  size_t tallyIdSum = 0;
+  for (u32 i = 0; i < numthreads; i++) {
+    auto t = &threads[i];
+    int returnValue;
+    thrd_join(t->t, &returnValue);
+    atomic_thread_fence(memory_order_acquire);
+    // dlog("thread #%u returned %d", i, returnValue);
+    // tally
+    for (u32 i = 0; i < t->entriesc; i++) {
+      auto e = t->entriesv[i];
+      tallyv[tallyc++] = e;
+      // verify the uniqueness of the values taken by summing up their ids as each
+      // id is unique and part of a dense range.
+      tallyIdSum += (size_t)e->value;
     }
+  }
 
-    // dlog("spawning %u threads", numthreads);
-    for (u32 i = 0; i < numthreads; i++) {
-      TestThread* t = &threads[i];
-      t->id = i;
-      t->fl = &fl;
-      t->entriesv = memalloc(NULL, sizeof(void*) * numentries);
-      t->entriesc = numentries;
-      assert(thrd_create(&t->t, test_thread, t) == thrd_success);
-    }
+  // the same number of entries should be the total of entries taken by all threads
+  assert(tallyc == numentries * numthreads);
 
-    // dlog("awaiting %u threads", numthreads);
-    TestEntry* tallyv[numentries * numthreads * 2];
-    u32 tallyc = 0;
-    size_t tallyIdSum = 0;
-    for (u32 i = 0; i < numthreads; i++) {
-      auto t = &threads[i];
-      int returnValue;
-      thrd_join(t->t, &returnValue);
-      atomic_thread_fence(memory_order_acquire);
-      // dlog("thread #%u returned %d", i, returnValue);
-      // tally
-      for (u32 i = 0; i < t->entriesc; i++) {
-        auto e = t->entriesv[i];
-        tallyv[tallyc++] = e;
-        // verify the uniqueness of the values taken by summing up their ids as each
-        // id is unique and part of a dense range.
-        tallyIdSum += (size_t)e->value;
-      }
-    }
+  // each entry should only be referenced in one place.
+  // if this fails, an entry was returned to two threads during contention.
+  assert(tallyIdSum == expectedTallyIdSum);
 
-    // the same number of entries should be the total of entries taken by all threads
-    assert(tallyc == numentries * numthreads);
-
-    // each entry should only be referenced in one place.
-    // if this fails, an entry was returned to two threads during contention.
-    assert(tallyIdSum == expectedTallyIdSum);
-
-    // free heap-allocated memory
-    for (u32 i = 0; i < numthreads; i++) {
-      memfree(NULL, threads[i].entriesv);
-    }
+  // free heap-allocated memory
+  for (u32 i = 0; i < numthreads; i++) {
+    memfree(NULL, threads[i].entriesv);
   }
 }
 

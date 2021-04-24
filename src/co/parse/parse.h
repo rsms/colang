@@ -60,10 +60,10 @@ typedef struct Node Node;
   _( TAndAnd        , "&&")  \
   _( TPipePipe      , "||")  \
   _( TRArr          , "->")  \
-  _( TIdent         , "ident")   \
-  _( TIntLit        , "int")     \
-  _( TFloatLit      , "float")   \
-  _( TComment       , "comment") \
+  _( TId            , "id")  \
+  _( TIntLit        , "int") \
+  _( TFloatLit      , "float") \
+  _( TIndent        , "indent") /* only produced when using flag ParseIndent */ \
 /*END TOKENS*/
 #define TOKEN_KEYWORDS(_) \
   _( as,          TAs)          \
@@ -126,8 +126,9 @@ typedef void(ErrorHandler)(const Source* src, SrcPos pos, const Str msg, void* u
 // ParseFlags are flags for parser and scanner
 typedef enum {
   ParseFlagsDefault = 0,
-  ParseComments     = 1 << 1, // parse comments, populating S.comments
+  ParseComments     = 1 << 1, // parse comments, populating S.comments_{head,tail}
   ParseOpt          = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
+  ParseIndent       = 1 << 3, // parse indentation, producing TIndent tokens
 } ParseFlags;
 
 // Comment is a scanned comment
@@ -151,7 +152,7 @@ typedef struct Scanner {
   Tok        tok;           // current token
   const u8*  tokstart;      // start of current token
   const u8*  tokend;        // end of current token
-  Sym        name;          // Current name (valid for TIdent and keywords)
+  Sym        name;          // Current name (valid for TId and keywords)
 
   bool       insertSemi;    // insert a semicolon before next newline
 
@@ -188,9 +189,9 @@ static SrcPos ScannerSrcPos(const Scanner* s);
 // into the source's body.
 static const u8* ScannerTokStr(const Scanner* s, size_t* len_out);
 
-// ScannerCommentPopFront removes and returns the least recently scanned comment.
+// ScannerCommentPop removes and returns the least recently scanned comment.
 // The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
-Comment* nullable ScannerCommentPopFront(Scanner* s);
+Comment* nullable ScannerCommentPop(Scanner* s);
 
 
 // ---------------------------------------------------------------------------------
@@ -208,8 +209,8 @@ inline static SrcPos ScannerSrcPos(const Scanner* s) {
   // assert(s->tokend >= s->tokstart);
   // assert(s->tokend <= (s->src->body + s->src->len));
   size_t offs = (size_t)(s->tokstart - s->src->body);
-  size_t len = (size_t)(s->tokend - s->tokstart);
-  return (SrcPos){ s->src, offs, len };
+  size_t span = (size_t)(s->tokend - s->tokstart);
+  return (SrcPos){ s->src, offs, span };
 }
 
 ASSUME_NONNULL_END

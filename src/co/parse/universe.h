@@ -23,11 +23,11 @@ const SymPool* universe_syms();
 static Node* TypeCodeToTypeNode(TypeCode t);
 
 // sym_langtok returns the Tok representing this sym in the language syntax.
-// Either returns a keyword token or TIdent if s is not a keyword.
+// Either returns a keyword token or TId if s is not a keyword.
 inline static Tok sym_langtok(Sym s) {
   // Bits [4-8) represents offset into Tok enum when s is a language keyword.
   u8 kwindex = symflags(s);
-  return kwindex == 0 ? TIdent : TKeywordsStart + kwindex;
+  return kwindex == 0 ? TId : TKeywordsStart + kwindex;
 }
 
 // symbols for language keywords (defined in token.h)

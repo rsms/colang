@@ -62,23 +62,16 @@ bool ScannerInit(
   if (!SourceOpenBody(src))
     return false;
 
-  s->mem   = mem;
-  s->src   = src;
-  s->syms  = syms;
-  s->inp   = src->body;
-  s->inp0  = src->body;
-  s->inend = src->body + src->len;
-  s->flags = flags;
-
-  s->tok      = TNone;
-  s->tokstart = 0;
-  s->tokend   = 0;
-
-  s->lineno = 0;
+  s->mem       = mem;
+  s->src       = src;
+  s->syms      = syms;
+  s->inp       = src->body;
+  s->inp0      = src->body;
+  s->inend     = src->body + src->len;
+  s->flags     = flags;
   s->linestart = s->inp;
-
-  s->errh = errh;
-  s->userdata = userdata;
+  s->errh      = errh;
+  s->userdata  = userdata;
 
   return true;
 }
@@ -86,7 +79,7 @@ bool ScannerInit(
 void ScannerDispose(Scanner* s) {
   // free comments
   while (1) {
-    auto c = ScannerCommentPopFront(s);
+    auto c = ScannerCommentPop(s);
     if (!c)
       break;
     memfree(s->mem, c);
@@ -115,6 +108,27 @@ static void serr(Scanner* s, const char* format, ...) {
 }
 
 
+
+#ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
+  static bool tok_has_value(Tok t) {
+    return t == TId || t == TIntLit || t == TFloatLit || t == TIndent;
+  }
+  static void debug_token_production(Scanner* s) {
+    auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
+    if (tok_has_value(s->tok)) {
+      size_t vallen;
+      const u8* valptr = ScannerTokStr(s, &vallen);
+      dlog(">> %-7s \"%.*s\"\tat %s", TokName(s->tok), (int)vallen, valptr, posstr);
+    } else {
+      dlog(">> %-7s\tat %s", TokName(s->tok), posstr);
+    }
+    str_free(posstr);
+  }
+#else
+  #define debug_token_production(s) do{}while(0)
+#endif
+
+
 // // unreadrune sets the reading position to a previous reading position,
 // // usually the one of the most recently read rune, but possibly earlier
 // // (see unread below).
@@ -123,7 +137,7 @@ static void serr(Scanner* s, const char* format, ...) {
 // }
 
 
-Comment* ScannerCommentPopFront(Scanner* s) {
+Comment* ScannerCommentPop(Scanner* s) {
   auto c = s->comments_head;
   if (c) {
     s->comments_head = c->next;
@@ -166,9 +180,8 @@ static void snameuni(Scanner* s) {
     u8 b = *s->inp;
     Rune r;
     if (b < RuneSelf) {
-      if (!(charflags[b] & CH_IDENT)) {
+      if (!(charflags[b] & CH_IDENT))
         break;
-      }
       r = b;
       s->inp++;
     } else {
@@ -179,13 +192,10 @@ static void snameuni(Scanner* s) {
         serr(s, "invalid UTF-8 encoding");
       }
     }
-    if (r == 0) {
-      serr(s, "invalid NUL character");
-    }
   }
   s->tokend = s->inp;
   s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
-  s->tok = sym_langtok(s->name); // TIdent or a T* keyword
+  s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 
 
@@ -201,7 +211,7 @@ static void sname(Scanner* s) {
 
   s->tokend = s->inp;
   s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
-  s->tok = sym_langtok(s->name); // TIdent or a T* keyword
+  s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 
 
@@ -220,27 +230,25 @@ static void snumber(Scanner* s) {
 
 
 Tok ScannerNext(Scanner* s) {
-  scan_again:  // jumped to when comments are skipped
+  scan_again: {}  // jumped to when comments are skipped
+  // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (size_t)(s->inp - s->src->body));
 
-  // skip whitespace
-  while (s->inp < s->inend && charflags[*s->inp] & CH_WHITESPACE) {
+  // whitespace
+  bool islnstart = s->inp == s->linestart; // for flags&ParseIndent
+  while (s->inp < s->inend && (charflags[*s->inp] & CH_WHITESPACE)) {
     if (*s->inp == '\n') {
       s->lineno++;
-      s->linestart = s->inp;
+      s->linestart = s->inp + 1;
       if (s->insertSemi) {
         s->insertSemi = false;
         s->tokstart = s->inp;
         s->tokend = s->tokstart;
         s->inp++;
-        #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
-        {
-          auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
-          dlog(">> %-7s\tat %s", TokName(TSemi), posstr);
-          str_free(posstr);
-        }
-        #endif
-        return s->tok = TSemi;
+        s->tok = TSemi;
+        debug_token_production(s);
+        return s->tok;
       }
+      islnstart = true;
     }
     s->inp++;
   }
@@ -258,11 +266,23 @@ Tok ScannerNext(Scanner* s) {
     return s->tok;
   }
 
+  // indentation
+  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#') {
+    s->tokstart = s->linestart;
+    s->tokend = s->inp;
+    s->tok = TIndent;
+    debug_token_production(s);
+    return s->tok;
+  }
+
+  bool insertSemi = false;
   s->tokstart = s->inp;
   s->tokend = s->tokstart + 1;
 
-  bool insertSemi = false;
+  u8 c = *s->inp++; // current char
+  u8 nextc = (s->inp+1 < s->inend) ? *s->inp : 0; // next char
 
+  // CONSUME_CHAR advances the scanner to the next input byte
   #define CONSUME_CHAR() ({ s->inp++; s->tokend++; })
 
   // COND_CHAR includes next char in token if nextc==c. Returns tok1 if nextc==c, else tok2.
@@ -273,25 +293,22 @@ Tok ScannerNext(Scanner* s) {
   #define COND_CHAR_SEMIC(c, tok2, tok1) \
     (nextc == (c)) ? ({ CONSUME_CHAR(); insertSemi = true; (tok1); }) : (tok2)
 
-  u8 c = *s->inp++; // current char
-  u8 nextc = (s->inp+1 < s->inend) ? *s->inp : 0; // next char
-
   switch (c) {
 
   case '-':  // "-" | "->" | "--" | "-="
     switch (nextc) {
-      case '>': s->tok = TRArr;        CONSUME_CHAR(); break;
+      case '>': s->tok = TRArr;        CONSUME_CHAR();                    break;
       case '-': s->tok = TMinusMinus;  CONSUME_CHAR(); insertSemi = true; break;
-      case '=': s->tok = TMinusAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TMinus; break;
+      case '=': s->tok = TMinusAssign; CONSUME_CHAR();                    break;
+      default:  s->tok = TMinus;                                          break;
     }
     break;
 
   case '+':  // "+" | "++" | "+="
     switch (nextc) {
       case '+': s->tok = TPlusPlus;   CONSUME_CHAR(); insertSemi = true; break;
-      case '=': s->tok = TPlusAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TPlus; break;
+      case '=': s->tok = TPlusAssign; CONSUME_CHAR();                    break;
+      default:  s->tok = TPlus;                                          break;
     }
     break;
 
@@ -299,7 +316,7 @@ Tok ScannerNext(Scanner* s) {
     switch (nextc) {
       case '&': s->tok = TAndAnd;    CONSUME_CHAR(); break;
       case '=': s->tok = TAndAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TAnd; break;
+      default:  s->tok = TAnd;                       break;
     }
     break;
 
@@ -307,17 +324,17 @@ Tok ScannerNext(Scanner* s) {
     switch (nextc) {
       case '|': s->tok = TPipePipe;   CONSUME_CHAR(); break;
       case '=': s->tok = TPipeAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TPipe; break;
+      default:  s->tok = TPipe;                       break;
     }
     break;
 
-  case '!': s->tok = COND_CHAR('=', TExcalm,  TNEq); break;           // "!" | "!="
+  case '!': s->tok = COND_CHAR('=', TExcalm,  TNEq);           break; // "!" | "!="
   case '%': s->tok = COND_CHAR('=', TPercent, TPercentAssign); break; // "%" | "%="
-  case '*': s->tok = COND_CHAR('=', TStar,    TStarAssign); break;    // "*" | "*="
-  case '/': s->tok = COND_CHAR('=', TSlash,   TSlashAssign); break;   // "/" | "/="
-  case '=': s->tok = COND_CHAR('=', TAssign,  TEq); break;            // "=" | "=="
-  case '^': s->tok = COND_CHAR('=', THat,     THatAssign); break;     // "^" | "^="
-  case '~': s->tok = COND_CHAR('=', TTilde,   TTildeAssign); break;   // "~" | "~="
+  case '*': s->tok = COND_CHAR('=', TStar,    TStarAssign);    break; // "*" | "*="
+  case '/': s->tok = COND_CHAR('=', TSlash,   TSlashAssign);   break; // "/" | "/="
+  case '=': s->tok = COND_CHAR('=', TAssign,  TEq);            break; // "=" | "=="
+  case '^': s->tok = COND_CHAR('=', THat,     THatAssign);     break; // "^" | "^="
+  case '~': s->tok = COND_CHAR('=', TTilde,   TTildeAssign);   break; // "~" | "~="
 
   case '<': // "<" | "<=" | "<<" | "<<="
     switch (nextc) {
@@ -349,17 +366,17 @@ Tok ScannerNext(Scanner* s) {
     }
     break;
 
-  case '(': s->tok = TLParen; break;
+  case '(': s->tok = TLParen;                    break;
   case ')': s->tok = TRParen; insertSemi = true; break;
-  case '{': s->tok = TLBrace; break;
+  case '{': s->tok = TLBrace;                    break;
   case '}': s->tok = TRBrace; insertSemi = true; break;
-  case '[': s->tok = TLBrack; break;
+  case '[': s->tok = TLBrack;                    break;
   case ']': s->tok = TRBrack; insertSemi = true; break;
-  case ',': s->tok = TComma; break;
-  case ';': s->tok = TSemi; break;
+  case ',': s->tok = TComma;                     break;
+  case ';': s->tok = TSemi;                      break;
 
   case '#': // line comment
-    // TODO: multiline/inline comment '#* ... *#'
+    // TODO: consider multiline/inline comment '#* ... *#' ?
     scomment(s);
     goto scan_again;
     break;
@@ -375,7 +392,7 @@ Tok ScannerNext(Scanner* s) {
   case 'a'...'z':
     sname(s);
     switch (s->tok) {
-      case TIdent:
+      case TId:
       case TBreak:
       case TContinue:
       case TReturn:
@@ -406,18 +423,6 @@ Tok ScannerNext(Scanner* s) {
   } // switch
 
   s->insertSemi = insertSemi;
-
-
-  #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
-  {
-    auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
-    size_t vallen;
-    const char* valptr = ScannerTokStr(s, &vallen);
-    dlog(">> %-7s \"%.*s\"\tat %s", TokName(s->tok), (int)vallen, valptr, posstr);
-    str_free(posstr);
-  }
-  #endif
-
-
+  debug_token_production(s);
   return s->tok;
 }

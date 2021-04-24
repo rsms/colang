@@ -141,6 +141,7 @@ Sym nullable symfind(SymPool* p, const char* data, size_t len) {
 
 
 Sym symget(SymPool* p, const char* data, size_t len) {
+  // symget is a hot path with the majority of calls ending up with a successful lookup
   u32 hash = HASH_SYM_DATA(data, len);
   const SymPool* rp = p;
   while (rp) {
@@ -250,12 +251,34 @@ R_UNIT_TEST(sym) {
   sympool_dispose(&syms);
 }
 
+R_UNIT_TEST(sym_hash) {
+  const char* buffer = "hello";
+  size_t size = strlen(buffer);
+
+  // oneshot
+  XXH32_hash_t hash1 = XXH32(buffer, size, sym_xxhash32_seed);
+  // dlog("hash1 oneshot: %x", hash1);
+
+  { // state approach piece by piece
+    XXH32_state_t* hstate = XXH32_createState();
+    XXH32_reset(hstate, sym_xxhash32_seed);
+    size_t len1 = size / 2;
+    size_t len2 = size - len1;
+    XXH32_update(hstate, buffer, len1);
+    XXH32_update(hstate, &buffer[len1], len2);
+    XXH32_hash_t hash2 = XXH32_digest(hstate);
+    // dlog("hash32 state:  %x", hash2);
+    asserteq(hash2, hash1);
+    XXH32_freeState(hstate);
+  }
+}
+
 __attribute__((used))
 inline static Str rbkeyfmt(Str s, RBKEY k) {
   return str_appendfmt(s, "Sym(\"%s\" %x)", k, symhash(k));
 }
 
-R_UNIT_TEST(sym_base_pool) {
+R_UNIT_TEST(sympool) {
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;
@@ -288,26 +311,4 @@ R_UNIT_TEST(sym_base_pool) {
   sympool_dispose(&syms1);
   sympool_dispose(&syms2);
   sympool_dispose(&syms3);
-}
-
-R_UNIT_TEST(sym_xxhash) {
-  const char* buffer = "hello";
-  size_t size = strlen(buffer);
-
-  // oneshot
-  XXH32_hash_t hash1 = XXH32(buffer, size, sym_xxhash32_seed);
-  dlog("hash1 oneshot: %x", hash1);
-
-  { // state approach piece by piece
-    XXH32_state_t* hstate = XXH32_createState();
-    XXH32_reset(hstate, sym_xxhash32_seed);
-    size_t len1 = size / 2;
-    size_t len2 = size - len1;
-    XXH32_update(hstate, buffer, len1);
-    XXH32_update(hstate, &buffer[len1], len2);
-    XXH32_hash_t hash2 = XXH32_digest(hstate);
-    dlog("hash32 state:  %x", hash2);
-    asserteq(hash2, hash1);
-    XXH32_freeState(hstate);
-  }
 }

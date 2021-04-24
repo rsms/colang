@@ -4,6 +4,7 @@
 
 typedef struct ScanTestCtx {
   u32 nerrors;
+  Str last_errmsg;
 } ScanTestCtx;
 typedef struct TokStringPair { Tok tok; const char* value; } TokStringPair;
 // testscan(fl, sourcetext, tok1, value1, tok2, value2, ..., TNone)
@@ -12,13 +13,20 @@ static u32 testscan(ParseFlags, const char* sourcetext, ...);
 static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, ...);
 // test_scanner_new creates a new scanner with all new dedicated resources like sympool
 static Scanner* test_scanner_new(ParseFlags, const char* sourcetext);
+static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len);
 static ScanTestCtx test_scanner_free(Scanner*);
+
+// TComment is a fake token used only for testing.
+// Comments does not produce tokens but are added to a queue by the scanner.
+// However in our testscan function calls it is convenient to be able to say
+// "at this point there should be a comment on the queue".
+static const Tok TComment = TMax;
 
 
 R_UNIT_TEST(scan_basics) {
   u32 nerrors = testscan(ParseFlagsDefault,
     "hello = 123\n",
-    TIdent,  "hello",
+    TId,     "hello",
     TAssign, "=",
     TIntLit, "123",
     TSemi,   "",
@@ -26,10 +34,11 @@ R_UNIT_TEST(scan_basics) {
   asserteq(nerrors, 0);
 }
 
+
 R_UNIT_TEST(scan_comments) {
   auto source = "hello # trailing\n# leading1\n# leading2\n123";
   u32 nerrors = testscan(ParseComments, source,
-    TIdent,   "hello",
+    TId,      "hello",
     TSemi,    "",
     TComment, " trailing",
     TIntLit,  "123",
@@ -40,42 +49,106 @@ R_UNIT_TEST(scan_comments) {
   asserteq(nerrors, 0);
 
   nerrors = testscan(ParseFlagsDefault, source,
-    TIdent,   "hello",
-    TSemi,    "",
+    TId,     "hello",
+    TSemi,   "",
     // no comment since ParseComments is not set
-    TIntLit,  "123",
+    TIntLit, "123",
     // no comment since ParseComments is not set
     // no comment since ParseComments is not set
-    TSemi,    "",
+    TSemi,   "",
     TNone);
   asserteq(nerrors, 0);
 }
 
-R_UNIT_TEST(scan_ident_sym) {
+
+R_UNIT_TEST(scan_indent) {
+  const u32 noerrors = 0;
+  asserteq(noerrors, testscan(ParseIndent,
+    "1 A\n"
+    "  2 B\n"
+    "  2\n"
+    "    3\n"
+    "  2\n"
+    "       \n" // this empty line should not cause indent to be produced
+    "  2\n",
+                    TIntLit,"1", TId,"A", TSemi,"",
+    TIndent,"  ",   TIntLit,"2", TId,"B", TSemi,"",
+    TIndent,"  ",   TIntLit,"2", TSemi,"",
+    TIndent,"    ", TIntLit,"3", TSemi,"",
+    TIndent,"  ",   TIntLit,"2", TSemi,"",
+    TIndent,"  ",   TIntLit,"2", TSemi,"",
+    TNone));
+
+  // first line indent
+  asserteq(noerrors, testscan(ParseIndent,
+    "  A\n",
+    TIndent,"  ", TId,"A", TSemi,"",
+    TNone));
+
+  // without comments (comments should not cause TIndent)
+  asserteq(noerrors, testscan(ParseIndent,
+    "A\n"
+    "  B\n"
+    "  # comment\n"
+    "  C\n",
+    TId,"A", TSemi,"",
+    TIndent,"  ", TId,"B", TSemi,"",
+    TIndent,"  ", TId,"C", TSemi,"",
+    TNone));
+
+  // with comments
+  asserteq(noerrors, testscan(ParseIndent|ParseComments,
+    "A\n"
+    "  B\n"
+    "  # comment\n"
+    "  C\n",
+    TId,"A", TSemi,"",
+    TIndent,"  ", TId,"B", TSemi,"",
+    TIndent,"  ", TComment," comment",  TId,"C", TSemi,"",
+    // Note: TComment is synthetic: the scanner doesn't actually produce TComment tokens.
+    TNone));
+}
+
+
+R_UNIT_TEST(scan_nulbyte) {
+  // nul byte in source is invalid
+  auto scanner = test_scanner_newn(ParseFlagsDefault, "a\0b", 3);
+  asserteq(ScannerNext(scanner), TId)   ;
+  asserteq(ScannerNext(scanner), TNone);
+  auto ctx = test_scanner_free(scanner);
+  // expect error
+  asserteq(ctx.nerrors, 1);
+  assert(ctx.last_errmsg != NULL);
+  assert(strstr(ctx.last_errmsg, "invalid input character") != NULL);
+  str_free(ctx.last_errmsg);
+}
+
+
+R_UNIT_TEST(scan_id_sym) {
   // Sym interning and equivalence
   Tok t;
   auto scanner = test_scanner_new(ParseFlagsDefault, "hello foo hello foo");
 
   t = ScannerNext(scanner);
-  asserteq(t, TIdent);
+  asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "hello") == 0);
   assert(symfind(scanner->syms, "hello", strlen("hello")) == scanner->name);
   auto hello_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
-  asserteq(t, TIdent);
+  asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "foo") == 0);
   assert(symfind(scanner->syms, "foo", strlen("foo")) == scanner->name);
   auto foo_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
-  asserteq(t, TIdent);
+  asserteq(t, TId)   ;
   asserteq(scanner->name, hello_sym1); // should have resulted in same Sym (interned)
 
   t = ScannerNext(scanner);
-  asserteq(t, TIdent);
+  asserteq(t, TId)   ;
   asserteq(scanner->name, foo_sym1); // should have resulted in same Sym (interned)
 
   asserteq(ScannerNext(scanner), TSemi);
@@ -86,11 +159,54 @@ R_UNIT_TEST(scan_ident_sym) {
 }
 
 
+R_UNIT_TEST(scan_id_utf8) {
+  { // valid unicode
+    // 日本語 ("Japanese") U+65E5 U+672C U+8A9E
+    auto scanner = test_scanner_new(ParseFlagsDefault, "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
+    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TSemi);
+    asserteq(ScannerNext(scanner), TNone);
+    auto ctx = test_scanner_free(scanner);
+    asserteq(ctx.nerrors, 0);
+  }
+  { // valid unicode
+    //
+    //   U+1F469 woman
+    // + U+1F3FD skin tone modifier
+    // + U+200D  zero width joiner
+    // + U+1F680 rocket ship
+    // = astronaut (woman) with skin tone modifier
+    //
+    // U+1F469 U+1F3FD U+200D U+1F680 ("a" + astronout woman with skin tone modifier)
+    //
+    auto scanner = test_scanner_new(ParseFlagsDefault,
+      "\xf0\x9f\x91\xa9\xf0\x9f\x8f\xbd\xe2\x80\x8d\xf0\x9f\x9a\x80");
+    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TSemi);
+    asserteq(ScannerNext(scanner), TNone);
+    auto ctx = test_scanner_free(scanner);
+    asserteq(ctx.nerrors, 0);
+  }
+  { // invalid unicode
+    auto scanner = test_scanner_new(ParseFlagsDefault, "ab\xff");
+    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TSemi);
+    asserteq(ScannerNext(scanner), TNone);
+    auto ctx = test_scanner_free(scanner);
+    // expect error
+    asserteq(ctx.nerrors, 1);
+    assert(ctx.last_errmsg != NULL);
+    assert(strstr(ctx.last_errmsg, "invalid UTF-8 encoding") != NULL);
+    str_free(ctx.last_errmsg);
+  }
+}
+
+
 R_UNIT_TEST(scan_testutil) {
   // make sure our test utilities work so we can rely on them for further testing
   size_t expectlen = 0;
   auto expectlist = make_expectlist(&expectlen, "hello = 123\n",
-    TIdent,  "hello",
+    TId,     "hello",
     TAssign, "=",
     TIntLit, "123",
     TSemi,   "",
@@ -98,7 +214,7 @@ R_UNIT_TEST(scan_testutil) {
   );
   assert(expectlist != NULL);
   asserteq(expectlen, 4);
-  asserteq(expectlist[0].tok, TIdent);
+  asserteq(expectlist[0].tok, TId)   ;
   assert(strcmp(expectlist[0].value, "hello") == 0);
   memfree(NULL, expectlist);
 }
@@ -156,17 +272,20 @@ static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, .
 static void on_scan_err(const Source* src, SrcPos pos, const Str msg, void* userdata) {
   auto testctx = (ScanTestCtx*)userdata;
   testctx->nerrors++;
-  errlog("scan error: %s", msg);
+  if (testctx->last_errmsg)
+    str_free(testctx->last_errmsg);
+  testctx->last_errmsg = str_cpy(msg);
+  // dlog("scan error: %s", msg);
 }
 
-static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
+static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len) {
   Mem mem = NULL;
 
   Pkg* pkg = memalloct(mem, Pkg);
   pkg->dir = ".";
 
   Source* src = memalloct(mem, Source);
-  SourceInitMem(pkg, src, "input", sourcetext, strlen(sourcetext));
+  SourceInitMem(pkg, src, "input", sourcetext, len);
   PkgAddSource(pkg, src);
 
   SymPool* syms = memalloct(mem, SymPool);
@@ -177,6 +296,10 @@ static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
   assert(ScannerInit(scanner, mem, syms, on_scan_err, src, flags, testctx));
 
   return scanner;
+}
+
+static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
+  return test_scanner_newn(flags, sourcetext, strlen(sourcetext));
 }
 
 static ScanTestCtx test_scanner_free(Scanner* s) {
@@ -217,7 +340,7 @@ static u32 testscanp(
 
     // comments are collected in a list by the scanner, rather than emitted as tokens
     if (expect->tok == TComment) {
-      auto c = ScannerCommentPopFront(scanner);
+      auto c = ScannerCommentPop(scanner);
       if (!c) {
         // err instead of asset to make error message "unexpected token ... (expected comment)"
         err = true;
@@ -229,7 +352,7 @@ static u32 testscanp(
         continue;
       }
     } else if ((flags & ParseComments) != 0) {
-      auto c = ScannerCommentPopFront(scanner);
+      auto c = ScannerCommentPop(scanner);
       if (c) {
         errlog("unexpected token: %s \"%.*s\" (expected %s \"%s\")",
           TokName(TComment), (int)c->len, c->ptr, TokName(expect->tok), expect->value);

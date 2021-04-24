@@ -225,7 +225,7 @@ const char* str_splitn(StrSlice* st, char delim, const char* s, size_t slen) {
 // -----------------------------------------------------------------------------------------------
 // unit test
 
-R_UNIT_TEST(Str) {
+R_UNIT_TEST(str) {
 
   const int nfill = ALLOC_MIN * 2;
   const int iterations = 4;

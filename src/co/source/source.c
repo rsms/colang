@@ -188,6 +188,7 @@ Str SrcPosFmtv(SrcPos pos, Str s, const char* fmt, va_list ap) {
 
   // include line contents
   if (pos.src) {
+    s = str_appendc(s, '\n');
     u32 linelen;
     auto l = SrcPosLineCol(pos);
     auto lineptr = lineContents(pos.src, l.line, &linelen);

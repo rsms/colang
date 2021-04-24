@@ -92,7 +92,7 @@ static HamtCtx ctx = {
   (tmpstr = TestValueRepr(str_setlen(tmpstr, 0), (testval)))
 
 
-R_UNIT_TEST(HamtBasics) {
+R_UNIT_TEST(hamt) {
   Hamt h = hamt_new(&ctx);
   assert(h.root != NULL);
   auto v = MakeTestValue("1");
@@ -112,7 +112,7 @@ R_UNIT_TEST(HamtBasics) {
 }
 
 
-R_UNIT_TEST(HamtBuildTrees) {
+R_UNIT_TEST(hamt_tree) {
   Hamt h = hamt_new(&ctx);
 
   // key
@@ -212,7 +212,7 @@ R_UNIT_TEST(HamtBuildTrees) {
 }
 
 
-R_UNIT_TEST(HamtRemoveCollisions) {
+R_UNIT_TEST(hamt_remove_collisions) {
   // removal in collision
   Hamt h = hamt_new(&ctx);
 
@@ -256,7 +256,7 @@ R_UNIT_TEST(HamtRemoveCollisions) {
 }
 
 
-R_UNIT_TEST(HamtIterator) {
+R_UNIT_TEST(hamt_iterator) {
   auto A = MakeTestValue("1/2/2/1"); A->str = "1/2/2/1 (A)"; // collision w/ B
   auto B = MakeTestValue("1/2/2/1"); B->str = "1/2/2/1 (B)"; // collision w/ A
   // these test values should be in the order we expect them during iteration
@@ -397,7 +397,7 @@ static void HamtFuzzTest(unsigned int randseed) {
   hamt_release(h);
 }
 
-R_UNIT_TEST(HamtFuzz) {
+R_UNIT_TEST(hamt_fuzz) {
   // spend 100ms on fuzzying
   u64 max_time_spend_ns = 100*1000000;
   auto starttm = nanotime();
