@@ -78,7 +78,7 @@ bool parsei32(const char* ptr, size_t z, int base, i32* result) {
   return true;
 }
 
-R_UNIT_TEST(parseint, {
+R_UNIT_TEST(parseint) {
   #define T32(cstr, base, expectnum) (({ \
     u32 result = 0; \
     bool ok = parseu32(cstr, strlen(cstr), base, &result); \
@@ -114,4 +114,4 @@ R_UNIT_TEST(parseint, {
   T64("18446744073709551615",   10, 0xFFFFFFFFFFFFFFFF);
   T64("1777777777777777777777", 8,  0xFFFFFFFFFFFFFFFF);
   T64("3w5e11264sgsf",          36, 0xFFFFFFFFFFFFFFFF);
-});
+}

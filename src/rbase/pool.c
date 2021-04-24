@@ -88,7 +88,7 @@ static int test_thread(void* arg) {
   return 0;
 }
 
-R_UNIT_TEST(Pool, {
+R_UNIT_TEST(Pool) {
   { // test basic functionality, without contention
     TestEntry e1 = { .value = 1 };
     TestEntry e2 = { .value = 2 };
@@ -165,6 +165,6 @@ R_UNIT_TEST(Pool, {
       memfree(NULL, threads[i].entriesv);
     }
   }
-});
+}
 
 #endif /*R_UNIT_TEST_ENABLED*/

@@ -95,7 +95,7 @@ static HamtCtx ctx = {
   (tmpstr = TestValueRepr(str_setlen(tmpstr, 0), (testval)))
 
 
-R_UNIT_TEST(HamtBasics, {
+R_UNIT_TEST(HamtBasics) {
   Hamt h = hamt_new(&ctx);
   assert(h.root != NULL);
   auto v = MakeTestValue("1");
@@ -112,10 +112,10 @@ R_UNIT_TEST(HamtBasics, {
   assert(v2 == v);
   assert(strcmp(v->str, "hello") == 0);
   hamt_release(h);
-})
+}
 
 
-R_UNIT_TEST(HamtBuildTrees, {
+R_UNIT_TEST(HamtBuildTrees) {
   Hamt h = hamt_new(&ctx);
 
   // key
@@ -212,10 +212,10 @@ R_UNIT_TEST(HamtBuildTrees, {
 
   dlog("\n");
   hamt_release(h);
-})
+}
 
 
-R_UNIT_TEST(HamtRemoveCollisions, {
+R_UNIT_TEST(HamtRemoveCollisions) {
   // removal in collision
   Hamt h = hamt_new(&ctx);
 
@@ -256,10 +256,10 @@ R_UNIT_TEST(HamtRemoveCollisions, {
   assert(hamt_empty(h));
 
   hamt_release(h);
-})
+}
 
 
-static void HamtIterator() {
+R_UNIT_TEST(HamtIterator) {
   auto A = MakeTestValue("1/2/2/1"); A->str = "1/2/2/1 (A)"; // collision w/ B
   auto B = MakeTestValue("1/2/2/1"); B->str = "1/2/2/1 (B)"; // collision w/ A
   // these test values should be in the order we expect them during iteration
@@ -300,8 +300,6 @@ static void HamtIterator() {
   hamt_release(h);
 }
 
-R_UNIT_TEST(HamtIterator, {HamtIterator();})
-
 
 // randkey returns a random Hamt key
 static HamtUInt randkey() {
@@ -326,7 +324,8 @@ static void shuffle_array(void** a, size_t len) {
   }
 }
 
-static inline void HamtFuzzTest(unsigned int randseed) {
+__attribute__((used))
+static void HamtFuzzTest(unsigned int randseed) {
   HamtCtx ctx = {
     // required
     .entkey  = TestValueKey,
@@ -401,16 +400,16 @@ static inline void HamtFuzzTest(unsigned int randseed) {
   hamt_release(h);
 }
 
-R_UNIT_TEST(HamtFuzz, {
+R_UNIT_TEST(HamtFuzz) {
   // spend 100ms on fuzzying
   u64 max_time_spend_ns = 100*1000000;
   auto starttm = nanotime();
   for (u32 i = 1; nanotime() - starttm < max_time_spend_ns; i++) {
     HamtFuzzTest(/* randseed */ i);
   }
-})
+}
 
-R_UNIT_TEST(xxHash, {
+R_UNIT_TEST(xxHash) {
   const char* buffer = "hello";
   size_t size = strlen(buffer);
 
@@ -432,7 +431,7 @@ R_UNIT_TEST(xxHash, {
     dlog("hash32 state:  %x", hash32);
     XXH32_freeState(hstate);
   }
-})
+}
 
 
 

@@ -155,7 +155,7 @@ static int test_thread(void* arg) {
 }
 
 
-R_UNIT_TEST(rwmtx_basics, {
+R_UNIT_TEST(rwmtx_basics) {
   rwmtx_t rwmu;
   rwmtx_init(&rwmu, mtx_plain);
 
@@ -182,10 +182,10 @@ R_UNIT_TEST(rwmtx_basics, {
   asserteq(rwmtx_unlock(&rwmu), thrd_error); // no lock held
 
   rwmtx_destroy(&rwmu);
-})
+}
 
 
-R_UNIT_TEST(rwmtx_threads, {
+R_UNIT_TEST(rwmtx_threads) {
   rwmtx_t rwmu;
   rwmtx_init(&rwmu, mtx_plain);
 
@@ -226,7 +226,7 @@ R_UNIT_TEST(rwmtx_threads, {
   asserteq(AtomicLoadAcq(&rcount_while_writing), 0);
 
   rwmtx_destroy(&rwmu);
-})
+}
 
 
 #endif /* R_UNIT_TEST_ENABLED */
