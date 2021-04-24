@@ -1,6 +1,10 @@
 #pragma once
 #include "../source/source.h"
 #include "sym.h"
+#include "types.h"
+#include "symmap.h"   // SymMap
+
+ASSUME_NONNULL_BEGIN
 
 typedef struct Node Node;
 
@@ -137,6 +141,7 @@ typedef struct Comment {
 typedef struct Scanner {
   Mem        mem;
   Source*    src;          // input source
+  SymPool*   syms;         // symbol pool
   const u8*  inp;          // input buffer current pointer
   const u8*  inp0;         // input buffer previous pointer
   const u8*  inend;        // input buffer end
@@ -160,7 +165,7 @@ typedef struct Scanner {
 } Scanner;
 
 // ScannerInit initializes a scanner. Returns false on failure.
-bool ScannerInit(Scanner*, Mem, Source*, ParseFlags, ErrorHandler*, void* userdata);
+bool ScannerInit(Scanner*, Mem nullable mem, Source*, ParseFlags, ErrorHandler*, void* userdata);
 
 // ScannerNext scans the next token
 Tok ScannerNext(Scanner*);
@@ -168,3 +173,8 @@ Tok ScannerNext(Scanner*);
 // ScannerSrcPos returns the source position of s->tok (current token)
 SrcPos ScannerSrcPos(Scanner* s);
 
+
+ASSUME_NONNULL_END
+
+#include "universe.h"
+#include "ast.h"

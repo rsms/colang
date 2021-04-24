@@ -103,8 +103,10 @@ static bool RBHas(const RBNode* n, RBKEY k RBUSERDATA_COMMA);
   // "added" is set to true when a new value was added, false otherwise.
   static RBNode* RBAdd(RBNode* n, RBKEY k, RBVALUE v, bool* added RBUSERDATA_COMMA);
 #else
-  // RBInsert adds k. May modify tree even if k exists. Returns new n.
-  static RBNode* RBInsert(RBNode* n, RBKEY k RBUSERDATA_COMMA);
+  // RBInsert adds k. May modify tree even if k exists.
+  // *added is set to true if there was no existing entry with key k.
+  // Returns new n (n maybe be unchanged even after insertion.)
+  static RBNode* RBInsert(RBNode* n, RBKEY k, bool* added RBUSERDATA_COMMA);
 #endif
 
 // RBDelete removes k if found. Returns new n.
@@ -254,6 +256,8 @@ static RBNode* rbInsert(
   RBKEY key
 #ifdef RBVALUE
 , RBVALUE value
+#else
+, bool* added
 #endif
   RBUSERDATA_COMMA
 ) {
@@ -286,10 +290,13 @@ static RBNode* rbInsert(
   }
   #else
   if (cmp < 0) {
-    node->left = rbInsert(node->left, key RBUSERDATA_NAME_COMMA);
+    node->left = rbInsert(node->left, key, added RBUSERDATA_NAME_COMMA);
   } else if (cmp > 0) {
-    node->right = rbInsert(node->right, key RBUSERDATA_NAME_COMMA);
-  } // else: key exists
+    node->right = rbInsert(node->right, key, added RBUSERDATA_NAME_COMMA);
+  } else {
+    // key exists
+    *added = false;
+  }
   #endif
 
   if (isred(node->right) && !isred(node->left))     { node = rotateLeft(node); }
@@ -331,8 +338,9 @@ inline static RBNode* RBAdd(RBNode* root, RBKEY key, RBVALUE value, bool* added 
 
 #else
 
-inline static RBNode* RBInsert(RBNode* root, RBKEY key RBUSERDATA_COMMA) {
-  root = rbInsert(root, key RBUSERDATA_NAME_COMMA);
+inline static RBNode* RBInsert(RBNode* root, RBKEY key, bool* added RBUSERDATA_COMMA) {
+  *added = true;
+  root = rbInsert(root, key, added RBUSERDATA_NAME_COMMA);
   if (root) {
     // Note: rbInsert returns NULL when out of memory (malloc failure)
     root->isred = false;
@@ -471,7 +479,7 @@ inline static bool RBIter(const RBNode* n, RBIterator* f, void* userdata) {
 inline static Str RBRepr(const RBNode* n, Str s, int depth, Str(keyfmt)(Str,RBKEY)) {
   if (depth > 0) {
     s = str_appendc(s, '\n');
-    s = str_appendfill(s, str_len(s) + depth, ' ');
+    s = str_appendfill(s, depth*2, ' ');
   }
   s = str_appendn(s, n->isred ? "(R " : "(B ", 3);
   s = keyfmt(s, n->key);

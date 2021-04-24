@@ -175,9 +175,8 @@ static void snameuni(Scanner* s) {
     }
   }
   s->tokend = s->inp;
-  s->name = symgeth(s->tokstart, s->tokend - s->tokstart);
-  // s->tok = symLangTok(s->name);
-  dlog("TODO FIXME s->tok = symLangTok(s->name)");
+  s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->tok = sym_langtok(s->name); // TIdent or a T* keyword
 }
 
 
@@ -199,9 +198,8 @@ static void sname(Scanner* s) {
   }
 
   s->tokend = s->inp;
-  s->name = symget(s->tokstart, s->tokend - s->tokstart, hash);
-  // s->tok = symLangTok(s->name);
-  dlog("TODO FIXME s->tok = symLangTok(s->name)");
+  s->name = symgeth(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart, hash);
+  s->tok = sym_langtok(s->name); // TIdent or a T* keyword
 
   // dlog("got name %s \t%p\t%s\thash=%u", sdscatrepr(sdsempty(), s->name, symlen(s->name)),
   //   s->name, TokName(s->tok), hash);

@@ -1,5 +1,5 @@
 #include <rbase/rbase.h>
-#include "../tstyle.h"
+#include "../util/tstyle.h"
 #include "source.h"
 
 #include <sys/stat.h>
@@ -181,13 +181,15 @@ static const u8* lineContents(Source* s, u32 line, u32* out_len) {
 Str SrcPosMsg(SrcPos pos, const char* message) {
   auto l = SrcPosLineCol(pos);
 
+  TStyleTable style = TStyle16;
+
   Str s = str_fmt("%s%s:%u:%u: %s%s\n",
-    TStyleTable[TStyle_bold],
+    style[TStyle_bold],
     pos.src ? pos.src->filename : "<input>",
     l.line + 1,
     l.col + 1,
     message ? message : "",
-    TStyleTable[TStyle_none]
+    style[TStyle_none]
   );
 
   // include line contents

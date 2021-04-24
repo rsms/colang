@@ -212,6 +212,11 @@ static bool init(const char* argv0) {
 }
 
 int main(int argc, const char* argv[argc+1]) {
+  #if R_UNIT_TEST_ENABLED
+  if (strcmp(argv[1], "test") == 0)
+    return 0;
+  #endif
+
   if (!init(argv[0]))
     return 1;
 

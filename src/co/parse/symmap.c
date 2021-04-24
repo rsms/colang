@@ -23,18 +23,13 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
 
 R_UNIT_TEST(SymMap, {;
   auto m = SymMapNew(64, NULL);
+  SymPool syms;
+  sympool_init(&syms, NULL, NULL, NULL);
 
   assert(m->len == 0);
 
-  #define SYM(cstr) symgetcstr(cstr)
+  #define SYM(cstr) symgetcstr(&syms, cstr)
   const void* oldval;
-
-  // make sure sym interning works as expected
-  const char* a = "break";
-  char* b = strdup("break");
-  assert(a != b);
-  assert(SYM(a) == SYM(b));
-  free(b);
 
   oldval = SymMapSet(m, SYM("hello"), (void*)1);
   // dlog("SymMapSet(hello) => %zu", (size_t)oldval);

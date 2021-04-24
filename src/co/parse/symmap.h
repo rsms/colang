@@ -5,6 +5,8 @@
 #include "../util/hashmap.h"
 #undef HASHMAP_NAME
 
+ASSUME_NONNULL_BEGIN
+
 // Creates and initializes a new SymMap in mem, or global memory if mem is NULL.
 SymMap* SymMapNew(u32 initbuckets, Mem nullable mem);
 
@@ -34,3 +36,5 @@ typedef void(SymMapIterator)(Sym key, void* value, bool* stop, void* nullable us
 
 // SymMapIter iterates over entries of the map.
 void SymMapIter(const SymMap*, SymMapIterator*, void* nullable userdata);
+
+ASSUME_NONNULL_END

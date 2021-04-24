@@ -1,3 +1,6 @@
+# make V=1 or make VERBOSE=1 to print invocations
+Q = $(if $(filter 1,$(V) $(VERBOSE)),,@)
+
 LLVM_PREFIX := deps/llvm
 SYSTEM      := $(shell uname -s)
 ARCH        := $(shell uname -m)
@@ -23,7 +26,8 @@ CFLAGS := \
 	-ffile-prefix-map=$(SRCROOT)/= \
 	-fstrict-aliasing \
 	-Wall \
-	-Wunused
+	-Wunused \
+	$(MORECFLAGS)
 
 CXXFLAGS := \
 	-std=c++17 \
@@ -31,7 +35,7 @@ CXXFLAGS := \
 	-fno-exceptions \
 	-fno-rtti \
 
-LDFLAGS :=
+LDFLAGS := $(MORELDFLAGS)
 
 FLAVOR := release
 ifneq ($(DEBUG),)
@@ -41,27 +45,36 @@ else
 	LDFLAGS += -dead_strip
 endif
 
-# enable memory sanitizer
+# enable sanitizer
+# make SANITIZE=address
+# make SANITIZE=undefined
 ifneq ($(SANITIZE),)
-	FLAVOR := $(FLAVOR)-san
-	CFLAGS += \
-		-DASAN_ENABLED=1 \
-	  -fsanitize=address \
-	  -fsanitize-address-use-after-scope \
-	  -fno-omit-frame-pointer \
-	  -fno-optimize-sibling-calls
-	LDFLAGS += -fsanitize=address
-	# out local build of clang doesn't include asan libs, so use system compiler
-	CC  := /usr/bin/clang
-	CXX := /usr/bin/clang++
+	CC  := clang
+	CXX := clang++
+	ifeq ($(SANITIZE),address)
+		FLAVOR := $(FLAVOR)-asan
+		CFLAGS += \
+			-DASAN_ENABLED=1 \
+		  -fsanitize=address \
+		  -fsanitize-address-use-after-scope \
+		  -fno-omit-frame-pointer \
+		  -fno-optimize-sibling-calls
+		LDFLAGS += -fsanitize=address
+		# out local build of clang doesn't include asan libs, so use system compiler
+	else ifeq ($(SANITIZE),undefined)
+		FLAVOR := $(FLAVOR)-usan
+		CFLAGS += -g -fsanitize=undefined -fno-sanitize-recover=all
+	  LDFLAGS += -fsanitize=undefined
+	else
+		ERROR
+	endif
 endif
 
 BUILDDIR := .build/$(FLAVOR)
 
 ifeq ($(SYSTEM),Darwin)
-	CC  := $(LLVM_PREFIX)/bin/clang
-	CXX := $(LLVM_PREFIX)/bin/clang++
-	AR  := $(LLVM_PREFIX)/bin/llvm-ar
+	CC  := clang
+	CXX := clang++
 	ifeq ($(ARCH),x86_64)
 		RT_SRC += src/rt/exectx/exectx_x86_64_sysv.S
 	else
@@ -105,38 +118,53 @@ RBASE_PCH    := $(BUILDDIR)/rbase.pch
 
 all: bin/co bin/rt-test
 
+.PHONY: test_unit
+test_unit:
+	$(MAKE) DEBUG=1 V=$(V) -j$(shell nproc) bin/co
+	R_UNIT_TEST=1 ./bin/co test
+
+.PHONY: test_usan
+test_usan:
+	$(MAKE) SANITIZE=undefined DEBUG=1 V=$(V) -j$(shell nproc) bin/co
+	R_UNIT_TEST=1 ./bin/co build example/ex1.c
+
+.PHONY: test_asan
+test_asan:
+	$(MAKE) SANITIZE=address DEBUG=1 V=$(V) -j$(shell nproc) bin/co
+	R_UNIT_TEST=1 ./bin/co build example/ex1.c
+
 bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a | $(RBASE_PCH)
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	@mkdir -p "$(dir $@)"
-	@$(CC) $(LDFLAGS) -o $@ $^
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
 bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a | $(RBASE_PCH)
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	@mkdir -p "$(dir $@)"
-	$(CC) $(LDFLAGS) -o $@ $^
+	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
 $(BUILDDIR)/rt.a: $(RT_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
-	@$(AR) rcs $@ $^
+	$(Q)$(AR) rcs $@ $^
 
 $(BUILDDIR)/rbase.a: $(RBASE_OBJS) | $(RBASE_PCH)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
-	@$(AR) rcs $@ $^
+	$(Q)$(AR) rcs $@ $^
 
 $(RBASE_PCH): src/rbase/rbase.h $(RBASE_PCH_DEPS)
 	@echo "cc $< -> $@"
 	@mkdir -p "$(dir $@)"
-	@$(CC) $(CFLAGS) -c -o "$@" src/rbase/rbase.h
+	$(Q)$(CC) $(CFLAGS) -c -o "$@" src/rbase/rbase.h
 
 $(OBJDIR)/%.c.o: %.c | $(RBASE_PCH)
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
-	@$(CC) -I$(dir $(RBASE_PCH)) $(CFLAGS) -o $@ -c $<
+	$(Q)$(CC) -I$(dir $(RBASE_PCH)) $(CFLAGS) -o $@ -c $<
 
 $(OBJDIR)/%.S.o: %.S
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
-	@$(CC) $(CFLAGS) -o $@ -c $<
+	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
 
 dev:
