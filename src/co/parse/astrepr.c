@@ -88,6 +88,7 @@ Str NValFmt(Str s, const NVal* v) {
 
   case CType_nil:
     str_appendcstr(s, "nil");
+    break;
 
   case CType_INVALID:
     assert(0 && "unexpected CType");

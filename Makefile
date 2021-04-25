@@ -25,7 +25,8 @@ CFLAGS := \
 	-Isrc \
 	-ffile-prefix-map=$(SRCROOT)/= \
 	-fstrict-aliasing \
-	-Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter \
+	-Wall -Wextra -Wimplicit-fallthrough \
+	-Wno-missing-field-initializers -Wno-unused-parameter \
 	-Wunused \
 	$(MORECFLAGS)
 

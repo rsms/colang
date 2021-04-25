@@ -6,8 +6,11 @@
 #include "sym.h"
 #include "../util/array.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
 #define XXH_INLINE_ALL
 #include <xxhash/xxhash.h>
+#pragma GCC diagnostic pop
 
 // red-black tree implementation used for interning
 #define RBKEY      Sym
