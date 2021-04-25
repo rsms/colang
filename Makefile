@@ -66,6 +66,10 @@ ifneq ($(SANITIZE),)
 		FLAVOR := $(FLAVOR)-usan
 		CFLAGS += -g -fsanitize=undefined -fno-sanitize-recover=all
 	  LDFLAGS += -fsanitize=undefined
+	else ifeq ($(SANITIZE),memory)
+		FLAVOR := $(FLAVOR)-msan
+		CFLAGS += -g -fsanitize=memory -fno-omit-frame-pointer
+	  LDFLAGS += -fsanitize=memory
 	else
 		ERROR
 	endif
@@ -74,8 +78,10 @@ endif
 BUILDDIR := .build/$(FLAVOR)
 
 ifeq ($(SYSTEM),Darwin)
-	CC  := clang
-	CXX := clang++
+	ifeq ($(CC),cc)
+		CC  := clang
+		CXX := clang++
+	endif
 	ifeq ($(ARCH),x86_64)
 		RT_SRC += src/rt/exectx/exectx_x86_64_sysv.S
 	else
@@ -127,12 +133,17 @@ test_unit:
 .PHONY: test_usan
 test_usan:
 	$(MAKE) SANITIZE=undefined DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co build example/ex1.c
+	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
 .PHONY: test_asan
 test_asan:
 	$(MAKE) SANITIZE=address DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co build example/ex1.c
+	R_UNIT_TEST=1 ./bin/co build example/hello.w
+
+.PHONY: test_msan
+test_msan:
+	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) bin/co
+	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
 bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a | $(RBASE_PCH)
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
