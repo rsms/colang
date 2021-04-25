@@ -125,12 +125,22 @@ bool compile_source1(const Pkg* pkg, Source* src) {
 static bool compile_source(BuildCtx* ctx, Scope* pkgns, Source* src) {
   Parser parser;
   ParseFlags flags = ParseFlagsDefault;
+
   auto ast = Parse(&parser, ctx, src, flags, pkgns);
   if (ast == NULL)
     return false;
 
   auto s = NodeRepr(ast, str_new(16));
-  dlog("%s", s);
+  dlog("after parse: %s", s);
+  str_free(s);
+
+  if (parser.unresolved > 0) {
+    dlog("resolving %u unresolved symbols", parser.unresolved);
+    ast = ResolveSym(ctx, src, flags, ast, pkgns);
+  }
+
+  s = NodeRepr(ast, str_new(16));
+  dlog("after resolve: %s", s);
   str_free(s);
 
   return true;
@@ -138,7 +148,7 @@ static bool compile_source(BuildCtx* ctx, Scope* pkgns, Source* src) {
 
 
 static void errh(const Source* src, SrcPos pos, const Str msg, void* userdata) {
-  auto s = SrcPosFmt(pos, str_new(str_len(msg)+32), "%s", msg);
+  auto s = SrcPosFmt(pos, str_new(str_len(msg) + 32), "%s", msg);
   fprintf(stderr, "%s\n", s);
   str_free(s);
 }

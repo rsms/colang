@@ -132,6 +132,9 @@ typedef struct BuildCtx {
   void*                  userdata; // custom user data passed to error handler
 } BuildCtx;
 
+// build_errf formats a message including source position and invokes ctx->errh
+void build_errf(const BuildCtx* ctx, const Source*, SrcPos, const char* format, ...);
+
 // ParseFlags are flags for parser and scanner
 typedef enum {
   ParseFlagsDefault = 0,
@@ -210,11 +213,12 @@ typedef struct Parser {
 // Parse parses a translation unit and returns an AST
 Node* Parse(Parser*, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
 
-// ResolveSym resolves unresolved symbols in an AST
-Node* ResolveSym(BuildCtx*, ParseFlags, Node*, Scope*);
+// ResolveSym resolves unresolved symbols in an AST.
+// For top-level AST, scope should be pkgscope.
+Node* ResolveSym(BuildCtx*, Source*, ParseFlags, Node*, Scope*);
 
 // ResolveType resolves unresolved types in an AST
-void ResolveType(BuildCtx*, Node*);
+void ResolveType(BuildCtx*, Source*, Node*);
 
 
 // ---------------------------------------------------------------------------------
