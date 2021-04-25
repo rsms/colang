@@ -130,6 +130,7 @@ static void dump_ast(const char* message, Node* ast) {
 
 
 static bool compile_source(BuildCtx* build, Scope* pkgns, Source* src) {
+  dlog("compile_source %.*s", (int)str_len(src->filename), src->filename);
   Parser parser;
   ParseFlags flags = ParseFlagsDefault;
 

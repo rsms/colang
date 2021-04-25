@@ -44,7 +44,6 @@ TYPE_SYMS_PRIVATE(SYM_DEF)
 
 // nil is special and implemented without macros since its sym is defined by TOKEN_KEYWORDS
 Node* Type_nil;
-Node* Const_nil;
 
 // "ideal" is the type of untyped constants like "x = 4"
 Node* Type_ideal;

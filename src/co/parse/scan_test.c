@@ -228,7 +228,7 @@ static void on_scan_err(SrcPos pos, const Str msg, void* userdata) {
   testctx->nerrors++;
   if (testctx->last_errmsg)
     str_free(testctx->last_errmsg);
-  testctx->last_errmsg = str_cpy(msg);
+  testctx->last_errmsg = str_cpy(msg, str_len(msg));
   // dlog("scan error: %s", msg);
 }
 

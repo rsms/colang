@@ -7,7 +7,7 @@
 // #define RUN_GENERATOR
 
 
-//-- BEGIN gen_constants() at src/co/parse/universe.c:334
+//-- BEGIN gen_constants() at src/co/parse/universe.c:336
 
 const Sym sym_as = &"\x87\x3D\x7F\xCD\x02\x00\x00\x08""as\0"[8];
 const Sym sym_break = &"\xFF\x55\x83\xD2\x05\x00\x00\x10""break\0"[8];
@@ -88,7 +88,7 @@ static const Node _Type_ideal = {NBasicType,{0,0,0},NULL,{.t={sym_$x2a,.basic={T
 static const Node _Type_nil = {NBasicType,{0,0,0},NULL,{.t={sym_0,.basic={TypeCode_nil,sym_nil}}}};
 static const Node _Const_true = {NBoolLit,{0,0,0},(Node*)&_Type_bool,{.val={CType_bool,.i=1}}};
 static const Node _Const_false = {NBoolLit,{0,0,0},(Node*)&_Type_bool,{.val={CType_bool,.i=0}}};
-static const Node _Const_nil = {NIntLit,{0,0,0},(Node*)&_Type_nil,{.val={CType_nil,.i=0}}};
+static const Node _Const_nil = {NNil,{0,0,0},(Node*)&_Type_nil,{.val={CType_nil,.i=0}}};
 
 Node* Type_bool = (Node*)&_Type_bool;
 Node* Type_int8 = (Node*)&_Type_int8;
@@ -182,7 +182,7 @@ __attribute__((used)) static const char* const debugSymCheck =
   "_ ";
 #endif
 
-//-- END gen_constants() at src/co/parse/universe.c:523
+//-- END gen_constants() at src/co/parse/universe.c:527
 
 
 
@@ -247,7 +247,7 @@ inline static Str fmt_nodes(const RBNode* n, Str s) {
   }
 
   s = str_appendcstr(s, "static SymRBNode n_");
-  s = str_appendn(s, n->key, symlen(n->key));
+  s = str_append(s, n->key, symlen(n->key));
   s = str_appendcstr(s, " = { ");
 
   // { key, isred, left, right }
@@ -422,7 +422,9 @@ __attribute__((constructor,used)) static void gen_constants() {
     printf(                                                                       \
       "static const Node _Const_%s = {%s,{0,0,0},(Node*)&_Type_%s,{.val=%s}};\n", \
       #name,                                                                      \
-      strcmp(#type, "bool") == 0 ? "NBoolLit" : "NIntLit",                        \
+      strcmp(#type, "bool") == 0 ? "NBoolLit" :                                   \
+      strcmp(#type, "nil") == 0 ?  "NNil" :                                       \
+                                   "NIntLit",                                     \
       #type,                                                                      \
       /*NVal*/ "{CType_" #type ",.i=" #value "}"                                  \
     );

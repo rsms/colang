@@ -7,13 +7,13 @@
 
 static void SourceInit(const Pkg* pkg, Source* src, const char* filename) {
   memset(src, 0, sizeof(Source));
-  auto namelen = strlen(filename);
-  if (namelen == 0)
+  auto filenamelen = strlen(filename);
+  if (filenamelen == 0)
     panic("empty filename");
   if (!strchr(filename, PATH_SEPARATOR)) { // foo.c -> pkgdir/foo.c
     src->filename = path_join(pkg->dir, filename);
   } else {
-    src->filename = str_cpyn(filename, namelen+1);
+    src->filename = str_cpy(filename, filenamelen);
   }
   src->pkg = pkg;
 }
