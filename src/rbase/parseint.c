@@ -1,6 +1,6 @@
 #include "rbase.h"
 
-static bool _parseu64(const char* pch, size_t z, int base, u64* result, u64 cutoff) {
+bool _parseu64(const char* pch, size_t z, int base, u64* result, u64 cutoff) {
   assert(base >= 2 && base <= 36);
   const char* s = pch;
   const char* end = pch + z;
@@ -39,17 +39,6 @@ static bool _parseu64(const char* pch, size_t z, int base, u64* result, u64 cuto
 }
 
 
-bool parseu64(const char* ptr, size_t z, int base, u64* result) {
-  return _parseu64(ptr, z, base, result, 0xFFFFFFFFFFFFFFFFull);
-}
-
-bool parseu32(const char* ptr, size_t z, int base, u32* result) {
-  u64 r;
-  bool ok = _parseu64(ptr, z, base, &r, 0xFFFFFFFFu);
-  *result = (u32)r;
-  return ok;
-}
-
 bool parsei64(const char* ptr, size_t z, int base, i64* result) {
   while (z > 0 && *ptr == '-') {
     ptr++;
@@ -64,19 +53,20 @@ bool parsei64(const char* ptr, size_t z, int base, i64* result) {
   return true;
 }
 
-bool parsei32(const char* ptr, size_t z, int base, i32* result) {
-  // if (len == 0)
-  //   return false;
-  // if (*ptr == '-') {
-  //   ptr++;
-  //   len--;
-  // }
-  // if (!parseu64(ptr, len, base, (*u64)result))
-  //   return false;
-  // if (*ptr == '-')
-  //   *result = -(*result)
-  return true;
-}
+// TODO:
+// bool parsei32(const char* ptr, size_t z, int base, i32* result) {
+//   // if (len == 0)
+//   //   return false;
+//   // if (*ptr == '-') {
+//   //   ptr++;
+//   //   len--;
+//   // }
+//   // if (!parseu64(ptr, len, base, (*u64)result))
+//   //   return false;
+//   // if (*ptr == '-')
+//   //   *result = -(*result)
+//   return true;
+// }
 
 R_UNIT_TEST(parseint) {
   #define T32(cstr, base, expectnum) (({ \

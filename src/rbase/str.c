@@ -41,8 +41,11 @@ void str_free(Str s) {
 }
 
 Str str_fmt(const char* fmt, ...) {
-  Str s = str_new(0);
-  panic("TODO");
+  Str s = str_new(strlen(fmt) * 4);
+  va_list ap;
+  va_start(ap, fmt);
+  s = str_appendfmtv(s, fmt, ap);
+  va_end(ap);
   return s;
 }
 
@@ -69,7 +72,7 @@ char* str_reserve(Str* sp, u32 len) {
   return p;
 }
 
-Str str_appendn(Str s, const char* p, u32 len) {
+Str str_append(Str s, const char* p, u32 len) {
   u32 curlen = str_len(s);
   s = str_makeroom(s, len);
   memcpy(s+curlen, p, len);
@@ -86,7 +89,7 @@ Str str_appendc(Str s, char c) {
   return s;
 }
 
-Str str_appendvfmt(Str s, const char* fmt, va_list ap) {
+Str str_appendfmtv(Str s, const char* fmt, va_list ap) {
   // start by making an educated guess for space needed: 2x that of the format:
   size_t len = (strlen(fmt) * 2) + 1;
   u32 offs = str_len(s);
@@ -115,7 +118,7 @@ Str str_appendvfmt(Str s, const char* fmt, va_list ap) {
 Str str_appendfmt(Str s, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  s = str_appendvfmt(s, fmt, ap);
+  s = str_appendfmtv(s, fmt, ap);
   va_end(ap);
   return s;
 }
@@ -125,8 +128,8 @@ Str str_appendfill(Str s, u32 n, char c) {
   auto h = STR_HEADER(s);
   memset(s + h->len, c, n);
   h->len += n;
-  h->p[h->len] = 0;
-  return &h->p[0];
+  s[h->len] = 0;
+  return s;
 }
 
 static inline bool ishexdigit(char c) {
@@ -221,6 +224,14 @@ const char* str_splitn(StrSlice* st, char delim, const char* s, size_t slen) {
   st->len = p - st->p;
   return st->p;
 }
+
+
+bool str_hasprefixn(Str s, const char* prefix, u32 prefixlen) {
+  if (str_len(s) < prefixlen)
+    return false;
+  return memcmp(s, prefix, prefixlen) == 0;
+}
+
 
 // -----------------------------------------------------------------------------------------------
 // unit test

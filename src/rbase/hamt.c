@@ -700,7 +700,7 @@ static Str node_repr(
   if (level > 0) {
     Str indent_check = indent;
     s = str_appendc(s, '\n');
-    s = str_append(s, indent);
+    s = str_appendstr(s, indent);
     if (rindex == 1) {
       indent = str_appendcstr(indent, "   ");
       s = str_appendcstr(s, "└─ ");

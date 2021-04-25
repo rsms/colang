@@ -19,12 +19,12 @@ static u32  str_avail(ConstStr s);
 static Str  str_setlen(Str s, u32 len); // returns s as a convenience
 
 // appending to a string
-static Str str_append(Str s, ConstStr suffix);
-Str        str_appendn(Str s, const char* p, u32 len);
+Str        str_append(Str s, const char* p, u32 len);
+static Str str_appendstr(Str s, ConstStr suffix);
 static Str str_appendcstr(Str s, const char* cstr);
 Str        str_appendc(Str s, char c);
 Str        str_appendfmt(Str s, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
-Str        str_appendvfmt(Str s, const char* fmt, va_list);
+Str        str_appendfmtv(Str s, const char* fmt, va_list);
 Str        str_appendfill(Str s, u32 n, char v); // like msmset(str_reserve)
 
 // str_appendrepr appends a human-readable representation of data to dst as C-format ASCII
@@ -60,6 +60,11 @@ static const char* nullable str_split(StrSlice* sl, char delim, Str s);
 const char*        nullable str_splitn(StrSlice* sl, char delim, const char* p, size_t len);
 static const char* nullable str_splitcstr(StrSlice* sl, char delim, const char* cstr);
 
+// str_hasprefix returns true if s begins with prefix
+static bool str_hasprefix(Str s, Str prefix);
+bool        str_hasprefixn(Str s, const char* prefix, u32 len);
+static bool str_hasprefixcstr(Str s, const char* prefix);
+
 
 // -----------------------------------------------------------------------------------------------
 // implementation
@@ -82,14 +87,18 @@ inline static Str str_setlen(Str s, u32 len) {
   return s;
 }
 
-inline static Str str_cpy(Str s) { return str_cpyn(s, str_len(s)); }
-inline static Str str_cpycstr(const char* cstr) { return str_cpyn(cstr, strlen(cstr)); }
+inline static Str str_cpy(Str s) {
+  return str_cpyn(s, str_len(s));
+}
+inline static Str str_cpycstr(const char* cstr) {
+  return str_cpyn(cstr, strlen(cstr));
+}
 
-inline static Str str_append(Str s, ConstStr suffix) {
-  return str_appendn(s, suffix, str_len(suffix));
+inline static Str str_appendstr(Str s, ConstStr suffix) {
+  return str_append(s, suffix, str_len(suffix));
 }
 inline static Str str_appendcstr(Str s, const char* cstr) {
-  return str_appendn(s, cstr, strlen(cstr));
+  return str_append(s, cstr, strlen(cstr));
 }
 
 inline static const char* str_split(StrSlice* sl, char delim, Str s) {
@@ -97,6 +106,13 @@ inline static const char* str_split(StrSlice* sl, char delim, Str s) {
 }
 inline static const char* str_splitcstr(StrSlice* sl, char delim, const char* cstr) {
   return str_splitn(sl, delim, cstr, strlen(cstr));
+}
+
+inline static bool str_hasprefix(Str s, Str prefix) {
+  return str_hasprefixn(s, prefix, str_len(prefix));
+}
+inline static bool str_hasprefixcstr(Str s, const char* prefix) {
+  return str_hasprefixn(s, prefix, strlen(prefix));
 }
 
 

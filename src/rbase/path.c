@@ -12,9 +12,9 @@ Str path_join(const char* path1, const char* path2) {
   size_t len1 = strlen(path1);
   size_t len2 = strlen(path2);
   auto s = str_new(len1 + len2 + 1);
-  s = str_appendn(s, path1, len1);
+  s = str_append(s, path1, len1);
   s = str_appendc(s, PATH_SEPARATOR);
-  s = str_appendn(s, path2, len2);
+  s = str_append(s, path2, len2);
   return s;
 }
 
