@@ -89,9 +89,8 @@ static Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
   // allocate a new Sym
   auto hp = (SymHeader*)memalloc_raw(p->mem, sizeof(SymHeader) + (size_t)len + 1);
   hp->hash = hash;
-  hp->sh.len = SYM_MAKELEN(len, /*flags*/ 0);
-  hp->sh.cap = len;
-  auto sp = &hp->sh.p[0];
+  hp->len = SYM_MAKELEN(len, /*flags*/ 0);
+  auto sp = &hp->p[0];
   memcpy(sp, data, len);
   sp[len] = 0;
   auto s = (Sym)sp;
@@ -164,7 +163,7 @@ Sym symadd(SymPool* p, const char* data, size_t len) {
 
 static bool sym_rb_iter1(const RBNode* n, void* userdata) {
   auto sp = (Str*)userdata;
-  *sp = str_append(*sp, n->key);
+  *sp = str_append(*sp, n->key, symlen(n->key));
   *sp = str_appendcstr(*sp, ", ");
   return true; // keep going
 }
@@ -203,7 +202,7 @@ Str sympool_repr(const SymPool* p, Str s) {
       s = str_appendcstr(s, ", \"");
     }
     s = str_appendrepr(s, sym, symlen(sym));
-    // s = str_appendn(s, sym, symlen(sym));
+    // s = str_append(s, sym, symlen(sym));
     s = str_appendc(s, '"');
   }
   s = str_appendc(s, '}');
@@ -250,6 +249,19 @@ R_UNIT_TEST(sym) {
 
   sympool_dispose(&syms);
 }
+
+
+R_UNIT_TEST(symflags) {
+  SymPool syms;
+  sympool_init(&syms, NULL, NULL, NULL);
+  auto s = symgetcstr(&syms, "hello");
+  for (u32 i = 0; i <= SYM_FLAGS_MAX; i++) {
+    sym_dangerously_set_flags(s, i);
+    asserteq((int)symflags(s), i);        // we should be able to read the flag value
+    asserteq(symlen(s), strlen("hello")); // len should still be accurate
+  }
+}
+
 
 R_UNIT_TEST(sym_hash) {
   const char* buffer = "hello";

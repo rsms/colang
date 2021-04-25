@@ -1,8 +1,8 @@
 #pragma once
 
-// Sym is an immutable type of Str with a precomputed hash.
-// Being a Str it is also a valid C-string (i.e. null-terminated.)
-// Sym is compatible with all Str functions.
+// Sym is an immutable type of string with a precomputed hash.
+// Being it is also a valid C-string (i.e. null-terminated.)
+// Sym is NOT compatible with Str functions.
 // Sym functions are tuned toward lookup rather than insertion or deletion.
 typedef const char* Sym;
 
@@ -83,8 +83,9 @@ static u8 symflags(Sym s);
 // implementation
 
 typedef struct __attribute__((__packed__)) SymHeader {
-  u32              hash;
-  struct StrHeader sh;
+  u32  hash;
+  u32  len;
+  char p[];
 } SymHeader;
 
 #define _SYM_HEADER(s) ((const SymHeader*)((s) - (sizeof(SymHeader))))
@@ -95,8 +96,10 @@ typedef struct __attribute__((__packed__)) SymHeader {
 #error "big-endian arch not supported"
 #endif
 #define _SYM_FLAG_BITS 5
-#define _SYM_FLAG_MASK ((1 << _SYM_FLAG_BITS) - 1)    /* e.g. 0b11110000...0000 */
-#define _SYM_LEN_MASK  (0xffffffff >> _SYM_FLAG_BITS) /* e.g. 0b00001111...1111 */
+// _sym_flag_mask  0b11110000...0000
+// _sym_len_mask   0b00001111...1111
+static const u32 _sym_flag_mask = UINT32_MAX ^ (UINT32_MAX >> _SYM_FLAG_BITS);
+static const u32 _sym_len_mask  = UINT32_MAX ^ _sym_flag_mask;
 
 inline static Sym symgetcstr(SymPool* p, const char* cstr) {
   return symget(p, cstr, strlen(cstr));
@@ -108,31 +111,30 @@ inline static Sym symaddcstr(SymPool* p, const char* cstr) {
 
 inline static int symcmp(Sym a, Sym b) { return a == b ? 0 : strcmp(a, b); }
 inline static u32 symhash(Sym s) { return _SYM_HEADER(s)->hash; }
-inline static u32 symlen(Sym s) { return str_len((Str)s) & _SYM_LEN_MASK; }
+inline static u32 symlen(Sym s) { return _SYM_HEADER(s)->len & _sym_len_mask; }
 
 inline static u8 symflags(Sym s) {
-  return (str_len((Str)s) & _SYM_FLAG_MASK) >> (32 - _SYM_FLAG_BITS);
+  return (_SYM_HEADER(s)->len & _sym_flag_mask) >> (32 - _SYM_FLAG_BITS);
 }
 
 // SYM_MAKELEN(u32 len, u8 flags) is a helper macro for making the "length" portion of
-// the StrHeader, useful when creating Syms at compile time.
+// the SymHeader, useful when creating Syms at compile time.
 #define SYM_MAKELEN(len, flags) \
-  ( ( ((u32)(flags) << (32 - _SYM_FLAG_BITS)) & _SYM_FLAG_MASK ) | ((len) & _SYM_LEN_MASK) )
+  ( ( ((u32)(flags) << (32 - _SYM_FLAG_BITS)) & _sym_flag_mask ) | ((len) & _sym_len_mask) )
 
 // sym_dangerously_set_flags mutates a Sym by setting its flags.
 // Use with caution as Syms are assumed to be constant and immutable.
-inline static Sym sym_dangerously_set_flags(Sym s, u8 flags) {
+inline static void sym_dangerously_set_flags(Sym s, u8 flags) {
   assert(flags <= SYM_FLAGS_MAX);
-  u32 u = str_len((Str)s);
-  u = (u32)((flags << (32 - _SYM_FLAG_BITS)) & _SYM_FLAG_MASK) | (u & _SYM_LEN_MASK);
-  return (Sym)str_setlen((Str)s, u);
+  auto h = (SymHeader*)_SYM_HEADER(s);
+  h->len = ( ((u32)flags << (32 - _SYM_FLAG_BITS)) & _sym_flag_mask ) | (h->len & _sym_len_mask);
 }
 
 // sym_dangerously_set_len mutates a Sym by setting its length.
 // Use with caution as Syms are assumed to be constant and immutable.
-inline static Sym sym_dangerously_set_len(Sym s, u32 len) {
-  assert(len <= SYM_LEN_MAX);
-  u32 u = str_len((Str)s);
-  u = (u & _SYM_FLAG_MASK) | len;
-  return (Sym)str_setlen((Str)s, u);
+inline static void sym_dangerously_set_len(Sym s, u32 len) {
+  assert(len <= symlen(s)); // can only shrink
+  auto h = (SymHeader*)_SYM_HEADER(s);
+  h->len = (h->len & _sym_flag_mask) | len;
+  h->p[h->len] = 0;
 }

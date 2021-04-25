@@ -123,6 +123,15 @@ const char* TokName(Tok);
 // msg is a preformatted error message and is only valid until this function returns
 typedef void(ErrorHandler)(const Source* src, SrcPos pos, const Str msg, void* userdata);
 
+// BuildCtx holds shared resources used to scan, parse and compile things
+typedef struct BuildCtx {
+  Mem nullable           mem;      // for allocations during parsing (e.g. ASTNode, Comment)
+  SymPool*               syms;     // symbol pool
+  const Pkg*             pkg;      // top-level package for which we are building
+  ErrorHandler* nullable errh;     // error handler
+  void*                  userdata; // custom user data passed to error handler
+} BuildCtx;
+
 // ParseFlags are flags for parser and scanner
 typedef enum {
   ParseFlagsDefault = 0,
@@ -141,43 +150,32 @@ typedef struct Comment {
 
 // Scanner reads source code and produces tokens
 typedef struct Scanner {
-  Mem        mem;          // memory to use for allocations
+  BuildCtx*  ctx;          // memory to use for allocations
   Source*    src;          // input source
-  SymPool*   syms;         // symbol pool
   ParseFlags flags;
   const u8*  inp;          // input buffer current pointer
   const u8*  inp0;         // input buffer previous pointer
   const u8*  inend;        // input buffer end
+  bool       insertSemi;    // insert a semicolon before next newline
 
   Tok        tok;           // current token
   const u8*  tokstart;      // start of current token
   const u8*  tokend;        // end of current token
   Sym        name;          // Current name (valid for TId and keywords)
 
-  bool       insertSemi;    // insert a semicolon before next newline
-
   Comment*   comments_head; // linked list head of comments scanned so far
   Comment*   comments_tail; // linked list tail of comments scanned so far
 
   u32        lineno;        // source position line
   const u8*  linestart;     // source position line start pointer (for column)
-
-  ErrorHandler* errh;       // error handler
-  void*         userdata;   // custom user data to pass to error handler
 } Scanner;
 
 // ScannerInit initializes a scanner. Returns false if SourceOpenBody fails.
-bool ScannerInit(
-  Scanner*               scanner,
-  Mem nullable           mem,
-  SymPool*               syms,
-  ErrorHandler* nullable errh,
-  Source*                src,
-  ParseFlags             flags,
-  void*                  userdata);
+bool ScannerInit(Scanner*, BuildCtx*, Source*, ParseFlags);
 
-// ScannerDispose frees internal memory of s
-void ScannerDispose(Scanner* s);
+// ScannerDispose frees internal memory of s.
+// Caller is responsible for calling SourceCloseBody as ScannerInit calls SourceOpenBody.
+void ScannerDispose(Scanner*);
 
 // ScannerNext scans the next token
 Tok ScannerNext(Scanner*);
@@ -192,6 +190,31 @@ static const u8* ScannerTokStr(const Scanner* s, size_t* len_out);
 // ScannerCommentPop removes and returns the least recently scanned comment.
 // The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
 Comment* nullable ScannerCommentPop(Scanner* s);
+
+
+ASSUME_NONNULL_END
+#include "universe.h"
+#include "ast.h"
+ASSUME_NONNULL_BEGIN
+
+
+// Parser is the state used to parse
+typedef struct Parser {
+  Scanner   s;          // parser is based on a scanner
+  BuildCtx* ctx;        // compilation context
+  Scope*    scope;      // current scope
+  u32       fnest;      // function nesting level (for error handling)
+  u32       unresolved; // number of unresolved identifiers
+} Parser;
+
+// Parse parses a translation unit and returns an AST
+Node* Parse(Parser*, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
+
+// ResolveSym resolves unresolved symbols in an AST
+Node* ResolveSym(BuildCtx*, ParseFlags, Node*, Scope*);
+
+// ResolveType resolves unresolved types in an AST
+void ResolveType(BuildCtx*, Node*);
 
 
 // ---------------------------------------------------------------------------------
@@ -214,6 +237,3 @@ inline static SrcPos ScannerSrcPos(const Scanner* s) {
 }
 
 ASSUME_NONNULL_END
-
-#include "universe.h"
-#include "ast.h"

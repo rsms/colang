@@ -89,7 +89,7 @@ bool SourceTranspile(Source* src, FILE* f) {
 }
 
 
-bool compile_source(const Pkg* pkg, Source* src) {
+bool compile_source1(const Pkg* pkg, Source* src) {
   if (!SourceOpenBody(src))
     panic("SourceOpenBody %s", src->filename);
 
@@ -122,13 +122,34 @@ bool compile_source(const Pkg* pkg, Source* src) {
 }
 
 
-int cmd_build(int argc, const char** argv) {
+static bool compile_source(BuildCtx* ctx, Scope* pkgns, Source* src) {
+  Parser parser;
+  ParseFlags flags = ParseFlagsDefault;
+  auto ast = Parse(&parser, ctx, src, flags, pkgns);
+  if (ast == NULL)
+    return false;
+
+  auto s = NodeRepr(ast, str_new(16));
+  dlog("%s", s);
+  str_free(s);
+
+  return true;
+}
+
+
+static void errh(const Source* src, SrcPos pos, const Str msg, void* userdata) {
+  auto s = SrcPosFmt(pos, str_new(str_len(msg)+32), "%s", msg);
+  fprintf(stderr, "%s\n", s);
+  str_free(s);
+}
+
+
+int cmd_build(int argc, const char* argv[argc]) {
   if (argc < 3) {
     errlog("missing input");
     return 1;
   }
 
-  char abuf[40];
   auto timestart = nanotime();
   Pkg pkg = { .dir = "." };
 
@@ -138,23 +159,48 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
+  // guess argument 1 is a directory
   pkg.dir = argv[2];
-  if (!PkgScanSources(&pkg))
-    panic("PkgScanSources %s", pkg.dir);
-
-  // process source files
-  bool ok = true;
-  Source* src = pkg.srclist;
-  while (src && ok) {
-    ok = compile_source(&pkg, src);
-    src = src->next;
+  if (!PkgScanSources(&pkg)) {
+    if (errno != ENOTDIR)
+      panic("%s (errno %d %s)", pkg.dir, errno, strerror(errno));
+    // guessed wrong; it's probably a file
+    pkg.dir = path_dir(argv[2]);
+    if (!PkgAddFileSource(&pkg, argv[2]))
+      panic("%s (errno %d %s)", argv[2], errno, strerror(errno));
   }
 
-  // print how much (real, wall) time we spent
+  // setup build context
+  SymPool syms;
+  sympool_init(&syms, universe_syms(), NULL, NULL);
+  BuildCtx ctx = {
+    .mem      = NULL, // allocate AST in global memory pool
+    .syms     = &syms,
+    .pkg      = &pkg,
+    .errh     = errh,
+    .userdata = NULL,
+  };
+
+  // setup package namespace
+  Scope* pkgns = ScopeNew(GetGlobalScope(), ctx.mem);
+
+  // process source files
+  Source* src = pkg.srclist;
+  while (src) {
+    if (compile_source(&ctx, pkgns, src)) {
+      src = src->next;
+    } else {
+      src = NULL; // stop on error
+      return 1;
+    }
+  }
+
+  // print how much (real) time we spent
   auto timeend = nanotime();
-  auto buflen = fmtduration(abuf, countof(abuf), timeend-timestart);
+  char abuf[40];
+  auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
   printf("done in %.*s\n", buflen, abuf);
-  return ok ? 0 : 1;
+  return 0;
 }
 
 int main_usage(const char* arg0, int exit_code) {

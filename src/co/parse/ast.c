@@ -138,6 +138,23 @@ void NodeListAppend(Mem mem, NodeList* a, Node* n) {
   a->len++;
 }
 
+Node* ast_opt_ifcond(Node* n) {
+  assert(n->kind == NIf);
+  if (n->cond.cond == Const_true) {
+    // [optimization] "then" branch always taken
+    return n->cond.thenb;
+  }
+  if (n->cond.cond == Const_false) {
+    // [optimization] "then" branch is never taken
+    return n->cond.elseb != NULL ? n->cond.elseb : Const_nil;
+  }
+  return n;
+}
+
+
+// -----------------------------------------------------------------------------------------------
+// Scope
+
 
 Scope* ScopeNew(const Scope* parent, Mem mem) {
   auto s = (Scope*)memalloc(mem, sizeof(Scope));

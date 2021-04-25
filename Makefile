@@ -42,6 +42,7 @@ ifneq ($(DEBUG),)
 	FLAVOR := debug
 	CFLAGS += -DDEBUG
 else
+	CFLAGS += -O3
 	LDFLAGS += -dead_strip
 endif
 

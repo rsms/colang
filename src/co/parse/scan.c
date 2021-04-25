@@ -48,30 +48,19 @@ static u8 charflags[256] = {
 };
 
 
-bool ScannerInit(
-  Scanner*      s,
-  Mem nullable  mem,
-  SymPool*      syms,
-  ErrorHandler* errh,
-  Source*       src,
-  ParseFlags    flags,
-  void*         userdata)
-{
+bool ScannerInit(Scanner* s, BuildCtx* ctx, Source* src, ParseFlags flags) {
   memset(s, 0, sizeof(Scanner));
 
   if (!SourceOpenBody(src))
     return false;
 
-  s->mem       = mem;
+  s->ctx       = ctx;
   s->src       = src;
-  s->syms      = syms;
   s->inp       = src->body;
   s->inp0      = src->body;
   s->inend     = src->body + src->len;
   s->flags     = flags;
   s->linestart = s->inp;
-  s->errh      = errh;
-  s->userdata  = userdata;
 
   return true;
 }
@@ -82,7 +71,7 @@ void ScannerDispose(Scanner* s) {
     auto c = ScannerCommentPop(s);
     if (!c)
       break;
-    memfree(s->mem, c);
+    memfree(s->ctx->mem, c);
   }
 }
 
@@ -93,13 +82,16 @@ static void serr(Scanner* s, const char* format, ...) {
 
   va_list ap;
   va_start(ap, format);
-  auto msg = SrcPosFmtv(pos, str_new(64), format, ap);
+  auto msg = str_new(64);
+  if (strlen(format) > 0)
+    msg = str_appendfmtv(msg, format, ap);
   va_end(ap);
 
   // either pass to error handler or print to stderr as a fallback
-  if (s->errh) {
-    s->errh(s->src, pos, msg, s->userdata);
+  if (s->ctx->errh) {
+    s->ctx->errh(s->src, pos, msg, s->ctx->userdata);
   } else {
+    // TODO: Consider SrcPosStr to add source position to msg
     msg[str_len(msg)] = '\n'; // replace NUL with ln
     fwrite(msg, str_len(msg) + 1, 1, stderr);
   }
@@ -148,7 +140,7 @@ Comment* ScannerCommentPop(Scanner* s) {
 
 
 static void comments_push_back(Scanner* s) {
-  auto c = (Comment*)memalloc(s->mem, sizeof(Comment));
+  auto c = (Comment*)memalloc(s->ctx->mem, sizeof(Comment));
   c->next = NULL;
   c->src = s->src;
   c->ptr = s->tokstart;
@@ -194,7 +186,7 @@ static void snameuni(Scanner* s) {
     }
   }
   s->tokend = s->inp;
-  s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->name = symget(s->ctx->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 
@@ -210,7 +202,7 @@ static void sname(Scanner* s) {
   }
 
   s->tokend = s->inp;
-  s->name = symget(s->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->name = symget(s->ctx->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 

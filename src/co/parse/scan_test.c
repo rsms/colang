@@ -25,11 +25,11 @@ static const Tok TComment = TMax;
 
 R_UNIT_TEST(scan_basics) {
   u32 nerrors = testscan(ParseFlagsDefault,
-    "hello = 123\n",
-    TId,     "hello",
-    TAssign, "=",
-    TIntLit, "123",
-    TSemi,   "",
+    "hello = 123\n"
+    "fun",
+    TId,"hello", TAssign,"=", TIntLit,"123", TSemi,"",
+    TFun,"fun",
+    // TId,"fun", TSemi,"",
     TNone);
   asserteq(nerrors, 0);
 }
@@ -133,14 +133,14 @@ R_UNIT_TEST(scan_id_sym) {
   asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "hello") == 0);
-  assert(symfind(scanner->syms, "hello", strlen("hello")) == scanner->name);
+  assert(symfind(scanner->ctx->syms, "hello", strlen("hello")) == scanner->name);
   auto hello_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
   asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "foo") == 0);
-  assert(symfind(scanner->syms, "foo", strlen("foo")) == scanner->name);
+  assert(symfind(scanner->ctx->syms, "foo", strlen("foo")) == scanner->name);
   auto foo_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
@@ -220,6 +220,63 @@ R_UNIT_TEST(scan_testutil) {
 }
 
 
+// --------------------------------------------------------------------------------------------
+// test helper functions
+
+static void on_scan_err(const Source* src, SrcPos pos, const Str msg, void* userdata) {
+  auto testctx = (ScanTestCtx*)userdata;
+  testctx->nerrors++;
+  if (testctx->last_errmsg)
+    str_free(testctx->last_errmsg);
+  testctx->last_errmsg = str_cpy(msg);
+  // dlog("scan error: %s", msg);
+}
+
+static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len) {
+  Mem mem = NULL;
+  Pkg* pkg = memalloct(mem, Pkg);
+  pkg->dir = ".";
+
+  BuildCtx* ctx = memalloct(mem, BuildCtx);
+  ctx->mem = mem;
+  ctx->syms = memalloct(mem, SymPool);
+  sympool_init(ctx->syms, universe_syms(), mem, NULL);
+  ctx->pkg = pkg;
+  ctx->errh = on_scan_err;
+  ctx->userdata = memalloct(mem, ScanTestCtx);
+
+  Source* src = memalloct(mem, Source);
+  SourceInitMem(src, pkg, "input", sourcetext, len);
+  PkgAddSource(pkg, src);
+
+  Scanner* scanner = memalloct(mem, Scanner);
+  assert(ScannerInit(scanner, ctx, src, flags));
+  return scanner;
+}
+
+static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
+  return test_scanner_newn(flags, sourcetext, strlen(sourcetext));
+}
+
+static ScanTestCtx test_scanner_free(Scanner* s) {
+  sympool_dispose(s->ctx->syms);
+  memfree(NULL, s->ctx->syms);
+
+  auto testctx_copy = *(ScanTestCtx*)s->ctx->userdata;
+  memfree(NULL, s->ctx->userdata); // ScanTestCtx
+
+  memfree(NULL, (Pkg*)s->ctx->pkg);
+  // Note: No need to call SourceClose since its in memory and not file-backed
+  SourceDispose(s->src);
+  memfree(NULL, s->src);
+
+  ScannerDispose(s);
+  memfree(NULL, s);
+
+  return testctx_copy;
+}
+
+
 // expects an odd number of arguments in pairs with a TNone terminator:
 // tok1, value1, tok2, value2, ... ,TNone
 static TokStringPair* make_expectlistv(size_t* len_out, const char* sourcetext, va_list ap) {
@@ -269,57 +326,6 @@ static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, .
 }
 
 
-static void on_scan_err(const Source* src, SrcPos pos, const Str msg, void* userdata) {
-  auto testctx = (ScanTestCtx*)userdata;
-  testctx->nerrors++;
-  if (testctx->last_errmsg)
-    str_free(testctx->last_errmsg);
-  testctx->last_errmsg = str_cpy(msg);
-  // dlog("scan error: %s", msg);
-}
-
-static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len) {
-  Mem mem = NULL;
-
-  Pkg* pkg = memalloct(mem, Pkg);
-  pkg->dir = ".";
-
-  Source* src = memalloct(mem, Source);
-  SourceInitMem(pkg, src, "input", sourcetext, len);
-  PkgAddSource(pkg, src);
-
-  SymPool* syms = memalloct(mem, SymPool);
-  sympool_init(syms, universe_syms(), mem, NULL);
-
-  Scanner* scanner = memalloct(mem, Scanner);
-  ScanTestCtx* testctx = memalloct(mem, ScanTestCtx);
-  assert(ScannerInit(scanner, mem, syms, on_scan_err, src, flags, testctx));
-
-  return scanner;
-}
-
-static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
-  return test_scanner_newn(flags, sourcetext, strlen(sourcetext));
-}
-
-static ScanTestCtx test_scanner_free(Scanner* s) {
-  sympool_dispose(s->syms);
-  memfree(NULL, s->syms);
-
-  auto ctx = *(ScanTestCtx*)s->userdata;
-  memfree(NULL, s->userdata); // ScanTestCtx
-
-  memfree(NULL, s->src->pkg);
-  SourceDispose(s->src);
-  memfree(NULL, s->src);
-
-  ScannerDispose(s);
-  memfree(NULL, s);
-
-  return ctx;
-}
-
-
 static u32 testscanp(
   ParseFlags     flags,
   const char*    sourcetext,
@@ -347,7 +353,7 @@ static u32 testscanp(
       } else {
         asserteq(strlen(expect->value), c->len);
         assert(memcmp(expect->value, c->ptr, c->len) == 0);
-        memfree(scanner->mem, c);
+        memfree(scanner->ctx->mem, c);
         ntokens++;
         continue;
       }
@@ -361,8 +367,8 @@ static u32 testscanp(
     }
 
     Tok t = ScannerNext(scanner);
-    assert(t != TNone);
-    assert(expect->tok != TNone);
+    // assert(t != TNone);
+    // assert(expect->tok != TNone);
 
     size_t vallen;
     auto valptr = ScannerTokStr(scanner, &vallen);

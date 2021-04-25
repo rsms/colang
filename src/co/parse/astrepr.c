@@ -16,8 +16,11 @@ typedef struct ReprCtx {
 
 // seen_add adds n to ctx->seen. Returns true if added, false if already in ctx->seen
 static bool ctx_seen_add(ReprCtx* ctx, const Node* n) {
-  if (ArrayIndexOf(&ctx->seen, (void*)n) > -1)
-    return false; // already in ctx->seen
+  if (n != Type_ideal && n != Type_int /* TODO more types that are never acyclic */) {
+    //dlog("seen_add %s", fmtnode(n));
+    if (ArrayIndexOf(&ctx->seen, (void*)n) > -1)
+      return false; // already in ctx->seen
+  }
   ArrayPush(&ctx->seen, (void*)n, NULL);
   return true;
 }
@@ -25,17 +28,17 @@ static bool ctx_seen_add(ReprCtx* ctx, const Node* n) {
 // seen_rm removes n from ctx->seen
 static void ctx_seen_rm(ReprCtx* ctx, const Node* n) {
   auto i = ArrayLastIndexOf(&ctx->seen, (void*)n); // last since most likely last
-  assert(i > 0);
+  assert(i > -1);
 }
 
 
 static Str indent(Str s, const ReprCtx* ctx) {
   if (ctx->ind > 0) {
     if (ctx->pretty) {
-      s = str_appendn(s, "\n", 1);
-      s = str_appendfill(s, str_len(s) + ctx->ind, ' ');
+      s = str_append(s, "\n", 1);
+      s = str_appendfill(s, ctx->ind, ' ');
     } else {
-      s = str_appendn(s, " ", 1);
+      s = str_append(s, " ", 1);
     }
   }
   return s;
@@ -44,7 +47,7 @@ static Str indent(Str s, const ReprCtx* ctx) {
 
 static Str reprEmpty(Str s, const ReprCtx* ctx) {
   s = indent(s, ctx);
-  return str_appendn(s, "()", 2);
+  return str_append(s, "()", 2);
 }
 
 
@@ -104,7 +107,7 @@ Str NValFmt(Str s, const NVal* v) {
 
 static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   if (n == NULL) {
-    return str_appendn(s, "(null)", 6);
+    return str_append(s, "(null)", 6);
   }
 
   // dlog("nodeRepr %s", NodeKindName(n->kind));
@@ -144,9 +147,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       if (n->type) {
         s = nodeRepr(n->type, s, ctx, depth + 1);
         s = str_appendcstr(s, ctx->style[TStyle_blue]); // in case nodeRepr changed color
-        s = str_appendn(s, ":", 1);
+        s = str_append(s, ":", 1);
       } else {
-        s = str_appendn(s, "?:", 2);
+        s = str_append(s, "?:", 2);
       }
       s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
     }
@@ -196,7 +199,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NIdent:
     s = str_appendcstr(s, ctx->style[TStyle_red]);
     assert(n->ref.name != NULL);
-    s = str_append(s, n->ref.name);
+    s = str_append(s, n->ref.name, symlen(n->ref.name));
     s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
     if (n->ref.target) {
       s = str_appendfmt(s, " @%s", NodeKindName(n->ref.target->kind));
@@ -212,7 +215,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NReturn:
     if (n->op.op != TNone) {
       s = str_appendcstr(s, TokName(n->op.op));
-      s = str_appendn(s, " ", 1);
+      s = str_append(s, " ", 1);
     }
     s = nodeRepr(n->op.left, s, ctx, depth + 1);
     if (n->op.right) {
@@ -243,9 +246,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_appendfmt(s, "#%u ", n->field.index);
     }
     if (n->field.name) {
-      s = str_append(s, n->field.name);
+      s = str_append(s, n->field.name, symlen(n->field.name));
     } else {
-      s = str_appendn(s, "_", 1);
+      s = str_append(s, "_", 1);
     }
     if (n->field.init != NULL) {
       s = nodeRepr(n->field.init, s, ctx, depth + 1);
@@ -258,9 +261,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     auto f = &n->fun;
 
     if (f->name) {
-      s = str_append(s, f->name);
+      s = str_append(s, f->name, symlen(f->name));
     } else {
-      s = str_appendn(s, "_", 1);
+      s = str_append(s, "_", 1);
     }
 
     s = str_appendcstr(s, ctx->style[TStyle_red]);
@@ -295,16 +298,16 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     if (funTarget != NULL) {
       // print receiver function when we know it
       if (funTarget->fun.name) {
-        s = str_append(s, funTarget->fun.name);
+        s = str_append(s, funTarget->fun.name, symlen(funTarget->fun.name));
       } else {
-        s = str_appendn(s, "_", 1);
+        s = str_append(s, "_", 1);
       }
       s = str_appendcstr(s, ctx->style[TStyle_red]);
       s = str_appendfmt(s, " %p", funTarget);
       s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
     } else if (recv->kind == NIdent && recv->ref.target == NULL) {
       // when the receiver is an ident without a resolved target, print its name
-      s = str_append(s, recv->ref.name);
+      s = str_append(s, recv->ref.name, symlen(recv->ref.name));
     } else {
       s = nodeRepr(recv, s, ctx, depth + 1);
     }
@@ -325,9 +328,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NBasicType:
     s = str_appendcstr(s, ctx->style[TStyle_blue]);
     if (n == Type_ideal) {
-      s = str_appendn(s, "*", 1);
+      s = str_appendc(s, '*');
     } else {
-      s = str_append(s, n->t.basic.name);
+      s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
     }
     s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
     break;
@@ -348,17 +351,17 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
 
   // uses u.t.tuple
   case NTupleType: {
-    s = str_appendn(s, "(", 1);
+    s = str_append(s, "(", 1);
     bool first = true;
     NodeListForEach(&n->t.tuple, n, {
       if (first) {
         first = false;
       } else {
-        s = str_appendn(s, " ", 1);
+        s = str_append(s, " ", 1);
       }
       s = nodeRepr(n, s, ctx, depth + 1);
     });
-    s = str_appendn(s, ")", 1);
+    s = str_append(s, ")", 1);
     break;
   }
 
@@ -371,7 +374,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   ctx_seen_rm(ctx, n);
 
   if (!isType) {
-    s = str_appendn(s, ")", 1);
+    s = str_append(s, ")", 1);
   }
   return s;
 }
@@ -449,7 +452,7 @@ Str str_append_astnode(Str s, const Node* n) {
     break;
 
   case NIdent: // foo
-    s = str_append(s, n->ref.name);
+    s = str_append(s, n->ref.name, symlen(n->ref.name));
     break;
 
   case NBinOp: // foo+bar
@@ -501,7 +504,7 @@ Str str_append_astnode(Str s, const Node* n) {
     break;
 
   case NArg: // foo
-    s = str_append(s, n->field.name);
+    s = str_append(s, n->field.name, symlen(n->field.name));
     break;
 
   case NFun: // fun foo
@@ -531,7 +534,7 @@ Str str_append_astnode(Str s, const Node* n) {
     if (n == Type_ideal) {
       s = str_appendcstr(s, "ideal");
     } else {
-      s = str_append(s, n->t.basic.name);
+      s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
     }
     break;
 
@@ -568,13 +571,13 @@ Str str_append_astnode(Str s, const Node* n) {
 
 ConstStr fmtnode(const Node* n) {
   auto s = str_append_astnode(str_new(16), n);
-  errlog("TODO memgcsds(s)");
+  // TODO memgcsds(s)
   return s; // return memgcsds(s); // GC
 }
 
 
 ConstStr fmtast(const Node* n) {
   auto s = NodeRepr(n, str_new(16));
-  errlog("TODO memgcsds(s)");
+  // TODO memgcsds(s)
   return s; // return memgcsds(s); // GC
 }

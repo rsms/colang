@@ -9,29 +9,29 @@ typedef struct Pkg {
   Source*     srclist; // linked list of sources
 } Pkg;
 
-bool PkgAddFileSource(Pkg* pkg, const char* filename);
+bool PkgAddFileSource(Pkg* pkg, const char* filename); // false on error (check errno)
 void PkgAddSource(Pkg* pkg, Source* src);
 bool PkgScanSources(Pkg* pkg);
 
 
 // Source represents an input source file
 typedef struct Source {
-  Source*   next;     // next source in list
-  Pkg*      pkg;      // package this source belongs to
-  Str       filename; // copy of filename given to SourceOpen
-  const u8* body;     // file body (usually mmap'ed)
-  size_t    len;      // size of body in bytes
-  u8        sha1[20]; // SHA-1 checksum of body, set with SourceChecksum
-  int       fd;       // file descriptor
-  bool      ismmap;   // true if the file is memory-mapped
+  Source*    next;     // next source in list
+  const Pkg* pkg;      // package this source belongs to
+  Str        filename; // copy of filename given to SourceOpen
+  const u8*  body;     // file body (usually mmap'ed)
+  size_t     len;      // size of body in bytes
+  u8         sha1[20]; // SHA-1 checksum of body, set with SourceChecksum
+  int        fd;       // file descriptor
+  bool       ismmap;   // true if the file is memory-mapped
 
   // state used by SrcPos functions (lazy-initialized)
   u32* lineoffs; // line-start offsets into body
   u32  nlines;   // total number of lines
 } Source;
 
-bool SourceOpen(Pkg* pkg, Source* src, const char* filename);
-void SourceInitMem(Pkg* pkg, Source* src, const char* filename, const char* text, size_t len);
+bool SourceOpen(Source* src, const Pkg*, const char* filename);
+void SourceInitMem(Source* src, const Pkg*, const char* filename, const char* text, size_t len);
 bool SourceOpenBody(Source* src);
 bool SourceCloseBody(Source* src);
 bool SourceClose(Source* src);

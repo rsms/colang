@@ -7,7 +7,7 @@ set -e
 HELP=false
 RUN=false
 RUN_EXE=
-RUN_ARGS="build ./example"
+RUN_ARGS="build ./example/hello.w"
 OPT_CLEAN=false
 OPT_RELEASE=false
 MAKE_ARGS="-j$(nproc)"
@@ -122,9 +122,9 @@ while true; do
 			--one-event \
 			--latency=0.2 \
 			--extended \
-			--exclude='.*' --include='\.(c|h|s|S)$' \
+			--exclude='.*' --include='\.(c|h|s|S|w)$' \
 			--recursive \
-			./src
+			./src ./example
 	else
 		# fall back on inotifytools's inotifywatch
 		while true; do

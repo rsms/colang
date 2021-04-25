@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-static void SourceInit(Pkg* pkg, Source* src, const char* filename) {
+static void SourceInit(const Pkg* pkg, Source* src, const char* filename) {
   memset(src, 0, sizeof(Source));
   auto namelen = strlen(filename);
   if (namelen == 0)
@@ -18,7 +18,7 @@ static void SourceInit(Pkg* pkg, Source* src, const char* filename) {
   src->pkg = pkg;
 }
 
-bool SourceOpen(Pkg* pkg, Source* src, const char* filename) {
+bool SourceOpen(Source* src, const Pkg* pkg, const char* filename) {
   SourceInit(pkg, src, filename);
 
   src->fd = open(src->filename, O_RDONLY);
@@ -37,7 +37,7 @@ bool SourceOpen(Pkg* pkg, Source* src, const char* filename) {
   return true;
 }
 
-void SourceInitMem(Pkg* pkg, Source* src, const char* filename, const char* text, size_t len) {
+void SourceInitMem(Source* src, const Pkg* pkg, const char* filename, const char* text, size_t len) {
   SourceInit(pkg, src, filename);
   src->fd = -1;
   src->body = (const u8*)text;
@@ -95,7 +95,53 @@ void SourceChecksum(Source* src) {
   sha1_final(src->sha1, &sha1);
 }
 
-// --------------------------------------------------------
+// -----------------------------------------------------------------------------------------------
+// Pkg
+
+void PkgAddSource(Pkg* pkg, Source* src) {
+  if (pkg->srclist)
+    src->next = pkg->srclist;
+  pkg->srclist = src;
+}
+
+bool PkgAddFileSource(Pkg* pkg, const char* filename) {
+  auto src = memalloct(pkg->mem, Source);
+  if (!SourceOpen(src, pkg, filename)) {
+    memfree(pkg->mem, src);
+    errlog("failed to open %s", filename);
+    return false;
+  }
+  PkgAddSource(pkg, src);
+  return true;
+}
+
+bool PkgScanSources(Pkg* pkg) {
+  assert(pkg->srclist == NULL);
+  DIR* dirp = opendir(pkg->dir);
+  if (!dirp)
+    return false;
+
+  DirEntry e;
+  int readdir_status;
+  bool ok = true;
+  while ((readdir_status = fs_readdir(dirp, &e)) > 0) {
+    switch (e.d_type) {
+      case DT_REG:
+      case DT_LNK:
+      case DT_UNKNOWN:
+        if (e.d_namlen > 3 && e.d_name[0] != '.' && strcmp(&e.d_name[e.d_namlen-2], ".c") == 0)
+          ok = PkgAddFileSource(pkg, e.d_name) && ok;
+        break;
+      default:
+        break;
+    }
+  }
+
+  return closedir(dirp) == 0 && ok && readdir_status == 0;
+}
+
+
+// -----------------------------------------------------------------------------------------------
 // SrcPos
 
 static void computeLineOffsets(Source* s) {
@@ -183,7 +229,7 @@ Str SrcPosFmtv(SrcPos pos, Str s, const char* fmt, va_list ap) {
   s = str_appendcstr(s, style[TStyle_bold]);
   s = SrcPosStr(pos, s);
   s = str_appendcstr(s, ": ");
-  s = str_appendvfmt(s, fmt, ap);
+  s = str_appendfmtv(s, fmt, ap);
   s = str_appendcstr(s, style[TStyle_none]);
 
   // include line contents
@@ -193,15 +239,15 @@ Str SrcPosFmtv(SrcPos pos, Str s, const char* fmt, va_list ap) {
     auto l = SrcPosLineCol(pos);
     auto lineptr = lineContents(pos.src, l.line, &linelen);
     if (lineptr)
-      s = str_appendn(s, (const char*)lineptr, linelen);
+      s = str_append(s, (const char*)lineptr, linelen);
     s = str_appendc(s, '\n');
 
     // draw a squiggle (or caret when span is unknown) decorating the interesting range
     if (l.col > 0)
-      s = str_appendfill(s, str_len(s) + l.col, ' '); // indentation
+      s = str_appendfill(s, l.col, ' '); // indentation
     if (pos.span > 0) {
-      s = str_appendfill(s, str_len(s) + pos.span + 1, '~'); // squiggle
-      s[str_len(s) - 1] = '\n';
+      s = str_appendfill(s, pos.span, '~'); // squiggle
+      s = str_appendc(s, '\n');
     } else {
       s = str_appendcstr(s, "^\n");
     }
@@ -251,7 +297,7 @@ Str SrcPosStr(SrcPos pos, Str s) {
 //     u32 linelen;
 //     auto lineptr = lineContents(pos.src, l.line, &linelen);
 //     if (lineptr)
-//       s = str_appendn(s, (const char*)lineptr, linelen);
+//       s = str_append(s, (const char*)lineptr, linelen);
 //     s = str_appendc(s, '\n');
 
 //     // draw a squiggle (or caret when span is unknown) decorating the interesting range

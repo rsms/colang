@@ -481,7 +481,7 @@ inline static Str RBRepr(const RBNode* n, Str s, int depth, Str(keyfmt)(Str,RBKE
     s = str_appendc(s, '\n');
     s = str_appendfill(s, depth*2, ' ');
   }
-  s = str_appendn(s, n->isred ? "(R " : "(B ", 3);
+  s = str_append(s, n->isred ? "(R " : "(B ", 3);
   s = keyfmt(s, n->key);
   if (n->left) {
     s = RBRepr(n->left, s, depth + 2, keyfmt);

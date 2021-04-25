@@ -204,6 +204,9 @@ inline static bool NodeIsUntyped(const Node* n) {
   return n->type == Type_ideal;
 }
 
+// ast_opt_ifcond attempts to optimize an NIf node with constant expression conditions
+Node* ast_opt_ifcond(Node* n);
+
 // Format an NVal
 Str NValFmt(Str s, const NVal* v);
 //const char* NValStr(const NVal* v); // returns a temporary string
