@@ -99,7 +99,7 @@ typedef signed long            intptr_t;
 #endif
 
 #if __has_attribute(fallthrough)
-  #define FALLTHROUGH [[fallthrough]]
+  #define FALLTHROUGH __attribute__((fallthrough))
 #else
   #define FALLTHROUGH
 #endif

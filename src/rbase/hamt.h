@@ -47,12 +47,21 @@ static_assert(HAMT_BRANCHES==8||HAMT_BRANCHES==16||HAMT_BRANCHES==32||HAMT_BRANC
 
 // forward declaration
 typedef struct HamtCtx HamtCtx;
+typedef struct HamtNode HamtNode;
 
 // Hamt is an immutable persistent collection
 typedef struct Hamt {
-  void*    root;
-  HamtCtx* ctx;
+  HamtNode* root;
+  HamtCtx*  ctx;
 } Hamt;
+
+// HamtNode is either a HAMT, value or a collision (set of values with same key/hash)
+typedef struct HamtNode {
+  atomic_u32 refs;      // reference count
+  u32        tag;       // bit 0-2 = type, bit 3-31 = len
+  HamtUInt   bmap;      // used for key when type==TValue
+  HamtNode*  entries[]; // THamt:[THamt|TCollision|TValue], TCollision:[TValue], TValue:void*
+} HamtNode;
 
 // HamtCtx provides callbacks for the type of entries stored in a Hamt.
 //
@@ -105,7 +114,7 @@ static Hamt hamt_retain(Hamt h);
 static void hamt_release(Hamt h);
 
 // hamt_empty returns true when there are no entries in h
-bool hamt_empty(Hamt h);
+static bool hamt_empty(Hamt h);
 
 // hamt_count returns the total number of entries stored in h.
 //
@@ -198,13 +207,17 @@ Str hamt_repr(Hamt h, Str s, bool pretty);
 void _hamt_free(Hamt);
 
 inline static Hamt hamt_retain(Hamt h) {
-  AtomicAdd((atomic_u32*)h.root, 1);
+  AtomicAdd(&h.root->refs, 1);
   return h;
 }
 
 inline static void hamt_release(Hamt h) {
   if (AtomicSub((atomic_u32*)h.root, 1) == 1)
     _hamt_free(h);
+}
+
+inline static bool hamt_empty(Hamt h) {
+  return h.root->tag == 0;
 }
 
 inline static const void* hamt_getp(Hamt h, const void* entry) {

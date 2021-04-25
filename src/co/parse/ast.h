@@ -31,7 +31,7 @@ const char* NodeClassName(NodeClass);
   _(Field,       Expr) \
   _(File,        Expr) \
   _(Fun,         Expr) \
-  _(Ident,       Expr) \
+  _(Id,          Expr) \
   _(If,          Expr) \
   _(Let,         Expr) \
   _(BinOp,       Expr) \
@@ -97,7 +97,7 @@ typedef struct NVal {
 } NVal;
 
 typedef struct Node {
-  NodeKind kind;      // kind of node (e.g. NIdent)
+  NodeKind kind;      // kind of node (e.g. NId)
   SrcPos   pos;       // source origin & position
   Node*    type;      // value type. null if unknown.
   union {
@@ -107,7 +107,7 @@ typedef struct Node {
       const u8* ptr;
       size_t    len;
     } str;
-    /* ref */ struct { // Ident
+    /* ref */ struct { // Id
       Sym   name;
       Node* target;
     } ref;
@@ -209,7 +209,7 @@ Node* ast_opt_ifcond(Node* n);
 
 // Format an NVal
 Str NValFmt(Str s, const NVal* v);
-//const char* NValStr(const NVal* v); // returns a temporary string
+
 
 #define NodeListForEach(list, nodename, body)               \
   do {                                                      \

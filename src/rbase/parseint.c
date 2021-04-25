@@ -21,7 +21,7 @@ bool _parseu64(const char* pch, size_t z, int base, u64* result, u64 cutoff) {
     if (c >= base) {
       return false;
     }
-    if (any < 0 || acc > cutoff || (acc == cutoff && c > cutlim)) {
+    if (any < 0 || acc > cutoff || (acc == cutoff && (u64)c > cutlim)) {
       any = -1;
     } else {
       any = 1;

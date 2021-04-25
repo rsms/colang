@@ -272,7 +272,7 @@ R_UNIT_TEST(hamt_iterator) {
   };
 
   Hamt h = hamt_new(&ctx);
-  for (int i = 0; i < countof(values); i++)
+  for (size_t i = 0; i < countof(values); i++)
     hamt_set(&h, values[i]);
 
   dlog("%s", REPR(h));

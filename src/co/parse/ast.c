@@ -43,13 +43,11 @@ const char* NodeClassName(NodeClass c) {
 
 
 const Node* NodeEffectiveType(const Node* n) {
-  auto t = n->type;
-  if (t == NULL) {
-    t = Type_nil;
-  } else if (NodeIsUntyped(n)) {
-    t = IdealType(NodeIdealCType(n));
-  }
-  return t;
+  if (!n->type)
+    return Type_nil;
+  if (NodeIsUntyped(n))
+    return IdealType(NodeIdealCType(n));
+  return n->type;
 }
 
 
@@ -90,7 +88,7 @@ CType NodeIdealCType(const Node* n) {
   case NPostfixOp:
     return NodeIdealCType(n->op.left);
 
-  case NIdent:
+  case NId:
     return NodeIdealCType(n->ref.target);
 
   case NBinOp:

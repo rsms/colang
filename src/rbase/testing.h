@@ -29,7 +29,7 @@ ASSUME_NONNULL_BEGIN
   #define R_UNIT_TEST(name)                                         \
     static void name##_test();                                      \
     __attribute__((constructor,used)) static void name##_test1() {  \
-      Testing t = { #name, __FILE__ };                              \
+      Testing t = { #name, __FILE__, __LINE__ };                    \
       if (_testing_start_run(&t)) {                                 \
         name##_test();                                              \
         _testing_end_run(&t);                                       \
@@ -46,6 +46,7 @@ ASSUME_NONNULL_BEGIN
 typedef struct Testing {
   const char* name;
   const char* file;
+  int         line;
   u64         startat;
   long        fpos;
   bool        isatty;

@@ -89,7 +89,7 @@ static void serr(Scanner* s, const char* format, ...) {
 
   // either pass to error handler or print to stderr as a fallback
   if (s->ctx->errh) {
-    s->ctx->errh(s->src, pos, msg, s->ctx->userdata);
+    s->ctx->errh(pos, msg, s->ctx->userdata);
   } else {
     // TODO: Consider SrcPosStr to add source position to msg
     msg[str_len(msg)] = '\n'; // replace NUL with ln

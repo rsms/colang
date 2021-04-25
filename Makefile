@@ -25,7 +25,7 @@ CFLAGS := \
 	-Isrc \
 	-ffile-prefix-map=$(SRCROOT)/= \
 	-fstrict-aliasing \
-	-Wall \
+	-Wall -Wextra -Wno-missing-field-initializers -Wno-unused-parameter \
 	-Wunused \
 	$(MORECFLAGS)
 
@@ -167,6 +167,9 @@ $(OBJDIR)/%.S.o: %.S
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
+$(OBJDIR)/src/co/parse/parse.c.o: $(BUILDDIR)/gen_parselet_map.mark
+$(BUILDDIR)/gen_parselet_map.mark: src/co/parse/parse.c
+	$(Q)python3 misc/gen_parselet_map.py $< $@
 
 dev:
 	./misc/dev.sh -run

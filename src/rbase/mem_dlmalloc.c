@@ -1,6 +1,7 @@
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 #pragma GCC diagnostic ignored "-Wexpansion-to-defined"
+#pragma GCC diagnostic ignored "-Wnull-pointer-arithmetic"
 #pragma GCC diagnostic ignored "-Wnonnull"
 
 // Note: Infer is not run on this file as it is very slow.

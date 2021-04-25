@@ -4,19 +4,19 @@
 
 // NodeType is used in Node.tag to communicate a node's type
 typedef enum {
-  TValue     = 0, // tag bits 00
-  THamt      = 1, // tag bits 01
+  THamt      = 0, // tag bits 00
+  TValue     = 1, // tag bits 01
   TCollision = 2, // tag bits 10
 } NodeType;
 
 // Node is either a HAMT, value or a collision (set of values with same key/hash)
-typedef struct Node Node;
-typedef struct Node {
-  atomic_u32 refs;      // reference count -- MUST BE FIRST FIELD! --
-  u32        tag;       // bit 0-2 = type, bit 3-31 = len
-  HamtUInt   bmap;      // used for key when type==TValue
-  Node*      entries[]; // THamt:[THamt|TCollision|TValue], TCollision:[TValue], TValue:void*
-} Node;
+// typedef struct HamtNode Node;
+// typedef struct Node {
+//   atomic_u32 refs;      // reference count -- MUST BE FIRST FIELD! --
+//   u32        tag;       // bit 0-2 = type, bit 3-31 = len
+//   HamtUInt   bmap;      // used for key when type==TValue
+//   Node*      entries[]; // THamt:[THamt|TCollision|TValue], TCollision:[TValue], TValue:void*
+// } Node;
 
 
 #define TAG_TYPE_NBITS 2 // bits reserved in tag for type (2 = 0-3: 00, 01, 10, 11)
@@ -49,7 +49,7 @@ typedef struct Node {
 // _nodepool is a set of "free lists" for each Node length class.
 static Pool _nodepool[HAMT_BRANCHES + 1];
 
-static Node _empty_hamt = {
+static HamtNode _empty_hamt = {
   .refs = 1,
   .bmap = 0,
   .tag = THamt, // len = 0
@@ -61,7 +61,7 @@ static inline u32 bitindex(HamtUInt bitmap, u32 bit) {
   return popcount(bitmap & (bit - 1));
 }
 
-static Node* node_alloc(u32 len, NodeType typ) {
+static HamtNode* node_alloc(u32 len, NodeType typ) {
   // assertions about limits of len
   #ifndef NDEBUG
   switch (typ) {
@@ -76,31 +76,31 @@ static Node* node_alloc(u32 len, NodeType typ) {
     // try to take from freelist
     PoolEntry* freen = PoolTake(&_nodepool[len]);
     if (freen != NULL) {
-      // PoolEntry offset at &Node.entries[0]
-      auto n = (Node*)(((char*)freen) - offsetof(Node,entries));
+      // PoolEntry offset at &HamtNode.entries[0]
+      auto n = (HamtNode*)(((char*)freen) - offsetof(HamtNode,entries));
       NODE_SET_TYPE(n, typ);
       assert(n->refs == 1);
       return n;
     }
   }
-  auto n = (Node*)HAMT_MEMALLOC(sizeof(Node) + (sizeof(Node*) * len));
+  auto n = (HamtNode*)HAMT_MEMALLOC(sizeof(HamtNode) + (sizeof(HamtNode*) * len));
   n->refs = 1;
   n->tag = (len << TAG_TYPE_NBITS) | typ;
   return n;
 }
 
 // steals reference of value
-static Node* value_alloc(HamtUInt key, void* value) {
+static HamtNode* value_alloc(HamtUInt key, void* value) {
   auto n = node_alloc(0, TValue);
   NODE_SET_KEY(n, key);
   n->entries[0] = value;
   return n;
 }
 
-static void node_release(HamtCtx* ctx, Node* n);
+static void node_release(HamtCtx* ctx, HamtNode* n);
 
 // node_free_noentries assumes that n->entries are released or invalid
-static void node_free_noentries(HamtCtx* ctx, Node* n) {
+static void node_free_noentries(HamtCtx* ctx, HamtNode* n) {
   u32 len = NODE_LEN(n);
   if (len > HAMT_BRANCHES) {
     HAMT_MEMFREE(n);
@@ -111,7 +111,7 @@ static void node_free_noentries(HamtCtx* ctx, Node* n) {
   }
 }
 
-static void node_free(HamtCtx* ctx, Node* n) {
+static void node_free(HamtCtx* ctx, HamtNode* n) {
   //dlog("free node %p (type %u)", n, NODE_TYPE(n));
   u32 len = NODE_LEN(n);
   if (NODE_TYPE(n) == TValue) {
@@ -124,19 +124,19 @@ static void node_free(HamtCtx* ctx, Node* n) {
   node_free_noentries(ctx, n);
 }
 
-inline static Node* node_retain(Node* n) {
+inline static HamtNode* node_retain(HamtNode* n) {
   AtomicAdd(&n->refs, 1);
   return n;
 }
 
-inline static void node_release(HamtCtx* ctx, Node* n) {
+inline static void node_release(HamtCtx* ctx, HamtNode* n) {
   if (AtomicSub(&n->refs, 1) == 1)
     node_free(ctx, n);
 }
 
 void _hamt_free(Hamt h) {
   // called by hamt_release when a Hamt handle's refcount drops to 0
-  node_free(h.ctx, (Node*)h.root);
+  node_free(h.ctx, (HamtNode*)h.root);
 }
 
 // node_clone makes a copy of a THamt or TCollision node, including entries.
@@ -190,7 +190,9 @@ void _hamt_free(Hamt h) {
 //   node_clone([0,1,2,3,4,5], 2,2, 4, 1)   =>  [0,1] + [ , ,2,3,4]
 //   node_clone([0,1,2,3,4,5], 2,2, 5, 1)   =>  [0,1] + [ , , ,2,3]
 //
-static Node* node_clone(Node* src, u32 srcsplit1, u32 srcsplit2, u32 dstoffs, i32 dstlendelta) {
+static HamtNode* node_clone(
+  HamtNode* src, u32 srcsplit1, u32 srcsplit2, u32 dstoffs, i32 dstlendelta)
+{
   u32 srclen = NODE_LEN(src);
   u32 dstlen = (u32)MAX(0, (i32)srclen + dstlendelta);
   u32 srcend = (u32)((i32)srclen + MIN(0, dstlendelta + (srcsplit2 - srcsplit1)));
@@ -202,7 +204,7 @@ static Node* node_clone(Node* src, u32 srcsplit1, u32 srcsplit2, u32 dstoffs, i3
   // dlog("\nnode_clone(src %p  srcsplit %u:%u  dstoffs %u  dstlendelta %d)  srclen %u  dstlen %u",
   //   src, srcsplit1, srcsplit2, dstoffs, dstlendelta, srclen, dstlen);
 
-  Node* dst = node_alloc(dstlen, NODE_TYPE(src));
+  HamtNode* dst = node_alloc(dstlen, NODE_TYPE(src));
   dst->bmap = src->bmap;
 
   u32 srci = 0;
@@ -226,7 +228,7 @@ static Node* node_clone(Node* src, u32 srcsplit1, u32 srcsplit2, u32 dstoffs, i3
 
 
 // collision_with returns a new collection that is a copy of c1 with v2 added
-static Node* collision_with(HamtCtx* ctx, Node* c1, Node* v2, bool* didadd) {
+static HamtNode* collision_with(HamtCtx* ctx, HamtNode* c1, HamtNode* v2, bool* didadd) {
   assert(NODE_TYPE(c1) == TCollision);
   assert(NODE_TYPE(v2) == TValue);
 
@@ -273,7 +275,7 @@ static Node* collision_with(HamtCtx* ctx, Node* c1, Node* v2, bool* didadd) {
   return c2;
 }
 
-static Node* make_collision(Node* v1, Node* v2) {
+static HamtNode* make_collision(HamtNode* v1, HamtNode* v2) {
   auto c = node_alloc(2, TCollision);
   c->entries[0] = v1;
   c->entries[1] = v2;
@@ -283,7 +285,7 @@ static Node* make_collision(Node* v1, Node* v2) {
 
 // make_branch creates a HAMT at level with two entries v1 and v2, or a collision.
 // steals refs to both v1 and v2
-static Node* make_branch(u32 shift, HamtUInt key1, Node* v1, Node* v2) {
+static HamtNode* make_branch(u32 shift, HamtUInt key1, HamtNode* v1, HamtNode* v2) {
   // Compute the "path component" for v1.key and v2.key for level.
   // shift is the new level for the branch which is being created.
   u32 index1 = (key1 >> shift) & HAMT_MASK;
@@ -293,8 +295,8 @@ static Node* make_branch(u32 shift, HamtUInt key1, Node* v1, Node* v2) {
   //
   // head and tail of a chain when there is subindex conflict,
   // representing intermediate branches.
-  Node* mHead = NULL;
-  Node* mTail = NULL;
+  HamtNode* mHead = NULL;
+  HamtNode* mTail = NULL;
   while (index1 == index2) {
     // the current path component is equivalent; either the key is larger than the max depth
     // of the hamt implementation (collision) or we need to create an intermediate branch.
@@ -350,7 +352,7 @@ static Node* make_branch(u32 shift, HamtUInt key1, Node* v1, Node* v2) {
 }
 
 // steals ref to v2
-static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didadd) {
+static HamtNode* hamt_insert(HamtCtx* ctx, HamtNode* m, u32 shift, HamtNode* v2, bool* didadd) {
   assert(NODE_TYPE(m) == THamt);
   assert(v2 != NULL);
 
@@ -386,7 +388,7 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
   if ((m->bmap & bitpos) == 0) {
     // empty; index bit not set in bmap. Set the bit and append value to entries list.
     // copy entries in m2 with +1 space for slot at bi
-    Node* m2 = node_clone(m, bi,bi, bi+1, 1); // e.g. [1,2,3,4] => [1,2, ,3,4] where bi=2
+    HamtNode* m2 = node_clone(m, bi,bi, bi+1, 1); // e.g. [1,2,3,4] => [1,2, ,3,4] where bi=2
     m2->bmap = m->bmap | bitpos; // mark bi as being occupied
     m2->entries[bi] = v2;
     return m2;
@@ -394,9 +396,9 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
 
   // An entry or branch occupies the slot; replace m2->entries[bi]
 
-  Node* m2 = node_clone(m, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
-  Node* v1 = m->entries[bi]; // current entry
-  Node* newobj; // to be assigned as m2->entries[bi]
+  HamtNode* m2 = node_clone(m, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
+  HamtNode* v1 = m->entries[bi]; // current entry
+  HamtNode* newobj; // to be assigned as m2->entries[bi]
 
   switch (NODE_TYPE(v1)) {
 
@@ -409,7 +411,7 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
 
   case TCollision: {
     // existing collision (invariant: last branch; shift >= (HAMT_BRANCHES - shift))
-    Node* c1 = v1;
+    HamtNode* c1 = v1;
     HamtUInt key1 = NODE_KEY(c1->entries[0]);
     if (key1 == NODE_KEY(v2)) {
       newobj = collision_with(ctx, c1, v2, didadd);
@@ -447,11 +449,11 @@ static Node* hamt_insert(HamtCtx* ctx, Node* m, u32 shift, Node* v2, bool* didad
 // collision_without returns a new collection that is a copy of c1 but without v2
 // IMPORTANT: If v2 is not found then c1 is returned _without an incresed refcount_.
 //            However when v2 is found a copy with a _+1 refcount_ is returned.
-static Node* collision_without(HamtCtx* ctx, Node* c1, const void* refentry) {
+static HamtNode* collision_without(HamtCtx* ctx, HamtNode* c1, const void* refentry) {
   assert(NODE_TYPE(c1) == TCollision);
   u32 len = NODE_LEN(c1);
   for (u32 i = 0; i < len; i++) {
-    Node* v1 = c1->entries[i];
+    HamtNode* v1 = c1->entries[i];
     if (ctx->enteq(ctx, (const void*)v1->entries[0], refentry)) {
       if (len == 2) {
         // collapse the collision set; return the other entry
@@ -465,9 +467,9 @@ static Node* collision_without(HamtCtx* ctx, Node* c1, const void* refentry) {
 }
 
 
-static Node* hamt_remove(
+static HamtNode* hamt_remove(
   HamtCtx*     ctx,
-  Node*        m1,
+  HamtNode*    m1,
   HamtUInt     key,
   const void*  refentry,
   u32          shift)
@@ -480,7 +482,7 @@ static Node* hamt_remove(
   //   shift / HAMT_BITS, key, bitpos, bi);
 
   if ((m1->bmap & bitpos) != 0) {
-    Node* n = m1->entries[bi];
+    HamtNode* n = m1->entries[bi];
     switch (NODE_TYPE(n)) {
 
     case THamt: {
@@ -489,9 +491,9 @@ static Node* hamt_remove(
       // the map returned from remove() at bi.
       //
       // Note: consider making this iterative; non-recursive.
-      Node* m3 = hamt_remove(ctx, n, key, refentry, shift + HAMT_BITS);
+      HamtNode* m3 = hamt_remove(ctx, n, key, refentry, shift + HAMT_BITS);
       if (m3 != n) {
-        Node* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
+        HamtNode* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
         if (NODE_LEN(m3) == 1 && NODE_TYPE(m3->entries[0]) != THamt) {
           // collapse path
           m2->entries[bi] = node_retain(m3->entries[0]);
@@ -505,10 +507,10 @@ static Node* hamt_remove(
     }
 
     case TCollision: {
-      Node* v2 = collision_without(ctx, n, refentry);
+      HamtNode* v2 = collision_without(ctx, n, refentry);
       if (v2 != n) { // found & removed
         // Note: NODE_TYPE(v2) is either TCollision or TValue
-        Node* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
+        HamtNode* m2 = node_clone(m1, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
         m2->entries[bi] = v2;
         return m2;
       }
@@ -523,7 +525,7 @@ static Node* hamt_remove(
           m1 = node_retain(&_empty_hamt);
         } else {
           // make a copy of m1 without entries[bi]
-          Node* m2 = node_clone(m1, bi,bi+1, bi, -1); // e.g. [1,2,3,4] => [1,2,4] where bi=2
+          HamtNode* m2 = node_clone(m1, bi,bi+1, bi, -1); // e.g. [1,2,3,4] => [1,2,4] where bi=2
           m2->bmap = m1->bmap & ~bitpos;
           return m2;
         }
@@ -537,7 +539,9 @@ static Node* hamt_remove(
 }
 
 
-static const Node* nullable hamt_lookup(HamtCtx* ctx, Node* m, HamtUInt key, const void* refent) {
+static const HamtNode* nullable hamt_lookup(
+  HamtCtx* ctx, HamtNode* m, HamtUInt key, const void* refent)
+{
   assert(NODE_TYPE(m) == THamt);
   u32 shift = 0;
   while (1) {
@@ -548,7 +552,7 @@ static const Node* nullable hamt_lookup(HamtCtx* ctx, Node* m, HamtUInt key, con
 
     // Compare to value at m.entries[bi]
     // where bi is the bucket index by mapping index bit -> bucket index.
-    Node* n = m->entries[bitindex(m->bmap, bitpos)];
+    HamtNode* n = m->entries[bitindex(m->bmap, bitpos)];
     switch (NODE_TYPE(n)) {
       case THamt: {
         m = n;
@@ -563,7 +567,7 @@ static const Node* nullable hamt_lookup(HamtCtx* ctx, Node* m, HamtUInt key, con
           // node. Therefore the above key check is needed to avoid calling enteq for
           // all entries of a collision node that will never be true.
           for (u32 i = 0; i < NODE_LEN(n); i++) {
-            Node* v = n->entries[i];
+            HamtNode* v = n->entries[i];
             if (ctx->enteq(ctx, v->entries[0], refent))
               return v;
           }
@@ -582,17 +586,12 @@ static const Node* nullable hamt_lookup(HamtCtx* ctx, Node* m, HamtUInt key, con
 }
 
 
-bool hamt_empty(Hamt h) {
-  return NODE_LEN((Node*)h.root) == 0;
-}
-
-
-static void node_count(Node* n, size_t* count) {
+static void node_count(HamtNode* n, size_t* count) {
   u32 len = NODE_LEN(n);
   switch (NODE_TYPE(n)) {
     case THamt:
       for (u32 i = 0; i < len; i++) {
-        Node* e = n->entries[i];
+        HamtNode* e = n->entries[i];
         if (NODE_TYPE(e) == TValue) {
           (*count)++;
         } else {
@@ -610,20 +609,20 @@ static void node_count(Node* n, size_t* count) {
 
 size_t hamt_count(Hamt h) {
   size_t count = 0;
-  node_count((Node*)h.root, &count);
+  node_count(h.root, &count);
   return count;
 }
 
 
 void hamt_iter_init(Hamt h, HamtIter* it) {
   memset(it, 0, sizeof(HamtIter));
-  it->n = (Node*)h.root;
+  it->n = h.root;
 }
 
 
 bool hamt_iter_next(HamtIter* it, const void** entry_out) {
   while (1) {
-    Node* n = (Node*)it->n;
+    HamtNode* n = (HamtNode*)it->n;
     assert(NODE_TYPE(n) == THamt || NODE_TYPE(n) == TCollision);
     if (it->i == NODE_LEN(n)) {
       // reached end of collection node n
@@ -634,7 +633,7 @@ bool hamt_iter_next(HamtIter* it, const void** entry_out) {
       it->n = it->nstack[--it->nstacklen];
     } else {
       // load entry in n at it->i
-      Node* n2 = (Node*)n->entries[it->i++];
+      HamtNode* n2 = n->entries[it->i++];
       if (NODE_TYPE(n2) == TValue) {
         *entry_out = n2->entries[0];
         return true;
@@ -686,7 +685,7 @@ static const char* fmt_key(HamtUInt key) {
 typedef Str(*EntReprFun)(Str s, const void* entry);
 
 static Str node_repr(
-  Node*      n,
+  HamtNode*  n,
   Str        s,
   EntReprFun entrepr,
   int        level,
@@ -761,10 +760,9 @@ static Str node_repr(
 
 // map_repr returns a human-readable, printable string representation
 Str hamt_repr(Hamt h, Str s, bool pretty) {
-  Node* root = (Node*)h.root;
-  assert(NODE_TYPE(root) == THamt);
+  assert(NODE_TYPE(h.root) == THamt);
   auto indent = str_new(HAMT_MAXDEPTH * 8);
-  return node_repr(root, s, h.ctx->entrepr, pretty ? 0 : -100, indent, 0);
+  return node_repr(h.root, s, h.ctx->entrepr, pretty ? 0 : -100, indent, 0);
 }
 
 Hamt hamt_new(HamtCtx* ctx) {
@@ -778,23 +776,22 @@ Hamt hamt_new(HamtCtx* ctx) {
 Hamt hamt_with(Hamt h, void* entry, bool* didadd) {
   // TODO: consider mutating h.root when h.root->refs==1
   auto v = value_alloc(h.ctx->entkey(h.ctx, entry), entry);
-  auto m1 = (Node*)h.root;
   *didadd = true;
-  return (Hamt){ hamt_insert(h.ctx, m1, 0, v, didadd), h.ctx };
+  return (Hamt){ hamt_insert(h.ctx, h.root, 0, v, didadd), h.ctx };
 }
 
 // steals ref to entry, mutates h
 bool hamt_set(Hamt* h, void* entry) {
   bool didadd;
   auto h2 = hamt_with(*h, entry, &didadd);
-  node_release(h->ctx, (Node*)h->root);
+  node_release(h->ctx, h->root);
   h->root = h2.root;
   return didadd;
 }
 
 // returns borrowed ref to entry, or NULL if not found
 bool hamt_getk(Hamt h, const void** entry, HamtUInt key) {
-  const Node* v = hamt_lookup(h.ctx, (Node*)h.root, key, *entry);
+  const HamtNode* v = hamt_lookup(h.ctx, h.root, key, *entry);
   if (v == NULL)
     return false;
   *entry = v->entries[0];
@@ -804,19 +801,17 @@ bool hamt_getk(Hamt h, const void** entry, HamtUInt key) {
 // borrows ref to entry
 Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
   // TODO: consider mutating h when h.refs==1
-  auto m1 = (Node*)h.root;
-  auto m2 = hamt_remove(h.ctx, m1, key, entry, 0);
-  *removed = m2 != m1;
+  auto m2 = hamt_remove(h.ctx, h.root, key, entry, 0);
+  *removed = m2 != h.root;
   return (Hamt){ m2, h.ctx };
 }
 
 bool hamt_delk(Hamt* h, const void* entry, HamtUInt key) {
   // TODO: consider mutating h when h.refs==1
-  auto m1 = (Node*)h->root;
-  auto m2 = hamt_remove(h->ctx, m1, key, entry, 0);
-  if (m1 == m2)
+  auto m2 = hamt_remove(h->ctx, h->root, key, entry, 0);
+  if (h->root == m2)
     return false;
-  node_release(h->ctx, (Node*)h->root);
+  node_release(h->ctx, h->root);
   h->root = m2;
   return true;
 }

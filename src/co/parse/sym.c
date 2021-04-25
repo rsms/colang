@@ -255,11 +255,13 @@ R_UNIT_TEST(symflags) {
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
   auto s = symgetcstr(&syms, "hello");
+  u32 msglen = strlen("hello");
   for (u32 i = 0; i <= SYM_FLAGS_MAX; i++) {
     sym_dangerously_set_flags(s, i);
-    asserteq((int)symflags(s), i);        // we should be able to read the flag value
-    asserteq(symlen(s), strlen("hello")); // len should still be accurate
+    asserteq(symflags(s), i);    // we should be able to read the flag value
+    asserteq(symlen(s), msglen); // len should still be accurate
   }
+  sympool_dispose(&syms);
 }
 
 

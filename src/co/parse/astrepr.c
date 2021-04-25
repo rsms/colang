@@ -16,17 +16,19 @@ typedef struct ReprCtx {
 
 // seen_add adds n to ctx->seen. Returns true if added, false if already in ctx->seen
 static bool ctx_seen_add(ReprCtx* ctx, const Node* n) {
-  if (n != Type_ideal && n != Type_int /* TODO more types that are never acyclic */) {
-    //dlog("seen_add %s", fmtnode(n));
-    if (ArrayIndexOf(&ctx->seen, (void*)n) > -1)
-      return false; // already in ctx->seen
-  }
+  if (n->kind != NFun)
+    return true;
+  //dlog("seen_add %s", fmtnode(n));
+  if (ArrayIndexOf(&ctx->seen, (void*)n) > -1)
+    return false; // already in ctx->seen
   ArrayPush(&ctx->seen, (void*)n, NULL);
   return true;
 }
 
 // seen_rm removes n from ctx->seen
 static void ctx_seen_rm(ReprCtx* ctx, const Node* n) {
+  if (n->kind != NFun)
+    return;
   auto i = ArrayLastIndexOf(&ctx->seen, (void*)n); // last since most likely last
   assert(i > -1);
 }
@@ -95,23 +97,13 @@ Str NValFmt(Str s, const NVal* v) {
 }
 
 
-// const char* NValStr(const NVal* v) {
-//   auto s = str_new(0);
-//   s = NValFmt(s, v);
-//   if (s == NULL) {
-//     return "";
-//   }
-//   return memgcsds(s);
-// }
-
-
 static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   if (n == NULL) {
     return str_append(s, "(null)", 6);
   }
 
   // dlog("nodeRepr %s", NodeKindName(n->kind));
-  // if (n->kind == NIdent) {
+  // if (n->kind == NId) {
   //   dlog("  addr:   %p", n);
   //   dlog("  name:   %s", n->ref.name);
   //   if (n->ref.target == NULL) {
@@ -196,7 +188,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     break;
 
   // uses u.ref
-  case NIdent:
+  case NId:
     s = str_appendcstr(s, ctx->style[TStyle_red]);
     assert(n->ref.name != NULL);
     s = str_append(s, n->ref.name, symlen(n->ref.name));
@@ -290,7 +282,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
 
     const Node* funTarget = (
       recv->kind == NFun ? recv :
-      (recv->kind == NIdent && recv->ref.target != NULL && recv->ref.target->kind == NFun) ?
+      (recv->kind == NId && recv->ref.target != NULL && recv->ref.target->kind == NFun) ?
         recv->ref.target :
       NULL
     );
@@ -305,7 +297,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_appendcstr(s, ctx->style[TStyle_red]);
       s = str_appendfmt(s, " %p", funTarget);
       s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
-    } else if (recv->kind == NIdent && recv->ref.target == NULL) {
+    } else if (recv->kind == NId && recv->ref.target == NULL) {
       // when the receiver is an ident without a resolved target, print its name
       s = str_append(s, recv->ref.name, symlen(recv->ref.name));
     } else {
@@ -451,7 +443,7 @@ Str str_append_astnode(Str s, const Node* n) {
     s = str_appendc(s, '"');
     break;
 
-  case NIdent: // foo
+  case NId: // foo
     s = str_append(s, n->ref.name, symlen(n->ref.name));
     break;
 

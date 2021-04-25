@@ -5,7 +5,6 @@
 
 typedef struct {
   BuildCtx*  build;
-  Source*    src;
   ParseFlags flags;
   u32        funNest;    // level of function nesting. 0 at file level
   u32        assignNest; // level of assignment. Used to avoid early constant folding.
@@ -15,22 +14,19 @@ typedef struct {
 static Node* resolve(Node* n, Scope* scope, ResCtx* ctx);
 
 
-Node* ResolveSym(BuildCtx* build, Source* src, ParseFlags fl, Node* n, Scope* scope) {
+Node* ResolveSym(BuildCtx* build, ParseFlags fl, Node* n, Scope* scope) {
   ResCtx ctx = {
-    .build      = build,
-    .src        = src,
-    .flags      = fl,
-    .funNest    = 0,
-    .assignNest = 0,
+    .build = build,
+    .flags = fl,
   };
   return resolve(n, scope, &ctx);
 }
 
 
-static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
-  assert(n->kind == NIdent);
+static Node* resolveId(Node* n, Scope* scope, ResCtx* ctx) {
+  assert(n->kind == NId);
   auto name = n->ref.name;
-  // dlog("resolveIdent BEGIN %s", name);
+  // dlog("resolveId BEGIN %s", name);
   while (1) {
     auto target = n->ref.target;
     // dlog("  ITER %s", n->ref.name);
@@ -39,7 +35,7 @@ static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
       // dlog("  LOOKUP %s", n->ref.name);
       target = (Node*)ScopeLookup(scope, n->ref.name);
       if (target == NULL) {
-        build_errf(ctx->build, ctx->src, n->pos, "undefined symbol %s", name);
+        build_errf(ctx->build, n->pos, "undefined symbol %s", name);
         n->ref.target = (Node*)NodeBad;
         return n;
       }
@@ -49,7 +45,7 @@ static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
 
     // dlog("  SWITCH target %s", NodeKindName(target->kind));
     switch (target->kind) {
-      case NIdent:
+      case NId:
         // note: all built-ins which are const have targets, meaning the code above will
         // not mutate those nodes.
         n = target;
@@ -63,11 +59,11 @@ static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
           // Example:
           //   "x = true ; y = x"
           //  parsed as:
-          //   (Let (Ident x) (BoolLit true))
-          //   (Let (Ident y) (Ident x))
+          //   (Let (Id x) (BoolLit true))
+          //   (Let (Id y) (Id x))
           //  transformed to:
-          //   (Let (Ident x) (BoolLit true))
-          //   (Let (Ident y) (BoolLit true))
+          //   (Let (Id x) (BoolLit true))
+          //   (Let (Id y) (BoolLit true))
           //
           return target->field.init;
         }
@@ -82,7 +78,7 @@ static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
       case NFunType:
         // unwind identifier to constant/immutable value.
         // Example:
-        //   (Ident true #user) -> (Ident true #builtin) -> (Bool true #builtin)
+        //   (Id true #user) -> (Id true #builtin) -> (Bool true #builtin)
         //
         // dlog("  RET target %s -> %s", NodeKindName(target->kind), fmtnode(target));
         if (ctx->assignNest > 0) {
@@ -96,7 +92,7 @@ static Node* resolveIdent(Node* n, Scope* scope, ResCtx* ctx) {
 
       default:
         assert(!NodeKindIsConst(target->kind)); // should be covered in case-statements above
-        // dlog("resolveIdent FINAL %s => %s (target %s) type? %d",
+        // dlog("resolveId FINAL %s => %s (target %s) type? %d",
         //   n->ref.name, NodeKindName(n->kind), NodeKindName(target->kind),
         //   NodeKindIsType(target->kind));
         // dlog("  RET n %s -> %s", NodeKindName(n->kind), fmtnode(n));
@@ -127,9 +123,8 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
   switch (n->kind) {
 
   // uses u.ref
-  case NIdent: {
-    return resolveIdent(n, scope, ctx);
-  }
+  case NId:
+    return resolveId(n, scope, ctx);
 
   // uses u.array
   case NBlock:
@@ -183,7 +178,7 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
   case NPrefixOp:
   case NReturn: {
     auto newleft = resolve(n->op.left, scope, ctx);
-    if (n->op.left->kind != NIdent) {
+    if (n->op.left->kind != NId) {
       // note: in case of assignment where the left side is an identifier,
       // avoid replacing the identifier with its value.
       // This branch is taken in all other cases.
@@ -210,7 +205,7 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
       if (recv->kind == NBasicType) {
         n->kind = NTypeCast;
       } else {
-        build_errf(ctx->build, ctx->src, n->pos, "cannot call %s", fmtnode(recv));
+        build_errf(ctx->build, n->pos, "cannot call %s", fmtnode(recv));
       }
     }
     break;

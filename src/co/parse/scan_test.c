@@ -23,6 +23,24 @@ static ScanTestCtx test_scanner_free(Scanner*);
 static const Tok TComment = TMax;
 
 
+R_UNIT_TEST(scan_testutil) {
+  // make sure our test utilities work so we can rely on them for further testing
+  size_t expectlen = 0;
+  auto expectlist = make_expectlist(&expectlen, "hello = 123\n",
+    TId,     "hello",
+    TAssign, "=",
+    TIntLit, "123",
+    TSemi,   "",
+    TNone
+  );
+  assert(expectlist != NULL);
+  asserteq(expectlen, 4);
+  asserteq(expectlist[0].tok, TId)   ;
+  assert(strcmp(expectlist[0].value, "hello") == 0);
+  memfree(NULL, expectlist);
+}
+
+
 R_UNIT_TEST(scan_basics) {
   u32 nerrors = testscan(ParseFlagsDefault,
     "hello = 123\n"
@@ -202,28 +220,10 @@ R_UNIT_TEST(scan_id_utf8) {
 }
 
 
-R_UNIT_TEST(scan_testutil) {
-  // make sure our test utilities work so we can rely on them for further testing
-  size_t expectlen = 0;
-  auto expectlist = make_expectlist(&expectlen, "hello = 123\n",
-    TId,     "hello",
-    TAssign, "=",
-    TIntLit, "123",
-    TSemi,   "",
-    TNone
-  );
-  assert(expectlist != NULL);
-  asserteq(expectlen, 4);
-  asserteq(expectlist[0].tok, TId)   ;
-  assert(strcmp(expectlist[0].value, "hello") == 0);
-  memfree(NULL, expectlist);
-}
-
-
 // --------------------------------------------------------------------------------------------
 // test helper functions
 
-static void on_scan_err(const Source* src, SrcPos pos, const Str msg, void* userdata) {
+static void on_scan_err(SrcPos pos, const Str msg, void* userdata) {
   auto testctx = (ScanTestCtx*)userdata;
   testctx->nerrors++;
   if (testctx->last_errmsg)
@@ -233,24 +233,16 @@ static void on_scan_err(const Source* src, SrcPos pos, const Str msg, void* user
 }
 
 static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len) {
-  Mem mem = NULL;
-  Pkg* pkg = memalloct(mem, Pkg);
-  pkg->dir = ".";
+  auto build = test_build_new();
+  build->errh = on_scan_err;
+  build->userdata = memalloct(build->mem, ScanTestCtx);
 
-  BuildCtx* ctx = memalloct(mem, BuildCtx);
-  ctx->mem = mem;
-  ctx->syms = memalloct(mem, SymPool);
-  sympool_init(ctx->syms, universe_syms(), mem, NULL);
-  ctx->pkg = pkg;
-  ctx->errh = on_scan_err;
-  ctx->userdata = memalloct(mem, ScanTestCtx);
+  Source* src = memalloct(build->mem, Source);
+  SourceInitMem(src, build->pkg, "input", sourcetext, len);
+  PkgAddSource(build->pkg, src);
 
-  Source* src = memalloct(mem, Source);
-  SourceInitMem(src, pkg, "input", sourcetext, len);
-  PkgAddSource(pkg, src);
-
-  Scanner* scanner = memalloct(mem, Scanner);
-  assert(ScannerInit(scanner, ctx, src, flags));
+  Scanner* scanner = memalloct(build->mem, Scanner);
+  assert(ScannerInit(scanner, build, src, flags));
   return scanner;
 }
 
@@ -259,20 +251,15 @@ static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
 }
 
 static ScanTestCtx test_scanner_free(Scanner* s) {
-  sympool_dispose(s->ctx->syms);
-  memfree(NULL, s->ctx->syms);
+  BuildCtx* build = s->ctx;
 
-  auto testctx_copy = *(ScanTestCtx*)s->ctx->userdata;
-  memfree(NULL, s->ctx->userdata); // ScanTestCtx
-
-  memfree(NULL, (Pkg*)s->ctx->pkg);
-  // Note: No need to call SourceClose since its in memory and not file-backed
+  // Note: No need to call SourceClose since its in memory and not file-backed.
+  // Note: No need to call memfree as test_build_free drops the entire memory space.
   SourceDispose(s->src);
-  memfree(NULL, s->src);
-
   ScannerDispose(s);
-  memfree(NULL, s);
 
+  auto testctx_copy = *(ScanTestCtx*)build->userdata;
+  test_build_free(build);
   return testctx_copy;
 }
 

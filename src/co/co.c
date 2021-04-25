@@ -122,32 +122,38 @@ bool compile_source1(const Pkg* pkg, Source* src) {
 }
 
 
-static bool compile_source(BuildCtx* ctx, Scope* pkgns, Source* src) {
+static void dump_ast(const char* message, Node* ast) {
+  auto s = NodeRepr(ast, str_new(16));
+  dlog("%s%s", message, s);
+  str_free(s);
+}
+
+
+static bool compile_source(BuildCtx* build, Scope* pkgns, Source* src) {
   Parser parser;
   ParseFlags flags = ParseFlagsDefault;
 
-  auto ast = Parse(&parser, ctx, src, flags, pkgns);
+  // parse source into AST
+  auto ast = Parse(&parser, build, src, flags, pkgns);
   if (ast == NULL)
     return false;
+  // dump_ast("after parse: ", ast);
 
-  auto s = NodeRepr(ast, str_new(16));
-  dlog("after parse: %s", s);
-  str_free(s);
-
+  // resolve identifiers
   if (parser.unresolved > 0) {
-    dlog("resolving %u unresolved symbols", parser.unresolved);
-    ast = ResolveSym(ctx, src, flags, ast, pkgns);
+    ast = ResolveSym(build, flags, ast, pkgns);
+    // dump_ast("after ResolveSym: ", ast);
   }
 
-  s = NodeRepr(ast, str_new(16));
-  dlog("after resolve: %s", s);
-  str_free(s);
+  // resolve types
+  ResolveType(build, ast);
+  dump_ast("after ResolveType: ", ast);
 
   return true;
 }
 
 
-static void errh(const Source* src, SrcPos pos, const Str msg, void* userdata) {
+static void errh(SrcPos pos, const Str msg, void* userdata) {
   auto s = SrcPosFmt(pos, str_new(str_len(msg) + 32), "%s", msg);
   fprintf(stderr, "%s\n", s);
   str_free(s);
@@ -183,13 +189,9 @@ int cmd_build(int argc, const char* argv[argc]) {
   // setup build context
   SymPool syms;
   sympool_init(&syms, universe_syms(), NULL, NULL);
-  BuildCtx ctx = {
-    .mem      = NULL, // allocate AST in global memory pool
-    .syms     = &syms,
-    .pkg      = &pkg,
-    .errh     = errh,
-    .userdata = NULL,
-  };
+  Mem astmem = NULL; // allocate AST in global memory pool
+  BuildCtx ctx;
+  build_init(&ctx, astmem, &syms, &pkg, errh, NULL);
 
   // setup package namespace
   Scope* pkgns = ScopeNew(GetGlobalScope(), ctx.mem);

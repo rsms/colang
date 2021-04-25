@@ -1,7 +1,9 @@
-x = 4
+x = 4 # unused
 
 fun main {
-  add(2, 4)
+  a = 2
+  b = 4
+  add(a, b)
 }
 
 fun add(x, y int) int {

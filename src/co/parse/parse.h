@@ -2,7 +2,6 @@
 #include "../source/source.h"
 #include "sym.h"
 #include "types.h"
-#include "symmap.h"   // SymMap
 
 ASSUME_NONNULL_BEGIN
 
@@ -121,19 +120,35 @@ const char* TokName(Tok);
 
 // ErrorHandler callback type
 // msg is a preformatted error message and is only valid until this function returns
-typedef void(ErrorHandler)(const Source* src, SrcPos pos, const Str msg, void* userdata);
+typedef void(ErrorHandler)(SrcPos pos, const Str msg, void* userdata);
 
 // BuildCtx holds shared resources used to scan, parse and compile things
 typedef struct BuildCtx {
   Mem nullable           mem;      // for allocations during parsing (e.g. ASTNode, Comment)
   SymPool*               syms;     // symbol pool
-  const Pkg*             pkg;      // top-level package for which we are building
+  Pkg*                   pkg;      // top-level package for which we are building
   ErrorHandler* nullable errh;     // error handler
-  void*                  userdata; // custom user data passed to error handler
+  void* nullable         userdata; // custom user data passed to error handler
+  Str                    tmpbuf;   // tmpbuf is a generic string buffer for temporary work
 } BuildCtx;
 
+void build_init(BuildCtx*,
+  Mem nullable           mem,
+  SymPool*               syms,
+  Pkg*                   pkg,
+  ErrorHandler* nullable errh,
+  void* nullable         userdata);
+
+void build_dispose(BuildCtx*);
+
 // build_errf formats a message including source position and invokes ctx->errh
-void build_errf(const BuildCtx* ctx, const Source*, SrcPos, const char* format, ...);
+void build_errf(const BuildCtx* ctx, SrcPos, const char* format, ...);
+
+#if R_UNIT_TEST_ENABLED
+// test_build_new creates a new BuildCtx in a new isolated Mem space with new pkg and syms
+BuildCtx* test_build_new();
+void      test_build_free(BuildCtx*);
+#endif
 
 // ParseFlags are flags for parser and scanner
 typedef enum {
@@ -204,7 +219,7 @@ ASSUME_NONNULL_BEGIN
 // Parser is the state used to parse
 typedef struct Parser {
   Scanner   s;          // parser is based on a scanner
-  BuildCtx* ctx;        // compilation context
+  BuildCtx* build;      // compilation context
   Scope*    scope;      // current scope
   u32       fnest;      // function nesting level (for error handling)
   u32       unresolved; // number of unresolved identifiers
@@ -215,10 +230,46 @@ Node* Parse(Parser*, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
 
 // ResolveSym resolves unresolved symbols in an AST.
 // For top-level AST, scope should be pkgscope.
-Node* ResolveSym(BuildCtx*, Source*, ParseFlags, Node*, Scope*);
+Node* ResolveSym(BuildCtx*, ParseFlags, Node*, Scope*);
 
 // ResolveType resolves unresolved types in an AST
-void ResolveType(BuildCtx*, Source*, Node*);
+void ResolveType(BuildCtx*, Node*);
+
+// GetTypeID retrieves the TypeID for the type node n.
+// This function may mutate n by computing and storing id to n.t.id.
+// This function may add symbols to b->syms
+Sym GetTypeID(BuildCtx* b, Node* n);
+
+// TypeEquals returns true if x and y are equivalent types (i.e. identical).
+// This function may call GetTypeID which may mutate b->syms, x and y.
+bool TypeEquals(BuildCtx* b, Node* x, Node* y);
+
+// TypeConv describes the effect of converting one type to another
+typedef enum TypeConv {
+  TypeConvLossless = 0,  // conversion is "perfect". e.g. int32 -> int64
+  TypeConvLossy,         // conversion may be lossy. e.g. int32 -> float32
+  TypeConvImpossible,    // conversion is not possible. e.g. (int,int) -> bool
+} TypeConv;
+
+// // TypeConversion returns the effect of converting fromType -> toType.
+// // intsize is the size in bytes of the "int" and "uint" types. E.g. 4 for 32-bit.
+// TypeConv CheckTypeConversion(Node* fromType, Node* toType, u32 intsize);
+
+
+// convlit converts an expression to type t.
+// If n is already of type t, n is simply returned.
+// BuildCtx is used for error reporting.
+// This function may call GetTypeID which may mutate b->syms and n.
+Node* convlit(BuildCtx*, Node* n, Node* t, bool explicit);
+// inline static Node* convlit(BuildCtx* ctx, Node* n, Node* t, bool explicit) {
+//   return n; // FIXME
+// }
+
+// For explicit conversions, which allows a greater range of conversions.
+static Node* ConvlitExplicit(BuildCtx*, Node* n, Node* t);
+
+// For implicit conversions (e.g. operands)
+static Node* ConvlitImplicit(BuildCtx*, Node* n, Node* t);
 
 
 // ---------------------------------------------------------------------------------
@@ -238,6 +289,13 @@ inline static SrcPos ScannerSrcPos(const Scanner* s) {
   size_t offs = (size_t)(s->tokstart - s->src->body);
   size_t span = (size_t)(s->tokend - s->tokstart);
   return (SrcPos){ s->src, offs, span };
+}
+
+inline static Node* ConvlitExplicit(BuildCtx* ctx, Node* n, Node* t) {
+  return convlit(ctx, n, t, /*explicit*/ true);
+}
+inline static Node* ConvlitImplicit(BuildCtx* ctx, Node* n, Node* t) {
+  return convlit(ctx, n, t, /*explicit*/ false);
 }
 
 ASSUME_NONNULL_END

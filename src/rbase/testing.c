@@ -39,7 +39,7 @@ bool _testing_start_run(Testing* t) {
     return false;
   }
   t->isatty = isatty(2);
-  fprintf(stderr, "TEST   %s %s ...\n", t->name, t->file);
+  fprintf(stderr, "TEST   %s %s:%d ...\n", t->name, t->file, t->line);
   if (t->isatty)
     t->fpos = ftell(stderr);
   t->startat = nanotime();
@@ -62,11 +62,16 @@ void _testing_end_run(Testing* t) {
   }
 
   const char* greenstyle = "";
+  const char* dimstyle = "";
   const char* nostyle = "";
   if (t->isatty) {
     greenstyle = "\e[1;32m";
+    dimstyle = "\e[2m";
     nostyle = "\e[0m";
   }
 
-  fprintf(stderr, "TEST ✓ %s%s%s %s (%s)\n", greenstyle, t->name, nostyle, t->file, durbuf);
+  fprintf(stderr, "TEST ✓ %s%s%s %s%s:%d%s %s\n",
+    greenstyle, t->name, nostyle,
+    dimstyle, t->file, t->line, nostyle,
+    durbuf);
 }
