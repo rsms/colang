@@ -8,8 +8,7 @@ typedef const char* ConstStr;
 Str        str_new(u32 cap);
 void       str_free(Str);
 Str        str_fmt(const char* fmt, ...) ATTR_FORMAT(printf, 1, 2);
-static Str str_cpy(Str);
-Str        str_cpyn(const char* p, u32 len);
+Str        str_cpy(const char* p, u32 len);
 static Str str_cpycstr(const char* cstr);
 
 // properties of a string
@@ -87,11 +86,8 @@ inline static Str str_setlen(Str s, u32 len) {
   return s;
 }
 
-inline static Str str_cpy(Str s) {
-  return str_cpyn(s, str_len(s));
-}
 inline static Str str_cpycstr(const char* cstr) {
-  return str_cpyn(cstr, strlen(cstr));
+  return str_cpy(cstr, strlen(cstr));
 }
 
 inline static Str str_appendstr(Str s, ConstStr suffix) {

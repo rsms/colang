@@ -22,7 +22,7 @@ Str path_dir(const char* filename) {
   auto p = strrchr(filename, PATH_SEPARATOR);
   if (p == NULL)
     return str_cpycstr(".");
-  return str_cpyn(filename, (u32)((uintptr_t)p - (uintptr_t)filename));
+  return str_cpy(filename, (u32)(p - filename));
 }
 
 char* path_dir_mut(char* filename) {

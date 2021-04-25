@@ -83,6 +83,7 @@ inline static void* memalloc_raw(Mem nullable mem, size_t size) {
 }
 
 inline static void* memrealloc(Mem nullable mem, void* nullable ptr, size_t newsize) {
+  // FIXME TODO: mspace_realloc appears to be buggy
   return mspace_realloc(mem == NULL ? _gmem : mem, ptr, newsize);
 }
 

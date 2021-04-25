@@ -11,22 +11,32 @@
   #define memtrace(...)
 #endif
 
+// FIXME: memrealloc is buggy. Use Mem when we have fixed it or replaced dlmalloc
+// #define MEMALLOC(size)        memalloc_raw(NULL, (size))
+// #define MEMREALLOC(ptr, size) memrealloc(NULL, (ptr), (size))
+// #define MEMFREE(ptr)          memfree(NULL, (ptr))
+// For now, use libc malloc et al:
+#define MEMALLOC(size)        malloc((size))
+#define MEMREALLOC(ptr, size) realloc((ptr), (size))
+#define MEMFREE(ptr)          free((ptr))
+
 // memory size of StrHeader h
 #define STR_HDR_SIZE(h) ((u32)(sizeof(struct StrHeader) + (h)->cap + 1))
 
 Str str_new(u32 cap) {
   cap = MAX(cap + 1, ALLOC_MIN);
-  auto h = (struct StrHeader*)memalloc(NULL, sizeof(struct StrHeader) + cap);
+  auto h = (struct StrHeader*)MEMALLOC(sizeof(struct StrHeader) + cap);
   memtrace("str_alloc %p (size %u)", h, STR_HDR_SIZE(h));
+  h->len = 0;
   h->cap = cap - 1;
+  h->p[0] = 0;
   return &h->p[0];
 }
 
-Str str_cpyn(const char* p, u32 len) {
+Str str_cpy(const char* p, u32 len) {
   auto s = str_new(len);
   memcpy(s, p, (size_t)len);
-  s[len] = 0;
-  return s;
+  return str_setlen(s, len);
 }
 
 void str_free(Str s) {
@@ -37,7 +47,7 @@ void str_free(Str s) {
     h->len = 0;
     h->p[0] = 0;
   #endif
-  memfree(NULL, h);
+  MEMFREE(h);
 }
 
 Str str_fmt(const char* fmt, ...) {
@@ -54,9 +64,19 @@ Str str_makeroom(Str s, u32 addlen) {
   u32 avail = h->cap - h->len;
   if (avail >= addlen)
     return s;
-  h->cap += addlen - avail;
-  // h->cap = align2(h->cap + addlen - avail, sizeof(size_t));
-  auto h2 = (struct StrHeader*)memrealloc(NULL, h, STR_HDR_SIZE(h));
+
+  #if 1
+  h->cap = h->len + addlen;
+  if (h->cap < 4096)
+    h->cap = align2(h->cap * 2, sizeof(size_t));
+  // h->cap = h->cap + (addlen - avail);
+  auto h2 = (struct StrHeader*)MEMREALLOC(h, STR_HDR_SIZE(h));
+  #else
+  auto h2 = (struct StrHeader*)MEMALLOC(STR_HDR_SIZE(h) + (addlen - avail));
+  memcpy(h2, h, STR_HDR_SIZE(h));
+  h2->cap = h->cap + (addlen - avail);
+  #endif
+
   memtrace("str_realloc %p -> %p (%u)", h, h2, STR_HDR_SIZE(h2));
   // Note: memrealloc panics if memory can't be allocated rather than returning NULL
   return &h2->p[0];
@@ -84,6 +104,7 @@ Str str_appendc(Str s, char c) {
   auto h = STR_HEADER(s);
   if (h->cap - h->len == 0)
     s = str_makeroom(s, 1);
+  memtrace("str_appendc %p", h);
   s[h->len++] = c;
   s[h->len] = 0;
   return s;
