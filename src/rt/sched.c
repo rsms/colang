@@ -85,9 +85,9 @@ static inline ALWAYS_INLINE T* t_get();
 
 static inline M* m_acquire();
 static inline void m_release(M* m);
-static void noreturn m_call(T* _t_, void(*fn)(T*));
-static void noreturn m_exit(bool osStack);
-static void noreturn schedule();
+static void NORETURN m_call(T* _t_, void(*fn)(T*));
+static void NORETURN m_exit(bool osStack);
+static void NORETURN schedule();
 static void p_runqput(P* p, T* t, bool next);
 static void p_tfree_put(P* _p_, T* t);
 static void* t_switch(T* t);
@@ -655,7 +655,7 @@ static void m_dropt() {
 }
 
 // t_exit is called on M.t0's stack after t_main exits; to end t.
-static void noreturn t_exit(T* t) {
+static void NORETURN t_exit(T* t) {
   T* _t_ = t_get();
   trace("T#%llu", t->id);
   assert(_t_ == &_t_->m->t0);
@@ -691,12 +691,12 @@ static void noreturn t_exit(T* t) {
 // _t_exit0 finishes execution of the current coroutine.
 // It is called when the coroutine's function returns.
 // This function is link exported because it's called from assembly.
-void noreturn _t_exit0() {
+void NORETURN _t_exit0() {
   trace("");
   m_call(t_get(), t_exit); // never returns
 }
 
-static void noreturn exitprog(int status) {
+static void NORETURN exitprog(int status) {
   trace("\e[1;35m" "PROGRAM EXIT");
   trace("TODO: close() child tasks");
   // TODO: consider returning from sched_main instead of exit()ing
@@ -817,7 +817,7 @@ void t_yield() {
 // If inheritTime is true, t inherits the remaining time in the current time slice.
 // Otherwise, it starts a new time slice.
 // Never returns.
-static void noreturn t_execute(T* t, bool inheritTime) {
+static void NORETURN t_execute(T* t, bool inheritTime) {
   T* _t_ = t_get();
   assert(_t_ == &_t_->m->t0);
   trace("T#%llu on M#%lld", t->id, _t_->m->id);
@@ -1488,7 +1488,7 @@ static void m_init_sigmask(M* _m_) {
 }
 
 // m_start1 is called by m_start
-static void noreturn NO_INLINE m_start1(M* _m_) {
+static void NORETURN NO_INLINE m_start1(M* _m_) {
   // iOS does not support alternate signal stack.
   // The signal handler handles it directly.
   #if !(R_TARGET_OS_IOS && R_TARGET_ARCH_ARM64) || R_TARGET_OS_IOS_SIMULATOR
@@ -1520,7 +1520,7 @@ static void noreturn NO_INLINE m_start1(M* _m_) {
 }
 
 // m_start is the entry-point for new M's. M doesn't have a P yet.
-static void noreturn NO_INLINE m_start(M* _m_) { // [go: runtime.mstart0]
+static void NORETURN NO_INLINE m_start(M* _m_) { // [go: runtime.mstart0]
   T* t0 = &_m_->t0;
   assert(t_get() == t0);
 
@@ -1569,7 +1569,7 @@ static void p_handoff(P* _p_) {
 //
 // It is entered with m->p != NULL, so write barriers are allowed.
 // It will release the P before exiting.
-static void noreturn m_exit(bool osStack) {
+static void NORETURN m_exit(bool osStack) {
   M* m = t_get()->m;
   trace("M %p", m);
 
@@ -1615,7 +1615,7 @@ static void noreturn m_exit(bool osStack) {
 //
 // fn must never return. It should exectx_resume to keep running T.
 //
-static void noreturn m_call(T* _t_, void(*fn)(T*)) {
+static void NORETURN m_call(T* _t_, void(*fn)(T*)) {
   trace("T#%llu -> M#%lld (t0)", _t_->id, _t_->m->id);
   T* t0 = &_t_->m->t0;
   assert(_t_ != t0 /* must only m_call from a coroutine, not M/t0 */);
@@ -2369,7 +2369,7 @@ static void m_resetspinning(M* m) {
 
 // schedule performs one pass of scheduling: find a runnable coroutine and execute it.
 // Never returns.
-static void noreturn schedule() {
+static void NORETURN schedule() {
   T* _t_ = t_get();
   M* m = _t_->m;
   trace("_t_ T#%llu on M#%lld", _t_->id, m->id);
@@ -2520,7 +2520,7 @@ static void sched_init() {
 // sched_main is the API entry point. sched_init must have been called already.
 // This function creates a new coroutine with fn as the body and then enters the
 // (continuation passing) scheduler loop on the calling thread.
-void noreturn sched_main(EntryFun fn, uintptr_t arg1) {
+void NORETURN sched_main(EntryFun fn, uintptr_t arg1) {
   sched_init();
   sched_spawn(fn, arg1, /*stackmem*/NULL, /*stacksize*/ 0);
   t1 = m0.p->runnext;

@@ -6,3 +6,5 @@
 /bin
 /deps
 /work
+/src/**/*.d
+/src/**/*.pch

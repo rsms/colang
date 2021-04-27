@@ -122,7 +122,7 @@ while true; do
 			--one-event \
 			--latency=0.2 \
 			--extended \
-			--exclude='.*' --include='\.(c|h|s|S|w)$' \
+			--exclude='.*' --include='\.(c|h|s|S|w|cc|hh)$' \
 			--recursive \
 			./src ./example
 	else

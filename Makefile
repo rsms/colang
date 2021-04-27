@@ -7,19 +7,19 @@ ARCH        := $(shell uname -m)
 SRCROOT     := $(shell pwd)
 
 RBASE_SRC      := $(wildcard src/rbase/*.c)
-RBASE_PCH_DEPS := $(wildcard src/rbase/*.h)
 RT_SRC         := $(wildcard src/rt/*.c src/rt/exectx/*.c)
 RT_TEST_SRC    := $(wildcard src/rt-test/*.c)
-CO_SRC         := $(wildcard src/co/*.c src/co/*/*.c)
+CO_SRC         := $(wildcard src/co/*.c src/co/*/*.c src/co/llvm/*.cc)
 
+LLVM_PREFIX := deps/llvm
 # CC          ?= $(LLVM_PREFIX)/bin/clang
 # CXX         ?= $(LLVM_PREFIX)/bin/clang++
 # AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
 # STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
-# LLVM_CONFIG ?= $(LLVM_PREFIX)/bin/llvm-config
+LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
 
-CFLAGS := \
-	-std=c17 \
+# for both C and C++
+COMPILE_FLAGS := \
 	-g \
 	-MMD \
 	-Isrc \
@@ -27,24 +27,41 @@ CFLAGS := \
 	-fstrict-aliasing \
 	-Wall -Wextra -Wimplicit-fallthrough \
 	-Wno-missing-field-initializers -Wno-unused-parameter \
-	-Wunused \
+	-Wunused
+
+CFLAGS := \
+	-std=c17 \
 	$(MORECFLAGS)
 
 CXXFLAGS := \
-	-std=c++17 \
+	-std=c++14 \
 	-fvisibility-inlines-hidden \
 	-fno-exceptions \
 	-fno-rtti \
+	-stdlib=libc++ -nostdinc++ -Ilib/libcxx/include
 
 LDFLAGS := $(MORELDFLAGS)
+
+# llvm
+CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include -I$(LLVM_PREFIX)/include
+LDFLAGS += \
+	-Wl,-no_pie \
+	work/build/libc++.a work/build/libc++abi.a \
+	$(shell "$(LLVM_CONFIG)" --libfiles) \
+	$(shell "$(LLVM_CONFIG)" --system-libs) \
+	$(LLVM_PREFIX)/lib/liblld*.a
+
 
 FLAVOR := release
 ifneq ($(DEBUG),)
 	FLAVOR := debug
-	CFLAGS += -DDEBUG
+	COMPILE_FLAGS += -DDEBUG
 else
-	CFLAGS += -O3
+	COMPILE_FLAGS += -O3
 	LDFLAGS += -dead_strip
+	ifeq ($(notdir $(CC)),clang)
+		LDFLAGS += -flto
+	endif
 endif
 
 # enable sanitizer
@@ -55,7 +72,7 @@ ifneq ($(SANITIZE),)
 	CXX := clang++
 	ifeq ($(SANITIZE),address)
 		FLAVOR := $(FLAVOR)-asan
-		CFLAGS += \
+		COMPILE_FLAGS += \
 			-DASAN_ENABLED=1 \
 		  -fsanitize=address \
 		  -fsanitize-address-use-after-scope \
@@ -65,11 +82,11 @@ ifneq ($(SANITIZE),)
 		# out local build of clang doesn't include asan libs, so use system compiler
 	else ifeq ($(SANITIZE),undefined)
 		FLAVOR := $(FLAVOR)-usan
-		CFLAGS += -g -fsanitize=undefined -fno-sanitize-recover=all
+		COMPILE_FLAGS += -g -fsanitize=undefined -fno-sanitize-recover=all
 	  LDFLAGS += -fsanitize=undefined
 	else ifeq ($(SANITIZE),memory)
 		FLAVOR := $(FLAVOR)-msan
-		CFLAGS += -g -fsanitize=memory -fno-omit-frame-pointer
+		COMPILE_FLAGS += -g -fsanitize=memory -fno-omit-frame-pointer
 	  LDFLAGS += -fsanitize=memory
 	else
 		ERROR
@@ -88,10 +105,12 @@ ifeq ($(SYSTEM),Darwin)
 	else
 		RT_SRC += UNSUPPORTED_PLATFORM
 	endif
-	CFLAGS += -mmacosx-version-min=10.15 \
-	          -fcolor-diagnostics
-  LDFLAGS += -mmacosx-version-min=10.15 \
-  	         -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
+	COMPILE_FLAGS += \
+		-mmacosx-version-min=10.15 \
+	  -fcolor-diagnostics
+  LDFLAGS += \
+  	-mmacosx-version-min=10.15 \
+  	-isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk
 	ifneq ($(DEBUG),)
 		# force_load is required for unit tests to be included (force_load is clang-specific)
 		LDFLAGS += -Wl,-force_load,$(BUILDDIR)/rbase.a
@@ -110,9 +129,9 @@ else ifeq ($(SYSTEM),Linux)
 	endif
 endif
 
-# clang-spcific options (TODO: fix makefile check to look for *"/clang" || "clang")
+# clang-specific options (TODO: fix makefile check to look for *"/clang" || "clang")
 ifeq ($(notdir $(CC)),clang)
-	CFLAGS += \
+	COMPILE_FLAGS += \
 	  -Wno-nullability-completeness \
 	  -Wno-nullability-inferred-on-nested-type
 endif
@@ -122,7 +141,12 @@ CO_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(CO_SRC))
 RT_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(RT_SRC))
 RT_TEST_OBJS := $(patsubst %,$(OBJDIR)/%.o,$(RT_TEST_SRC))
 RBASE_OBJS   := $(patsubst %,$(OBJDIR)/%.o,$(RBASE_SRC))
-RBASE_PCH    := $(BUILDDIR)/rbase.pch
+
+PCHDIR       := $(BUILDDIR)/pch
+RBASE_H      := src/rbase/rbase.h
+LLVM_H       := src/co/llvm/llvm.hh
+RBASE_PCH    := $(PCHDIR)/$(RBASE_H).pch
+LLVM_PCH     := $(PCHDIR)/$(LLVM_H).pch
 
 all: bin/co bin/rt-test
 
@@ -146,33 +170,47 @@ test_msan:
 	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) bin/co
 	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
-bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a | $(RBASE_PCH)
+bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
-bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a | $(RBASE_PCH)
+bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
 	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
+
+.PHONY: x
+x: $(BUILDDIR)/src/co/llvm/llvm.cc.o
+	true
 
 $(BUILDDIR)/rt.a: $(RT_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	$(Q)$(AR) rcs $@ $^
 
-$(BUILDDIR)/rbase.a: $(RBASE_OBJS) | $(RBASE_PCH)
+$(BUILDDIR)/rbase.a: $(RBASE_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	$(Q)$(AR) rcs $@ $^
 
-$(RBASE_PCH): src/rbase/rbase.h $(RBASE_PCH_DEPS)
+$(RBASE_PCH): $(RBASE_H)
 	@echo "cc $< -> $@"
 	@mkdir -p "$(dir $@)"
-	$(Q)$(CC) $(CFLAGS) -c -o "$@" src/rbase/rbase.h
+	$(Q)$(CC) $(COMPILE_FLAGS) $(CFLAGS) -c -o "$@" $<
+
+$(LLVM_PCH): $(LLVM_H)
+	@echo "cc $< -> $@"
+	@mkdir -p "$(dir $@)"
+	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -c -o "$@" $<
 
 $(OBJDIR)/%.c.o: %.c | $(RBASE_PCH)
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
-	$(Q)$(CC) -I$(dir $(RBASE_PCH)) $(CFLAGS) -o $@ -c $<
+	$(Q)$(CC) $(COMPILE_FLAGS) $(CFLAGS) -include $(PCHDIR)/$(RBASE_H) -o $@ -c $<
+
+$(OBJDIR)/%.cc.o: %.cc | $(LLVM_PCH)
+	@echo "cxx $<"
+	@mkdir -p "$(dir $@)"
+	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -include $(PCHDIR)/$(LLVM_H) -o $@ -c $<
 
 $(OBJDIR)/%.S.o: %.S
 	@echo "cc $<"
@@ -191,5 +229,8 @@ clean:
 
 DEPS := ${RBASE_OBJS:.o=.d} ${CO_OBJS:.o=.d} ${RT_TEST_OBJS:.o=.d}
 -include $(DEPS)
+-include $(PCHDIR)/$(RBASE_H).d
+-include $(PCHDIR)/$(LLVM_H).d
+
 
 .PHONY: all dev clean

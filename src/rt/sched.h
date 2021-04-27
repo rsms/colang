@@ -11,7 +11,7 @@ typedef struct P P; // Processor (execution resource required to execute a T)
 typedef void(*EntryFun)(uintptr_t arg1);
 
 // Scheduler entry point. fn is the main coroutine body. Never returns.
-void noreturn sched_main(EntryFun fn, uintptr_t arg1);
+void _Noreturn sched_main(EntryFun fn, uintptr_t arg1);
 
 // sched_spawn schedules a new coroutine.
 // Returns 0 on success and -1 on error, in which case errno is set.
