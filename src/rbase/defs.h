@@ -36,22 +36,6 @@ typedef signed long            ssize_t;
 typedef unsigned long          uintptr_t;
 typedef signed long            intptr_t;
 
-#ifndef __cplusplus
-  typedef _Atomic(i8)      atomic_i8;
-  typedef _Atomic(u8)      atomic_u8;
-  typedef _Atomic(i16)     atomic_i16;
-  typedef _Atomic(u16)     atomic_u16;
-  typedef _Atomic(i32)     atomic_i32;
-  typedef _Atomic(u32)     atomic_u32;
-  typedef _Atomic(i64)     atomic_i64;
-  typedef _Atomic(u64)     atomic_u64;
-  typedef _Atomic(f32)     atomic_f32;
-  typedef _Atomic(f64)     atomic_f64;
-  typedef _Atomic(uint)    atomic_uint;
-  typedef _Atomic(size_t)  atomic_size;
-  typedef _Atomic(ssize_t) atomic_ssize;
-#endif
-
 // compiler feature test macros
 #ifndef __has_attribute
   #define __has_attribute(x)  0
@@ -94,8 +78,10 @@ typedef signed long            intptr_t;
 #define DIAGNOSTIC_IGNORE_POP      _Pragma("GCC diagnostic pop")
 
 #ifndef __cplusplus
-  #define auto        __auto_type
-  #define noreturn    _Noreturn
+  #define NORETURN _Noreturn
+  #define auto __auto_type
+#else
+  #define NORETURN noreturn
 #endif
 
 #if __has_attribute(fallthrough)
@@ -249,26 +235,59 @@ typedef signed long            intptr_t;
 // See https://en.cppreference.com/w/c/atomic
 // See https://en.cppreference.com/w/c/atomic/memory_order
 
-#define AtomicLoad(x)        atomic_load_explicit((x), memory_order_relaxed)
-#define AtomicLoadAcq(x)     atomic_load_explicit((x), memory_order_acquire)
-#define AtomicStore(x, v)    atomic_store_explicit((x), (v), memory_order_relaxed)
-#define AtomicStoreRel(x, v) atomic_store_explicit((x), (v), memory_order_release)
+#ifdef __cplusplus
+  #include <atomic>
+  #define r_memory_order(name) ::std::memory_order::memory_order_##name
+  typedef ::std::atomic<i8>      atomic_i8;
+  typedef ::std::atomic<u8>      atomic_u8;
+  typedef ::std::atomic<i16>     atomic_i16;
+  typedef ::std::atomic<u16>     atomic_u16;
+  typedef ::std::atomic<i32>     atomic_i32;
+  typedef ::std::atomic<u32>     atomic_u32;
+  typedef ::std::atomic<i64>     atomic_i64;
+  typedef ::std::atomic<u64>     atomic_u64;
+  typedef ::std::atomic<f32>     atomic_f32;
+  typedef ::std::atomic<f64>     atomic_f64;
+  typedef ::std::atomic<uint>    atomic_uint;
+  typedef ::std::atomic<size_t>  atomic_size;
+  typedef ::std::atomic<ssize_t> atomic_ssize;
+#else
+  #define r_memory_order(name) memory_order_##name
+  typedef _Atomic(i8)      atomic_i8;
+  typedef _Atomic(u8)      atomic_u8;
+  typedef _Atomic(i16)     atomic_i16;
+  typedef _Atomic(u16)     atomic_u16;
+  typedef _Atomic(i32)     atomic_i32;
+  typedef _Atomic(u32)     atomic_u32;
+  typedef _Atomic(i64)     atomic_i64;
+  typedef _Atomic(u64)     atomic_u64;
+  typedef _Atomic(f32)     atomic_f32;
+  typedef _Atomic(f64)     atomic_f64;
+  typedef _Atomic(uint)    atomic_uint;
+  typedef _Atomic(size_t)  atomic_size;
+  typedef _Atomic(ssize_t) atomic_ssize;
+#endif
+
+#define AtomicLoad(x)        atomic_load_explicit((x), r_memory_order(relaxed))
+#define AtomicLoadAcq(x)     atomic_load_explicit((x), r_memory_order(acquire))
+#define AtomicStore(x, v)    atomic_store_explicit((x), (v), r_memory_order(relaxed))
+#define AtomicStoreRel(x, v) atomic_store_explicit((x), (v), r_memory_order(release))
 
 // note: these operations return the old value
-#define AtomicAdd(x, n)      atomic_fetch_add_explicit((x), (n), memory_order_relaxed)
-#define AtomicSub(x, n)      atomic_fetch_sub_explicit((x), (n), memory_order_relaxed)
-#define AtomicOr(x, n)       atomic_fetch_or_explicit((x), (n), memory_order_relaxed)
-#define AtomicAnd(x, n)      atomic_fetch_and_explicit((x), (n), memory_order_relaxed)
-#define AtomicXor(x, n)      atomic_fetch_xor_explicit((x), (n), memory_order_relaxed)
+#define AtomicAdd(x, n)      atomic_fetch_add_explicit((x), (n), r_memory_order(relaxed))
+#define AtomicSub(x, n)      atomic_fetch_sub_explicit((x), (n), r_memory_order(relaxed))
+#define AtomicOr(x, n)       atomic_fetch_or_explicit((x), (n), r_memory_order(relaxed))
+#define AtomicAnd(x, n)      atomic_fetch_and_explicit((x), (n), r_memory_order(relaxed))
+#define AtomicXor(x, n)      atomic_fetch_xor_explicit((x), (n), r_memory_order(relaxed))
 
 #define AtomicCAS(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_relaxed, memory_order_relaxed)
+    (p), (oldval), (newval), r_memory_order(relaxed), r_memory_order(relaxed))
 
 #define AtomicCASRel(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_release, memory_order_consume)
+    (p), (oldval), (newval), r_memory_order(release), r_memory_order(consume))
 
 #define AtomicCASAcqRel(p, oldval, newval) \
   atomic_compare_exchange_strong_explicit( \
-    (p), (oldval), (newval), memory_order_acq_rel, memory_order_consume)
+    (p), (oldval), (newval), r_memory_order(acq_rel), r_memory_order(consume))

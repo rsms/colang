@@ -59,7 +59,7 @@ void _errlog(const char* fmt, ...) {
   fflush(fp);
 }
 
-noreturn void _panic(const char* filename, int lineno, const char* fname, const char* fmt, ...) {
+_Noreturn void _panic(const char* filename, int lineno, const char* fname, const char* fmt, ...) {
   FILE* fp = stderr;
   flockfile(fp);
 
