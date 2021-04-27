@@ -53,6 +53,8 @@ void _errlog(const char* fmt, ...) {
     char buf[256];
     if (strerror_r(err, buf, countof(buf)) == 0)
       fprintf(fp, " ([%d] %s)\n", err, buf);
+  } else {
+    fputc('\n', fp);
   }
 
   funlockfile(fp);

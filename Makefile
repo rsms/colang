@@ -1,22 +1,14 @@
 # make V=1 or make VERBOSE=1 to print invocations
 Q = $(if $(filter 1,$(V) $(VERBOSE)),,@)
 
-LLVM_PREFIX := deps/llvm
-SYSTEM      := $(shell uname -s)
-ARCH        := $(shell uname -m)
-SRCROOT     := $(shell pwd)
+SYSTEM  := $(shell uname -s)
+ARCH    := $(shell uname -m)
+SRCROOT := $(shell pwd)
 
-RBASE_SRC      := $(wildcard src/rbase/*.c)
-RT_SRC         := $(wildcard src/rt/*.c src/rt/exectx/*.c)
-RT_TEST_SRC    := $(wildcard src/rt-test/*.c)
-CO_SRC         := $(wildcard src/co/*.c src/co/*/*.c src/co/llvm/*.cc)
-
-LLVM_PREFIX := deps/llvm
-# CC          ?= $(LLVM_PREFIX)/bin/clang
-# CXX         ?= $(LLVM_PREFIX)/bin/clang++
-# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
-# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
-LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
+RBASE_SRC   := $(wildcard src/rbase/*.c)
+RT_SRC      := $(wildcard src/rt/*.c src/rt/exectx/*.c)
+RT_TEST_SRC := $(wildcard src/rt-test/*.c)
+CO_SRC      := $(wildcard src/co/*.c src/co/*/*.c src/co/llvm/*.cc)
 
 # for both C and C++
 COMPILE_FLAGS := \
@@ -42,13 +34,31 @@ CXXFLAGS := \
 
 LDFLAGS := $(MORELDFLAGS)
 
+
 # llvm
-CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include -I$(LLVM_PREFIX)/include
+LLVM_PREFIX := deps/llvm
+# CC          ?= $(LLVM_PREFIX)/bin/clang
+# CXX         ?= $(LLVM_PREFIX)/bin/clang++
+# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
+# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
+LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
+# LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
+LLVM_COMPONENTS := \
+	engine \
+	option \
+	passes \
+	x86codegen \
+	aarch64codegen \
+	webassemblycodegen
+CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include $(shell "$(LLVM_CONFIG)" --cxxflags)
+CFLAGS   += $(shell "$(LLVM_CONFIG)" --cflags)
 LDFLAGS += \
 	-Wl,-no_pie \
-	work/build/libc++.a work/build/libc++abi.a \
-	$(shell "$(LLVM_CONFIG)" --libfiles) \
+	$(shell "$(LLVM_CONFIG)" --ldflags) \
+	work/build/libc++.a \
+	work/build/libc++abi.a \
 	$(shell "$(LLVM_CONFIG)" --system-libs) \
+	$(shell "$(LLVM_CONFIG)" --link-static --libs $(LLVM_COMPONENTS)) \
 	$(LLVM_PREFIX)/lib/liblld*.a
 
 
@@ -171,12 +181,12 @@ test_msan:
 	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
 bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a
-	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
+	@echo "link $@"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
 bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
-	@echo "link $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
+	@echo "link $@"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
