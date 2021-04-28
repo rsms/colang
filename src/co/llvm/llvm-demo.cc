@@ -1,316 +1,9 @@
-#include "llvm.h"
 #include "llvm.hh"
 #include "lld/Common/Driver.h"
 
 using namespace llvm;
 // using namespace llvm::sys;
 // using namespace llvm::orc;
-
-
-
-const char* llvm_init_targets() {
-  static std::once_flag once;
-  static char* defaultTriple;
-  std::call_once(once, [](){
-    // // Initialize ALL targets (this causes a lot of llvm code to be included in this program)
-    // InitializeAllTargetInfos();
-    // InitializeAllTargets();
-    // InitializeAllTargetMCs();
-    // InitializeAllAsmParsers();
-    // InitializeAllAsmPrinters();
-
-    // For JIT only, call llvm::InitializeNativeTarget()
-    InitializeNativeTarget();
-
-    // Initialize some targets (see llvm/Config/Targets.def)
-    #define TARGETS(_) _(AArch64) _(WebAssembly) _(X86)
-    #define _(TargetName) \
-      LLVMInitialize##TargetName##TargetInfo(); \
-      LLVMInitialize##TargetName##Target(); \
-      LLVMInitialize##TargetName##TargetMC(); \
-      LLVMInitialize##TargetName##AsmPrinter(); \
-      /*LLVMInitialize##TargetName##AsmParser();*/
-    TARGETS(_)
-    #undef _
-
-    defaultTriple = LLVMGetDefaultTargetTriple();
-    // Note: if we ever make this non-static, LLVMDisposeMessage(defaultTriple) when done.
-  });
-  return defaultTriple;
-}
-
-
-bool llvm_emit_mc(
-  LLVMModuleRef        moduleRef,
-  LLVMTargetMachineRef targetMachineRef,
-  CoBuildType          buildType,
-  bool                 enable_tsan,
-  bool                 enable_lto,
-  const char* nullable asm_outfile,
-  const char* nullable bin_outfile)
-{
-  Module* modulePtr = reinterpret_cast<Module*>(moduleRef);
-  Module& module = *modulePtr;
-
-  TargetMachine* targetMachinePtr = reinterpret_cast<TargetMachine*>(targetMachineRef);
-  TargetMachine& targetMachine = *targetMachinePtr;
-
-  module.setTargetTriple(targetMachine.getTargetTriple().str());
-  module.setDataLayout(targetMachine.createDataLayout());
-
-  bool is_debug = buildType == CoBuildDebug;
-
-  // pass performance debugging
-  bool enable_time_report = false;
-  TimePassesIsEnabled = enable_time_report; // global llvm variable
-
-  // Pipeline configurations
-  PipelineTuningOptions pipelineOpt;
-  pipelineOpt.LoopUnrolling = !is_debug;
-  pipelineOpt.SLPVectorization = !is_debug;
-  pipelineOpt.LoopVectorization = !is_debug;
-  pipelineOpt.LoopInterleaving = !is_debug;
-  pipelineOpt.MergeFunctions = !is_debug;
-
-  // Instrumentations
-  // https://github.com/ziglang/zig/blob/52d871844c643f396a2bddee0753d24ff7/src/zig_llvm.cpp#L190
-  PassInstrumentationCallbacks instrCallbacks;
-  StandardInstrumentations std_instrumentations(false);
-  std_instrumentations.registerCallbacks(instrCallbacks);
-
-  // optimization pass builder
-  PassBuilder passBuilder(
-    /*DebugLogging*/false, &targetMachine, pipelineOpt, /*PGOOpt*/None, &instrCallbacks);
-  using OptimizationLevel = typename PassBuilder::OptimizationLevel;
-
-  LoopAnalysisManager     loopAM;
-  FunctionAnalysisManager functionAM;
-  CGSCCAnalysisManager    cgsccAM;
-  ModuleAnalysisManager   moduleAM;
-
-  // Register the AA manager first so that our version is the one used
-  functionAM.registerPass([&] { return passBuilder.buildDefaultAAPipeline(); });
-
-  // Register TargetLibraryAnalysis
-  Triple targetTriple(module.getTargetTriple());
-  auto tlii = std::make_unique<TargetLibraryInfoImpl>(targetTriple);
-  functionAM.registerPass([&] { return TargetLibraryAnalysis(*tlii); });
-
-  // Initialize AnalysisManagers
-  passBuilder.registerModuleAnalyses(moduleAM);
-  passBuilder.registerCGSCCAnalyses(cgsccAM);
-  passBuilder.registerFunctionAnalyses(functionAM);
-  passBuilder.registerLoopAnalyses(loopAM);
-  passBuilder.crossRegisterProxies(loopAM, functionAM, cgsccAM, moduleAM);
-
-  // IR verification
-  #ifdef DEBUG
-  // Verify the input
-  passBuilder.registerPipelineStartEPCallback([](ModulePassManager& mpm, OptimizationLevel OL) {
-    mpm.addPass(VerifierPass());
-  });
-  // Verify the output
-  passBuilder.registerOptimizerLastEPCallback([](ModulePassManager& mpm, OptimizationLevel OL) {
-    mpm.addPass(VerifierPass());
-  });
-  #endif
-
-  // Passes specific for release build
-  if (!is_debug) {
-    passBuilder.registerPipelineStartEPCallback([](ModulePassManager& mpm, OptimizationLevel OL) {
-      mpm.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
-    });
-  }
-
-  // Thread sanitizer
-  if (enable_tsan) {
-    passBuilder.registerOptimizerLastEPCallback([](ModulePassManager& mpm, OptimizationLevel OL) {
-      mpm.addPass(ThreadSanitizerPass());
-    });
-  }
-
-  // Initialize ModulePassManager
-  ModulePassManager MPM;
-  OptimizationLevel optLevel;
-  switch (buildType) {
-    case CoBuildDebug:    optLevel = OptimizationLevel::O0; break;
-    case CoBuildOptSmall: optLevel = OptimizationLevel::Oz; break;
-    case CoBuildOpt:      optLevel = OptimizationLevel::O3; break;
-  }
-  if (optLevel == OptimizationLevel::O0) {
-    MPM = passBuilder.buildO0DefaultPipeline(optLevel, enable_lto);
-  } else if (enable_lto) {
-    MPM = passBuilder.buildLTOPreLinkDefaultPipeline(optLevel);
-  } else {
-    MPM = passBuilder.buildPerModuleDefaultPipeline(optLevel);
-  }
-
-  // Optimization phase
-  MPM.run(module, moduleAM);
-
-  // Machine code-generation pass
-  // Unfortunately we don't have new PM for code generation
-  // IMPORTANT: dest_* ostreams must be ordered before PassManager variables on stack as the
-  // PassManager's destructor depends on the ostreams to still be valid.
-  std::unique_ptr<raw_fd_ostream> dest_asm;
-  std::unique_ptr<raw_fd_ostream> dest_bin;
-  if (asm_outfile) {
-    std::error_code EC;
-    dest_asm.reset(new(std::nothrow) raw_fd_ostream(asm_outfile, EC, sys::fs::F_None));
-    if (EC) {
-      errlog("raw_fd_ostream: %s", (const char *)StringRef(EC.message()).bytes_begin());
-      return false;
-    }
-  }
-  if (bin_outfile) {
-    std::error_code EC;
-    dest_bin.reset(new(std::nothrow) raw_fd_ostream(bin_outfile, EC, sys::fs::F_None));
-    if (EC) {
-      errlog("raw_fd_ostream: %s", (const char *)StringRef(EC.message()).bytes_begin());
-      return false;
-    }
-  }
-
-  // Generate object MC (LTO disabled) or LLVM bitcode (LTO enabled)
-  if (dest_bin) {
-    legacy::PassManager codegenPM;
-    codegenPM.add(createTargetTransformInfoWrapperPass(targetMachine.getTargetIRAnalysis()));
-    if (!enable_lto) {
-      // object machine code
-      if (targetMachine.addPassesToEmitFile(codegenPM, *dest_bin, nullptr, CGFT_ObjectFile) != 0) {
-        errlog("TargetMachine can't emit an object file");
-        return false;
-      }
-    }
-    codegenPM.run(module);
-    if (enable_lto) {
-      // LLVM bitcode
-      WriteBitcodeToFile(module, *dest_bin);
-    }
-    dest_bin->flush();
-    dlog("wrote %s", bin_outfile);
-  }
-
-  // Generate assembly code
-  if (dest_asm) {
-    // must use a separate PassManager when outputting both obj and asm or llvm trips an assertion
-    // "LLVM ERROR: '_xyz' label emitted multiple times to assembly file"
-    legacy::PassManager codegenPM;
-    codegenPM.add(createTargetTransformInfoWrapperPass(targetMachine.getTargetIRAnalysis()));
-    if (targetMachine.addPassesToEmitFile(codegenPM, *dest_asm, nullptr, CGFT_AssemblyFile) != 0) {
-      errlog("TargetMachine can't emit an assembly file");
-      return false;
-    }
-    codegenPM.run(module);
-    dest_asm->flush();
-    dlog("wrote %s", asm_outfile);
-  }
-
-  // print perf information
-  if (enable_time_report)
-    TimerGroup::printAll(errs());
-
-  return true;
-}
-
-
-/*LLVMTargetMachineRef llvm_create_target_machine(
-  LLVMTargetRef       target, // T
-  const char*         triple,
-  const char*         CPU,
-  const char*         features,
-  LLVMCodeGenOptLevel level,
-  LLVMRelocMode       reloc,
-  LLVMCodeModel       codeModel,
-  bool                function_sections,
-  CoLLVMABIType       float_abi,
-  const char*         abi_name)
-{
-  Optional<Reloc::Model> RM;
-  switch (reloc){
-    case LLVMRelocStatic:       RM = Reloc::Static; break;
-    case LLVMRelocPIC:          RM = Reloc::PIC_; break;
-    case LLVMRelocDynamicNoPic: RM = Reloc::DynamicNoPIC; break;
-    case LLVMRelocROPI:         RM = Reloc::ROPI; break;
-    case LLVMRelocRWPI:         RM = Reloc::RWPI; break;
-    case LLVMRelocROPI_RWPI:    RM = Reloc::ROPI_RWPI; break;
-    default: break;
-  }
-
-  bool JIT;
-  Optional<CodeModel::Model> CM = unwrap(codeModel, JIT);
-
-  CodeGenOpt::Level OL;
-  switch (level) {
-    case LLVMCodeGenLevelNone:       OL = CodeGenOpt::None; break;
-    case LLVMCodeGenLevelLess:       OL = CodeGenOpt::Less; break;
-    case LLVMCodeGenLevelAggressive: OL = CodeGenOpt::Aggressive; break;
-    default:                         OL = CodeGenOpt::Default; break;
-  }
-
-  TargetOptions opt;
-
-  // Work around the missing initialization of this field in the default
-  // constructor. Use -1 so that the default value is used.
-  opt.StackProtectorGuardOffset = (unsigned)-1;
-
-  opt.FunctionSections = function_sections;
-  switch (float_abi) {
-    case CoLLVMABITypeDefault: opt.FloatABIType = FloatABI::Default; break;
-    case CoLLVMABITypeSoft:    opt.FloatABIType = FloatABI::Soft; break;
-    case CoLLVMABITypeHard:    opt.FloatABIType = FloatABI::Hard; break;
-  }
-
-  if (abi_name != nullptr)
-    opt.MCOptions.ABIName = abi_name;
-
-  TargetMachine* TM = reinterpret_cast<Target*>(target)->createTargetMachine(
-    triple, CPU, features, opt, RM, CM, OL, JIT);
-  return reinterpret_cast<LLVMTargetMachineRef>(TM);
-}*/
-
-
-std::unique_ptr<TargetMachine> llvm_select_target(Module& module, std::string targetTriple) {
-
-
-  // retrieve target from registry
-  std::string Error;
-  const Target* target = TargetRegistry::lookupTarget(targetTriple, Error);
-
-  // Print an error and exit if we couldn't find the requested target.
-  // This generally occurs if we've forgotten to initialise the
-  // TargetRegistry or we have a bogus target triple.
-  if (!target) {
-    errlog("TargetRegistry::lookupTarget error: %s", Error.c_str());
-    return nullptr;
-  }
-
-  // machine features (none, for now)
-  auto CPU = "generic";
-  auto Features = "";
-
-  TargetOptions opt;
-  auto RM = Optional<Reloc::Model>();
-  std::unique_ptr<TargetMachine> targetMachine = std::unique_ptr<TargetMachine>(
-    target->createTargetMachine(targetTriple, CPU, Features, opt, RM));
-  targetMachine->setO0WantsFastISel(true);
-
-  module.setTargetTriple(targetTriple);
-  module.setDataLayout(targetMachine->createDataLayout());
-
-  return targetMachine;
-}
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -366,15 +59,15 @@ static void emit_srcpos(GenState& gs, u32 line, u32 col) {
   }
 }
 
-Value* gen_floatlit(GenState& gs, double v) {
+static Value* gen_floatlit(GenState& gs, double v) {
   return ConstantFP::get(gs.ctx, APFloat(v));
 }
 
-Value* gen_int32lit(GenState& gs, int32_t v) {
+static Value* gen_int32lit(GenState& gs, int32_t v) {
   return ConstantInt::get(gs.ctx, APInt(32, v, /*isSigned*/true));
 }
 
-Value* gen_call(GenState& gs, std::string fname, std::vector<Value*> argvals) {
+static Value* gen_call(GenState& gs, std::string fname, std::vector<Value*> argvals) {
   emit_srcpos(gs, /*line*/1, /*col*/1);
 
   // Look up the name in the global module table.
@@ -393,7 +86,7 @@ Value* gen_call(GenState& gs, std::string fname, std::vector<Value*> argvals) {
   return gs.Builder->CreateCall(CalleeF, argvals, ""/*"calltmp"*/);
 }
 
-Function* gen_funproto(GenState& gs, FunInfo& fn) {
+static Function* gen_funproto(GenState& gs, FunInfo& fn) {
   // Make the function type:  double(double,double) etc.
   std::vector<Type*> ints(fn.args.size(), Type::getInt32Ty(gs.ctx));
   auto returnType = Type::getInt32Ty(gs.ctx);
@@ -461,7 +154,7 @@ static void debug_gen_fun_exit(GenState& gs) {
   gs.debug.LexicalBlocks.pop_back();
 }
 
-Function* gen_fun(GenState& gs, FunInfo& fn) {
+static Function* gen_fun(GenState& gs, FunInfo& fn) {
   // https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl03.html
 
   // First, check for an existing function from a previous 'extern' declaration.
@@ -525,7 +218,7 @@ Function* gen_fun(GenState& gs, FunInfo& fn) {
 static std::unique_ptr<Module> llvm_gen_module(std::string modname, LLVMContext& ctx) {
   dlog("llvm_gen_module");
   auto timestart = nanotime();
-  bool include_debug_info = false;
+  bool include_debug_info = true;
 
   // GenState* _ctx = new GenState; GenState& gs = *_ctx;
   GenState gs = { .ctx = ctx, };
@@ -580,6 +273,58 @@ static std::unique_ptr<Module> llvm_gen_module(std::string modname, LLVMContext&
 }
 
 
+static std::unique_ptr<TargetMachine> llvm_select_target(Module& module, std::string targetTriple)
+{
+  // // Initialize ALL targets (this causes a lot of llvm code to be included in this program)
+  // InitializeAllTargetInfos();
+  // InitializeAllTargets();
+  // InitializeAllTargetMCs();
+  // InitializeAllAsmParsers();
+  // InitializeAllAsmPrinters();
+
+  // For JIT only, call llvm::InitializeNativeTarget()
+  InitializeNativeTarget();
+
+  // Initialize some targets (see llvm/Config/Targets.def)
+  #define TARGETS(_) _(AArch64) _(WebAssembly) _(X86)
+  #define _(TargetName) \
+    LLVMInitialize##TargetName##TargetInfo(); \
+    LLVMInitialize##TargetName##Target(); \
+    LLVMInitialize##TargetName##TargetMC(); \
+    LLVMInitialize##TargetName##AsmPrinter(); \
+    /*LLVMInitialize##TargetName##AsmParser();*/
+  TARGETS(_)
+  #undef _
+
+  // retrieve target from registry
+  std::string Error;
+  const Target* target = TargetRegistry::lookupTarget(targetTriple, Error);
+
+  // Print an error and exit if we couldn't find the requested target.
+  // This generally occurs if we've forgotten to initialise the
+  // TargetRegistry or we have a bogus target triple.
+  if (!target) {
+    errlog("TargetRegistry::lookupTarget error: %s", Error.c_str());
+    return nullptr;
+  }
+
+  // machine features (none, for now)
+  auto CPU = "generic";
+  auto Features = "";
+
+  TargetOptions opt;
+  auto RM = Optional<Reloc::Model>();
+  std::unique_ptr<TargetMachine> targetMachine = std::unique_ptr<TargetMachine>(
+    target->createTargetMachine(targetTriple, CPU, Features, opt, RM));
+  targetMachine->setO0WantsFastISel(true);
+
+  module.setTargetTriple(targetTriple);
+  module.setDataLayout(targetMachine->createDataLayout());
+
+  return targetMachine;
+}
+
+
 // ld64.lld
 //
 // lld exe names:
@@ -610,6 +355,12 @@ static bool llvm_emit_ir(Module& module, const char* outfile) {
   dlog("wrote %s", outfile);
   return true;
 }
+
+enum CoBuildType {
+  CoBuildDebug,    // -O0
+  CoBuildOptSmall, // -Oz
+  CoBuildOpt,      // -O3
+};
 
 
 // llvm_emit_target applies optimizations and writes target-specific files
@@ -784,8 +535,8 @@ static bool llvm_emit_target(
 }
 
 
-static void demo_init() {
-  dlog("demo_init");
+/*__attribute__((constructor,used))*/ static void llvm_cxx_init() {
+  dlog("llvm_cxx_init");
   auto timestart = nanotime();
 
   auto ctx = std::make_unique<LLVMContext>();
@@ -826,4 +577,5 @@ static void demo_init() {
   }
 
   print_duration("done in", timestart);
+  exit(0);
 }
