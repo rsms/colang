@@ -90,6 +90,12 @@ typedef signed long            intptr_t;
   #define FALLTHROUGH
 #endif
 
+#if __has_attribute(musttail)
+  #define R_MUSTTAIL __attribute__((musttail))
+#else
+  #define R_MUSTTAIL
+#endif
+
 #ifndef thread_local
   #define thread_local _Thread_local
 #endif
@@ -100,15 +106,19 @@ typedef signed long            intptr_t;
   #define EXTERN_C
 #endif
 
-// define WIN32 if target is MS Windows
-#ifndef WIN32
-#  ifdef _WIN32
-#    define WIN32 1
-#  endif
-#  ifdef _WIN32_WCE
-#    define LACKS_FCNTL_H
-#    define WIN32 1
-#  endif
+// R_UNLIKELY(integralexpr)->integralexpr
+// Provide explicit branch prediction. Use like this:
+// if (R_UNLIKELY(buf & 0xff))
+//   error_hander("error");
+// Caution! Use with care. You are probably going to make the wrong assumption.
+// From the GCC manual:
+//   In general, you should prefer to use actual profile feedback for this (-fprofile-arcs),
+//   as programmers are notoriously bad at predicting how their programs actually perform.
+//   However, there are applications in which this data is hard to collect.
+#ifdef __builtin_expect
+  #define R_UNLIKELY(x) __builtin_expect((x), 0)
+#else
+  #define R_UNLIKELY(x) (x)
 #endif
 
 // ATTR_FORMAT(archetype, string-index, first-to-check)

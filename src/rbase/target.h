@@ -156,3 +156,14 @@
   #define R_TARGET_CXX_EXCEPTIONS 1
 #endif
 //-- end R_TARGET_CXX_*
+
+// define WIN32 if target is MS Windows
+#ifndef WIN32
+#  ifdef _WIN32
+#    define WIN32 1
+#  endif
+#  ifdef _WIN32_WCE
+#    define LACKS_FCNTL_H
+#    define WIN32 1
+#  endif
+#endif

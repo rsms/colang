@@ -12,11 +12,19 @@ ASSUME_NONNULL_BEGIN
 #ifdef DEBUG
   #define errlog(fmt, ...) _errlog(fmt " (%s:%d)", ##__VA_ARGS__, __FILE__, __LINE__)
   #define TODO_IMPL   panic("\e[1;33mTODO_IMPL %s\e[0m\n", __PRETTY_FUNCTION__)
-  #define UNREACHABLE panic("\e[1;31mUNREACHABLE\e[0m")
+  #ifdef __builtin_unreachable
+    #define UNREACHABLE ({ panic("\e[1;31mUNREACHABLE\e[0m"); __builtin_unreachable(); })
+  #else
+    #define UNREACHABLE panic("\e[1;31mUNREACHABLE\e[0m")
+  #endif
 #else
   #define errlog(fmt, ...) _errlog(fmt, ##__VA_ARGS__)
   #define TODO_IMPL   abort()
-  #define UNREACHABLE abort()
+  #ifdef __builtin_unreachable
+    #define UNREACHABLE __builtin_unreachable()
+  #else
+    #define UNREACHABLE abort()
+  #endif
 #endif
 
 // panic prints msg (and errno, if non-zero) to stderr and calls exit(2)
