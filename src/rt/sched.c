@@ -497,7 +497,7 @@ static void m_semacreate(M* mp) {
 // If ns >= 0, try to acquire M's semaphore for at most ns nanoseconds.
 // Return true if the semaphore was acquired, false if interrupted or timed out.
 static bool m_semasleep(i64 ns) {
-  i64 start = 0;
+  u64 start = 0;
   if (ns >= 0)
     start = nanotime();
   M* mp = t_get()->m;
@@ -510,7 +510,7 @@ static bool m_semasleep(i64 ns) {
       break;
     }
     if (ns >= 0) {
-      u64 spent = nanotime() - start;
+      i64 spent = (i64)(nanotime() - start);
       if (spent >= ns) // timeout
         break;
       i64 ns2 = ns - spent;
@@ -2231,8 +2231,11 @@ top: {}
   // If number of spinning M's >= number of busy P's, block.
   // This is necessary to prevent excessive CPU consumption
   // when COMAXPROCS>>1 but the program parallelism is low.
-  if (!_t_->m->spinning && 2*AtomicLoad(&S.nmspinning) >= S.maxprocs - AtomicLoad(&S.npidle))
+  if (!_t_->m->spinning &&
+      2*AtomicLoad(&S.nmspinning) >= (i32)(S.maxprocs - AtomicLoad(&S.npidle)))
+  {
     goto stop;
+  }
   bool ranTimer = false;
   T* t = s_stealwork(_t_, inheritTime, &ranTimer);
   if (t != NULL)

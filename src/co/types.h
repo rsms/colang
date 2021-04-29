@@ -1,4 +1,7 @@
 #pragma once
+//
+// Fundamental type information used across components of Co (parse, ir, etc.)
+//
 
 typedef enum TypeCodeFlag {
   TypeCodeFlagNone = 0,
@@ -13,7 +16,7 @@ typedef enum TypeCodeFlag {
 } TypeCodeFlag;
 
 // TypeCode with their string encoding. Becomes TypeCode_NAME
-// Note: misc/gen_ops.py relies on "#define TYPE_CODES" and "NUM_END".
+// Note: ir/gen_ops.py relies on "#define TYPE_CODES" and "NUM_END".
 #define TYPE_CODES(_)                                                                          \
   /* named types exported in the global scope. Names must match those of TYPE_SYMS.          */\
   /* Note: numeric types are listed first as their enum value is used as dense indices.      */\

@@ -10,6 +10,7 @@ RUN_EXE=
 RUN_ARGS="build ./example/hello.w"
 OPT_CLEAN=false
 OPT_RELEASE=false
+OPT_LLVM=false
 MAKE_ARGS="-j$(nproc)"
 
 while [[ $# -gt 0 ]]; do
@@ -19,6 +20,7 @@ while [[ $# -gt 0 ]]; do
 	-run=*)     RUN=true; RUN_ARGS="${1:5}"; shift ;;
 	-clean)     OPT_CLEAN=true; shift ;;
 	-release)   OPT_RELEASE=true; shift ;;
+	-with-llvm) OPT_LLVM=true; shift ;;
 	--)         MAKE_ARGS="$MAKE_ARGS $@"; break ;;
 	-*)         MAKE_ARGS="$MAKE_ARGS $1"; shift ;;
 	*)
@@ -39,7 +41,17 @@ if $HELP; then
 	exit 0
 fi
 
-[ -n "$RUN_EXE" ] || RUN_EXE=bin/co
+if [ -z "$RUN_EXE" ]; then
+	RUN_EXE=bin/co
+	if $OPT_RELEASE; then
+		RUN_EXE="$RUN_EXE-release"
+	else
+		RUN_EXE="$RUN_EXE-debug"
+	fi
+	if $OPT_LLVM; then
+		RUN_EXE="$RUN_EXE-llvm"
+	fi
+fi
 
 # $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1 SANITIZE=1" # asan not compat with coco
 $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1"

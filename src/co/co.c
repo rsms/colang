@@ -1,6 +1,9 @@
 #include <rbase/rbase.h>
 #include "parse/parse.h"
+
+#ifdef CO_WITH_LLVM
 #include "llvm/llvm.h"
+#endif
 
 ASSUME_NONNULL_BEGIN
 
@@ -223,9 +226,11 @@ int cmd_build(int argc, const char* argv[argc]) {
   dump_ast("package: ", pkgnode);
 
   // emit target code
+  #ifdef CO_WITH_LLVM
   if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }
+  #endif
 
   // print how much (real) time we spent
   auto timeend = nanotime();

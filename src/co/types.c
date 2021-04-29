@@ -1,5 +1,5 @@
 #include <rbase/rbase.h>
-#include "parse.h"
+#include "types.h"
 
 // Lookup table TypeCode => string encoding char
 const char TypeCodeEncoding[TypeCode_MAX] = {

@@ -8,7 +8,7 @@ SRCROOT := $(shell pwd)
 RBASE_SRC   := $(wildcard src/rbase/*.c)
 RT_SRC      := $(wildcard src/rt/*.c src/rt/exectx/*.c)
 RT_TEST_SRC := $(wildcard src/rt-test/*.c)
-CO_SRC      := $(wildcard src/co/*.c src/co/*/*.c src/co/llvm/*.cc)
+CO_SRC      := $(wildcard src/co/*.c src/co/util/*.c src/co/parse/*.c src/co/ir/*.c)
 
 # for both C and C++
 COMPILE_FLAGS := \
@@ -34,40 +34,6 @@ CXXFLAGS := \
 
 LDFLAGS := $(MORELDFLAGS)
 
-
-# llvm
-LLVM_PREFIX := deps/llvm
-# CC          ?= $(LLVM_PREFIX)/bin/clang
-# CXX         ?= $(LLVM_PREFIX)/bin/clang++
-# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
-# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
-LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
-# LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
-# windowsmanifest: needed for lld COFF
-LLVM_COMPONENTS := \
-	engine \
-	option \
-	passes \
-	all-targets \
-	libdriver \
-	lto \
-	linker \
-	debuginfopdb \
-	debuginfodwarf \
-	windowsmanifest
-
-CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include $(shell "$(LLVM_CONFIG)" --cxxflags)
-CFLAGS   += $(shell "$(LLVM_CONFIG)" --cflags)
-LDFLAGS += \
-	-Wl,-no_pie \
-	$(shell "$(LLVM_CONFIG)" --ldflags) \
-	work/build/libc++.a \
-	work/build/libc++abi.a \
-	$(shell "$(LLVM_CONFIG)" --system-libs) \
-	$(shell "$(LLVM_CONFIG)" --link-static --libs $(LLVM_COMPONENTS)) \
-	$(LLVM_PREFIX)/lib/liblld*.a
-
-
 FLAVOR := release
 ifneq ($(DEBUG),)
 	FLAVOR := debug
@@ -79,6 +45,46 @@ else
 		LDFLAGS += -flto
 	endif
 endif
+
+
+# llvm (make LLVM=1)
+ifneq ($(LLVM),)
+	FLAVOR := $(FLAVOR)-llvm
+	LLVM_PREFIX := deps/llvm
+	# CC          ?= $(LLVM_PREFIX)/bin/clang
+	# CXX         ?= $(LLVM_PREFIX)/bin/clang++
+	# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
+	# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
+	LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
+	# LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
+	# windowsmanifest: needed for lld COFF
+	LLVM_COMPONENTS := \
+		engine \
+		option \
+		passes \
+		all-targets \
+		libdriver \
+		lto \
+		linker \
+		debuginfopdb \
+		debuginfodwarf \
+		windowsmanifest
+
+	CO_SRC += $(wildcard src/co/llvm/*.c src/co/llvm/*.cc)
+
+	COMPILE_FLAGS += -DCO_WITH_LLVM
+	CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include $(shell "$(LLVM_CONFIG)" --cxxflags)
+	CFLAGS   += $(shell "$(LLVM_CONFIG)" --cflags)
+	LDFLAGS += \
+		-Wl,-no_pie \
+		$(shell "$(LLVM_CONFIG)" --ldflags) \
+		work/build/libc++.a \
+		work/build/libc++abi.a \
+		$(shell "$(LLVM_CONFIG)" --system-libs) \
+		$(shell "$(LLVM_CONFIG)" --link-static --libs $(LLVM_COMPONENTS)) \
+		$(LLVM_PREFIX)/lib/liblld*.a
+endif
+
 
 # enable sanitizer
 # make SANITIZE=address
@@ -145,6 +151,11 @@ else ifeq ($(SYSTEM),Linux)
 	endif
 endif
 
+BIN_SUFFIX := -$(FLAVOR)
+ifeq ($(FLAVOR),release)
+	BIN_SUFFIX :=
+endif
+
 # clang-specific options (TODO: fix makefile check to look for *"/clang" || "clang")
 ifeq ($(notdir $(CC)),clang)
 	COMPILE_FLAGS += \
@@ -164,34 +175,36 @@ RBASE_PCH         := $(PCHDIR)/$(RBASE_H).pch
 LLVM_INCLUDES_H   := src/co/llvm/llvm-includes.hh
 LLVM_INCLUDES_PCH := $(PCHDIR)/$(LLVM_INCLUDES_H).pch
 
-all: bin/co bin/rt-test
+.PHONY: all co rt-test
+co: bin/co$(BIN_SUFFIX)  # default target
+rt-test: bin/rt-test$(BIN_SUFFIX)
+all: bin/co$(BIN_SUFFIX) bin/rt-test$(BIN_SUFFIX)
 
-.PHONY: test_unit
+
+.PHONY: test_unit test_usan test_asan test_msan
 test_unit:
 	$(MAKE) DEBUG=1 V=$(V) -j$(shell nproc) bin/co
 	R_UNIT_TEST=1 ./bin/co test
 
-.PHONY: test_usan
 test_usan:
 	$(MAKE) SANITIZE=undefined DEBUG=1 V=$(V) -j$(shell nproc) bin/co
 	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
-.PHONY: test_asan
 test_asan:
 	$(MAKE) SANITIZE=address DEBUG=1 V=$(V) -j$(shell nproc) bin/co
 	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
-.PHONY: test_msan
 test_msan:
 	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) bin/co
 	R_UNIT_TEST=1 ./bin/co build example/hello.w
 
-bin/co: $(CO_OBJS) $(BUILDDIR)/rbase.a
+
+bin/co$(BIN_SUFFIX): $(CO_OBJS) $(BUILDDIR)/rbase.a
 	@echo "link $@"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
-bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
+bin/rt-test$(BIN_SUFFIX): $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
 	@echo "link $@"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
@@ -245,4 +258,4 @@ DEPS := ${RBASE_OBJS:.o=.d} ${CO_OBJS:.o=.d} ${RT_TEST_OBJS:.o=.d}
 -include $(PCHDIR)/$(LLVM_INCLUDES_H).d
 
 
-.PHONY: all dev clean
+.PHONY: dev clean

@@ -46,14 +46,14 @@ static char* memstrdup(Mem nullable mem, const char* nonull pch);
 char* memstrdupcat(Mem nullable mem, const char* nonull s1, ...);
 
 // memsprintf is like sprintf but uses memory from mem.
-char* memsprintf(Mem mem, const char* format, ...);
+char* memsprintf(Mem nullable mem, const char* format, ...);
 
 // memdup makes a copy of src
-static void* memdup(Mem mem, const void* src, size_t len);
+static void* memdup(Mem nullable mem, const void* src, size_t len);
 
 // memdup2 is like memdup but takes an additional arg extraspace for allocating additional
 // uninitialized space after len.
-void* memdup2(Mem mem, const void* src, size_t len, size_t extraspace);
+void* memdup2(Mem nullable mem, const void* src, size_t len, size_t extraspace);
 
 // Memory spaces (arenas)
 Mem MemNew(size_t initcap /* 0 = pagesize */);
@@ -70,7 +70,7 @@ void* mspace_malloc(Mem msp, size_t nbytes);
 void* mspace_realloc(Mem msp, void* mem, size_t newsize);
 void* mspace_memalign(Mem msp, size_t alignment, size_t bytes);
 
-inline static void* memdup(Mem mem, const void* src, size_t len) {
+inline static void* memdup(Mem nullable mem, const void* src, size_t len) {
   return memdup2(mem, src, len, 0);
 }
 
