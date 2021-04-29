@@ -11,11 +11,13 @@ typedef LLVMTypeRef   Type;
 
 // B is internal data used during IR construction
 typedef struct B {
+  Build*          build; // Co build (package, mem allocator, etc)
   LLVMContextRef  ctx;
   LLVMModuleRef   mod;
   LLVMBuilderRef  builder;
 
-  //// debug info
+  // debug info
+  bool prettyIR; // if true, include names in the IR (function params, variables, etc)
   //std::unique_ptr<DIBuilder>   DBuilder;
   //DebugInfo                    debug;
 
@@ -25,8 +27,13 @@ typedef struct B {
   // target
   LLVMTargetMachineRef target;
 
+  // AST types, keyed by typeid
+  SymMap typemap;
+
   // constants
+  LLVMTypeRef t_int;
   LLVMTypeRef t_i32;
+  LLVMTypeRef t_void;
 
 } B;
 
@@ -39,7 +46,7 @@ static void print_duration(const char* message, u64 timestart) {
   fflush(stderr);
 }
 
-static Value build_call(B* b, const char* calleeName) {
+static Value build_call1(B* b, const char* calleeName) {
   // look up the name in the module table
   Value callee = LLVMGetNamedFunction(b->mod, calleeName);
   if (!callee) {
@@ -59,15 +66,15 @@ static Value build_call(B* b, const char* calleeName) {
   return LLVMBuildCall(b->builder, callee, args, nargs, "");
 }
 
-static Type build_funtype(B* b) {
+static Type build_funtype1(B* b) {
   Type returnType = b->t_i32;
   Type paramTypes[] = {b->t_i32, b->t_i32};
   LLVMBool isVarArg = false;
   return LLVMFunctionType(returnType, paramTypes, countof(paramTypes), isVarArg);
 }
 
-static Value build_funproto(B* b, const char* name) {
-  Type fnt = build_funtype(b);
+static Value build_funproto1(B* b, const char* name) {
+  Type fnt = build_funtype1(b);
   Value fn = LLVMAddFunction(b->mod, name, fnt);
   // set argument names (for debugging)
   Value arg1 = LLVMGetParam(fn, 0);
@@ -77,9 +84,9 @@ static Value build_funproto(B* b, const char* name) {
   return fn;
 }
 
-static Value build_fun(B* b, const char* name) {
+static Value build_fun1(B* b, const char* name) {
   // function prototype
-  Value fn = build_funproto(b, name);
+  Value fn = build_funproto1(b, name);
 
   // Create a new basic block to start insertion into.
   // Note: entry BB is required, but its name can be empty.
@@ -89,7 +96,7 @@ static Value build_fun(B* b, const char* name) {
 
   // hard-coded bodies
   if (strcmp(name, "main") == 0) {
-    Value v = build_call(b, "foo");
+    Value v = build_call1(b, "foo");
     LLVMBuildRet(b->builder, v);
   } else {
     LLVMSetLinkage(fn, LLVMInternalLinkage);
@@ -112,12 +119,269 @@ static Value build_fun(B* b, const char* name) {
   return fn;
 }
 
-static void build_module(LLVMModuleRef mod) {
+
+static Type get_type(B* b, Node* nullable n);
+static Value build_expr(B* b, Node* n, const char* debugname);
+
+
+static Type build_funtype(B* b, Node* nullable params, Node* nullable result) {
+  Type returnType = get_type(b, result);
+  Type* paramsv = NULL;
+  u32 paramsc = 0;
+  if (params != NULL) {
+    assert(params->kind == NTupleType);
+    paramsc = NodeListLen(&params->array.a);
+    paramsv = memalloc_raw(b->build->mem, sizeof(void*) * paramsc);
+    auto paramLink = params->array.a.head;
+    for (u32 i = 0; i < paramsc; i++) {
+      assert(paramLink->node);
+      paramsv[i] = get_type(b, paramLink->node);
+      paramLink = paramLink->next;
+    }
+  }
+  auto ft = LLVMFunctionType(returnType, paramsv, paramsc, /*isVarArg*/false);
+  if (paramsv)
+    memfree(b->build->mem, paramsv);
+  return ft;
+}
+
+
+static Type get_funtype(B* b, Node* funTypeNode) {
+  assert(funTypeNode->kind == NFunType);
+  assert(funTypeNode->t.id);
+  Type ft = (Type)SymMapGet(&b->typemap, funTypeNode->t.id);
+  if (!ft) {
+    ft = build_funtype(b, funTypeNode->t.fun.params, funTypeNode->t.fun.result);
+    SymMapSet(&b->typemap, funTypeNode->t.id, ft);
+  }
+  return ft;
+}
+
+
+static Type get_type(B* b, Node* nullable n) {
+  if (!n)
+    return b->t_void;
+  switch (n->kind) {
+    case NBasicType: {
+      switch (n->t.basic.typeCode) {
+        // case TypeCode_bool:    break;
+        // case TypeCode_int8:    break;
+        // case TypeCode_uint8:   break;
+        // case TypeCode_int16:   break;
+        // case TypeCode_uint16:  break;
+        case TypeCode_int32:
+        case TypeCode_uint32:
+          return b->t_i32;
+        // case TypeCode_int64:   break;
+        // case TypeCode_uint64:  break;
+        // case TypeCode_float32: break;
+        // case TypeCode_float64: break;
+        case TypeCode_int:
+        case TypeCode_uint:
+          return b->t_int;
+        default: {
+          dlog("TODO basic type %s", n->t.basic.name);
+          break;
+        }
+      }
+      break;
+    }
+    default:
+      dlog("TODO node kind %s", NodeKindName(n->kind));
+      break;
+  }
+  errlog("invalid node kind %s", NodeKindName(n->kind));
+  return NULL;
+}
+
+
+static Value build_funproto(B* b, Node* n) {
+  Type ft = get_funtype(b, n->type);
+  auto f = &n->fun;
+  const char* name = f->name ? f->name : "";
+  Value fn = LLVMAddFunction(b->mod, name, ft);
+  // set argument names (for debugging)
+  if (b->prettyIR && n->fun.params) {
+    u32 i = 0;
+    NodeListForEach(&n->fun.params->array.a, param, {
+      // param->kind==NArg
+      Value p = LLVMGetParam(fn, i);
+      LLVMSetValueName2(p, param->field.name, symlen(param->field.name));
+      i++;
+    });
+  }
+  return fn;
+}
+
+
+static Value get_funproto(B* b, Node* n) { // n->kind==NFun
+  LLVMValueRef fn = NULL;
+  auto f = &n->fun;
+  // llvm maintains a map of all named functions in the module; query it
+  if (f->name)
+    fn = LLVMGetNamedFunction(b->mod, f->name);
+  if (!fn)
+    fn = build_funproto(b, n);
+  return fn;
+}
+
+
+static Value build_fun(B* b, Node* n) {
+  assert(n->kind == NFun);
+  assert(n->type);
+  assert(n->type->kind == NFunType);
+  auto f = &n->fun;
+
+  if (f->name) { // Sym
+    dlog("named fun: %p %s", n, f->name);
+  } else {
+    dlog("anonymous fun: %p", n);
+  }
+
+  Value fn = get_funproto(b, n);
+
+  if (n->fun.body) {
+    // Create a new basic block to start insertion into.
+    // Note: entry BB is required, but its name can be empty.
+    LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
+    LLVMPositionBuilderAtEnd(b->builder, bb);
+
+    Value retval = build_expr(b, n->fun.body, "");
+    if (!retval) {
+      retval = LLVMBuildRetVoid(b->builder);
+      // retval = LLVMConstInt(b->t_int, 0, /*signext*/false); // XXX TMP
+    }
+    LLVMBuildRet(b->builder, retval);
+  }
+
+  return fn;
+}
+
+
+static Value get_current_fun(B* b) {
+  LLVMBasicBlockRef BB = LLVMGetInsertBlock(b->builder);
+  return LLVMGetBasicBlockParent(BB);
+}
+
+
+static Value build_block(B* b, Node* n) { // n->kind==NBlock
+  auto ent = n->array.a.head;
+  Value v = NULL; // return null to signal "empty block"
+  while (ent) {
+    v = build_expr(b, ent->node, "");
+    ent = ent->next;
+  }
+  // last expr of block is its value (TODO: is this true? is that Co's semantic?)
+  return v;
+}
+
+
+static Value build_call(B* b, Node* n) { // n->kind==NCall
+  if (NodeIsType(n->call.receiver)) {
+    // type call, e.g. str(1)
+    dlog("TODO: type call");
+    return NULL;
+  }
+  // n->call.receiver->kind==NFun
+  Value callee = get_funproto(b, n->call.receiver);
+  if (!callee) {
+    errlog("unknown function");
+    return NULL;
+  }
+
+  // arguments
+  Value* argv = NULL;
+  u32 argc = 0;
+  auto args = n->call.args;
+  if (args) {
+    asserteq(args->kind, NTuple);
+    argc = NodeListLen(&args->array.a);
+    argv = memalloc_raw(b->build->mem, sizeof(void*) * argc);
+    auto ent = args->array.a.head;
+    for (u32 i = 0; i < argc; i++) {
+      argv[i] = build_expr(b, ent->node, "arg");
+      ent = ent->next;
+    }
+  }
+
+  // check argument count
+  #ifdef DEBUG
+  if (LLVMCountParams(callee) != argc) {
+    errlog("wrong number of arguments: %u (expected %u)", argc, LLVMCountParams(callee));
+    return NULL;
+  }
+  #endif
+
+  Value v = LLVMBuildCall(b->builder, callee, argv, argc, "");
+  if (argv)
+    memfree(b->build->mem, argv);
+  return v;
+}
+
+
+static Value build_expr(B* b, Node* n, const char* debugname) {
+retry:
+  switch (n->kind) {
+    case NBinOp: {
+      Value x = build_expr(b, n->op.left, "");
+      Value y = build_expr(b, n->op.right, "");
+      return LLVMBuildAdd(b->builder, x, y, debugname);
+      break;
+    }
+    case NId: {
+      assert(n->ref.target); // should be resolved
+      debugname = n->ref.name;
+      n = n->ref.target;
+      goto retry;
+    }
+    case NLet: {
+      // TODO FIXME generate a location instead of just assuming init is the value
+      assert(n->field.init); // should be resolved
+      debugname = n->field.name;
+      n = n->field.init;
+      goto retry;
+    }
+    case NIntLit:
+      // TODO FIXME int type (assume "int" for now)
+      return LLVMConstInt(b->t_int, n->val.i, /*signext*/false);
+    case NArg:
+      return LLVMGetParam(get_current_fun(b), n->field.index);
+    case NBlock:
+      return build_block(b, n);
+    case NCall:
+      return build_call(b, n);
+    default:
+      dlog("TODO node kind %s", NodeKindName(n->kind));
+      break;
+  }
+  errlog("invalid node kind %s", NodeKindName(n->kind));
+  return NULL;
+}
+
+
+static void build_pkgpart(B* b, Node* n) {
+  assert(n->kind == NFile);
+  NodeListForEach(&n->array.a, cn, {
+    switch (cn->kind) {
+      case NFun:
+        build_fun(b, cn);
+        break;
+      default:
+        dlog("TODO: %s", NodeKindName(cn->kind));
+        break;
+    }
+  });
+}
+
+
+static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   LLVMContextRef ctx = LLVMGetModuleContext(mod);
-  B build = {
+  B _b = {
+    .build = build,
     .ctx = ctx,
     .mod = mod,
     .builder = LLVMCreateBuilderInContext(ctx),
+    .prettyIR = true,
 
     // FPM: Apply per-function optimizations. Set to NULL to disable.
     // Really only useful for JIT as for assembly to asm, obj or bc we apply module-wide opt.
@@ -125,9 +389,13 @@ static void build_module(LLVMModuleRef mod) {
     .FPM = NULL,
 
     // constants
-    .t_i32 = LLVMInt32TypeInContext(ctx), // note: no disposal needed of built-in types
+    // note: no disposal needed of built-in types
+    .t_i32 = LLVMInt32TypeInContext(ctx),
+    .t_void = LLVMVoidTypeInContext(ctx),
   };
-  B* b = &build;
+  _b.t_int = _b.t_i32; // alias int = i32
+  B* b = &_b;
+  SymMapInit(&b->typemap, 8, build->mem);
 
   // initialize function pass manager (optimize)
   if (b->FPM) {
@@ -141,9 +409,14 @@ static void build_module(LLVMModuleRef mod) {
     LLVMInitializeFunctionPassManager(b->FPM);
   }
 
-  // build a function
-  build_fun(b, "foo");
-  build_fun(b, "main");
+  // build package parts
+  NodeListForEach(&pkgnode->array.a, cn, {
+    build_pkgpart(b, cn);
+  });
+
+  // // build demo functions
+  // build_fun1(b, "foo");
+  // build_fun1(b, "main");
 
   // verify IR
   #ifdef DEBUG
@@ -163,6 +436,7 @@ static void build_module(LLVMModuleRef mod) {
   LLVMDumpModule(b->mod);
 
 finish:
+  SymMapDispose(&b->typemap);
   if (b->FPM)
     LLVMDisposePassManager(b->FPM);
   LLVMDisposeBuilder(b->builder);
@@ -228,157 +502,18 @@ static LLVMTargetMachineRef select_target_machine(
   return targetMachine;
 }
 
-typedef struct StrLink {
-  struct StrLink* next;
-  Str             str;
-} StrLink;
 
-static Str strlink_append(StrLink** head, Str str) {
-  auto sl = memalloct(NULL, StrLink);
-  sl->str = str;
-  sl->next = *head;
-  *head = sl;
-  return str;
-}
-
-static StrLink* nullable strlink_free(StrLink* nullable n) {
-  while (n) {
-    str_free(n->str);
-    auto next = n->next;
-    memfree(NULL, n);
-    n = next;
-  }
-  return NULL;
-}
-
-// lld_link is a high-level interface to the lld_link_* functions
-static bool lld_link(
-  const char* targetTriple,
-  CoOptType opt,
-  const char* exefile,
-  u32 objfilesc, const char** objfilesv,
-  char** errmsg)
-{
-  bool ok = false;
-  StrLink* tmpbufs = NULL;
-
-  CoLLVMArch         arch_type;
-  CoLLVMVendor       vendor_type;
-  CoLLVMOS           os_type;
-  CoLLVMEnvironment  environ_type;
-  CoLLVMObjectFormat oformat;
-  llvm_triple_info(targetTriple, &arch_type, &vendor_type, &os_type, &environ_type, &oformat);
-
-  // select link function
-  bool(*linkfn)(int argc, const char** argv, char** errmsg);
-  switch (oformat) {
-    case CoLLVMObjectFormat_COFF:  linkfn = lld_link_coff; break; // lld-link
-    case CoLLVMObjectFormat_ELF:   linkfn = lld_link_elf; break; // ld.lld
-    case CoLLVMObjectFormat_MachO: linkfn = lld_link_macho; break; // ld64.lld
-    case CoLLVMObjectFormat_Wasm:  linkfn = lld_link_wasm; break; // wasm-ld
-    case CoLLVMObjectFormat_GOFF:  // ?
-    case CoLLVMObjectFormat_XCOFF: // ?
-    case CoLLVMObjectFormat_unknown:
-      *errmsg = LLVMCreateMessage("linking not supported for provided target");
-      goto end;
-  }
-
-  // arguments to linker function
-  const u32 max_addl_args = 32; // max argc we add in addition to objfilesc
-  u32 argc = 0;
-  const char** argv = memalloc_raw(NULL, sizeof(void*) * (max_addl_args + objfilesc));
-
-  // common arguments accepted by all lld flavors
-  // (See their respective CLI help output, e.g. deps/llvm/bin/ld.lld -help)
-  if (oformat == CoLLVMObjectFormat_COFF) {
-    // windows-style "/flag"
-    argv[argc++] = strlink_append(&tmpbufs, str_fmt("/out:%s", exefile));
-    // TODO consider adding "/machine:" which seems similar to "-arch"
-  } else {
-    // rest of the world "-flag"
-    argv[argc++] = "-o"; argv[argc++] = exefile;
-    argv[argc++] = "-arch"; argv[argc++] = CoLLVMArch_name(arch_type);
-    argv[argc++] = "-static";
-  }
-
-  // set linker-flavor specific arguments
-  switch (oformat) {
-    case CoLLVMObjectFormat_COFF: // lld-link
-      break;
-    case CoLLVMObjectFormat_ELF: // ld.lld
-    case CoLLVMObjectFormat_Wasm: // wasm-ld
-      argv[argc++] = "--no-pie";
-      argv[argc++] = opt == CoOptNone ? "--lto-O0" : "--lto-O3";
-      break;
-    case CoLLVMObjectFormat_MachO: // ld64.lld
-      argv[argc++] = "-no_pie";
-      if (opt != CoOptNone) {
-        // optimize
-        argv[argc++] = "-dead_strip"; // Remove unreference code and data
-        // TODO: look into -mllvm "Options to pass to LLVM during LTO"
-      }
-      break;
-    case CoLLVMObjectFormat_GOFF:  // ?
-    case CoLLVMObjectFormat_XCOFF: // ?
-    case CoLLVMObjectFormat_unknown:
-      *errmsg = LLVMCreateMessage("linking not supported for provided target");
-      goto end;
-  }
-
-  // OS-specific arguments
-  switch (os_type) {
-    case CoLLVMOS_Darwin:
-    case CoLLVMOS_MacOSX:
-      argv[argc++] = "-sdk_version"; argv[argc++] = "10.15";
-      argv[argc++] = "-lsystem"; // macOS's "syscall API"
-      // argv[argc++] = "-framework"; argv[argc++] = "Foundation";
-      break;
-    case CoLLVMOS_IOS:
-    case CoLLVMOS_TvOS:
-    case CoLLVMOS_WatchOS: {
-      // TODO
-      CoLLVMVersionTuple minver;
-      llvm_triple_min_version(targetTriple, &minver);
-      dlog("minver: %d, %d, %d, %d", minver.major, minver.minor, minver.subminor, minver.build);
-      // + arg "-ios_version_min" ...
-      break;
-    }
-    default:
-      break;
-  }
-
-  // add input arguments
-  for (u32 i = 0; i < objfilesc; i++) {
-    argv[argc++] = objfilesv[i];
-  }
-
-  ok = linkfn(argc, argv, errmsg);
-  memfree(NULL, argv);
-  if (ok) {
-    // link function always sets errmsg
-    size_t errlen = strlen(*errmsg);
-    // print linker warnings
-    if (errlen > 0)
-      fwrite(*errmsg, errlen, 1, stderr);
-    LLVMDisposeMessage(*errmsg);
-    *errmsg = NULL;
-  }
-
-end:
-  strlink_free(tmpbufs);
-  return ok;
-}
-
-
-bool llvm_build_and_emit(Build* build, const char* triple) {
+bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   dlog("llvm_build_and_emit");
   bool ok = false;
   auto timestart = nanotime();
 
   LLVMContextRef ctx = LLVMContextCreate();
-  LLVMModuleRef mod = LLVMModuleCreateWithNameInContext("hello", ctx);
+  LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(build->pkg->id, ctx);
 
-  build_module(mod);
+  // build module; Co AST -> LLVM IR
+  // TODO: move the IR building code to C++
+  build_module(build, pkgnode, mod);
 
   // select target and emit machine code
   const char* hostTriple = llvm_init_targets();
@@ -473,23 +608,21 @@ bool llvm_build_and_emit(Build* build, const char* triple) {
   if (exe_file && obj_file) {
     double timestart = nanotime();
     const char* inputv[] = { obj_file };
-    if (!lld_link(triple, build->opt, exe_file, countof(inputv), inputv, &errmsg)) {
+    CoLLDOptions lldopt = {
+      .targetTriple = triple,
+      .opt = build->opt,
+      .outfile = exe_file,
+      .infilec = countof(inputv),
+      .infilev = inputv,
+    };
+    if (!lld_link(&lldopt, &errmsg)) {
       errlog("lld_link: %s", errmsg);
-      LLVMDisposeMessage(errmsg);
     } else {
+      if (strlen(errmsg) > 0)
+        fwrite(errmsg, strlen(errmsg), 1, stderr); // print warnings
       dlog("wrote %s", exe_file);
     }
-    // const char* argv[] = {
-    //   "-o", exe_file,
-    //   "-arch", "x86_64", // not needed but avoids inference work
-    //   "-sdk_version", "10.15", "-lsystem", "-framework", "Foundation", // required on macos
-    //   obj_file,
-    // };
-    // if (!lld_link_macho(countof(argv), argv, /*can_exit_early*/false)) {
-    //   errlog("lld_link_macho failed");
-    // } else {
-    //   dlog("wrote %s", exe_file);
-    // }
+    LLVMDisposeMessage(errmsg);
     print_duration("link", timestart);
   }
 
@@ -502,13 +635,20 @@ end:
   return ok;
 }
 
-// __attribute__((constructor,used)) static void llvm_init() {
-//   // optimization level
-//   Build build = {
-//     .opt = CoOptAggressive,
-//   };
-//   if (!llvm_build_and_emit(&build, /*target=host*/NULL)) {
-//     //
-//   }
-//   // exit(0);
-// }
+#if 0
+__attribute__((constructor,used)) static void llvm_init() {
+  Pkg pkg = {
+    .dir  = ".",
+    .id   = "foo/bar",
+    .name = "bar",
+  };
+  Build build = {
+    .pkg = &pkg,
+    .opt = CoOptAggressive,
+  };
+  if (!llvm_build_and_emit(&build, /*target=host*/NULL)) {
+    //
+  }
+  // exit(0);
+}
+#endif

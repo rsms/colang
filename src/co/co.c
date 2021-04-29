@@ -90,7 +90,7 @@ bool SourceTranspile(Source* src, FILE* f) {
 }
 
 
-bool compile_source1(const Pkg* pkg, Source* src) {
+bool parse_source1(const Pkg* pkg, Source* src) {
   if (!SourceOpenBody(src))
     panic("SourceOpenBody %s", src->filename);
 
@@ -130,28 +130,30 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
-static bool compile_source(Build* build, Scope* pkgns, Source* src) {
-  dlog("compile_source %.*s", (int)str_len(src->filename), src->filename);
+static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
+  dlog("parse_source %.*s", (int)str_len(src->filename), src->filename);
   Parser parser;
   ParseFlags flags = ParseFlagsDefault;
 
   // parse source into AST
-  auto ast = Parse(&parser, build, src, flags, pkgns);
+  auto ast = Parse(&parser, build, src, flags, pkgscope);
   if (ast == NULL)
-    return false;
+    return NULL;
   // dump_ast("after parse: ", ast);
 
-  // resolve identifiers
-  if (parser.unresolved > 0) {
-    ast = ResolveSym(build, flags, ast, pkgns);
-    // dump_ast("after ResolveSym: ", ast);
-  }
+  // TODO: return parser.unresolved information to caller
 
-  // resolve types
-  ResolveType(build, ast);
-  dump_ast("after ResolveType: ", ast);
+  // // resolve identifiers
+  // if (parser.unresolved > 0) {
+  //   ast = ResolveSym(build, flags, ast, pkgscope);
+  //   // dump_ast("after ResolveSym: ", ast);
+  // }
 
-  return true;
+  // // resolve types
+  // ResolveType(build, ast);
+  // dump_ast("after ResolveType: ", ast);
+
+  return ast;
 }
 
 
@@ -169,7 +171,11 @@ int cmd_build(int argc, const char* argv[argc]) {
   }
 
   auto timestart = nanotime();
-  Pkg pkg = { .dir = "." };
+  Pkg pkg = {
+    .dir  = ".",
+    .id   = "foo/bar",
+    .name = "bar",
+  };
 
   // make sure COCACHE exists
   if (!fs_mkdirs(NULL, COCACHE, 0700)) {
@@ -195,22 +201,29 @@ int cmd_build(int argc, const char* argv[argc]) {
   Build build;
   build_init(&build, astmem, &syms, &pkg, errh, NULL);
 
-  // setup package namespace
-  Scope* pkgns = ScopeNew(GetGlobalScope(), build.mem);
+  // setup package namespace and create package AST node
+  Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
+  Node* pkgnode = CreatePkgAST(&build, pkgscope);
 
   // process source files
   Source* src = pkg.srclist;
   while (src) {
-    if (compile_source(&build, pkgns, src)) {
-      src = src->next;
-    } else {
-      src = NULL; // stop on error
+    Node* filenode = parse_source(&build, pkgscope, src);
+    if (!filenode)
       return 1;
-    }
+    NodeListAppend(build.mem, &pkgnode->array.a, filenode);
+    src = src->next;
   }
 
+  // package
+  // TODO: call ResolveSym on pkgnode only if needed
+  // resolve identifiers & types
+  pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
+  ResolveType(&build, pkgnode);
+  dump_ast("package: ", pkgnode);
+
   // emit target code
-  if (!llvm_build_and_emit(&build, NULL/*target=host*/)) {
+  if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }
 

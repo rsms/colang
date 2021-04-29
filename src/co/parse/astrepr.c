@@ -135,7 +135,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   if (!isType) {
     s = indent(s, ctx);
 
-    if (n->kind != NFile && ctx->includeTypes) {
+    if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes) {
       s = str_appendcstr(s, ctx->style[TStyle_blue]);
       if (n->type) {
         s = nodeRepr(n->type, s, ctx, depth + 1);
@@ -220,6 +220,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NBlock:
   case NTuple:
   case NFile:
+  case NPkg:
   {
     // sdssetlen(s, str_len(s)-1); // trim away trailing " " from s
     NodeListForEach(&n->array.a, n, {
@@ -486,6 +487,10 @@ Str str_append_astnode(Str s, const Node* n) {
     s = str_appendc(s, ')');
     break;
   }
+
+  case NPkg: // pkg
+    s = str_appendcstr(s, "pkg");
+    break;
 
   case NFile: // file
     s = str_appendcstr(s, "file");

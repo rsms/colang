@@ -184,15 +184,18 @@ ASSUME_NONNULL_BEGIN
 
 // Parser is the state used to parse
 typedef struct Parser {
-  Scanner   s;          // parser is based on a scanner
-  Build* build;      // compilation context
-  Scope*    scope;      // current scope
-  u32       fnest;      // function nesting level (for error handling)
-  u32       unresolved; // number of unresolved identifiers
+  Scanner s;          // parser is based on a scanner
+  Build*  build;      // compilation context
+  Scope*  scope;      // current scope
+  u32     fnest;      // function nesting level (for error handling)
+  u32     unresolved; // number of unresolved identifiers
 } Parser;
 
+Node* CreatePkgAST(Build*, Scope* pkgscope);
+
 // Parse parses a translation unit and returns an AST
-Node* Parse(Parser*, Build*, Source*, ParseFlags, Scope* pkgscope);
+// Returns NULL on error.
+Node* nullable Parse(Parser*, Build*, Source*, ParseFlags, Scope* pkgscope);
 
 // ResolveSym resolves unresolved symbols in an AST.
 // For top-level AST, scope should be pkgscope.

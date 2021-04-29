@@ -29,8 +29,11 @@ const char* NodeClassName(NodeClass);
   _(Block,       Expr) \
   _(Call,        Expr) \
   _(Field,       Expr) \
+  \
+  _(Pkg,         Expr) \
   _(File,        Expr) \
   _(Fun,         Expr) \
+  \
   _(Id,          Expr) \
   _(If,          Expr) \
   _(Let,         Expr) \
@@ -116,24 +119,24 @@ typedef struct Node {
       Node* right;  // null for PrefixOp. null for Op when its a postfix op.
       Tok   op;
     } op;
-    /* array */ struct { // Tuple, Block, File
+    /* array */ struct { // Tuple, Block, File, Pkg
       Scope*   scope; // non-null if kind==Block|File
-      NodeList a;
+      NodeList a; // [NPkg: list of NFile nodes]
     } array;
     /* fun */ struct { // Fun
-      Scope* scope;  // parameter scope
-      Node*  params; // input parameters (result type is stored in n.type during parsing)
-      Sym    name;   // null for fun-type and lambda
-      Node*  body;   // null for fun-type and fun-declaration
+      Scope*          scope;  // parameter scope
+      Node*  nullable params; // input params (NTuple) (result type stored in n.type during parse)
+      Sym    nullable name;   // null for lambda
+      Node*  nullable body;   // null for fun-declaration
     } fun;
     /* call */ struct { // Call, TypeCast
-      Node* receiver; // either an NFun or a type (e.g. NBasicType)
-      Node* args;
+      Node* receiver;      // either an NFun or a type (e.g. NBasicType)
+      Node* nullable args; // null if there are no args, else a NTuple
     } call;
     /* field */ struct { // Arg, Field, Let
-      Sym   name;
-      Node* init;  // Field: initial value (may be NULL). Let: final value (never NULL).
-      u32   index; // Arg: argument index.
+      Sym            name;
+      Node* nullable init;  // Field: initial value (may be NULL). Let: final value (never NULL).
+      u32            index; // Arg: argument index.
     } field;
     /* cond */ struct { // If
       Node* cond;
@@ -151,8 +154,8 @@ typedef struct Node {
           Sym      name;
         } basic;
         /* fun */ struct { // FunType
-          Node* params;
-          Node* result;
+          Node* nullable params; // kind==NTupleType
+          Node* nullable result;
         } fun;
       };
     } t;

@@ -490,11 +490,13 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto args = tupleTrailingComma(p, PREC_LOWEST, fl, TRParen);
   want(p, TRParen);
   assert(args->kind == NTuple);
-  switch (args->array.a.len) {
-    case 0:  break; // leave as-is, i.e. n->call.args=NULL
-    case 1:  n->call.args = args->array.a.head->node; break;
-    default: n->call.args = args; break;
-  }
+  if (args->array.a.len > 0)
+    n->call.args = args;
+  // switch (args->array.a.len) {
+  //   case 0:  break; // leave as-is, i.e. n->call.args=NULL
+  //   case 1:  n->call.args = args->array.a.head->node; break;
+  //   default: n->call.args = args; break;
+  // }
   if (NodeKindIsType(receiver->kind)) {
     n->kind = NTypeCast;
     return n;
@@ -724,11 +726,13 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->s.tok == TLParen) {
     auto pa = params(p);
     assert(pa->kind == NTuple);
-    switch (pa->array.a.len) {
-      case 0:  break; // leave as-is, i.e. n->fun.params=NULL
-      case 1:  n->fun.params = pa->array.a.head->node; break;
-      default: n->fun.params = pa; break;
-    }
+    if (pa->array.a.len > 0)
+      n->fun.params = pa;
+    // switch (pa->array.a.len) {
+    //   case 0:  break; // leave as-is, i.e. n->fun.params=NULL
+    //   case 1:  n->fun.params = pa->array.a.head->node; break;
+    //   default: n->fun.params = pa; break;
+    // }
   }
   // result type(s)
   if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr) {
@@ -895,9 +899,20 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
 }
 
 
+Node* CreatePkgAST(Build* build, Scope* pkgscope) {
+  // Scope* pkgscope
+  auto n = NewNode(build->mem, NPkg);
+  n->array.scope = pkgscope;
+  // Note: Do not set n->type as it would prevent type resolver from visiting files
+  return n;
+}
+
+
 Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope) {
   // initialize scanner
-  ScannerInit(&p->s, build, src, fl);
+  if (!ScannerInit(&p->s, build, src, fl)) {
+    return NULL;
+  }
   p->build = build;
   p->scope = pkgscope;
   p->fnest = 0;

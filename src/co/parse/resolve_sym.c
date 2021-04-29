@@ -111,13 +111,11 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
   // dlog("resolve(%s, scope=%p)", NodeKindName(n->kind), scope);
 
   if (n->type != NULL && n->type->kind != NBasicType) {
-    if (n->kind == NFun) {
+    if (n->kind == NFun)
       ctx->funNest++;
-    }
     n->type = resolve((Node*)n->type, scope, ctx);
-    if (n->kind == NFun) {
+    if (n->kind == NFun)
       ctx->funNest--;
-    }
   }
 
   switch (n->kind) {
@@ -129,10 +127,10 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
   // uses u.array
   case NBlock:
   case NTuple:
-  case NFile: {
-    if (n->array.scope) {
+  case NFile:
+  case NPkg: {
+    if (n->array.scope)
       scope = n->array.scope;
-    }
     Node* lastn = NULL;
     NodeListMap(&n->array.a, n,
       /* n <= */ lastn = resolve(n, scope, ctx)
@@ -147,17 +145,14 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
   // uses u.fun
   case NFun: {
     ctx->funNest++;
-    if (n->fun.params) {
+    if (n->fun.params)
       n->fun.params = resolve(n->fun.params, scope, ctx);
-    }
-    if (n->type) {
+    if (n->type)
       n->type = resolve(n->type, scope, ctx);
-    }
     auto body = n->fun.body;
     if (body) {
-      if (n->fun.scope) {
+      if (n->fun.scope)
         scope = n->fun.scope;
-      }
       n->fun.body = resolve(body, scope, ctx);
     }
     ctx->funNest--;

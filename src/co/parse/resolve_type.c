@@ -90,10 +90,15 @@ static Node* resolve_funtype(ResCtx* ctx, Node* n, RFlag fl) {
     if (ft->t.fun.result == NULL) {
       ft->t.fun.result = bodyType;
     } else if (!TypeEquals(ctx->build, ft->t.fun.result, bodyType)) {
+      // function prototype claims to return type A while the body yields type B
       build_errf(ctx->build, n->fun.body->pos, "cannot use type %s as return type %s",
         fmtnode(bodyType), fmtnode(ft->t.fun.result));
     }
   }
+
+  // make sure its type id is set as codegen relies on this
+  if (!ft->t.id)
+    ft->t.id = GetTypeID(ctx->build, n);
 
   n->type = ft;
   return ft;
@@ -198,6 +203,8 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl) {
   switch (n->kind) {
 
   // uses u.array
+
+  case NPkg:
   case NFile:
     n->type = Type_nil;
     NodeListForEach(&n->array.a, n,

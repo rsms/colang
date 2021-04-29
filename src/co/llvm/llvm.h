@@ -173,7 +173,8 @@ typedef enum CoLLVMObjectFormat {
 typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMVersionTuple;
 
 // llvm_build_and_emit
-EXTERN_C bool llvm_build_and_emit(Build* build, const char* triple);
+typedef struct Node Node;
+EXTERN_C bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple);
 
 // llvm_init_targets initializes target info and returns the default target triplet.
 // Safe to call multiple times. Just returns a cached value on subsequent calls.
@@ -233,25 +234,21 @@ EXTERN_C bool llvm_write_archive(
   CoLLVMOS     os,
   char**       errmsg);
 
+// CoLLDOptions specifies options for an invocation of lld_link
+typedef struct CoLLDOptions {
+  const char*          targetTriple; // target machine triple
+  CoOptType            opt;     // optimization level
+  const char* nullable outfile; // output file. NULL for no output
+  u32                  infilec; // input file count
+  const char**         infilev; // input file array
+} CoLLDOptions;
 
-// lld_link_macho links objects, archives and shared libraries together into a Mach-O executable.
-// If exitearly is true, this function calls exit(1) on error instead of returning false.
+// lld_link links objects, archives and shared libraries together into a library or executable.
+// It is a high-level interface to the target-specific linker implementations.
 // Always sets errmsg; on success it contains warning messages (if any.)
 // Caller must always call LLVMDisposeMessage on errmsg.
 // Returns true on success.
-EXTERN_C bool lld_link_macho(int argc, const char** argv, char** errmsg);
-
-// lld_link_coff links objects, archives and shared libraries together into a COFF executable.
-// See lld_link_macho for details
-EXTERN_C bool lld_link_coff(int argc, const char** argv, char** errmsg);
-
-// lld_link_elf links objects, archives and shared libraries together into a ELF executable.
-// See lld_link_macho for details
-EXTERN_C bool lld_link_elf(int argc, const char** argv, char** errmsg);
-
-// lld_link_wasm links objects, archives and shared libraries together into a WASM module.
-// See lld_link_macho for details
-EXTERN_C bool lld_link_wasm(int argc, const char** argv, char** errmsg);
+EXTERN_C bool lld_link(CoLLDOptions* options, char** errmsg);
 
 
 // -----------------------------------------------------------------------------------------------

@@ -42,6 +42,8 @@ typedef struct { u32 line; u32 col; } LineCol;
 typedef struct Pkg {
   Mem         mem;     // memory for resources only needed by this package
   const char* dir;     // directory filename
+  Str         id;      // fully qualified name (e.g. "bar/cat/foo")
+  Str         name;    // relative name (e.g. "foo")
   Source*     srclist; // linked list of sources
 } Pkg;
 
