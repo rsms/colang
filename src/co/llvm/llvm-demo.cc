@@ -1,4 +1,5 @@
-#include "llvm.hh"
+#include <rbase/rbase.h>
+#include "llvm-includes.hh"
 #include "lld/Common/Driver.h"
 
 using namespace llvm;

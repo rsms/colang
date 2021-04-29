@@ -4,7 +4,7 @@
 
 
 typedef struct {
-  BuildCtx*  build;
+  Build*     build;
   ParseFlags flags;
   u32        funNest;    // level of function nesting. 0 at file level
   u32        assignNest; // level of assignment. Used to avoid early constant folding.
@@ -14,7 +14,7 @@ typedef struct {
 static Node* resolve(Node* n, Scope* scope, ResCtx* ctx);
 
 
-Node* ResolveSym(BuildCtx* build, ParseFlags fl, Node* n, Scope* scope) {
+Node* ResolveSym(Build* build, ParseFlags fl, Node* n, Scope* scope) {
   ResCtx ctx = {
     .build = build,
     .flags = fl,

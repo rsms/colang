@@ -1,5 +1,6 @@
 #include <rbase/rbase.h>
 #include "parse/parse.h"
+#include "llvm/llvm.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -129,7 +130,7 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
-static bool compile_source(BuildCtx* build, Scope* pkgns, Source* src) {
+static bool compile_source(Build* build, Scope* pkgns, Source* src) {
   dlog("compile_source %.*s", (int)str_len(src->filename), src->filename);
   Parser parser;
   ParseFlags flags = ParseFlagsDefault;
@@ -191,21 +192,26 @@ int cmd_build(int argc, const char* argv[argc]) {
   SymPool syms;
   sympool_init(&syms, universe_syms(), NULL, NULL);
   Mem astmem = NULL; // allocate AST in global memory pool
-  BuildCtx ctx;
-  build_init(&ctx, astmem, &syms, &pkg, errh, NULL);
+  Build build;
+  build_init(&build, astmem, &syms, &pkg, errh, NULL);
 
   // setup package namespace
-  Scope* pkgns = ScopeNew(GetGlobalScope(), ctx.mem);
+  Scope* pkgns = ScopeNew(GetGlobalScope(), build.mem);
 
   // process source files
   Source* src = pkg.srclist;
   while (src) {
-    if (compile_source(&ctx, pkgns, src)) {
+    if (compile_source(&build, pkgns, src)) {
       src = src->next;
     } else {
       src = NULL; // stop on error
       return 1;
     }
+  }
+
+  // emit target code
+  if (!llvm_build_and_emit(&build, NULL/*target=host*/)) {
+    return 1;
   }
 
   // print how much (real) time we spent

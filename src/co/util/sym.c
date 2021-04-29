@@ -4,7 +4,7 @@
 //
 #include <rbase/rbase.h>
 #include "sym.h"
-#include "../util/array.h"
+#include "array.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
@@ -15,7 +15,7 @@
 // red-black tree implementation used for interning
 #define RBKEY      Sym
 #define RBUSERDATA Mem
-#include "../util/rbtree.c.h"
+#include "rbtree.c.h"
 
 static_assert(sizeof(SymRBNode) == sizeof(RBNode), "");
 

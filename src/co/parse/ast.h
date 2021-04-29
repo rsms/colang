@@ -1,5 +1,5 @@
 #pragma once
-#include "symmap.h"  // SymMap
+#include "../util/symmap.h"  // SymMap
 
 ASSUME_NONNULL_BEGIN
 

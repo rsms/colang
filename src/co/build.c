@@ -1,7 +1,8 @@
 #include <rbase/rbase.h>
-#include "parse.h"
+#include "build.h"
+#include "parse/parse.h" // universe_syms
 
-void build_init(BuildCtx* b,
+void build_init(Build* b,
   Mem nullable           mem,
   SymPool*               syms,
   Pkg*                   pkg,
@@ -13,17 +14,15 @@ void build_init(BuildCtx* b,
   b->pkg      = pkg;
   b->errh     = errh;
   b->userdata = userdata;
-  b->tmpbuf   = str_new(64);
 }
 
-void build_dispose(BuildCtx* b) {
-  str_free(b->tmpbuf);
+void build_dispose(Build* b) {
   #if DEBUG
   memset(b, 0, sizeof(*b));
   #endif
 }
 
-void build_errf(const BuildCtx* ctx, SrcPos pos, const char* format, ...) {
+void build_errf(const Build* ctx, SrcPos pos, const char* format, ...) {
   if (ctx->errh == NULL)
     return;
 
@@ -41,7 +40,7 @@ void build_errf(const BuildCtx* ctx, SrcPos pos, const char* format, ...) {
 
 #if R_UNIT_TEST_ENABLED
 
-BuildCtx* test_build_new() {
+Build* test_build_new() {
   Mem mem = MemNew(0); // 0 = pagesize
 
   auto syms = memalloct(mem, SymPool);
@@ -50,16 +49,16 @@ BuildCtx* test_build_new() {
   auto pkg = memalloct(mem, Pkg);
   pkg->dir = ".";
 
-  auto b = memalloct(mem, BuildCtx);
+  auto b = memalloct(mem, Build);
   build_init(b, mem, syms, pkg, NULL, NULL);
 
   return b;
 }
 
-void test_build_free(BuildCtx* b) {
+void test_build_free(Build* b) {
   auto mem = b->mem;
   // sympool_dispose(b->syms); // not needed because of MemFree
-  build_dispose(b); // needed for tmpbuf
+  build_dispose(b);
   MemFree(mem); // drop all memory, thus no memfree calls need above
 }
 

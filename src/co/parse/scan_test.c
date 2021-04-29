@@ -151,14 +151,14 @@ R_UNIT_TEST(scan_id_sym) {
   asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "hello") == 0);
-  assert(symfind(scanner->ctx->syms, "hello", strlen("hello")) == scanner->name);
+  assert(symfind(scanner->build->syms, "hello", strlen("hello")) == scanner->name);
   auto hello_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
   asserteq(t, TId)   ;
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "foo") == 0);
-  assert(symfind(scanner->ctx->syms, "foo", strlen("foo")) == scanner->name);
+  assert(symfind(scanner->build->syms, "foo", strlen("foo")) == scanner->name);
   auto foo_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
@@ -251,7 +251,7 @@ static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
 }
 
 static ScanTestCtx test_scanner_free(Scanner* s) {
-  BuildCtx* build = s->ctx;
+  Build* build = s->build;
 
   // Note: No need to call SourceClose since its in memory and not file-backed.
   // Note: No need to call memfree as test_build_free drops the entire memory space.
@@ -340,7 +340,7 @@ static u32 testscanp(
       } else {
         asserteq(strlen(expect->value), c->len);
         assert(memcmp(expect->value, c->ptr, c->len) == 0);
-        memfree(scanner->ctx->mem, c);
+        memfree(scanner->build->mem, c);
         ntokens++;
         continue;
       }

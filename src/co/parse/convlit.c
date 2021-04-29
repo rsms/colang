@@ -13,7 +13,7 @@
 #endif
 
 
-static void err_invalid_binop(BuildCtx* b, Node* n) {
+static void err_invalid_binop(Build* b, Node* n) {
   assert(n->kind == NBinOp);
   auto ltype = NodeEffectiveType(n->op.left);
   auto rtype = NodeEffectiveType(n->op.right);
@@ -59,14 +59,15 @@ static const u64 max_intval[TypeCode_NUM_END] = {
 
 // convert an intrinsic numeric value v to an integer of type tc.
 // Note: tc is the target type, not the type of v.
-static bool convval_to_int(BuildCtx* b, Node* srcnode, NVal* v, TypeCode tc) {
+static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
   assert(TypeCodeIsInt(tc));
   switch (v->ct) {
     case CType_int:
       // int -> int; check overflow and simply leave as-is (reinterpret.)
       if ((i64)v->i < min_intval[tc] || max_intval[tc] < v->i) {
-        auto nval = NValFmt(str_setlen(b->tmpbuf, 0), v);
+        auto nval = NValFmt(str_new(16), v);
         build_errf(b, srcnode->pos, "constant %s overflows %s", nval, TypeCodeName(tc));
+        str_free(nval);
       }
       return true;
 
@@ -87,7 +88,7 @@ static bool convval_to_int(BuildCtx* b, Node* srcnode, NVal* v, TypeCode tc) {
 
 
 // convert an intrinsic numeric value v to a floating point number of type tc
-static bool convval_to_float(BuildCtx* b, Node* srcnode, NVal* v, TypeCode t) {
+static bool convval_to_float(Build* b, Node* srcnode, NVal* v, TypeCode t) {
   dlog_mod("TODO");
   return false;
 }
@@ -95,7 +96,7 @@ static bool convval_to_float(BuildCtx* b, Node* srcnode, NVal* v, TypeCode t) {
 
 // convval converts v into a representation appropriate for targetType.
 // If no such representation exists, return false.
-static bool convval(BuildCtx* b, Node* srcnode, NVal* v, Node* targetType, bool explicit) {
+static bool convval(Build* b, Node* srcnode, NVal* v, Node* targetType, bool explicit) {
   // TODO use 'explicit' to allow "greater" conversions like for example int -> str.
   if (targetType->kind != NBasicType) {
     dlog_mod("TODO targetType->kind %s", NodeKindName(targetType->kind));
@@ -122,7 +123,7 @@ static bool convval(BuildCtx* b, Node* srcnode, NVal* v, Node* targetType, bool 
 
 // convlit converts an expression n to type t.
 // If n is already of type t, n is simply returned.
-Node* convlit(BuildCtx* b, Node* n, Node* t, bool explicit) {
+Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
   assert(t != NULL);
   assert(t != Type_ideal);
   assert(NodeKindIsType(t->kind));

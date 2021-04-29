@@ -24,7 +24,7 @@ typedef enum RFlag {
 
 
 typedef struct {
-  BuildCtx* build;
+  Build*    build;
   Array     reqtypestk;
   TypeCode* reqtypestorage[4];
   bool      explicitTypeCast;
@@ -33,7 +33,7 @@ typedef struct {
 
 static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl);
 
-void ResolveType(BuildCtx* build, Node* n) {
+void ResolveType(Build* build, Node* n) {
   ResCtx ctx = {
     .build = build,
   };

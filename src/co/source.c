@@ -1,6 +1,6 @@
 #include <rbase/rbase.h>
-#include "../util/tstyle.h"
-#include "source.h"
+#include "build.h"
+#include "util/tstyle.h"
 
 #include <sys/stat.h>
 #include <sys/mman.h>

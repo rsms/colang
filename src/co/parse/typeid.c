@@ -55,7 +55,7 @@
 // mktypestr appends a type ID string for n to s
 static Str mktypestr(Str s, const Node* n) {
   if (n->kind != NBasicType && n->t.id) {
-    // append n's precomputed type id. E.g. "(ii)" for a tuple "(int, int)".
+    // append n's precomputed type id. E.g. "(ii)" for the tuple "(int, int)".
     // However for basic types its faster to just use str_appendc as mktypestr is
     // never called directly for a basic type, as all basic types have precomputed TypeIDs
     // which short-circuits GetTypeID.
@@ -100,16 +100,19 @@ static Str mktypestr(Str s, const Node* n) {
 
 
 // GetTypeID returns the type Sym identifying n
-Sym GetTypeID(BuildCtx* b, Node* n) {
-  if (n->t.id != NULL)
+Sym GetTypeID(Build* b, Node* n) {
+  if (n->t.id != NULL) {
+    // Note: All built-in non-generic types have predefined type ids
     return n->t.id;
-  b->tmpbuf = mktypestr(str_setlen(b->tmpbuf, 0), n);
-  n->t.id = symget(b->syms, b->tmpbuf, str_len(b->tmpbuf));
+  }
+  auto tmpstr = mktypestr(str_new(128), n);
+  n->t.id = symget(b->syms, tmpstr, str_len(tmpstr));
+  str_free(tmpstr);
   return n->t.id;
 }
 
 
-bool TypeEquals(BuildCtx* b, Node* x, Node* y) {
+bool TypeEquals(Build* b, Node* x, Node* y) {
   assert(x != NULL);
   assert(y != NULL);
   assert(NodeKindIsType(x->kind));
@@ -117,8 +120,8 @@ bool TypeEquals(BuildCtx* b, Node* x, Node* y) {
     return true;
   if (x->kind != y->kind)
     return false;
-  // if (x->kind == NBasicType)
-  //   return x->t.id == y->t.id;
+  if (x->kind == NBasicType)
+    return x->t.id == y->t.id;
   return GetTypeID(b, x) == GetTypeID(b, y);
 }
 
@@ -129,7 +132,7 @@ bool TypeEquals(BuildCtx* b, Node* x, Node* y) {
 // };
 
 
-// TypeConv CheckTypeConversion(BuildCtx* b, Node* fromType, Node* toType, u32 intsize) {
+// TypeConv CheckTypeConversion(Build* b, Node* fromType, Node* toType, u32 intsize) {
 //   assert(toType != NULL);
 //   assert(fromType != NULL);
 //   assert(NodeKindIsType(toType->kind));

@@ -895,10 +895,10 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
 }
 
 
-Node* Parse(Parser* p, BuildCtx* ctx, Source* src, ParseFlags fl, Scope* pkgscope) {
+Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope) {
   // initialize scanner
-  ScannerInit(&p->s, ctx, src, fl);
-  p->build = ctx;
+  ScannerInit(&p->s, build, src, fl);
+  p->build = build;
   p->scope = pkgscope;
   p->fnest = 0;
   p->unresolved = 0;

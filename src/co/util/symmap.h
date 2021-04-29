@@ -2,7 +2,7 @@
 
 // SymMap is a hash map that maps Sym => pointer
 #define HASHMAP_NAME SymMap
-#include "../util/hashmap.h"
+#include "hashmap.h"
 #undef HASHMAP_NAME
 
 ASSUME_NONNULL_BEGIN

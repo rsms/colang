@@ -43,13 +43,19 @@ LLVM_PREFIX := deps/llvm
 # STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
 LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
 # LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
+# windowsmanifest: needed for lld COFF
 LLVM_COMPONENTS := \
 	engine \
 	option \
 	passes \
-	x86codegen \
-	aarch64codegen \
-	webassemblycodegen
+	all-targets \
+	libdriver \
+	lto \
+	linker \
+	debuginfopdb \
+	debuginfodwarf \
+	windowsmanifest
+
 CXXFLAGS += -stdlib=libc++ -nostdinc++ -Ilib/libcxx/include $(shell "$(LLVM_CONFIG)" --cxxflags)
 CFLAGS   += $(shell "$(LLVM_CONFIG)" --cflags)
 LDFLAGS += \
@@ -152,11 +158,11 @@ RT_OBJS      := $(patsubst %,$(OBJDIR)/%.o,$(RT_SRC))
 RT_TEST_OBJS := $(patsubst %,$(OBJDIR)/%.o,$(RT_TEST_SRC))
 RBASE_OBJS   := $(patsubst %,$(OBJDIR)/%.o,$(RBASE_SRC))
 
-PCHDIR       := $(BUILDDIR)/pch
-RBASE_H      := src/rbase/rbase.h
-LLVM_H       := src/co/llvm/llvm.hh
-RBASE_PCH    := $(PCHDIR)/$(RBASE_H).pch
-LLVM_PCH     := $(PCHDIR)/$(LLVM_H).pch
+PCHDIR            := $(BUILDDIR)/pch
+RBASE_H           := src/rbase/rbase.h
+RBASE_PCH         := $(PCHDIR)/$(RBASE_H).pch
+LLVM_INCLUDES_H   := src/co/llvm/llvm-includes.hh
+LLVM_INCLUDES_PCH := $(PCHDIR)/$(LLVM_INCLUDES_H).pch
 
 all: bin/co bin/rt-test
 
@@ -190,10 +196,6 @@ bin/rt-test: $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
-.PHONY: x
-x: $(BUILDDIR)/src/co/llvm/llvm.cc.o
-	true
-
 $(BUILDDIR)/rt.a: $(RT_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	$(Q)$(AR) rcs $@ $^
@@ -207,7 +209,7 @@ $(RBASE_PCH): $(RBASE_H)
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(COMPILE_FLAGS) $(CFLAGS) -c -o "$@" $<
 
-$(LLVM_PCH): $(LLVM_H)
+$(LLVM_INCLUDES_PCH): $(LLVM_INCLUDES_H)
 	@echo "cc $< -> $@"
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -c -o "$@" $<
@@ -217,10 +219,10 @@ $(OBJDIR)/%.c.o: %.c | $(RBASE_PCH)
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(COMPILE_FLAGS) $(CFLAGS) -include $(PCHDIR)/$(RBASE_H) -o $@ -c $<
 
-$(OBJDIR)/%.cc.o: %.cc | $(LLVM_PCH)
+$(OBJDIR)/%.cc.o: %.cc | $(LLVM_INCLUDES_PCH)
 	@echo "cxx $<"
 	@mkdir -p "$(dir $@)"
-	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -include $(PCHDIR)/$(LLVM_H) -o $@ -c $<
+	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -include $(PCHDIR)/$(LLVM_INCLUDES_H) -o $@ -c $<
 
 $(OBJDIR)/%.S.o: %.S
 	@echo "cc $<"
@@ -240,7 +242,7 @@ clean:
 DEPS := ${RBASE_OBJS:.o=.d} ${CO_OBJS:.o=.d} ${RT_TEST_OBJS:.o=.d}
 -include $(DEPS)
 -include $(PCHDIR)/$(RBASE_H).d
--include $(PCHDIR)/$(LLVM_H).d
+-include $(PCHDIR)/$(LLVM_INCLUDES_H).d
 
 
 .PHONY: all dev clean

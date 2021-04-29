@@ -48,13 +48,13 @@ static u8 charflags[256] = {
 };
 
 
-bool ScannerInit(Scanner* s, BuildCtx* ctx, Source* src, ParseFlags flags) {
+bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
   memset(s, 0, sizeof(Scanner));
 
   if (!SourceOpenBody(src))
     return false;
 
-  s->ctx       = ctx;
+  s->build     = build;
   s->src       = src;
   s->inp       = src->body;
   s->inp0      = src->body;
@@ -71,7 +71,7 @@ void ScannerDispose(Scanner* s) {
     auto c = ScannerCommentPop(s);
     if (!c)
       break;
-    memfree(s->ctx->mem, c);
+    memfree(s->build->mem, c);
   }
 }
 
@@ -88,8 +88,8 @@ static void serr(Scanner* s, const char* format, ...) {
   va_end(ap);
 
   // either pass to error handler or print to stderr as a fallback
-  if (s->ctx->errh) {
-    s->ctx->errh(pos, msg, s->ctx->userdata);
+  if (s->build->errh) {
+    s->build->errh(pos, msg, s->build->userdata);
   } else {
     // TODO: Consider SrcPosStr to add source position to msg
     msg[str_len(msg)] = '\n'; // replace NUL with ln
@@ -140,7 +140,7 @@ Comment* ScannerCommentPop(Scanner* s) {
 
 
 static void comments_push_back(Scanner* s) {
-  auto c = (Comment*)memalloc(s->ctx->mem, sizeof(Comment));
+  auto c = (Comment*)memalloc(s->build->mem, sizeof(Comment));
   c->next = NULL;
   c->src = s->src;
   c->ptr = s->tokstart;
@@ -186,7 +186,7 @@ static void snameuni(Scanner* s) {
     }
   }
   s->tokend = s->inp;
-  s->name = symget(s->ctx->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->name = symget(s->build->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 
@@ -202,7 +202,7 @@ static void sname(Scanner* s) {
   }
 
   s->tokend = s->inp;
-  s->name = symget(s->ctx->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->name = symget(s->build->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 

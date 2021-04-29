@@ -1,5 +1,5 @@
 #include <rbase/rbase.h>
-#include "parse.h"
+#include "sym.h"
 #include "symmap.h"
 
 // SymMap implementation
