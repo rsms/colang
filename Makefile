@@ -32,7 +32,7 @@ CXXFLAGS := \
 	-fno-rtti \
 	-stdlib=libc++ -nostdinc++ -Ilib/libcxx/include
 
-LDFLAGS := $(MORELDFLAGS)
+LDFLAGS := -Ldeps/zlib/lib $(MORELDFLAGS)
 
 FLAVOR := release
 ifneq ($(DEBUG),)
@@ -51,10 +51,6 @@ endif
 ifneq ($(LLVM),)
 	FLAVOR := $(FLAVOR)-llvm
 	LLVM_PREFIX := deps/llvm
-	# CC          ?= $(LLVM_PREFIX)/bin/clang
-	# CXX         ?= $(LLVM_PREFIX)/bin/clang++
-	# AR          ?= $(LLVM_PREFIX)/bin/llvm-ar
-	# STRIP       ?= $(LLVM_PREFIX)/bin/llvm-strip
 	LLVM_CONFIG := $(LLVM_PREFIX)/bin/llvm-config
 	# LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
 	# windowsmanifest: needed for lld COFF
@@ -245,6 +241,9 @@ $(OBJDIR)/%.S.o: %.S
 $(OBJDIR)/src/co/parse/parse.c.o: $(BUILDDIR)/gen_parselet_map.mark
 $(BUILDDIR)/gen_parselet_map.mark: src/co/parse/parse.c
 	$(Q)python3 misc/gen_parselet_map.py $< $@
+
+src/co/ir/op.h: src/co/ir/arch_base.lisp src/co/types.h src/co/parse/parse.h
+	$(Q)python3 src/co/ir/gen_ops.py
 
 dev:
 	./misc/dev.sh -run
