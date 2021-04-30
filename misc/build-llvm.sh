@@ -57,7 +57,7 @@ fi
 # llvm & clang
 
 # LLVM_GIT_BRANCH=llvmorg-11.0.1
-LLVM_GIT_BRANCH=llvmorg-12.0.0-rc1
+LLVM_GIT_BRANCH=llvmorg-12.0.0
 
 # fetch or update llvm sources
 SOURCE_CHANGED=true
@@ -65,6 +65,7 @@ _pushd "$DEPS_DIR"
 if [ -d llvm-src ]; then
   if [ "$(git -C llvm-src describe --tags)" != "$LLVM_GIT_BRANCH" ]; then
     _pushd llvm-src
+    git fetch origin
     echo git checkout "$LLVM_GIT_BRANCH"
          git checkout "$LLVM_GIT_BRANCH"
     _popd
@@ -155,10 +156,11 @@ _llvm_build() {
   cmake --build . --target install
 }
 
-# # _llvm_build Debug -DLLVM_ENABLE_ASSERTIONS=On
-# # _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
-# # _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
-# _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
+# _llvm_build Debug -DLLVM_ENABLE_ASSERTIONS=On
+# _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
+# _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
+# _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=Off
+_llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
 
 # copy "driver" code (main program code) and patch it
 _pushd "$PROJECT"
