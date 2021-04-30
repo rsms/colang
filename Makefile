@@ -19,6 +19,7 @@ COMPILE_FLAGS := \
 	-fstrict-aliasing \
 	-Wall -Wextra -Wimplicit-fallthrough \
 	-Wno-missing-field-initializers -Wno-unused-parameter \
+	-Werror=implicit-function-declaration \
 	-Wunused
 
 CFLAGS := \
