@@ -184,7 +184,7 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) {
         // Resolve its type so that the IR builder doesn't get cranky.
         auto rt = ctx->typecontext;
         resolve_ideal_type(ctx, cn, rt, fl);
-        build_errf(ctx->build, cn->pos, "warning: unused expression %s", fmtnode(cn));
+        build_warnf(ctx->build, cn->pos, "unused expression %s", fmtnode(cn));
       }
     }
     // Last node, in which case we set the flag to resolve literals
@@ -361,7 +361,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   // fun foo(a, b int, c int = 0)
   // foo(1, 2) == foo(1, 2, 0)
   if (!TypeEquals(ctx->build, ft->t.fun.params, argstype)) {
-    build_errf(ctx->build, n->pos, "incompatible arguments %s in function call. Expected %s",
+    build_errf(ctx->build, n->pos, "incompatible arguments %s in function call; expected %s",
       fmtnode(argstype), fmtnode(ft->t.fun.params));
   }
   n->type = ft->t.fun.result;

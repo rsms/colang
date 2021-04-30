@@ -170,9 +170,11 @@ static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
 }
 
 
-static void errh(SrcPos pos, const Str msg, void* userdata) {
-  auto s = SrcPosFmt(pos, str_new(str_len(msg) + 32), "%s", msg);
-  fprintf(stderr, "%s\n", s);
+static void diag_handler(Diagnostic* d, void* userdata) {
+  auto s = str_new(strlen(d->message) + 32);
+  s = diag_fmt(s, d);
+  s[str_len(s)] = '\n'; // replace nul byte
+  fwrite(s, str_len(s) + 1, 1, stderr);
   str_free(s);
 }
 
@@ -212,7 +214,7 @@ int cmd_build(int argc, const char* argv[argc]) {
   sympool_init(&syms, universe_syms(), NULL, NULL);
   Mem astmem = NULL; // allocate AST in global memory pool
   Build build;
-  build_init(&build, astmem, &syms, &pkg, errh, NULL);
+  build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
 
   // setup package namespace and create package AST node
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
@@ -237,7 +239,6 @@ int cmd_build(int argc, const char* argv[argc]) {
   printf("————————————————————————————————————————————————————————————————\n");
   ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
-  dlog("sizeof(Node) %zu", sizeof(Node));
   if (build.errcount)
     return 1;
 

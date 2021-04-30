@@ -136,9 +136,7 @@ static void syntaxerrp(Parser* p, SrcPos pos, const char* format, ...) {
   if (stmp)
     str_free(stmp);
 
-  if (p->build->errh)
-    p->build->errh(pos, msg, p->build->userdata);
-
+  build_diag(p->build, DiagError, pos, msg);
   str_free(msg);
 }
 
@@ -301,6 +299,7 @@ static Node* bad(Parser* p) {
 
 
 // tupleTrailingComma = Expr ("," Expr)* ","?
+// Used for call arguments.
 static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok) {
   auto tuple = mknode(p, NTuple);
   do {

@@ -1,33 +1,13 @@
 #pragma once
 #include "util/sym.h"
+#include "util/array.h"
 
 ASSUME_NONNULL_BEGIN
 
+typedef struct Build Build;
 typedef struct Pkg Pkg;
 typedef struct Source Source;
 typedef struct SrcPos SrcPos;
-
-// CoOptType identifies an optimization type/strategy
-typedef enum CoOptType {
-  CoOptNone,       // -O0
-  CoOptSmall,      // -Oz
-  CoOptAggressive, // -O3
-} CoOptType;
-
-// ErrorHandler callback type
-// msg is a preformatted error message and is only valid until this function returns
-typedef void(ErrorHandler)(SrcPos pos, const Str msg, void* userdata);
-
-// Build holds information for one "build" of one top-level package
-typedef struct Build {
-  Mem nullable           mem;      // memory space for AST nodes etc.
-  Pkg*                   pkg;      // top-level package for which we are building
-  CoOptType              opt;      // optimization type
-  SymPool*               syms;     // symbol pool
-  ErrorHandler* nullable errh;     // error handler
-  void* nullable         userdata; // custom user data passed to error handler
-  u32                    errcount; // total number of errors since last call to build_init
-} Build;
 
 // SrcPos represents a source code location
 // TODO: considering implementing something like lico and Pos/XPos from go
@@ -40,6 +20,45 @@ typedef struct SrcPos {
 } SrcPos;
 
 typedef struct { u32 line; u32 col; } LineCol;
+
+// CoOptType identifies an optimization type/strategy
+typedef enum CoOptType {
+  CoOptNone,       // -O0
+  CoOptSmall,      // -Oz
+  CoOptAggressive, // -O3
+} CoOptType;
+
+// DiagLevel is the level of severity of a diagnostic message
+typedef enum DiagLevel {
+  DiagError,
+  DiagWarn,
+  DiagInfo,
+  DiagMAX = DiagInfo,
+} DiagLevel;
+
+typedef struct Diagnostic {
+  DiagLevel   level;
+  SrcPos      pos;
+  const char* message;
+  Build*      build;
+} Diagnostic;
+
+// DiagHandler callback type.
+// msg is a preformatted error message and is only valid until this function returns.
+typedef void(DiagHandler)(Diagnostic* d, void* userdata);
+
+// Build holds information for one "build" of one top-level package
+typedef struct Build {
+  Mem nullable           mem;       // memory space for AST nodes, diagnostics etc.
+  Pkg*                   pkg;       // top-level package for which we are building
+  CoOptType              opt;       // optimization type
+  SymPool*               syms;      // symbol pool
+  DiagHandler* nullable  diagh;     // diagnostics handler
+  void* nullable         userdata;  // custom user data passed to error handler
+  u32                    errcount;  // total number of errors since last call to build_init
+  DiagLevel              diaglevel; // diagnostics filter (some > diaglevel is ignored)
+  Array                  diagarray; // all diagnostic messages produced. Stored in mem.
+} Build;
 
 // Pkg represents a package; a directory of source files
 typedef struct Pkg {
@@ -71,19 +90,45 @@ void build_init(Build*,
   Mem nullable           mem,
   SymPool*               syms,
   Pkg*                   pkg,
-  ErrorHandler* nullable errh,
+  DiagHandler* nullable  diagh,
   void* nullable         userdata);
 
 // build_dispose frees up internal resources used by Build
 void build_dispose(Build*);
 
-// build_errf formats a message including source position and invokes ctx->errh
-void build_errf(Build*, SrcPos, const char* format, ...);
+// build_emit_diag invokes b->diagh. d must have been allocated in b->mem.
+static void build_emit_diag(Build* b, Diagnostic* d);
 
-// TODO: replace with build_diagf
-// // build_diagf formats a message including source position, invokes ctx->diagf.
-// // Increments build->errcount
-// void build_diagf(Build*, DiagLevel, SrcPos, const char* format, ...);
+// build_mkdiag creates a new Diagnostic struct but does not call b->diagh.
+// After making a Diagnostic you should initialize its members and call build_emit_diag.
+// If you are using diag_free the diagnostic's message must be allocated in b->mem.
+Diagnostic* build_mkdiag(Build*);
+
+// build_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
+void build_diag(Build*, DiagLevel, SrcPos, const char* message);
+
+// build_diagv formats a diagnostic message invokes b->diagh
+void build_diagv(Build*, DiagLevel, SrcPos, const char* format, va_list);
+
+// build_diagf formats a diagnostic message invokes b->diagh
+void build_diagf(Build*, DiagLevel, SrcPos, const char* format, ...) ATTR_FORMAT(printf, 4, 5);
+
+// convenience macros for build_diagf
+#define build_errf(b, pos, fmt, ...)  build_diagf((b), DiagError, (pos), (fmt), ##__VA_ARGS__)
+#define build_warnf(b, pos, fmt, ...) build_diagf((b), DiagWarn, (pos), (fmt), ##__VA_ARGS__)
+#define build_infof(b, pos, fmt, ...) build_diagf((b), DiagInfo, (pos), (fmt), ##__VA_ARGS__)
+
+// diag_fmt appends to s a ready-to-print representation of a Diagnostic message.
+Str diag_fmt(Str s, const Diagnostic*);
+
+// diag_free frees a diagnostics object.
+// It is useful when a build's mem is a shared allocator.
+// Normally you'd just dipose an entire build mem arena instead of calling this function.
+// Co never calls this itself but a user's diagh function may.
+void diag_free(Diagnostic*);
+
+// DiagLevelName returns a printable string like "error".
+const char* DiagLevelName(DiagLevel);
 
 // build_get_source returns the source file corresponding to SrcPos.
 // Returns NULL if SrcPos does not name a source in the build (e.g. for generated code.)
@@ -119,5 +164,13 @@ Str SrcPosFmtv(SrcPos, Str s, const char* fmt, va_list);
 
 // SrcPosStr appends "file:line:col" to s
 Str SrcPosStr(SrcPos, Str s);
+
+// -----------------------------------------------------------------------------------------------
+// implementations
+
+inline static void build_emit_diag(Build* b, Diagnostic* d) {
+  if (d->level <= b->diaglevel && b->diagh)
+    b->diagh(d, b->userdata);
+}
 
 ASSUME_NONNULL_END

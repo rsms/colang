@@ -3,7 +3,8 @@
 fun main {
   a = 2
   b = 4
-  add(a, b)
+  5
+  add(a, b, 3)
 }
 
 fun add(x int, y uint) int {

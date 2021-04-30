@@ -11,7 +11,8 @@ RUN_ARGS="build ./example/hello.w"
 OPT_CLEAN=false
 OPT_RELEASE=false
 OPT_LLVM=false
-MAKE_ARGS="-j$(nproc)"
+OPT_SEQ=false
+MAKE_ARGS=
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
@@ -21,6 +22,7 @@ while [[ $# -gt 0 ]]; do
 	-clean)     OPT_CLEAN=true; shift ;;
 	-release)   OPT_RELEASE=true; shift ;;
 	-with-llvm) OPT_LLVM=true; shift ;;
+	-seq)       OPT_SEQ=true; shift ;;
 	--)         MAKE_ARGS="$MAKE_ARGS $@"; break ;;
 	-*)         MAKE_ARGS="$MAKE_ARGS $1"; shift ;;
 	*)
@@ -36,10 +38,14 @@ if $HELP; then
 		-run[=<args>]  Run $RUN_EXE [with optional <args>] after building
 		-clean         Discard build caches before building (just once in -watch mode)
 		-release       Build release build instead of the default debug build
+		-with-llvm     Sets LLVM=1 for make which casues llvm to be linked and WITH_LLVM to be defined
+		-seq           Run make sequentially instead of in parallel mode (i.e. no -j flag to make)
 		-h, -help      Print help and exit
 	EOF
 	exit 0
 fi
+
+$OPT_SEQ || MAKE_ARGS="$MAKE_ARGS -j$(nproc)"
 
 if [ -z "$RUN_EXE" ]; then
 	RUN_EXE=bin/co

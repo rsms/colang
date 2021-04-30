@@ -77,28 +77,13 @@ void ScannerDispose(Scanner* s) {
 
 
 // serr is called when an error occurs. It invokes s->errh
-static void serr(Scanner* s, const char* format, ...) {
+static void serr(Scanner* s, const char* fmt, ...) {
   auto pos = ScannerSrcPos(s);
-
   va_list ap;
-  va_start(ap, format);
-  auto msg = str_new(64);
-  if (strlen(format) > 0)
-    msg = str_appendfmtv(msg, format, ap);
+  va_start(ap, fmt);
+  build_diagv(s->build, DiagError, pos, fmt, ap);
   va_end(ap);
-
-  // either pass to error handler or print to stderr as a fallback
-  if (s->build->errh) {
-    s->build->errh(pos, msg, s->build->userdata);
-  } else {
-    // TODO: Consider SrcPosStr to add source position to msg
-    msg[str_len(msg)] = '\n'; // replace NUL with ln
-    fwrite(msg, str_len(msg) + 1, 1, stderr);
-  }
-
-  str_free(msg);
 }
-
 
 
 #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION

@@ -3,8 +3,8 @@
 #if R_UNIT_TEST_ENABLED
 
 typedef struct ScanTestCtx {
-  u32 nerrors;
-  Str last_errmsg;
+  u32         nerrors;
+  const char* last_errmsg;
 } ScanTestCtx;
 typedef struct TokStringPair { Tok tok; const char* value; } TokStringPair;
 // testscan(fl, sourcetext, tok1, value1, tok2, value2, ..., TNone)
@@ -14,7 +14,10 @@ static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, .
 // test_scanner_new creates a new scanner with all new dedicated resources like sympool
 static Scanner* test_scanner_new(ParseFlags, const char* sourcetext);
 static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len);
-static ScanTestCtx test_scanner_free(Scanner*);
+static void test_scanner_free(Scanner*);
+inline static ScanTestCtx* test_scanner_ctx(Scanner* s) {
+  return (ScanTestCtx*)s->build->userdata;
+}
 
 // TComment is a fake token used only for testing.
 // Comments does not produce tokens but are added to a queue by the scanner.
@@ -133,12 +136,12 @@ R_UNIT_TEST(scan_nulbyte) {
   auto scanner = test_scanner_newn(ParseFlagsDefault, "a\0b", 3);
   asserteq(ScannerNext(scanner), TId)   ;
   asserteq(ScannerNext(scanner), TNone);
-  auto ctx = test_scanner_free(scanner);
   // expect error
-  asserteq(ctx.nerrors, 1);
-  assert(ctx.last_errmsg != NULL);
-  assert(strstr(ctx.last_errmsg, "invalid input character") != NULL);
-  str_free(ctx.last_errmsg);
+  auto ctx = test_scanner_ctx(scanner);
+  asserteq(ctx->nerrors, 1);
+  assert(ctx->last_errmsg != NULL);
+  assert(strstr(ctx->last_errmsg, "invalid input character") != NULL);
+  test_scanner_free(scanner);
 }
 
 
@@ -172,8 +175,9 @@ R_UNIT_TEST(scan_id_sym) {
   asserteq(ScannerNext(scanner), TSemi);
   asserteq(ScannerNext(scanner), TNone);
 
-  auto ctx = test_scanner_free(scanner);
-  asserteq(ctx.nerrors, 0);
+  auto ctx = test_scanner_ctx(scanner);
+  asserteq(ctx->nerrors, 0);
+  test_scanner_free(scanner);
 }
 
 
@@ -184,8 +188,9 @@ R_UNIT_TEST(scan_id_utf8) {
     asserteq(ScannerNext(scanner), TId)   ;
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
-    auto ctx = test_scanner_free(scanner);
-    asserteq(ctx.nerrors, 0);
+    auto ctx = test_scanner_ctx(scanner);
+    asserteq(ctx->nerrors, 0);
+    test_scanner_free(scanner);
   }
   { // valid unicode
     //
@@ -202,20 +207,21 @@ R_UNIT_TEST(scan_id_utf8) {
     asserteq(ScannerNext(scanner), TId)   ;
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
-    auto ctx = test_scanner_free(scanner);
-    asserteq(ctx.nerrors, 0);
+    auto ctx = test_scanner_ctx(scanner);
+    asserteq(ctx->nerrors, 0);
+    test_scanner_free(scanner);
   }
   { // invalid unicode
     auto scanner = test_scanner_new(ParseFlagsDefault, "ab\xff");
     asserteq(ScannerNext(scanner), TId)   ;
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
-    auto ctx = test_scanner_free(scanner);
+    auto ctx = test_scanner_ctx(scanner);
     // expect error
-    asserteq(ctx.nerrors, 1);
-    assert(ctx.last_errmsg != NULL);
-    assert(strstr(ctx.last_errmsg, "invalid UTF-8 encoding") != NULL);
-    str_free(ctx.last_errmsg);
+    asserteq(ctx->nerrors, 1);
+    assert(ctx->last_errmsg != NULL);
+    assert(strstr(ctx->last_errmsg, "invalid UTF-8 encoding") != NULL);
+    test_scanner_free(scanner);
   }
 }
 
@@ -223,18 +229,17 @@ R_UNIT_TEST(scan_id_utf8) {
 // --------------------------------------------------------------------------------------------
 // test helper functions
 
-static void on_scan_err(SrcPos pos, const Str msg, void* userdata) {
+static void on_scan_diag(Diagnostic* d, void* userdata) {
+  asserteq(d->level, DiagError); // scanner only produces error diagnostics
   auto testctx = (ScanTestCtx*)userdata;
   testctx->nerrors++;
-  if (testctx->last_errmsg)
-    str_free(testctx->last_errmsg);
-  testctx->last_errmsg = str_cpy(msg, str_len(msg));
+  testctx->last_errmsg = str_cpycstr(d->message);
   // dlog("scan error: %s", msg);
 }
 
 static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len) {
   auto build = test_build_new();
-  build->errh = on_scan_err;
+  build->diagh = on_scan_diag;
   build->userdata = memalloct(build->mem, ScanTestCtx);
 
   Source* src = memalloct(build->mem, Source);
@@ -250,7 +255,7 @@ static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
   return test_scanner_newn(flags, sourcetext, strlen(sourcetext));
 }
 
-static ScanTestCtx test_scanner_free(Scanner* s) {
+static void test_scanner_free(Scanner* s) {
   Build* build = s->build;
 
   // Note: No need to call SourceClose since its in memory and not file-backed.
@@ -258,9 +263,7 @@ static ScanTestCtx test_scanner_free(Scanner* s) {
   SourceDispose(s->src);
   ScannerDispose(s);
 
-  auto testctx_copy = *(ScanTestCtx*)build->userdata;
   test_build_free(build);
-  return testctx_copy;
 }
 
 
@@ -377,7 +380,9 @@ static u32 testscanp(
   }
 
   asserteq(ntokens, nexpect);
-  return test_scanner_free(scanner).nerrors;
+  auto nerrors = test_scanner_ctx(scanner)->nerrors;
+  test_scanner_free(scanner);
+  return nerrors;
 }
 
 // testscan(sourcetext, tok1, value1, tok2, value2, ..., TNone)
