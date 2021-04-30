@@ -29,17 +29,17 @@ ASSUME_NONNULL_BEGIN
   #endif
 
   #define assert(cond) do{ \
-    if (!(cond)) panic("Assertion failed: %s", #cond); \
+    if (R_UNLIKELY(!(cond))) panic("Assertion failed: %s", #cond); \
   }while(0)
 
   #define assertf(cond, fmt, ...) do{ \
-    if (!(cond)) panic("Assertion failed: %s" fmt, #cond, ##__VA_ARGS__); \
+    if (R_UNLIKELY(!(cond))) panic("Assertion failed: %s" fmt, #cond, ##__VA_ARGS__); \
   }while(0)
 
   #define assertop(a,op,b) ({                                             \
     __typeof__(a) A = a;                                                  \
     __typeof__(b) B = b;                                                  \
-    if (!(A op B))                                                        \
+    if (R_UNLIKELY(!(A op B)))                                            \
       panic("Assertion failed: %s %s %s (%s %s %s)",                      \
             #a, #op, #b, debug_quickfmt(0,A), #op, debug_quickfmt(1,B));  \
   })
