@@ -10,10 +10,13 @@ typedef struct Array {
 } Array;
 
 #define Array_INIT { NULL, 0, 0, true }
+#define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, false }
+#define Array_INIT_ON_STACK(initcap) ({ void* st[initcap]; (Array){ st, initcap, 0, false }; })
 
 static void  ArrayInit(Array* a);
 static void  ArrayInitWithStorage(Array* a, void* storage, u32 storagecap);
 static void  ArrayFree(Array* a, Mem nullable mem);
+static void  ArrayClear(Array* a); // sets len to 0
 void         ArrayGrow(Array* a, size_t addl, Mem nullable mem); // cap=align2(len+addl)
 static void  ArrayPush(Array* a, void* nullable v, Mem nullable mem);
 static void* ArrayPop(Array* a);
@@ -63,28 +66,40 @@ inline static void ArrayFree(Array* a, Mem nullable mem) {
   }
 }
 
-inline static void ArrayPush(Array* a, void* nullable v, Mem nullable mem) {
-  if (a->len == a->cap)
+ALWAYS_INLINE static void ArrayClear(Array* a) {
+  a->len = 0;
+}
+
+ALWAYS_INLINE static void ArrayPush(Array* a, void* nullable v, Mem nullable mem) {
+  if (R_UNLIKELY(a->len == a->cap))
     ArrayGrow(a, 1, mem);
   a->v[a->len++] = v;
 }
 
-inline static void* ArrayPop(Array* a) {
-  return a->len > 0 ? a->v[--a->len] : NULL;
+ALWAYS_INLINE static void* ArrayPop(Array* a) {
+  assertop(a->len,>,0);
+  return a->v[--a->len];
 }
 
+// ArrayForEach(const Array* a, ELEMTYPE, LOCALNAME) { use LOCALNAME }
+//
+// Note: It may be easier to just use a for loop:
+//   for (u32 i = 0; i < a->len; i++) { auto ent = a->v[i]; ... }
+//
 #define ArrayForEach(a, ELEMTYPE, LOCALNAME)        \
-  /* this for introduces LOCALNAME */               \
-  for (auto LOCALNAME = (ELEMTYPE)(a)->v[0];        \
-       LOCALNAME == (ELEMTYPE)(a)->v[0];            \
-       LOCALNAME++)                                 \
-  /* actual for loop */                             \
-  for (                                             \
-    u32 LOCALNAME##__i = 0,                         \
-        LOCALNAME##__end = (a)->len;                \
-    LOCALNAME = (ELEMTYPE)(a)->v[LOCALNAME##__i],   \
-    LOCALNAME##__i < LOCALNAME##__end;              \
-    LOCALNAME##__i++                                \
-  ) /* <body should follow here> */
+  /* avoid LOCALNAME clashing with a */             \
+  for (const Array* a__ = (a), * a1__ = (a); a__ == a1__; a1__ = NULL) \
+    /* this for introduces LOCALNAME */               \
+    for (auto LOCALNAME = (ELEMTYPE)a__->v[0];        \
+         LOCALNAME == (ELEMTYPE)a__->v[0];            \
+         LOCALNAME++)                                 \
+      /* actual for loop */                           \
+      for (                                           \
+        u32 LOCALNAME##__i = 0,                       \
+            LOCALNAME##__end = a__->len;              \
+        LOCALNAME = (ELEMTYPE)a__->v[LOCALNAME##__i], \
+        LOCALNAME##__i < LOCALNAME##__end;            \
+        LOCALNAME##__i++                              \
+      ) /* <body should follow here> */
 
 ASSUME_NONNULL_END

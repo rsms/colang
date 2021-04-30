@@ -1,4 +1,4 @@
-x = 4 # unused
+# x = 4 # unused
 
 fun main {
   a = 2
@@ -6,6 +6,6 @@ fun main {
   add(a, b)
 }
 
-fun add(x, y int) int {
+fun add(x int, y uint) int {
   x + y
 }

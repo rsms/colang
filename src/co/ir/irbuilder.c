@@ -569,9 +569,8 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
 static IRValue* ast_add_block(IRBuilder* u, Node* n) {  // language block, not IR block.
   assert(n->kind == NBlock);
   IRValue* v = NULL;
-  NodeListForEach(&n->array.a, n, {
-    v = ast_add_expr(u, n);
-  });
+  for (u32 i = 0; i < n->array.a.len; i++)
+    v = ast_add_expr(u, (Node*)n->array.a.v[i]);
   return v;
 }
 
@@ -671,19 +670,19 @@ static bool ast_add_file(IRBuilder* u, Node* n) { // n->kind==NFile
   auto src = build_get_source(u->build, n->pos);
   dlog("ast_add_file %s", src ? src->filename : "(unknown)");
   #endif
-  NodeListForEach(&n->array.a, n, {
-    if (!ast_add_toplevel(u, n))
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    if (!ast_add_toplevel(u, (Node*)n->array.a.v[i]))
       return false;
-  });
+  }
   return true;
 }
 
 
 static bool ast_add_pkg(IRBuilder* u, Node* n) { // n->kind==NPkg
-  NodeListForEach(&n->array.a, n, {
-    if (!ast_add_file(u, n))
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    if (!ast_add_file(u, (Node*)n->array.a.v[i]))
       return false;
-  });
+  }
   return true;
 }
 

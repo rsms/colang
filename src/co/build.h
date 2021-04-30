@@ -80,6 +80,11 @@ void build_dispose(Build*);
 // build_errf formats a message including source position and invokes ctx->errh
 void build_errf(Build*, SrcPos, const char* format, ...);
 
+// TODO: replace with build_diagf
+// // build_diagf formats a message including source position, invokes ctx->diagf.
+// // Increments build->errcount
+// void build_diagf(Build*, DiagLevel, SrcPos, const char* format, ...);
+
 // build_get_source returns the source file corresponding to SrcPos.
 // Returns NULL if SrcPos does not name a source in the build (e.g. for generated code.)
 const Source* nullable build_get_source(const Build*, SrcPos);

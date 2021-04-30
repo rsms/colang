@@ -132,11 +132,14 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
     if (n->array.scope)
       scope = n->array.scope;
     Node* lastn = NULL;
-    NodeListMap(&n->array.a, n,
-      /* n <= */ lastn = resolve(n, scope, ctx)
-    );
+    // n.array = map n.array (cn => resolve(cn))
+    for (u32 i = 0; i < n->array.a.len; i++) {
+      Node* cn = (Node*)n->array.a.v[i];
+      lastn = resolve(cn, scope, ctx);
+      n->array.a.v[i] = lastn;
+    }
     // simplify blocks with a single expression; (block expr) => expr
-    if (n->kind == NBlock && NodeListLen(&n->array.a) == 1) {
+    if (n->kind == NBlock && n->array.a.len == 1) {
       return lastn;
     }
     break;

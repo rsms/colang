@@ -223,11 +223,11 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NPkg:
   {
     // sdssetlen(s, str_len(s)-1); // trim away trailing " " from s
-    NodeListForEach(&n->array.a, n, {
-      s = nodeRepr(n, s, ctx, depth + 1);
+    for (u32 i = 0; i < n->array.a.len; i++) {
+      s = nodeRepr(n->array.a.v[i], s, ctx, depth + 1);
       // TODO: detect if line breaks were added.
       // I.e. (Tuple int int) is currently printed as "(Tuple intint)" (missing space).
-    });
+    }
     break;
   }
 
@@ -260,12 +260,21 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_append(s, "_", 1);
     }
 
+    // include address
     s = str_appendcstr(s, ctx->style[TStyle_red]);
     s = str_appendfmt(s, " %p", n);
     s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
 
     if (f->params) {
       s = nodeRepr(f->params, s, ctx, depth + 1);
+    } else {
+      s = reprEmpty(s, ctx);
+    }
+
+    s = str_appendcstr(s, " -> ");
+
+    if (f->result) {
+      s = nodeRepr(f->result, s, ctx, depth + 1);
     } else {
       s = reprEmpty(s, ctx);
     }
@@ -347,14 +356,15 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NTupleType: {
     s = str_append(s, "(", 1);
     bool first = true;
-    NodeListForEach(&n->t.tuple, n, {
+    for (u32 i = 0; i < n->t.tuple.a.len; i++) {
+      Node* cn = n->t.tuple.a.v[i];
       if (first) {
         first = false;
       } else {
         s = str_append(s, " ", 1);
       }
-      s = nodeRepr(n, s, ctx, depth + 1);
-    });
+      s = nodeRepr(cn, s, ctx, depth + 1);
+    }
     s = str_append(s, ")", 1);
     break;
   }
@@ -389,16 +399,17 @@ Str NodeRepr(const Node* n, Str s) {
 }
 
 
-static Str str_append_NodeList(Str s, const NodeList* nodeList) {
+static Str str_append_NodeArray(Str s, const NodeArray* na) {
   bool isFirst = true;
-  NodeListForEach(nodeList, n, {
+  for (u32 i = 0; i < na->len; i++) {
+    Node* n = na->v[i];
     if (isFirst) {
       isFirst = false;
     } else {
       s = str_appendc(s, ' ');
     }
     s = str_append_astnode(s, n);
-  });
+  }
   return s;
 }
 
@@ -408,132 +419,100 @@ Str str_append_astnode(Str s, const Node* n) {
   // Note: Do not include type information.
   // Instead, in use sites, call fmtnode individually for n->type when needed.
 
-  if (n == NULL) {
+  if (n == NULL)
     return str_appendcstr(s, "nil");
-  }
 
   switch (n->kind) {
 
   // uses no extra data
   case NNil: // nil
-    s = str_appendcstr(s, "nil");
-    break;
+    return str_appendcstr(s, "nil");
 
   case NZeroInit: // init
-    s = str_appendcstr(s, "init");
-    break;
+    return str_appendcstr(s, "init");
 
   case NBoolLit: // true | false
-    if (n->val.i == 0) {
-      s = str_appendcstr(s, "false");
-    } else {
-      s = str_appendcstr(s, "true");
-    }
-    break;
+    return str_appendcstr(s, n->val.i == 0 ? "false" : "true");
 
   case NIntLit: // 123
-    s = str_appendfmt(s, "%llu", n->val.i);
-    break;
+    return str_appendfmt(s, "%llu", n->val.i);
 
   case NFloatLit: // 12.3
-    s = str_appendfmt(s, "%f", n->val.f);
-    break;
+    return str_appendfmt(s, "%f", n->val.f);
 
   case NComment: // #"comment"
     s = str_appendcstr(s, "#\"");
     s = str_appendrepr(s, (const char*)n->str.ptr, n->str.len);
-    s = str_appendc(s, '"');
-    break;
+    return str_appendc(s, '"');
 
   case NId: // foo
-    s = str_append(s, n->ref.name, symlen(n->ref.name));
-    break;
+    return str_append(s, n->ref.name, symlen(n->ref.name));
 
   case NBinOp: // foo+bar
     s = str_append_astnode(s, n->op.left);
     s = str_appendcstr(s, TokName(n->op.op));
-    s = str_append_astnode(s, n->op.right);
-    break;
+    return str_append_astnode(s, n->op.right);
 
   case NPostfixOp: // foo++
     s = str_append_astnode(s, n->op.left);
-    s = str_appendcstr(s, TokName(n->op.op));
-    break;
+    return str_appendcstr(s, TokName(n->op.op));
 
   case NPrefixOp: // -foo
     s = str_appendcstr(s, TokName(n->op.op));
-    s = str_append_astnode(s, n->op.left); // note: prefix op uses left, not right.
-    break;
+    return str_append_astnode(s, n->op.left); // note: prefix op uses left, not right.
 
   case NAssign: // thing=
     s = str_append_astnode(s, n->op.left);
-    s = str_appendc(s, '=');
-    break;
+    return str_appendc(s, '=');
 
   case NReturn: // return thing
     s = str_appendcstr(s, "return ");
-    s = str_append_astnode(s, n->op.left);
-    break;
+    return str_append_astnode(s, n->op.left);
 
   case NBlock: // {int}
     s = str_appendc(s, '{');
     s = str_append_astnode(s, n->type);
-    s = str_appendc(s, '}');
-    break;
+    return str_appendc(s, '}');
 
   case NTuple: { // (one two 3)
     s = str_appendc(s, '(');
-    s = str_append_NodeList(s, &n->array.a);
-    s = str_appendc(s, ')');
-    break;
+    s = str_append_NodeArray(s, &n->array.a);
+    return str_appendc(s, ')');
   }
 
   case NPkg: // pkg
-    s = str_appendcstr(s, "pkg");
-    break;
+    return str_appendcstr(s, "pkg");
 
   case NFile: // file
-    s = str_appendcstr(s, "file");
-    break;
+    return str_appendcstr(s, "file");
 
   case NLet: // let
-    s = str_appendfmt(s, "let %s", n->field.name);
-    break;
+    return str_appendfmt(s, "let %s", n->field.name);
 
   case NArg: // foo
-    s = str_append(s, n->field.name, symlen(n->field.name));
-    break;
+    return str_append(s, n->field.name, symlen(n->field.name));
 
   case NFun: // fun foo
-    if (n->fun.name == NULL) {
-      s = str_appendcstr(s, "fun _");
-    } else {
-      s = str_appendfmt(s, "fun %s", n->fun.name);
-    }
-    break;
+    if (n->fun.name == NULL)
+      return str_appendcstr(s, "fun _");
+    return str_appendfmt(s, "fun %s", n->fun.name);
 
   case NTypeCast: // typecast<int16>
     s = str_appendcstr(s, "typecast<");
     s = str_append_astnode(s, n->call.receiver);
-    s = str_appendc(s, '>');
-    break;
+    return str_appendc(s, '>');
 
   case NCall: // call foo
     s = str_appendcstr(s, "call ");
-    s = str_append_astnode(s, n->call.receiver);
-    break;
+    return str_append_astnode(s, n->call.receiver);
 
   case NIf: // if
-    s = str_appendcstr(s, "if");
-    break;
+    return str_appendcstr(s, "if");
 
   case NBasicType: // int
-    if (n == Type_ideal) {
-      s = str_appendcstr(s, "ideal");
-    } else {
-      s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
-    }
-    break;
+    if (n == Type_ideal)
+      return str_appendcstr(s, "ideal");
+    return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
 
   case NFunType: // (int int)->bool
     if (n->t.fun.params == NULL) {
@@ -542,27 +521,24 @@ Str str_append_astnode(Str s, const Node* n) {
       s = str_append_astnode(s, n->t.fun.params);
     }
     s = str_appendcstr(s, "->");
-    s = str_append_astnode(s, n->t.fun.params); // ok if NULL
-    break;
+    return str_append_astnode(s, n->t.fun.result); // ok if NULL
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
-    s = str_append_NodeList(s, &n->t.tuple);
-    s = str_appendc(s, ')');
-    break;
+    s = str_append_NodeArray(s, &n->t.tuple.a);
+    return str_appendc(s, ')');
 
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
   case NNone:
   case NField: // field is not yet implemented by parser
-    s = str_appendcstr(s, NodeKindName(n->kind));
-    break;
+    return str_appendcstr(s, NodeKindName(n->kind));
 
   case _NodeKindMax:
     break;
   }
 
-  return s;
+  return str_appendcstr(s, "INVALID");
 }
 
 

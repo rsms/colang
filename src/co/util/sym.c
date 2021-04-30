@@ -197,7 +197,8 @@ Str sympool_repr(const SymPool* p, Str s) {
   ArraySort(&a, (ArraySortFun)str_sortf, NULL);
   bool first = true;
   s = str_appendc(s, '{');
-  ArrayForEach(&a, Sym, sym) {
+  for (u32 i = 0; i < a.len; i++) {
+    Sym sym = a.v[i];
     if (first) {
       first = false;
       s = str_appendc(s, '"');

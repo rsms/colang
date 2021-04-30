@@ -124,17 +124,17 @@ static const Node _NodeBad = {NBad,{0,0,0},NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
 
-void NodeListAppend(Mem mem, NodeList* a, Node* n) {
-  auto l = (NodeListLink*)memalloc(mem, sizeof(NodeListLink));
-  l->node = n;
-  if (a->tail == NULL) {
-    a->head = l;
-  } else {
-    a->tail->next = l;
-  }
-  a->tail = l;
-  a->len++;
-}
+// void NodeListAppend(Mem mem, NodeList* a, Node* n) {
+//   auto l = (NodeListLink*)memalloc(mem, sizeof(NodeListLink));
+//   l->node = n;
+//   if (a->tail == NULL) {
+//     a->head = l;
+//   } else {
+//     a->tail->next = l;
+//   }
+//   a->tail = l;
+//   a->len++;
+// }
 
 Node* ast_opt_ifcond(Node* n) {
   assert(n->kind == NIf);

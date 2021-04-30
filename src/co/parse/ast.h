@@ -1,5 +1,6 @@
 #pragma once
-#include "../util/symmap.h"  // SymMap
+#include "../util/symmap.h"
+#include "../util/array.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -77,17 +78,19 @@ const Node* ScopeLookup(const Scope*, Sym);
 const Scope* GetGlobalScope();
 
 
-// NodeList is a linked list of nodes
-typedef struct NodeListLink NodeListLink;
-typedef struct NodeListLink {
-  Node*         node;
-  NodeListLink* next;
-} NodeListLink;
-typedef struct {
-  NodeListLink* head;
-  NodeListLink* tail;
-  u32           len;   // number of items
-} NodeList;
+// // NodeList is a linked list of nodes
+// typedef struct NodeListLink NodeListLink;
+// typedef struct NodeListLink {
+//   Node*         node;
+//   NodeListLink* next;
+// } NodeListLink;
+// typedef struct {
+//   NodeListLink* head;
+//   NodeListLink* tail;
+//   u32           len;   // number of items
+// } NodeList;
+
+typedef Array NodeArray;
 
 // NVal contains the value of basic types of literal nodes
 typedef struct NVal {
@@ -100,9 +103,9 @@ typedef struct NVal {
 } NVal;
 
 typedef struct Node {
-  NodeKind kind;      // kind of node (e.g. NId)
-  SrcPos   pos;       // source origin & position
-  Node*    type;      // value type. null if unknown.
+  NodeKind       kind; // kind of node (e.g. NId)
+  SrcPos         pos;  // source origin & position
+  Node* nullable type; // value type. null if unknown.
   union {
     void* _never; // for initializers
     NVal val; // BoolLit, IntLit, FloatLit, StrLit
@@ -119,13 +122,19 @@ typedef struct Node {
       Node* right;  // null for PrefixOp. null for Op when its a postfix op.
       Tok   op;
     } op;
+    // /* array */ struct { // Tuple, Block, File, Pkg
+    //   Scope*   scope; // non-null if kind==Block|File
+    //   NodeList a; // [NPkg: list of NFile nodes]
+    // } array1;
     /* array */ struct { // Tuple, Block, File, Pkg
-      Scope*   scope; // non-null if kind==Block|File
-      NodeList a; // [NPkg: list of NFile nodes]
+      Scope* nullable scope;        // non-null if kind==Block|File
+      NodeArray       a;            // array of nodes
+      Node*           a_storage[4]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
       Scope*          scope;  // parameter scope
-      Node*  nullable params; // input params (NTuple) (result type stored in n.type during parse)
+      Node*  nullable params; // input params (NTuple)
+      Node*  nullable result; // output results (NTuple | NExpr)
       Sym    nullable name;   // null for lambda
       Node*  nullable body;   // null for fun-declaration
     } fun;
@@ -148,14 +157,18 @@ typedef struct Node {
     /* t */ struct {
       Sym id; // lazy; initially NULL. Computed from Node.
       union {
-        NodeList tuple; // TupleType
+        // NodeList tuple; // TupleType    TODO: Use NodeArray
+        /* tuple */ struct { // BasicType
+          NodeArray a;            // array of nodes
+          Node*     a_storage[4]; // in-struct storage for the first few entries of a
+        } tuple;
         /* basic */ struct { // BasicType
           TypeCode typeCode;
           Sym      name;
         } basic;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType
-          Node* nullable result;
+          Node* nullable result; // tuple or single type
         } fun;
       };
     } t;
@@ -214,38 +227,62 @@ Node* ast_opt_ifcond(Node* n);
 Str NValFmt(Str s, const NVal* v);
 
 
-#define NodeListForEach(list, nodename, body)               \
-  do {                                                      \
-    auto __l = (list)->head;                                \
-    while (__l) {                                           \
-      auto nodename = __l->node;                            \
-      body;                                                 \
-      __l = __l->next;                                      \
-    }                                                       \
-  } while(0)
+// // void NodeArrayForEach(&n->array.a, n) { use_n }
+// #define NodeArrayForEach(NodeArrayPtr, LOCALNAME) /*BODY*/ \
+//   ArrayForEach((NodeArrayPtr), Node*, LOCALNAME)
 
+// // NodeArray* NodeArrayMap(&n->array.a, n, new_n)
+// #define NodeArrayMap(NodeArrayPtr, LOCALNAME, EXPR)  ({ \
+//   __typeof__(NodeArrayPtr) a__ = (NodeArrayPtr);        \
+//   for (u32 i = 0; i < a__->len; i++) {                  \
+//     Node* LOCALNAME = a__->v[i];                        \
+//     a__->v[i] = EXPR;                                   \
+//   }                                                     \
+//   a;                                                    \
+// })
 
-#define NodeListMap(list, nodename, expr)                   \
-  do {                                                      \
-    auto __l = (list)->head;                                \
-    while (__l) {                                           \
-      auto nodename = __l->node;                            \
-      __l->node = expr;                                     \
-      __l = __l->next;                                      \
-    }                                                       \
-  } while(0)
-
-
-// Add node to list
-void NodeListAppend(Mem nullable mem, NodeList*, Node*);
-static inline u32 NodeListLen(const NodeList* list) {
-  return list->len;
+ALWAYS_INLINE static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n) {
+  ArrayPush(a, n, mem);
 }
-static inline void NodeListClear(NodeList* list) {
-  list->len = 0;
-  list->head = NULL;
-  list->tail = NULL;
+
+ALWAYS_INLINE void NodeArrayClear(Array* a) {
+  ArrayClear(a);
 }
+
+
+// // NodeList functions
+// #define NodeListForEach(list, nodename, body)               \
+//   do {                                                      \
+//     auto __l = (list)->head;                                \
+//     while (__l) {                                           \
+//       auto nodename = __l->node;                            \
+//       body;                                                 \
+//       __l = __l->next;                                      \
+//     }                                                       \
+//   } while(0)
+
+
+// #define NodeListMap(list, nodename, expr)                   \
+//   do {                                                      \
+//     auto __l = (list)->head;                                \
+//     while (__l) {                                           \
+//       auto nodename = __l->node;                            \
+//       __l->node = expr;                                     \
+//       __l = __l->next;                                      \
+//     }                                                       \
+//   } while(0)
+
+
+// // Add node to list
+// void NodeListAppend(Mem nullable mem, NodeList*, Node*);
+// static inline u32 NodeListLen(const NodeList* list) {
+//   return list->len;
+// }
+// static inline void NodeListClear(NodeList* list) {
+//   list->len = 0;
+//   list->head = NULL;
+//   list->tail = NULL;
+// }
 
 
 extern const Node* NodeBad;  // kind==NBad

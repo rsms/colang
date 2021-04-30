@@ -82,9 +82,8 @@ static void reprBlock(IRRepr* r, const IRBlock* b) {
   r->buf = str_appendc(r->buf, '\n');
 
   // values
-  ArrayForEach(&b->values, IRValue*, v) {
-    reprValue(r, v);
-  }
+  for (u32 i = 0; i < b->values.len; i++)
+    reprValue(r, b->values.v[i]);
 
   // successors
   switch (b->kind) {
@@ -136,17 +135,15 @@ static void reprFun(IRRepr* r, const IRFun* f) {
     f->typeid == NULL ? "()" : f->typeid,
     f
   );
-  ArrayForEach(&f->blocks, IRBlock*, b) {
-    reprBlock(r, b);
-  }
+  for (u32 i = 0; i < f->blocks.len; i++)
+    reprBlock(r, f->blocks.v[i]);
 }
 
 
 static void reprPkg(IRRepr* r, const IRPkg* pkg) {
   r->buf = str_appendfmt(r->buf, "package %s\n", pkg->id);
-  ArrayForEach(&pkg->funs, IRFun*, f) {
-    reprFun(r, f);
-  }
+  for (u32 i = 0; i < pkg->funs.len; i++)
+    reprFun(r, pkg->funs.v[i]);
 }
 
 

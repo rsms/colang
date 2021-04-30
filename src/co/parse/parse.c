@@ -304,7 +304,7 @@ static Node* bad(Parser* p) {
 static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok) {
   auto tuple = mknode(p, NTuple);
   do {
-    NodeListAppend(p->build->mem, &tuple->array.a, expr(p, precedence, fl));
+    NodeArrayAppend(p->build->mem, &tuple->array.a, expr(p, precedence, fl));
   } while (got(p, TComma) && p->s.tok != stoptok);
   return tuple;
 }
@@ -393,17 +393,15 @@ static Node* pAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
         syntaxerrp(p, left->pos, "assignment mismatch: %u targets but %u values",
           lnodes->len, rnodes->len);
       } else {
-        auto l = lnodes->head;
-        auto r = rnodes->head;
-        while (l) {
-          if (l->node->kind == NId) {
-            defsym(p, l->node->ref.name, r->node);
+        for (u32 i = 0; i < lnodes->len; i++) {
+          Node* l = lnodes->v[i];
+          Node* r = rnodes->v[i];
+          if (l->kind == NId) {
+            defsym(p, l->ref.name, r);
           } else {
             // e.g. foo.bar = 3
-            dlog("TODO pAssign l->node->kind != NId");
+            dlog("TODO pAssign l->kind != NId");
           }
-          l = l->next;
-          r = r->next;
         }
       }
     }
@@ -490,6 +488,9 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto args = tupleTrailingComma(p, PREC_LOWEST, fl, TRParen);
   want(p, TRParen);
   assert(args->kind == NTuple);
+
+  // Note: the type of call.args should structually match the type of fun.params.
+  // This reduces the work needed by the type resolver.
   if (args->array.a.len > 0)
     n->call.args = args;
   // switch (args->array.a.len) {
@@ -497,6 +498,7 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   //   case 1:  n->call.args = args->array.a.head->node; break;
   //   default: n->call.args = args; break;
   // }
+
   if (NodeKindIsType(receiver->kind)) {
     n->kind = NTypeCast;
     return n;
@@ -516,7 +518,7 @@ static Node* PBlock(Parser* p, PFlag fl) {
   fl &= ~PFlagRValue;
 
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
-    NodeListAppend(p->build->mem, &n->array.a, exprOrTuple(p, PREC_LOWEST, fl));
+    NodeArrayAppend(p->build->mem, &n->array.a, exprOrTuple(p, PREC_LOWEST, fl));
     if (!got(p, TSemi)) {
       break;
     }
@@ -626,7 +628,9 @@ static Node* params(Parser* p) { // => NTuple
   want(p, TLParen);
   auto n = mknode(p, NTuple);
   bool hasTypedParam = false; // true when at least one param has type; e.g. "x T"
-  NodeList typeq = {0};
+  // Node* typeq_storage[32];
+  // NodeArray typeq = Array_INIT_WITH_STORAGE((void**)typeq_storage, countof(typeq_storage));
+  NodeArray typeq = Array_INIT_ON_STACK(32);
   PFlag fl = PFlagRValue;
 
   while (p->s.tok != TRParen && p->s.tok != TNone) {
@@ -640,19 +644,23 @@ static Node* params(Parser* p) { // => NTuple
         hasTypedParam = true;
         // spread type to predecessors
         if (typeq.len > 0) {
-          NodeListForEach(&typeq, field2, {
-            field2->type = field->type;
-          });
-          NodeListClear(&typeq);
+          for (u32 i = 0; i < typeq.len; i++) {
+            ((Node*)typeq.v[i])->type = field->type;
+          }
+          typeq.len = 0;
+          // NodeListForEach(&typeq, field2, {
+          //   field2->type = field->type;
+          // });
+          // NodeListClear(&typeq);
         }
       } else {
-        NodeListAppend(p->build->mem, &typeq, field);
+        NodeArrayAppend(p->build->mem, &typeq, field);
       }
     } else {
       // definitely just type, e.g. "fun(int)int"
       field->type = expr(p, PREC_LOWEST, fl);
     }
-    NodeListAppend(p->build->mem, &n->array.a, field);
+    NodeArrayAppend(p->build->mem, &n->array.a, field);
     if (!got(p, TComma)) {
       if (p->s.tok != TRParen) {
         syntaxerr(p, "expecting comma or )");
@@ -670,15 +678,17 @@ static Node* params(Parser* p) { // => NTuple
       syntaxerr(p, "expecting type");
     }
     u32 index = 0;
-    NodeListForEach(&n->array.a, field, {
+    for (u32 i = 0; i < n->array.a.len; i++) {
+      Node* field = (Node*)n->array.a.v[i];
       field->field.index = index++;
       defsym(p, field->field.name, field);
-    });
+    }
   } else {
     // type-only form; e.g. "(T, T, Y)"
     // make ident of each field->field.name where field->type == NULL
     u32 index = 0;
-    NodeListForEach(&n->array.a, field, {
+    for (u32 i = 0; i < n->array.a.len; i++) {
+      Node* field = (Node*)n->array.a.v[i];
       if (!field->type) {
         auto t = mknode(p, NId);
         t->ref.name = field->field.name;
@@ -686,9 +696,10 @@ static Node* params(Parser* p) { // => NTuple
         field->field.name = sym__;
         field->field.index = index++;
       }
-    });
+    }
   }
 
+  ArrayFree(&typeq, p->build->mem);
   want(p, TRParen);
   return n;
 }
@@ -726,6 +737,9 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->s.tok == TLParen) {
     auto pa = params(p);
     assert(pa->kind == NTuple);
+
+    // Note: the type of fun.params should structually match the type of call.args.
+    // This reduces the work needed by the type resolver.
     if (pa->array.a.len > 0)
       n->fun.params = pa;
     // switch (pa->array.a.len) {
@@ -733,10 +747,11 @@ static Node* PFun(Parser* p, PFlag fl) {
     //   case 1:  n->fun.params = pa->array.a.head->node; break;
     //   default: n->fun.params = pa; break;
     // }
+
   }
   // result type(s)
   if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr) {
-    n->type = pType(p, fl | PFlagRValue);
+    n->fun.result = pType(p, fl | PFlagRValue);
   }
   // body
   p->fnest++;
@@ -879,14 +894,14 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
                        prefixExpr(p, fl) ); // read a prefix expression, like an identifier
   if (got(p, TComma)) {
     auto g = mknode(p, fl & PFlagType ? NTupleType : NTuple);
-    NodeListAppend(p->build->mem, &g->array.a, left);
+    NodeArrayAppend(p->build->mem, &g->array.a, left);
     if (fl & PFlagRValue) {
       do {
-        NodeListAppend(p->build->mem, &g->array.a, expr(p, precedence, fl));
+        NodeArrayAppend(p->build->mem, &g->array.a, expr(p, precedence, fl));
       } while (got(p, TComma));
     } else {
       do {
-        NodeListAppend(p->build->mem, &g->array.a, prefixExpr(p, fl));
+        NodeArrayAppend(p->build->mem, &g->array.a, prefixExpr(p, fl));
       } while (got(p, TComma));
     }
     left = g;
@@ -928,7 +943,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
 
   while (p->s.tok != TNone) {
     Node* n = exprOrTuple(p, PREC_LOWEST, PFlagNone);
-    NodeListAppend(p->build->mem, &file->array.a, n);
+    NodeArrayAppend(p->build->mem, &file->array.a, n);
 
     // // print associated comments
     // auto c = p->s.comments;

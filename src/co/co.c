@@ -224,7 +224,7 @@ int cmd_build(int argc, const char* argv[argc]) {
     Node* filenode = parse_source(&build, pkgscope, src);
     if (!filenode)
       return 1;
-    NodeListAppend(build.mem, &pkgnode->array.a, filenode);
+    NodeArrayAppend(build.mem, &pkgnode->array.a, filenode);
     src = src->next;
   }
 
@@ -237,6 +237,7 @@ int cmd_build(int argc, const char* argv[argc]) {
   printf("————————————————————————————————————————————————————————————————\n");
   ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
+  dlog("sizeof(Node) %zu", sizeof(Node));
   if (build.errcount)
     return 1;
 
@@ -320,7 +321,7 @@ static bool init(const char* argv0) {
 
 int main(int argc, const char* argv[argc+1]) {
   #if R_UNIT_TEST_ENABLED
-  if (strcmp(argv[1], "test") == 0)
+  if (argc > 1 && strcmp(argv[1], "test") == 0)
     return 0;
   #endif
 
