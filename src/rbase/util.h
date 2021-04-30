@@ -17,6 +17,16 @@ int fmtduration(char* buf, int bufsize, u64 timeduration);
 // get the current user's home directory. Returns "" on failure.
 const char* user_home_dir();
 
+// int popcount<T>(T v)
+#define popcount(x) _Generic((x), \
+  int:                 __builtin_popcount, \
+  unsigned int:        __builtin_popcount, \
+  long:                __builtin_popcountl, \
+  unsigned long:       __builtin_popcountl, \
+  long long:           __builtin_popcountll, \
+  unsigned long long:  __builtin_popcountll \
+)(x)
+
 // sha1
 typedef struct {
   u32 state[5];

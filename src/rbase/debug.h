@@ -2,7 +2,13 @@
 //
 // void dlog(const char* fmt, ...)
 // void assert(bool cond)
-// void asserteq<T>(T a, T b)
+// void assertf(bool cond, const char* fmt, ...)
+// void assertop<T>(T a, OP, T b) -- like assert(a OP b) but with better error message
+// void asserteq<T>(T a, T b) -- assert(a == b)
+// void assertne<T>(T a, T b) -- assert(a != b)
+// void assertnull(a) -- assert(a == NULL)
+// T assertnotnull<T>(a) -- ({ assert(a != NULL); a; })
+//
 // const char* debug_quickfmt<T>(int buffer in 0|1|2|3|4|5, T x)
 // const char* debug_tmpsprintf(int buffer in 0|1|2|3|4|5, const char* fmt, ...)
 //
@@ -26,6 +32,10 @@ ASSUME_NONNULL_BEGIN
     if (!(cond)) panic("Assertion failed: %s", #cond); \
   }while(0)
 
+  #define assertf(cond, fmt, ...) do{ \
+    if (!(cond)) panic("Assertion failed: %s" fmt, #cond, ##__VA_ARGS__); \
+  }while(0)
+
   #define assertop(a,op,b) ({                                             \
     __typeof__(a) A = a;                                                  \
     __typeof__(b) B = b;                                                  \
@@ -34,13 +44,21 @@ ASSUME_NONNULL_BEGIN
             #a, #op, #b, debug_quickfmt(0,A), #op, debug_quickfmt(1,B));  \
   })
 
-  #define asserteq(a,b) assertop(a,==,b)
+  #define asserteq(a,b)    assertop((a),==,(b))
+  #define assertne(a,b)    assertop((a),!=,(b))
+  #define assertnull(a)    assertop((a),==,NULL)
+  #define assertnotnull(a) ({ __typeof__(a) v = (a); assertop((v),!=,NULL); v; })
 
 #else /* !defined(NDEBUG) */
   #ifndef assert
     #define assert(cond) do{}while(0)
   #endif
-  #define asserteq(a,b) do{}while(0)
+  #define assertf(cond, fmt, ...) do{}while(0)
+  #define assertop(a,op,b)        do{}while(0)
+  #define asserteq(a,b)           do{}while(0)
+  #define assertne(a,b)           do{}while(0)
+  #define assertnull(a)           do{}while(0)
+  #define assertnotnull(a)        (a)
 #endif /* !defined(NDEBUG) */
 
 

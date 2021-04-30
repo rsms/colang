@@ -37,15 +37,6 @@ typedef enum {
 #define NODE_KEY(n)          ((n)->bmap)
 #define NODE_SET_KEY(n, key) ((n)->bmap = (key))
 
-#define popcount(x) _Generic((x), \
-  int:                 __builtin_popcount, \
-  unsigned int:        __builtin_popcount, \
-  long:                __builtin_popcountl, \
-  unsigned long:       __builtin_popcountl, \
-  long long:           __builtin_popcountll, \
-  unsigned long long:  __builtin_popcountll \
-)(x)
-
 // _nodepool is a set of "free lists" for each Node length class.
 static Pool _nodepool[HAMT_BRANCHES + 1];
 
