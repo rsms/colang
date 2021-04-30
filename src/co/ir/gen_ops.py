@@ -2,24 +2,23 @@
 # encoding: utf8
 #
 # This script reads from:
-# - src/ir/arch_*.lisp
-# - src/types.h
-# - src/token.h
-# and patches:
-# - src/ir/op.h
-# - src/ir/op.c
-# - src/token.h
-# - src/types.h
-#
+# - ir/arch_*.lisp
+# - parse/parse.h
+# - types.h
+# and patches the following files:
+# - ir/op.h
+# - ir/op.c
+# - ir/ir-ast.c
 #
 import re, sys, os, os.path
 from functools import reduce
 import pprint
 
-SRCFILE_ARCH_BASE = "arch_base.lisp"
 SRCFILE_IR_OP_C   = "op.c"
 SRCFILE_IR_OP_H   = "op.h"
-SRCFILE_TOKEN_H   = "../parse/token.h"
+SRCFILE_AST_IR_C  = "ir-ast.c"
+SRCFILE_ARCH_BASE = "arch_base.lisp"
+SRCFILE_PARSE_H   = "../parse/parse.h"
 SRCFILE_TYPES_H   = "../types.h"
 
 pp = pprint.PrettyPrinter(indent=2)
@@ -27,7 +26,7 @@ def rep(any): return pp.pformat(any)
 
 # change directory to project root, i.e. "(dirname $0)/.."
 scriptfile = os.path.abspath(__file__)
-os.chdir(os.path.dirname(os.path.dirname(scriptfile)))
+os.chdir(os.path.dirname(scriptfile))
 scriptname = os.path.relpath(scriptfile)  # e.g. "misc/gen_ops.py"
 
 DRY_RUN = False  # don't actually write files
@@ -155,6 +154,8 @@ IROpDescr = [
   ("IRAux",    "aux",        "type of data in IRValue.aux"),
 ]
 
+if DEBUG:
+  print("DEBUG=True DRY_RUN=%r cwd=%r" % (DRY_RUN, os.getcwd()))
 
 class Op:
   def __init__(self, name :str, input :Exp, output :Exp, attributes :List, commentsPre :[str]):
@@ -216,7 +217,7 @@ class Arch:
 
 def main():
   typeCodes = loadTypeCodes(SRCFILE_TYPES_H)
-  astOps = loadASTOpTokens(SRCFILE_TOKEN_H)
+  astOps = loadASTOpTokens(SRCFILE_PARSE_H)
   baseArch = parse_arch_file(SRCFILE_ARCH_BASE)
   baseArch.isGeneric = True
   if DEBUG:
@@ -230,7 +231,7 @@ def main():
   gen_IR_OPS(archs)
   gen_IROpNames(archs)
   gen_IROpConstMap(baseArch, typeCodes)
-  gen_IROpSwitches(baseArch, typeCodes, astOps)
+  gen_IROpSwitches(baseArch, typeCodes, astOps) # => SRCFILE_AST_IR_C
   gen_IROpConvTable(baseArch, typeCodes)
   gen_IROpFlag()
   gen_IRAux()
@@ -566,7 +567,7 @@ def gen_IROpSwitches(baseArch :Arch, typeCodes :[str], astOps):
   if DEBUG:
     print("\n  ".join(lines))
 
-  replaceInSourceFile(SRCFILE_IR_OP_C, startline, endline, "\n  ".join(lines))
+  replaceInSourceFile(SRCFILE_AST_IR_C, startline, endline, "\n  ".join(lines))
 
 
 

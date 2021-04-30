@@ -12,16 +12,16 @@ R_UNIT_TEST(array_heap) {
 
   asserteq(a.len, 3);
   asserteq(a.cap, ARRAY_CAP_STEP);
-  asserteq((int)a.v[0], 1);
-  asserteq((int)a.v[1], 2);
-  asserteq((int)a.v[2], 3);
+  asserteq((uintptr_t)a.v[0], 1);
+  asserteq((uintptr_t)a.v[1], 2);
+  asserteq((uintptr_t)a.v[2], 3);
 
   asserteq(ArrayIndexOf(&a, (void*)2), 1);
   asserteq(ArrayIndexOf(&a, (void*)4), -1);
 
-  asserteq((int)ArrayPop(&a), 3);
-  asserteq((int)ArrayPop(&a), 2);
-  asserteq((int)ArrayPop(&a), 1);
+  asserteq((uintptr_t)ArrayPop(&a), 3);
+  asserteq((uintptr_t)ArrayPop(&a), 2);
+  asserteq((uintptr_t)ArrayPop(&a), 1);
 
   asserteq(a.len, 0);
   asserteq(a.cap, ARRAY_CAP_STEP);
@@ -42,12 +42,12 @@ R_UNIT_TEST(array_stack_to_heap) {
 
   asserteq(a.len, 3);
   asserteq(a.cap, ARRAY_CAP_STEP);
-  asserteq((int)a.v[0], 1);
-  asserteq((int)a.v[1], 2);
-  asserteq((int)a.v[2], 3);
-  asserteq((int)ArrayPop(&a), 3);
-  asserteq((int)ArrayPop(&a), 2);
-  asserteq((int)ArrayPop(&a), 1);
+  asserteq((uintptr_t)a.v[0], 1);
+  asserteq((uintptr_t)a.v[1], 2);
+  asserteq((uintptr_t)a.v[2], 3);
+  asserteq((uintptr_t)ArrayPop(&a), 3);
+  asserteq((uintptr_t)ArrayPop(&a), 2);
+  asserteq((uintptr_t)ArrayPop(&a), 1);
   asserteq(a.len, 0);
   asserteq(a.cap, ARRAY_CAP_STEP);
   ArrayFree(&a, NULL);

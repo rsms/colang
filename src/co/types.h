@@ -2,6 +2,7 @@
 //
 // Fundamental type information used across components of Co (parse, ir, etc.)
 //
+ASSUME_NONNULL_BEGIN
 
 typedef enum TypeCodeFlag {
   TypeCodeFlagNone = 0,
@@ -116,18 +117,20 @@ const char* CTypeName(CType ct);
 // static Node* TypeCodeToTypeNode(TypeCode t);
 
 // Lookup table TypeCode => string encoding char
-const char TypeCodeEncoding[TypeCode_MAX];
+extern const char TypeCodeEncoding[TypeCode_MAX];
 
 // Symbolic name of type code. Eg "int32"
 static const char* TypeCodeName(TypeCode);
-const char* _TypeCodeName[TypeCode_MAX];
+extern const char* _TypeCodeName[TypeCode_MAX];
 inline static const char* TypeCodeName(TypeCode tc) {
   assert(tc >= 0 && tc < TypeCode_MAX);
   return _TypeCodeName[tc];
 }
 
 // access TypeCodeFlag
-const TypeCodeFlag TypeCodeFlagMap[TypeCode_MAX];
+extern const TypeCodeFlag TypeCodeFlagMap[TypeCode_MAX];
 
 inline static bool TypeCodeIsInt(TypeCode t) { return TypeCodeFlagMap[t] & TypeCodeFlagInt; }
 inline static bool TypeCodeIsFloat(TypeCode t) { return TypeCodeFlagMap[t] & TypeCodeFlagFloat; }
+
+ASSUME_NONNULL_END

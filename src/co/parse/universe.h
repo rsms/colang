@@ -15,6 +15,7 @@
 //   Node* Const_{PREDEFINED_CONSTANTS...}
 //   Node* Const_nil
 //
+ASSUME_NONNULL_BEGIN
 
 // universe_syms() returns a read-only SymPool which holds all predefined symbols of the language
 const SymPool* universe_syms();
@@ -28,7 +29,7 @@ static Tok sym_langtok(Sym s);
 
 // symbols for language keywords (defined in token.h)
 #define SYM_DEF(str, _) \
-  const Sym sym_##str;
+  extern const Sym sym_##str;
 TOKEN_KEYWORDS(SYM_DEF)
 #undef SYM_DEF
 
@@ -36,17 +37,17 @@ TOKEN_KEYWORDS(SYM_DEF)
 // symbols and AST nodes for predefined types (defined in types.h)
 typedef struct Node Node;
 #define SYM_DEF(name) \
-  const Sym sym_##name; \
-  Node* Type_##name;
+  extern const Sym sym_##name; \
+  extern Node* Type_##name;
 TYPE_SYMS(SYM_DEF)
 TYPE_SYMS_PRIVATE(SYM_DEF)
 #undef SYM_DEF
 
 // nil is special and implemented without macros since its sym is defined by TOKEN_KEYWORDS
-Node* Type_nil;
+extern Node* Type_nil;
 
 // "ideal" is the type of untyped constants like "x = 4"
-Node* Type_ideal;
+extern Node* Type_ideal;
 
 // IMPL TypeCodeToTypeNode
 extern Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END];
@@ -63,8 +64,8 @@ inline static Node* TypeCodeToTypeNode(TypeCode t) {
   _( nil,   nil,    0 )         \
 /*END PREDEFINED_CONSTANTS*/
 #define SYM_DEF(name, _type, _val) \
-  const Sym sym_##name; \
-  Node* Const_##name;
+  extern const Sym sym_##name; \
+  extern Node* Const_##name;
 PREDEFINED_CONSTANTS(SYM_DEF)
 #undef SYM_DEF
 
@@ -75,7 +76,7 @@ PREDEFINED_CONSTANTS(SYM_DEF)
   ID( _ ) \
 /*END PREDEFINED_IDENTS*/
 #define SYM_DEF(name) \
-  const Sym sym_##name;
+  extern const Sym sym_##name;
 PREDEFINED_IDENTS(SYM_DEF)
 #undef SYM_DEF
 
@@ -87,3 +88,5 @@ inline static Tok sym_langtok(Sym s) {
   u8 kwindex = symflags(s);
   return kwindex == 0 ? TId : TKeywordsStart + kwindex;
 }
+
+ASSUME_NONNULL_END

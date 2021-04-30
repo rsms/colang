@@ -22,7 +22,7 @@ static_assert(sizeof(SymRBNode) == sizeof(RBNode), "");
 // sym_xxhash32_seed is the xxHash seed used for hashing sym data
 static const u32 sym_xxhash32_seed = 578;
 
-#define HASH_SYM_DATA(data, len) XXH32((const char*)(data), (len), sym_xxhash32_seed)
+#define HASH_SYM_DATA(data, len) XXH32((const void*)(data), (len), sym_xxhash32_seed)
 
 inline static RBNode* RBAllocNode(Mem mem) {
   return (RBNode*)memalloct(mem, RBNode);

@@ -1,4 +1,5 @@
 // Note: intentionally not "#pragma once"
+ASSUME_NONNULL_BEGIN
 
 // example:
 // #define HASHMAP_NAME     FooMap
@@ -44,20 +45,20 @@ HASHMAP_NAME* HM_FUN(New)(u32 initbuckets, Mem)
 void HM_FUN(Free)(HASHMAP_NAME*);
 
 // Init initializes a map structure. initbuckets is the number of initial buckets.
-void HM_FUN(Init)(HASHMAP_NAME*, u32 initbuckets, Mem);
+void HM_FUN(Init)(HASHMAP_NAME*, u32 initbuckets, Mem nullable mem);
 
 // Dispose frees buckets data (but not the hashmap itself.)
 // The hashmap is invalid after this call. Call Init to reuse.
 void HM_FUN(Dispose)(HASHMAP_NAME*);
 
 // Get searches for key. Returns value, or NULL if not found.
-HASHMAP_VALUE HM_FUN(Get)(const HASHMAP_NAME*, HASHMAP_KEY key);
+HASHMAP_VALUE nullable HM_FUN(Get)(const HASHMAP_NAME*, HASHMAP_KEY key);
 
 // Set inserts key=value into m. Returns the replaced value or NULL if not found.
-HASHMAP_VALUE HM_FUN(Set)(HASHMAP_NAME*, HASHMAP_KEY key, HASHMAP_VALUE value);
+HASHMAP_VALUE nullable HM_FUN(Set)(HASHMAP_NAME*, HASHMAP_KEY key, HASHMAP_VALUE value);
 
 // Del removes value for key. Returns the removed value or NULL if not found.
-HASHMAP_VALUE HM_FUN(Del)(HASHMAP_NAME*, HASHMAP_KEY key);
+HASHMAP_VALUE nullable HM_FUN(Del)(HASHMAP_NAME*, HASHMAP_KEY key);
 
 // Clear removes all entries. In contrast to Free, map remains valid.
 void HM_FUN(Clear)(HASHMAP_NAME*);
@@ -74,3 +75,6 @@ void HM_FUN(Iter)(const HASHMAP_NAME*, HM_FUN(Iterator)*, void* userdata);
 #undef HM_FUN
 
 #endif /* HASHMAP_INCLUDE_DECLARATIONS */
+
+
+ASSUME_NONNULL_END

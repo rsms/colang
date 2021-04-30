@@ -1,7 +1,7 @@
 // example:
 // #define HASHMAP_NAME     FooMap
 // #define HASHMAP_KEY      Foo
-// #define HASHMAP_KEY_HASH FooHash  // should return an unsigned integer
+// #define HASHMAP_KEY_HASH FooHash  // should return size_t
 // #define HASHMAP_VALUE    char*
 #ifndef HASHMAP_NAME
   #error "please define HASHMAP_NAME"
@@ -87,7 +87,7 @@ void HM_FUN(Free)(HASHMAP_NAME* m) {
 
 
 static void mapGrow(HASHMAP_NAME* m) {
-  u32 cap = m->cap * 2;
+  size_t cap = m->cap * 2;
   rehash: {
     auto newbuckets = (Bucket*)memalloc(m->mem, cap * sizeof(Bucket));
     for (u32 bi = 0; bi < m->cap; bi++) {
@@ -101,7 +101,7 @@ static void mapGrow(HASHMAP_NAME* m) {
           // skip deleted entry (compactation)
           continue;
         }
-        u32 index = ((u32)HASHMAP_KEY_HASH(e->key)) % cap;
+        size_t index = ((size_t)HASHMAP_KEY_HASH(e->key)) % cap;
         auto newb = &newbuckets[index];
         bool fit = false;
         for (u32 i2 = 0; i2 < HASHMAP_BUCKET_ENTRIES; i2++) {
@@ -136,7 +136,7 @@ static void mapGrow(HASHMAP_NAME* m) {
 HASHMAP_VALUE HM_FUN(Set)(HASHMAP_NAME* m, HASHMAP_KEY key, HASHMAP_VALUE value) {
   assert(value != NULL);
   while (1) { // grow loop
-    u32 index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
+    size_t index = ((size_t)HASHMAP_KEY_HASH(key)) % m->cap;
     auto b = &((Bucket*)m->buckets)[index];
     // dlog("bucket(key=\"%s\") #%u  b=%p e=%p", key, index, b, &b->entries[0]);
     for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
@@ -164,7 +164,7 @@ HASHMAP_VALUE HM_FUN(Set)(HASHMAP_NAME* m, HASHMAP_KEY key, HASHMAP_VALUE value)
 
 
 HASHMAP_VALUE HM_FUN(Del)(HASHMAP_NAME* m, HASHMAP_KEY key) {
-  u32 index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
+  size_t index = ((size_t)HASHMAP_KEY_HASH(key)) % m->cap;
   auto b = &((Bucket*)m->buckets)[index];
   for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
     auto e = &b->entries[i];
@@ -184,7 +184,7 @@ HASHMAP_VALUE HM_FUN(Del)(HASHMAP_NAME* m, HASHMAP_KEY key) {
 
 
 HASHMAP_VALUE HM_FUN(Get)(const HASHMAP_NAME* m, HASHMAP_KEY key) {
-  u32 index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
+  size_t index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
   auto b = &((Bucket*)m->buckets)[index];
   for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
     auto e = &b->entries[i];

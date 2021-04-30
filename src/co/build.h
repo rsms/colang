@@ -1,6 +1,8 @@
 #pragma once
 #include "util/sym.h"
 
+ASSUME_NONNULL_BEGIN
+
 typedef struct Pkg Pkg;
 typedef struct Source Source;
 typedef struct SrcPos SrcPos;
@@ -24,6 +26,7 @@ typedef struct Build {
   SymPool*               syms;     // symbol pool
   ErrorHandler* nullable errh;     // error handler
   void* nullable         userdata; // custom user data passed to error handler
+  u32                    errcount; // total number of errors since last call to build_init
 } Build;
 
 // SrcPos represents a source code location
@@ -42,7 +45,7 @@ typedef struct { u32 line; u32 col; } LineCol;
 typedef struct Pkg {
   Mem         mem;     // memory for resources only needed by this package
   const char* dir;     // directory filename
-  Str         id;      // fully qualified name (e.g. "bar/cat/foo")
+  Str         id;      // fully qualified name (e.g. "bar/cat/foo") (TODO: consider using a Sym)
   Str         name;    // relative name (e.g. "foo")
   Source*     srclist; // linked list of sources
 } Pkg;
@@ -75,7 +78,11 @@ void build_init(Build*,
 void build_dispose(Build*);
 
 // build_errf formats a message including source position and invokes ctx->errh
-void build_errf(const Build* ctx, SrcPos, const char* format, ...);
+void build_errf(Build*, SrcPos, const char* format, ...);
+
+// build_get_source returns the source file corresponding to SrcPos.
+// Returns NULL if SrcPos does not name a source in the build (e.g. for generated code.)
+const Source* nullable build_get_source(const Build*, SrcPos);
 
 #if R_UNIT_TEST_ENABLED
 // test_build_new creates a new Build in a new isolated Mem space with new pkg and syms
@@ -107,3 +114,5 @@ Str SrcPosFmtv(SrcPos, Str s, const char* fmt, va_list);
 
 // SrcPosStr appends "file:line:col" to s
 Str SrcPosStr(SrcPos, Str s);
+
+ASSUME_NONNULL_END

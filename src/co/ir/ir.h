@@ -4,6 +4,8 @@
 #include "../types.h"
 #include "op.h"
 
+ASSUME_NONNULL_BEGIN
+
 
 typedef enum IRBlockKind {
   IRBlockInvalid = 0,
@@ -79,8 +81,8 @@ typedef struct IRFun {
   Array        blocks; void* blocksStorage[4]; // IRBlock*[]
   Sym          typeid; // TypeCode encoding
   Sym nullable name;
-  SrcPos       pos;    // source position
-  u32          nargs;  // number of arguments
+  SrcPos       pos;     // source position
+  u32          nparams; // number of parameters
 
   // internal; valid only during building
   u32    bid;    // block ID allocator
@@ -92,16 +94,21 @@ typedef struct IRFun {
 // Pkg represents a package with functions and data
 typedef struct IRPkg {
   Mem nullable mem; // owning allocator
-  const char*  name; // c-string. "_" if NULL is passed for name to IRPkgNew. TODO use Sym?
+  const char*  id;  // c-string. "_" if NULL is passed for name to IRPkgNew. (TODO use Sym?)
   // TODO: Move the PtrMap funs from builder here. Need to make PtrMap use Mem.
   Array funs; void* funsStorage[4]; // IRFun*[]
 } IRPkg;
 
 
-IRValue* IRValueNew(IRFun* f, IRBlock* b/*null*/, IROp op, TypeCode type, const SrcPos*/*null*/);
-void IRValueAddComment(IRValue* v, Mem nullable, ConstStr comment);
-void IRValueAddArg(IRValue* v, IRValue* arg);
+IRPkg* IRPkgNew(Mem nullable, const char* name/*null*/);
+void   IRPkgAddFun(IRPkg* pkg, IRFun* f);
 
+IRFun*   IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, SrcPos pos, u32 nparams);
+IRValue* IRFunGetConstBool(IRFun* f, bool value);
+IRValue* IRFunGetConstInt(IRFun* f, TypeCode t, u64 n);
+IRValue* IRFunGetConstFloat(IRFun* f, TypeCode t, double n);
+void     IRFunInvalidateCFG(IRFun*);
+void     IRFunMoveBlockToEnd(IRFun*, u32 blockIndex); // moves block at index to end of f->blocks
 
 IRBlock* IRBlockNew(IRFun* f, IRBlockKind, const SrcPos* nullable pos);
 void IRBlockDiscard(IRBlock* b); // removes it from b->f and frees memory of b.
@@ -113,25 +120,20 @@ void IRBlockDelPred(IRBlock* b, u32 index);
 void IRBlockSetSucc(IRBlock* b, u32 index, IRBlock* succ);
 void IRBlockDelSucc(IRBlock* b, u32 index);
 
-
-IRFun*   IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, SrcPos pos, u32 nargs);
-IRValue* IRFunGetConstBool(IRFun* f, bool value);
-IRValue* IRFunGetConstInt(IRFun* f, TypeCode t, u64 n);
-IRValue* IRFunGetConstFloat(IRFun* f, TypeCode t, double n);
-void     IRFunInvalidateCFG(IRFun*);
-void     IRFunMoveBlockToEnd(IRFun*, u32 blockIndex); // moves block at index to end of f->blocks
+IRValue* IRValueNew(IRFun*, IRBlock* nullable b, IROp, TypeCode, const SrcPos* nullable pos);
+void IRValueAddComment(IRValue* v, Mem nullable, ConstStr comment);
+void IRValueAddArg(IRValue* v, IRValue* arg);
 
 
-IRPkg* IRPkgNew(Mem nullable, const char* name/*null*/);
-void   IRPkgAddFun(IRPkg* pkg, IRFun* f);
-
-
-Str IRReprPkgStr(const IRPkg* f, Str init/*null*/);
+// IRReprPkgStr appends to append_to_str a human-readable representation of a package's IR.
+Str IRReprPkgStr(const IRPkg* f, Str append_to_str);
 
 
 // Note: Must use the same Mem for all calls to the same IRConstCache.
 // Note: addHint is only valid until the next call to a mutating function like Add.
-IRValue* IRConstCacheGet(
-  const IRConstCache* c, Mem nullable, TypeCode t, u64 value, int* out_addHint);
+IRValue* nullable IRConstCacheGet(
+  const IRConstCache*, Mem nullable mem, TypeCode, u64 value, int* out_addHint);
 IRConstCache* IRConstCacheAdd(
   IRConstCache* c, Mem nullable, TypeCode t, u64 value, IRValue* v, int addHint);
+
+ASSUME_NONNULL_END

@@ -14,6 +14,7 @@ void build_init(Build* b,
   b->pkg      = pkg;
   b->errh     = errh;
   b->userdata = userdata;
+  b->errcount = 0;
 }
 
 void build_dispose(Build* b) {
@@ -22,8 +23,9 @@ void build_dispose(Build* b) {
   #endif
 }
 
-void build_errf(const Build* ctx, SrcPos pos, const char* format, ...) {
-  if (ctx->errh == NULL)
+void build_errf(Build* b, SrcPos pos, const char* format, ...) {
+  b->errcount++;
+  if (b->errh == NULL)
     return;
 
   va_list ap;
@@ -33,8 +35,16 @@ void build_errf(const Build* ctx, SrcPos pos, const char* format, ...) {
     msg = str_appendfmtv(msg, format, ap);
   va_end(ap);
 
-  ctx->errh(pos, msg, ctx->userdata);
+  b->errh(pos, msg, b->userdata);
   str_free(msg);
+}
+
+const Source* nullable build_get_source(const Build* b, SrcPos pos) {
+  // TODO: considering implementing something like lico and Pos/XPos from go
+  //       https://golang.org/src/cmd/internal/src/pos.go
+  //       https://golang.org/src/cmd/internal/src/xpos.go
+  //       https://github.com/rsms/co/blob/master/src/pos.ts
+  return pos.src;
 }
 
 

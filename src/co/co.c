@@ -1,5 +1,7 @@
 #include <rbase/rbase.h>
 #include "parse/parse.h"
+#include "ir/ir.h"
+#include "ir/irbuilder.h"
 
 #ifdef CO_WITH_LLVM
 #include "llvm/llvm.h"
@@ -133,6 +135,14 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
+static void dump_ir(const IRPkg* pkg) {
+  auto s = IRReprPkgStr(pkg, str_new(512));
+  s = str_appendc(s, '\n');
+  fwrite(s, str_len(s), 1, stderr);
+  str_free(s);
+}
+
+
 static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
   dlog("parse_source %.*s", (int)str_len(src->filename), src->filename);
   Parser parser;
@@ -221,12 +231,26 @@ int cmd_build(int argc, const char* argv[argc]) {
   // package
   // TODO: call ResolveSym on pkgnode only if needed
   // resolve identifiers & types
+  printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
+  dump_ast("", pkgnode);
+  printf("————————————————————————————————————————————————————————————————\n");
   ResolveType(&build, pkgnode);
-  dump_ast("package: ", pkgnode);
+  dump_ast("", pkgnode);
+  if (build.errcount)
+    return 1;
+
+  // build IR
+  printf("————————————————————————————————————————————————————————————————\n");
+  IRBuilder irbuilder = {};
+  IRBuilderInit(&irbuilder, &build, IRBuilderComments);
+  IRBuilderAddAST(&irbuilder, pkgnode);
+  dump_ir(irbuilder.pkg);
+  IRBuilderDispose(&irbuilder);
 
   // emit target code
   #ifdef CO_WITH_LLVM
+  printf("————————————————————————————————————————————————————————————————\n");
   if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }

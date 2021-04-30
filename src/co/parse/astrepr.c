@@ -497,8 +497,7 @@ Str str_append_astnode(Str s, const Node* n) {
     break;
 
   case NLet: // let
-    // s = str_appendfmt(s, "%s=", n->field.name);
-    s = str_appendcstr(s, "let");
+    s = str_appendfmt(s, "let %s", n->field.name);
     break;
 
   case NArg: // foo
