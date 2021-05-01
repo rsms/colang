@@ -17,6 +17,7 @@ void build_init(Build* b,
   b->errcount  = 0;
   b->diaglevel = DiagMAX;
   ArrayInit(&b->diagarray);
+  posmap_init(&b->posmap, mem);
 }
 
 void build_dispose(Build* b) {

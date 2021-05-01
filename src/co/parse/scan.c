@@ -54,13 +54,15 @@ bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
   if (!SourceOpenBody(src))
     return false;
 
-  s->build     = build;
-  s->src       = src;
-  s->inp       = src->body;
-  s->inp0      = src->body;
-  s->inend     = src->body + src->len;
-  s->flags     = flags;
-  s->linestart = s->inp;
+  s->build        = build;
+  s->src          = src;
+  s->srcposorigin = posmap_origin(&build->posmap, src);
+  s->inp          = src->body;
+  s->inp0         = src->body;
+  s->inend        = src->body + src->len;
+  s->flags        = flags;
+  s->linestart    = s->inp;
+  s->lineno       = 1;
 
   return true;
 }
@@ -252,7 +254,7 @@ Tok ScannerNext(Scanner* s) {
     return s->tok;
   }
 
-  bool insertSemi = false;
+  bool insertSemi = false; // in a temp var because of scan_again
   s->tokstart = s->inp;
   s->tokend = s->tokstart + 1;
 

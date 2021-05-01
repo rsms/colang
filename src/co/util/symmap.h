@@ -1,4 +1,5 @@
 #pragma once
+#include "sym.h"
 
 // SymMap is a hash map that maps Sym => pointer
 #define HASHMAP_NAME SymMap

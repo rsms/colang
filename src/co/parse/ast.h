@@ -104,7 +104,12 @@ typedef struct NVal {
 
 typedef struct Node {
   NodeKind       kind; // kind of node (e.g. NId)
+
+  // TODO: replace SrcPos with Pos.
+  // TODO: add function for computing the end Pos for an AST node. E.g. last item of a tuple.
   SrcPos         pos;  // source origin & position
+  // Pos         pos;  // source origin & position
+
   Node* nullable type; // value type. null if unknown.
   union {
     void* _never; // for initializers

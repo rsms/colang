@@ -49,7 +49,7 @@ inline static void ArrayInit(Array* a) {
   a->onheap = true;
 }
 
-inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap){
+inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap) {
   a->v = ptr;
   a->cap = cap;
   a->len = 0;

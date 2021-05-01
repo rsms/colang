@@ -38,7 +38,7 @@ R_UNIT_TEST(scan_testutil) {
   );
   assert(expectlist != NULL);
   asserteq(expectlen, 4);
-  asserteq(expectlist[0].tok, TId)   ;
+  asserteq(expectlist[0].tok, TId);
   assert(strcmp(expectlist[0].value, "hello") == 0);
   memfree(NULL, expectlist);
 }
@@ -134,7 +134,7 @@ R_UNIT_TEST(scan_indent) {
 R_UNIT_TEST(scan_nulbyte) {
   // nul byte in source is invalid
   auto scanner = test_scanner_newn(ParseFlagsDefault, "a\0b", 3);
-  asserteq(ScannerNext(scanner), TId)   ;
+  asserteq(ScannerNext(scanner), TId);
   asserteq(ScannerNext(scanner), TNone);
   // expect error
   auto ctx = test_scanner_ctx(scanner);
@@ -151,25 +151,25 @@ R_UNIT_TEST(scan_id_sym) {
   auto scanner = test_scanner_new(ParseFlagsDefault, "hello foo hello foo");
 
   t = ScannerNext(scanner);
-  asserteq(t, TId)   ;
+  asserteq(t, TId);
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "hello") == 0);
   assert(symfind(scanner->build->syms, "hello", strlen("hello")) == scanner->name);
   auto hello_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
-  asserteq(t, TId)   ;
+  asserteq(t, TId);
   assert(scanner->name != NULL); // should have assigned a Sym
   assert(strcmp(scanner->name, "foo") == 0);
   assert(symfind(scanner->build->syms, "foo", strlen("foo")) == scanner->name);
   auto foo_sym1 = scanner->name;
 
   t = ScannerNext(scanner);
-  asserteq(t, TId)   ;
+  asserteq(t, TId);
   asserteq(scanner->name, hello_sym1); // should have resulted in same Sym (interned)
 
   t = ScannerNext(scanner);
-  asserteq(t, TId)   ;
+  asserteq(t, TId);
   asserteq(scanner->name, foo_sym1); // should have resulted in same Sym (interned)
 
   asserteq(ScannerNext(scanner), TSemi);
@@ -185,7 +185,7 @@ R_UNIT_TEST(scan_id_utf8) {
   { // valid unicode
     // 日本語 ("Japanese") U+65E5 U+672C U+8A9E
     auto scanner = test_scanner_new(ParseFlagsDefault, "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
-    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TId);
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
     auto ctx = test_scanner_ctx(scanner);
@@ -204,7 +204,7 @@ R_UNIT_TEST(scan_id_utf8) {
     //
     auto scanner = test_scanner_new(ParseFlagsDefault,
       "\xf0\x9f\x91\xa9\xf0\x9f\x8f\xbd\xe2\x80\x8d\xf0\x9f\x9a\x80");
-    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TId);
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
     auto ctx = test_scanner_ctx(scanner);
@@ -213,7 +213,7 @@ R_UNIT_TEST(scan_id_utf8) {
   }
   { // invalid unicode
     auto scanner = test_scanner_new(ParseFlagsDefault, "ab\xff");
-    asserteq(ScannerNext(scanner), TId)   ;
+    asserteq(ScannerNext(scanner), TId);
     asserteq(ScannerNext(scanner), TSemi);
     asserteq(ScannerNext(scanner), TNone);
     auto ctx = test_scanner_ctx(scanner);
@@ -224,6 +224,71 @@ R_UNIT_TEST(scan_id_utf8) {
     test_scanner_free(scanner);
   }
 }
+
+
+R_UNIT_TEST(scan_pos) {
+  // source position
+  Tok t;
+  Pos p;
+  auto scanner = test_scanner_new(ParseFlagsDefault, "a b\nc d, e");
+
+  // a
+  t = ScannerNext(scanner); asserteq(t, TId);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 1);
+  asserteq(pos_col(p), 1);
+  asserteq(pos_origin(p), 1); // 1 since the scanner from test_scanner_new has just one source
+
+  // b
+  t = ScannerNext(scanner); asserteq(t, TId);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 1);
+  asserteq(pos_col(p), 3);
+  asserteq(pos_origin(p), 1);
+
+  // line 1 ends
+  asserteq(ScannerNext(scanner), TSemi);
+
+  // c
+  t = ScannerNext(scanner); asserteq(t, TId);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 2);
+  asserteq(pos_col(p), 1);
+  asserteq(pos_origin(p), 1);
+
+  // d
+  t = ScannerNext(scanner); asserteq(t, TId);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 2);
+  asserteq(pos_col(p), 3);
+  asserteq(pos_origin(p), 1);
+
+  // ,
+  t = ScannerNext(scanner); asserteq(t, TComma);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 2);
+  asserteq(pos_col(p), 4);
+  asserteq(pos_origin(p), 1);
+
+  // e
+  t = ScannerNext(scanner); asserteq(t, TId);
+  p = ScannerPos(scanner);
+  asserteq(pos_line(p), 2);
+  asserteq(pos_col(p), 6);
+  asserteq(pos_origin(p), 1);
+
+  // ;
+  asserteq(ScannerNext(scanner), TSemi);
+
+  asserteq(ScannerNext(scanner), TNone);
+
+  auto ctx = test_scanner_ctx(scanner);
+  asserteq(ctx->nerrors, 0);
+  test_scanner_free(scanner);
+}
+
+
+// ScannerPos
 
 
 // --------------------------------------------------------------------------------------------

@@ -1,11 +1,12 @@
 #pragma once
 #include "util/sym.h"
 #include "util/array.h"
+#include "pos.h"
 
 ASSUME_NONNULL_BEGIN
 
-typedef struct Build Build;
-typedef struct Pkg Pkg;
+typedef struct Build  Build;
+typedef struct Pkg    Pkg;
 typedef struct Source Source;
 typedef struct SrcPos SrcPos;
 
@@ -13,6 +14,7 @@ typedef struct SrcPos SrcPos;
 // TODO: considering implementing something like lico and Pos/XPos from go
 //       https://golang.org/src/cmd/internal/src/pos.go
 //       https://golang.org/src/cmd/internal/src/xpos.go
+//       https://github.com/rsms/co/blob/master/src/pos.ts
 typedef struct SrcPos {
   Source* src;   // source
   u32     offs;  // offset into src->buf
@@ -49,15 +51,16 @@ typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
 // Build holds information for one "build" of one top-level package
 typedef struct Build {
-  Mem nullable           mem;       // memory space for AST nodes, diagnostics etc.
-  Pkg*                   pkg;       // top-level package for which we are building
-  CoOptType              opt;       // optimization type
-  SymPool*               syms;      // symbol pool
-  DiagHandler* nullable  diagh;     // diagnostics handler
-  void* nullable         userdata;  // custom user data passed to error handler
-  u32                    errcount;  // total number of errors since last call to build_init
-  DiagLevel              diaglevel; // diagnostics filter (some > diaglevel is ignored)
-  Array                  diagarray; // all diagnostic messages produced. Stored in mem.
+  Mem nullable          mem;       // memory space for AST nodes, diagnostics etc.
+  Pkg*                  pkg;       // top-level package for which we are building
+  CoOptType             opt;       // optimization type
+  SymPool*              syms;      // symbol pool
+  DiagHandler* nullable diagh;     // diagnostics handler
+  void* nullable        userdata;  // custom user data passed to error handler
+  u32                   errcount;  // total number of errors since last call to build_init
+  DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
+  Array                 diagarray; // all diagnostic messages produced. Stored in mem.
+  PosMap                posmap;    // maps Source <-> Pos
 } Build;
 
 // Pkg represents a package; a directory of source files

@@ -120,7 +120,7 @@ CType NodeIdealCType(const Node* n) {
 
 
 // NBad node
-static const Node _NodeBad = {NBad,{0,0,0},NULL,{0}};
+static const Node _NodeBad = {NBad,NoPos,NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
 

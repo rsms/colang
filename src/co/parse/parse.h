@@ -136,6 +136,7 @@ typedef struct Comment {
 typedef struct Scanner {
   Build*     build;        // build context (memory allocator, sympool, pkg, etc.)
   Source*    src;          // input source
+  u32        srcposorigin;
   ParseFlags flags;
   const u8*  inp;          // input buffer current pointer
   const u8*  inp0;         // input buffer previous pointer
@@ -166,6 +167,9 @@ Tok ScannerNext(Scanner*);
 
 // ScannerSrcPos returns the source position of s->tok (current token)
 static SrcPos ScannerSrcPos(const Scanner* s);
+
+// ScannerPos returns the source position of s->tok (current token)
+static Pos ScannerPos(const Scanner* s);
 
 // ScannerTokStr returns a token's string value and length, which is a pointer
 // into the source's body.
@@ -249,7 +253,6 @@ inline static const u8* ScannerTokStr(const Scanner* s, size_t* len_out) {
   return s->tokstart;
 }
 
-// ScannerSrcPos returns the source position of s->tok (current token)
 inline static SrcPos ScannerSrcPos(const Scanner* s) {
   // assert(s->tokstart >= s->src->body);
   // assert(s->tokstart < (s->src->body + s->src->len));
@@ -258,6 +261,12 @@ inline static SrcPos ScannerSrcPos(const Scanner* s) {
   size_t offs = (size_t)(s->tokstart - s->src->body);
   size_t span = (size_t)(s->tokend - s->tokstart);
   return (SrcPos){ s->src, offs, span };
+}
+
+inline static Pos ScannerPos(const Scanner* s) {
+  u32 col = (u32)((uintptr_t)s->inp - (uintptr_t)s->linestart);
+  // dlog("s->srcposorigin %u, line %u, col %u", s->srcposorigin, s->lineno, col);
+  return pos_make(s->srcposorigin, s->lineno, col);
 }
 
 inline static Node* ConvlitExplicit(Build* ctx, Node* n, Node* t) {

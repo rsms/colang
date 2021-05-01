@@ -175,7 +175,6 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) {
     for (u32 i = 0; i < lasti; i++) {
       Node* cn = (Node*)n->array.a.v[i];
       auto t = resolve_type(ctx, cn, fl);
-      dlog("THING %d %d", t == Type_ideal, NodeIsConst(cn));
       if (t == Type_ideal && NodeIsConst(cn)) {
         // an unused constant expression, e.g.
         //   { 1  # <- warning: unused expression 1
