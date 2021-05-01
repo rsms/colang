@@ -183,10 +183,7 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NB
         //   { 1  # <- warning: unused expression 1
         //     2
         //   }
-        // Resolve its type so that the IR builder doesn't get cranky.
-        auto rt = ctx->typecontext;
-        resolve_ideal_type(ctx, cn, rt, fl);
-        build_warnf(ctx->build, cn->pos, NodeEndPos(cn), "unused expression %s", fmtnode(cn));
+        build_warnf(ctx->build, cn->pos, NodeEndPos(cn), "unused expression: %s", fmtnode(cn));
       }
     }
     // Last node, in which case we set the flag to resolve literals

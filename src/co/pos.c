@@ -86,7 +86,6 @@ static Str pos_add_src_context(const PosMap* pm, Pos start, Pos end, Str s, Sour
 
   // squiggle "~~~" or arrow "^"
   u32 span = pos_span(start);
-  dlog("endpos: %s", pos_str(pm, end, str_new(32)));
   if (pos_isknown(end)) {
     if (pos_line(start) == pos_line(end) && pos_isbefore(start, end))
       span = (u32)(pos_col(end) - pos_col(start)) + pos_span(end);

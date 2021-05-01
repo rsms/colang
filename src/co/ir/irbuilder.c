@@ -321,13 +321,9 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) {
 
 static IRValue* ast_add_let(IRBuilder* u, Node* n) {
   assert(n->kind == NLet);
-  assert(n->field.init != NULL);
-  if (n->type == NULL || n->type == Type_ideal) {
-    // this means the let binding is unused; the type resolver never bothered
-    // resolving it as nothing referenced it.
-    dlog("discard unused %s", fmtnode(n));
-    return NULL;
-  }
+  assertnotnull(n->field.init);
+  assertnotnull(n->type);
+  assert(n->type != Type_ideal);
   dlog("ast_add_let %s %s = %s",
     n->field.name ? n->field.name : "_",
     fmtnode(n->type),
@@ -575,7 +571,25 @@ static IRValue* ast_add_block(IRBuilder* u, Node* n) {  // language block, not I
 
 
 static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
-  assert(n->kind == NLet || n->type != NULL); // AST should be fully typed (let is an exception)
+  assertnotnull(n->type); // AST should be fully typed
+  if (R_UNLIKELY(n->type == Type_ideal)) {
+    // This means the expression is unused. It does not necessarily mean its value is unused,
+    // so it would not be accurate to issue diagnostic warnings at this point.
+    // For example:
+    //
+    //   fun foo {
+    //     x = 1    # <- the NLet node is unused but its value (NIntLit 3) ...
+    //     bar(x)   # ... is used by this NCall node.
+    //   }
+    //
+    // There's one exception which is unresolved let expressions with an unresolved value;
+    // that definitely means it's unused and we produce a diagnostic warning for that.
+    //
+    dlog("skip unused %s", fmtnode(n));
+    if (n->kind == NLet && n->field.init->type == Type_ideal)
+      build_warnf(u->build, n->pos, NodeEndPos(n), "unused expression: %s", fmtnode(n));
+    return NULL;
+  }
   switch (n->kind) {
     case NLet:      return ast_add_let(u, n);
     case NBlock:    return ast_add_block(u, n);
