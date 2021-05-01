@@ -117,7 +117,7 @@ static void endFun(IRBuilder* u) {
 
 
 static IRValue* TODO_Value(IRBuilder* u) {
-  return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, /*SrcPos*/NULL);
+  return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, NoPos);
 }
 
 
@@ -234,8 +234,8 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) {
   auto inval = ast_add_expr(u, n->call.args);
   auto dstType = n->call.receiver;
 
-  if (dstType->kind != NBasicType) {
-    build_errf(u->build, n->pos, "invalid type %s in type cast", fmtnode(dstType));
+  if (R_UNLIKELY(dstType->kind != NBasicType)) {
+    build_errf(u->build, n->pos, NoPos, "invalid type %s in type cast", fmtnode(dstType));
     return TODO_Value(u);
   }
 
@@ -250,12 +250,12 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) {
     return inval;
   }
   IROp convop = IROpConvertType(inval->type, totype);
-  if (convop == OpNil) {
-    build_errf(u->build, n->pos, "invalid type conversion %s to %s",
+  if (R_UNLIKELY(convop == OpNil)) {
+    build_errf(u->build, n->pos, NoPos, "invalid type conversion %s to %s",
       TypeCodeName(inval->type), TypeCodeName(dstType->t.basic.typeCode));
     return TODO_Value(u);
   }
-  auto v = IRValueNew(u->f, u->b, convop, totype, &n->pos);
+  auto v = IRValueNew(u->f, u->b, convop, totype, n->pos);
   IRValueAddArg(v, inval);
   return v;
 }
@@ -263,12 +263,12 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) {
 
 static IRValue* ast_add_arg(IRBuilder* u, Node* n) {
   assert(n->kind == NArg);
-  if (n->type->kind != NBasicType) {
+  if (R_UNLIKELY(n->type->kind != NBasicType)) {
     // TODO add support for NTupleType et al
-    build_errf(u->build, n->pos, "invalid argument type %s", fmtnode(n->type));
+    build_errf(u->build, n->pos, NoPos, "invalid argument type %s", fmtnode(n->type));
     return TODO_Value(u);
   }
-  auto v = IRValueNew(u->f, u->b, OpArg, n->type->t.basic.typeCode, &n->pos);
+  auto v = IRValueNew(u->f, u->b, OpArg, n->type->t.basic.typeCode, n->pos);
   v->auxInt = n->field.index;
   return v;
 }
@@ -312,7 +312,7 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) {
   TypeCode restype = n->type->t.basic.typeCode;
   #endif
 
-  auto v = IRValueNew(u->f, u->b, op, restype, &n->pos);
+  auto v = IRValueNew(u->f, u->b, op, restype, n->pos);
   IRValueAddArg(v, left);
   IRValueAddArg(v, right);
   return v;
@@ -371,9 +371,9 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
 
   // generate control condition
   auto control = ast_add_expr(u, n->cond.cond);
-  if (control->type != TypeCode_bool) {
+  if (R_UNLIKELY(control->type != TypeCode_bool)) {
     // AST should not contain conds that are non-bool
-    build_errf(u->build, n->cond.cond->pos,
+    build_errf(u->build, n->cond.cond->pos, NoPos,
       "invalid non-bool type in condition %s", fmtnode(n->cond.cond));
   }
 
@@ -389,7 +389,7 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
     // else branch always taken
     if (n->cond.elseb == NULL) {
       dlog("TODO ir/builder produce nil value");
-      return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, &n->pos);
+      return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, n->pos);
     }
     return ast_add_expr(u, n->cond.elseb);
   }
@@ -400,10 +400,9 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
   IRBlockSetControl(ifb, control);
 
   // create blocks for then and else branches
-  auto thenb = IRBlockNew(u->f, IRBlockCont, &n->cond.thenb->pos);
+  auto thenb = IRBlockNew(u->f, IRBlockCont, n->cond.thenb->pos);
   auto elsebIndex = u->f->blocks.len; // may be used later for moving blocks
-  auto elseb = IRBlockNew(u->f, IRBlockCont,
-    n->cond.elseb == NULL ? &n->pos : &n->cond.elseb->pos);
+  auto elseb = IRBlockNew(u->f, IRBlockCont, n->cond.elseb == NULL ? n->pos : n->cond.elseb->pos);
   ifb->succs[0] = thenb;
   ifb->succs[1] = elseb; // if -> then, else
 
@@ -421,7 +420,7 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
 
     // allocate "cont" block; the block following both thenb and elseb
     auto contbIndex = u->f->blocks.len;
-    auto contb = IRBlockNew(u->f, IRBlockCont, &n->pos);
+    auto contb = IRBlockNew(u->f, IRBlockCont, n->pos);
 
     // begin "else" block
     dlog("[if] begin \"else\" block");
@@ -555,7 +554,7 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
   }
 
   // make Phi, joining the two branches together
-  auto phi = IRValueNew(u->f, u->b, OpPhi, thenv->type, &n->pos);
+  auto phi = IRValueNew(u->f, u->b, OpPhi, thenv->type, n->pos);
   assertf(u->b->preds[0] != NULL, "phi in block without predecessors");
   phi->args[0] = thenv;
   phi->args[1] = elsev;
@@ -611,7 +610,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NNone:
     case NBad:
     case _NodeKindMax:
-      build_errf(u->build, n->pos, "invalid AST node %s", NodeKindName(n->kind));
+      build_errf(u->build, n->pos, NoPos, "invalid AST node %s", NodeKindName(n->kind));
       break;
   }
   return TODO_Value(u);
@@ -638,7 +637,7 @@ static IRFun* ast_add_fun(IRBuilder* u, Node* n) {
   if (params)
     nparams = params->kind == NTuple ? params->array.a.len : 1;
   f = IRFunNew(u->mem, n->type->t.id, n->fun.name, n->pos, nparams);
-  auto entryb = IRBlockNew(f, IRBlockCont, &n->pos);
+  auto entryb = IRBlockNew(f, IRBlockCont, n->pos);
 
   // Since functions can be anonymous and self-referential, short-circuit using a PtrMap
   // Add the function before we generate its body.
@@ -724,7 +723,7 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
     case NTypeCast:
     case NZeroInit:
     case _NodeKindMax:
-      build_errf(u->build, n->pos, "invalid top-level AST node %s", NodeKindName(n->kind));
+      build_errf(u->build, n->pos, NoPos, "invalid top-level AST node %s", NodeKindName(n->kind));
       break;
   }
   return false;

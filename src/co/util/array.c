@@ -30,14 +30,14 @@ void ArraySort(Array* a, ArraySortFun f, void* userdata) {
 void ArrayGrow(Array* a, size_t addl, Mem mem) {
   u32 reqcap = a->cap + addl;
   u32 cap = align2(reqcap, ARRAY_CAP_STEP);
-  if (a->onheap || a->v == NULL) {
+  if (!a->onstack || a->v == NULL) {
     a->v = memrealloc(mem, a->v, sizeof(void*) * cap);
   } else {
     // moving array from stack to heap
     void** v = (void**)memalloc(mem, sizeof(void*) * cap);
     memcpy(v, a->v, sizeof(void*) * a->len);
     a->v = v;
-    a->onheap = true;
+    a->onstack = false;
   }
   a->cap = cap;
 }
@@ -87,7 +87,7 @@ void ArrayCopy(Array* a, u32 start, const void* src, u32 srclen, Mem mem) {
       // initial allocation to exactly the size needed
       a->v = (void*)memalloc(mem, sizeof(void*) * capNeeded);
       a->cap = capNeeded;
-      a->onheap = true;
+      a->onstack = false;
     } else {
       ArrayGrow(a, capNeeded - a->cap, mem);
     }

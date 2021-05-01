@@ -35,7 +35,7 @@ static Node* resolveId(Node* n, Scope* scope, ResCtx* ctx) {
       // dlog("  LOOKUP %s", n->ref.name);
       target = (Node*)ScopeLookup(scope, n->ref.name);
       if (target == NULL) {
-        build_errf(ctx->build, n->pos, "undefined symbol %s", name);
+        build_errf(ctx->build, n->pos, NoPos, "undefined symbol %s", name);
         n->ref.target = (Node*)NodeBad;
         return n;
       }
@@ -203,7 +203,7 @@ static Node* resolve(Node* n, Scope* scope, ResCtx* ctx) {
       if (recv->kind == NBasicType) {
         n->kind = NTypeCast;
       } else {
-        build_errf(ctx->build, n->pos, "cannot call %s", fmtnode(recv));
+        build_errf(ctx->build, recv->pos, NoPos, "cannot call %s", fmtnode(recv));
       }
     }
     break;

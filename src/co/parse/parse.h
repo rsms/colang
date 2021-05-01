@@ -165,9 +165,6 @@ void ScannerDispose(Scanner*);
 // ScannerNext scans the next token
 Tok ScannerNext(Scanner*);
 
-// ScannerSrcPos returns the source position of s->tok (current token)
-static SrcPos ScannerSrcPos(const Scanner* s);
-
 // ScannerPos returns the source position of s->tok (current token)
 static Pos ScannerPos(const Scanner* s);
 
@@ -253,20 +250,11 @@ inline static const u8* ScannerTokStr(const Scanner* s, size_t* len_out) {
   return s->tokstart;
 }
 
-inline static SrcPos ScannerSrcPos(const Scanner* s) {
-  // assert(s->tokstart >= s->src->body);
-  // assert(s->tokstart < (s->src->body + s->src->len));
-  // assert(s->tokend >= s->tokstart);
-  // assert(s->tokend <= (s->src->body + s->src->len));
-  size_t offs = (size_t)(s->tokstart - s->src->body);
-  size_t span = (size_t)(s->tokend - s->tokstart);
-  return (SrcPos){ s->src, offs, span };
-}
-
 inline static Pos ScannerPos(const Scanner* s) {
-  u32 col = (u32)((uintptr_t)s->inp - (uintptr_t)s->linestart);
-  // dlog("s->srcposorigin %u, line %u, col %u", s->srcposorigin, s->lineno, col);
-  return pos_make(s->srcposorigin, s->lineno, col);
+  // assert(s->tokend >= s->tokstart);
+  u32 col = 1 + (u32)((uintptr_t)s->tokstart - (uintptr_t)s->linestart);
+  u32 span = s->tokend - s->tokstart;
+  return pos_make(s->srcposorigin, s->lineno, col, span);
 }
 
 inline static Node* ConvlitExplicit(Build* ctx, Node* n, Node* t) {

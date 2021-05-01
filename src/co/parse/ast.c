@@ -12,6 +12,11 @@
 // #define DEBUG_LOOKUP
 
 
+// NBad node
+static const Node _NodeBad = {NBad,NoPos,NULL,{0}};
+const Node* NodeBad = &_NodeBad;
+
+
 // Lookup table N<kind> => name
 static const char* const NodeKindNameTable[] = {
   #define I_ENUM(name, _cls) #name,
@@ -20,26 +25,64 @@ static const char* const NodeKindNameTable[] = {
 };
 
 // Lookup table N<kind> => NClass<class>
-const NodeClass NodeClassTable[_NodeKindMax] = {
-  #define I_ENUM(_name, cls) NodeClass##cls,
+const NodeClassFlags _NodeClassTable[_NodeKindMax] = {
+  #define I_ENUM(_name, flags) flags,
   DEF_NODE_KINDS(I_ENUM)
   #undef  I_ENUM
 };
+
+
+Node* NewNode(Mem nullable mem, NodeKind kind) {
+  Node* n = (Node*)memalloc(mem, sizeof(Node));
+  n->kind = kind;
+  auto cfl = NodeKindClass(kind);
+  if (R_UNLIKELY((cfl & NodeClassArray) != 0)) {
+    if (cfl & NodeClassType) {
+      ArrayInitWithStorage(&n->t.array.a, n->t.array.a_storage, countof(n->t.array.a_storage));
+    } else {
+      ArrayInitWithStorage(&n->array.a, n->array.a_storage, countof(n->array.a_storage));
+    }
+  }
+  return n;
+}
 
 
 const char* NodeKindName(NodeKind t) {
   return NodeKindNameTable[t];
 }
 
-const char* NodeClassName(NodeClass c) {
-  switch (c) {
-    case NodeClassInvalid: return "Invalid";
-    case NodeClassConst:   return "Const";
-    case NodeClassExpr:    return "Expr";
-    case NodeClassType:    return "Type";
-  }
-  return "NodeClass?";
+
+#ifdef DEBUG
+const char* _DebugNodeClassStr(NodeClassFlags fl, u32 lineno) {
+  if (fl == 0)
+    return "invalid";
+  // select a temporary buffer to use
+  static char bufs[4][256];
+  static u32 bufsn = 0;
+  char* buf = bufs[(lineno + bufsn++) % countof(bufs)];
+  u32 len = 0;
+
+  #define APPEND(cstr) ({       \
+    size_t z = strlen(cstr);    \
+    if (len > 0)                \
+      buf[len++] = '|';         \
+    memcpy(buf+len, (cstr), z); \
+    len += z;                   \
+  })
+
+  // category
+  if (fl & NodeClassConst) APPEND("const");
+  if (fl & NodeClassExpr)  APPEND("expr");
+  if (fl & NodeClassType)  APPEND("type");
+
+  // data attributes
+  if (fl & NodeClassArray) APPEND("array");
+
+  #undef APPEND
+  buf[len] = 0;
+  return buf;
 }
+#endif
 
 
 const Node* NodeEffectiveType(const Node* n) {
@@ -119,9 +162,24 @@ CType NodeIdealCType(const Node* n) {
 }
 
 
-// NBad node
-static const Node _NodeBad = {NBad,NoPos,NULL,{0}};
-const Node* NodeBad = &_NodeBad;
+Node* nullable ArrayNodeLast(Node* n) {
+  assert(NodeKindClass(n->kind) & NodeClassArray);
+  if (n->array.a.len == 0)
+    return NULL;
+  return n->array.a.v[n->array.a.len - 1];
+}
+
+Pos NodeEndPos(Node* n) {
+  // returns the Pos representing the logical inclusive end of the node.
+  // For example, for a tuple that is the pos of the last element.
+  // Returns NoPos if the end of the node is the same as n->pos.
+  Node* lastn = NULL;
+  if (NodeKindClass(n->kind) & NodeClassArray) {
+    lastn = ArrayNodeLast(n);
+  }
+  // TODO: more node types and configurations
+  return lastn ? lastn->pos : NoPos;
+}
 
 
 // void NodeListAppend(Mem mem, NodeList* a, Node* n) {

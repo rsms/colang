@@ -80,10 +80,10 @@ void ScannerDispose(Scanner* s) {
 
 // serr is called when an error occurs. It invokes s->errh
 static void serr(Scanner* s, const char* fmt, ...) {
-  auto pos = ScannerSrcPos(s);
+  auto pos = ScannerPos(s);
   va_list ap;
   va_start(ap, fmt);
-  build_diagv(s->build, DiagError, pos, fmt, ap);
+  build_diagv(s->build, DiagError, pos, NoPos, fmt, ap);
   va_end(ap);
 }
 
@@ -93,14 +93,20 @@ static void serr(Scanner* s, const char* fmt, ...) {
     return t == TId || t == TIntLit || t == TFloatLit || t == TIndent;
   }
   static void debug_token_production(Scanner* s) {
-    auto posstr = SrcPosStr(ScannerSrcPos(s), str_new(32));
-    if (tok_has_value(s->tok)) {
-      size_t vallen;
-      const u8* valptr = ScannerTokStr(s, &vallen);
-      dlog(">> %-7s \"%.*s\"\tat %s", TokName(s->tok), (int)vallen, valptr, posstr);
-    } else {
-      dlog(">> %-7s\tat %s", TokName(s->tok), posstr);
-    }
+    auto posstr = pos_str(&s->build->posmap, ScannerPos(s), str_new(32));
+    static size_t vallen_max = 8; // global; yolo
+    const int tokname_max = (int)strlen("keyword interface");
+    size_t vallen = 0;
+    const char* valptr = NULL;
+    if (tok_has_value(s->tok))
+      valptr = (const char*)ScannerTokStr(s, &vallen);
+
+    vallen_max = MAX(vallen_max, vallen);
+    dlog(">> %-*s %.*s%*s %s",
+        tokname_max, TokName(s->tok),
+        (int)vallen, valptr,
+        (int)(vallen_max - vallen), "",
+        posstr);
     str_free(posstr);
   }
 #else

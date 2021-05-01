@@ -43,12 +43,6 @@ TYPE_SYMS(SYM_DEF)
 TYPE_SYMS_PRIVATE(SYM_DEF)
 #undef SYM_DEF
 
-// nil is special and implemented without macros since its sym is defined by TOKEN_KEYWORDS
-extern Node* Type_nil;
-
-// "ideal" is the type of untyped constants like "x = 4"
-extern Node* Type_ideal;
-
 // IMPL TypeCodeToTypeNode
 extern Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END];
 inline static Node* TypeCodeToTypeNode(TypeCode t) {

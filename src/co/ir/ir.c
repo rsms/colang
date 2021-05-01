@@ -28,7 +28,7 @@ void IRPkgAddFun(IRPkg* pkg, IRFun* f) {
 // ===============================================================================================
 // fun
 
-IRFun* IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, SrcPos pos, u32 nparams) {
+IRFun* IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, Pos pos, u32 nparams) {
   auto f = (IRFun*)memalloc(mem, sizeof(IRFun));
   f->mem = mem;
   ArrayInitWithStorage(&f->blocks, f->blocksStorage, sizeof(f->blocksStorage)/sizeof(void*));
@@ -52,7 +52,7 @@ static IRValue* getConst64(IRFun* f, TypeCode t, u64 value) {
     auto op = IROpConstFromAST(t);
     assert(IROpInfo(op)->aux != IRAuxNone);
     // Create const operation and add it to the entry block of function f
-    v = IRValueNew(f, f->blocks.v[0], op, t, /*SrcPos*/NULL);
+    v = IRValueNew(f, f->blocks.v[0], op, t, NoPos);
     v->auxInt = value;
     f->consts = IRConstCacheAdd(f->consts, f->mem, t, value, v, addHint);
     // dlog("getConst64 add new const op=%s value=%llX => v%u", IROpNames[op], value, v->id);
@@ -114,15 +114,13 @@ void IRFunInvalidateCFG(IRFun* f) {
 // ===============================================================================================
 // block
 
-IRBlock* IRBlockNew(IRFun* f, IRBlockKind kind, const SrcPos* pos/*?*/) {
+IRBlock* IRBlockNew(IRFun* f, IRBlockKind kind, Pos pos) {
   assert(f->bid < 0xFFFFFFFF); // too many block IDs generated
   auto b = memalloct(f->mem, IRBlock);
   b->f = f;
   b->id = f->bid++;
   b->kind = kind;
-  if (pos != NULL) {
-    b->pos = *pos;
-  }
+  b->pos = pos;
   ArrayInitWithStorage(&b->values, b->valuesStorage, sizeof(b->valuesStorage)/sizeof(void*));
   ArrayPush(&f->blocks, b, b->f->mem);
   return b;
@@ -244,14 +242,13 @@ void IRBlockDelSucc(IRBlock* b, u32 index) {
 // ===============================================================================================
 // value
 
-IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, const SrcPos* pos) {
+IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, Pos pos) {
   assert(f->vid < 0xFFFFFFFF); // too many block IDs generated
   auto v = (IRValue*)memalloc(f->mem, sizeof(IRValue));
   v->id = f->vid++;
   v->op = op;
   v->type = type;
-  if (pos)
-    v->pos = *pos;
+  v->pos = pos;
   if (b != NULL) {
     ArrayPush(&b->values, v, b->f->mem);
   } else {

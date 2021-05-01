@@ -204,6 +204,7 @@ int cmd_build(int argc, const char* argv[argc]) {
     if (errno != ENOTDIR)
       panic("%s (errno %d %s)", pkg.dir, errno, strerror(errno));
     // guessed wrong; it's probably a file
+    errno = 0; // clear errno to make errlog messages sane
     pkg.dir = path_dir(argv[2]);
     if (!PkgAddFileSource(&pkg, argv[2]))
       panic("%s (errno %d %s)", argv[2], errno, strerror(errno));
@@ -235,12 +236,14 @@ int cmd_build(int argc, const char* argv[argc]) {
   // resolve identifiers & types
   printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
-  dump_ast("", pkgnode);
-  printf("————————————————————————————————————————————————————————————————\n");
+  // dump_ast("", pkgnode);
+  // printf("————————————————————————————————————————————————————————————————\n");
   ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
-  if (build.errcount)
+  if (build.errcount) {
+    errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
+  }
 
   // build IR
   printf("————————————————————————————————————————————————————————————————\n");

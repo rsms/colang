@@ -1,17 +1,17 @@
 #pragma once
 ASSUME_NONNULL_BEGIN
 
-// Array is a dynamic linear container
+// Array is a dynamic linear container. Valid when zero-initialized.
 typedef struct Array {
   void** v;       // entries
   u32    cap;     // capacity of v
   u32    len;     // valid entries at v
-  bool   onheap;  // false if v is space on stack
+  bool   onstack; // true if v is space on stack
 } Array;
 
-#define Array_INIT { NULL, 0, 0, true }
-#define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, false }
-#define Array_INIT_ON_STACK(initcap) ({ void* st[initcap]; (Array){ st, initcap, 0, false }; })
+#define Array_INIT { NULL, 0, 0, false }
+#define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, true }
+#define Array_INIT_ON_STACK(initcap) ({ void* st[initcap]; (Array){ st, initcap, 0, true }; })
 
 static void  ArrayInit(Array* a);
 static void  ArrayInitWithStorage(Array* a, void* storage, u32 storagecap);
@@ -46,22 +46,21 @@ inline static void ArrayInit(Array* a) {
   a->v = 0;
   a->cap = 0;
   a->len = 0;
-  a->onheap = true;
+  a->onstack = false;
 }
 
 inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap) {
   a->v = ptr;
   a->cap = cap;
   a->len = 0;
-  a->onheap = false;
+  a->onstack = true;
 }
 
 inline static void ArrayFree(Array* a, Mem nullable mem) {
-  if (a->onheap) {
+  if (!a->onstack) {
     memfree(mem, a->v);
     #if DEBUG
-    a->v = NULL;
-    a->cap = 0;
+    memset(a, 0, sizeof(*a));
     #endif
   }
 }

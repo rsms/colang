@@ -43,7 +43,7 @@ typedef struct IRValue {
   u32      id;   // unique identifier
   IROp     op;   // operation that computes this value
   TypeCode type;
-  SrcPos   pos;  // source position
+  Pos      pos;  // source position
   IRValue* args[3]; u8 argslen; // arguments
   union {
     i64 auxInt; // floats are stored as reinterpreted bits
@@ -59,7 +59,7 @@ typedef struct IRBlock {
   u32         id;       // block ID
   IRBlockKind kind;     // kind of block
   bool        sealed;   // true if no further predecessors will be added
-  SrcPos      pos;      // source position
+  Pos         pos;      // source position
   const char* comment;  // short comment for IR formatting. May be NULL.
   IRBlock*    succs[2]; // Successor/subsequent blocks (CFG)
   IRBlock*    preds[2]; // Predecessors (CFG)
@@ -81,7 +81,7 @@ typedef struct IRFun {
   Array        blocks; void* blocksStorage[4]; // IRBlock*[]
   Sym          typeid; // TypeCode encoding
   Sym nullable name;
-  SrcPos       pos;     // source position
+  Pos          pos;     // source position
   u32          nparams; // number of parameters
 
   // internal; valid only during building
@@ -103,14 +103,14 @@ typedef struct IRPkg {
 IRPkg* IRPkgNew(Mem nullable, const char* name/*null*/);
 void   IRPkgAddFun(IRPkg* pkg, IRFun* f);
 
-IRFun*   IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, SrcPos pos, u32 nparams);
+IRFun*   IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, Pos pos, u32 nparams);
 IRValue* IRFunGetConstBool(IRFun* f, bool value);
 IRValue* IRFunGetConstInt(IRFun* f, TypeCode t, u64 n);
 IRValue* IRFunGetConstFloat(IRFun* f, TypeCode t, double n);
 void     IRFunInvalidateCFG(IRFun*);
 void     IRFunMoveBlockToEnd(IRFun*, u32 blockIndex); // moves block at index to end of f->blocks
 
-IRBlock* IRBlockNew(IRFun* f, IRBlockKind, const SrcPos* nullable pos);
+IRBlock* IRBlockNew(IRFun* f, IRBlockKind, Pos pos);
 void IRBlockDiscard(IRBlock* b); // removes it from b->f and frees memory of b.
 void IRBlockAddValue(IRBlock* b, IRValue* v);
 void IRBlockSetControl(IRBlock* b, IRValue* v/*pass null to clear*/);
@@ -120,7 +120,7 @@ void IRBlockDelPred(IRBlock* b, u32 index);
 void IRBlockSetSucc(IRBlock* b, u32 index, IRBlock* succ);
 void IRBlockDelSucc(IRBlock* b, u32 index);
 
-IRValue* IRValueNew(IRFun*, IRBlock* nullable b, IROp, TypeCode, const SrcPos* nullable pos);
+IRValue* IRValueNew(IRFun*, IRBlock* nullable b, IROp, TypeCode, Pos pos);
 void IRValueAddComment(IRValue* v, Mem nullable, ConstStr comment);
 void IRValueAddArg(IRValue* v, IRValue* arg);
 

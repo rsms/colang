@@ -99,9 +99,8 @@ Str NValFmt(Str s, const NVal* v) {
 
 
 static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
-  if (n == NULL) {
+  if (n == NULL)
     return str_append(s, "(null)", 6);
-  }
 
   // dlog("nodeRepr %s", NodeKindName(n->kind));
   // if (n->kind == NId) {
@@ -356,8 +355,8 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NTupleType: {
     s = str_append(s, "(", 1);
     bool first = true;
-    for (u32 i = 0; i < n->t.tuple.a.len; i++) {
-      Node* cn = n->t.tuple.a.v[i];
+    for (u32 i = 0; i < n->t.array.a.len; i++) {
+      Node* cn = n->t.array.a.v[i];
       if (first) {
         first = false;
       } else {
@@ -420,7 +419,7 @@ Str str_append_astnode(Str s, const Node* n) {
   // Instead, in use sites, call fmtnode individually for n->type when needed.
 
   if (n == NULL)
-    return str_appendcstr(s, "nil");
+    return str_appendcstr(s, "<null>");
 
   switch (n->kind) {
 
@@ -525,7 +524,7 @@ Str str_append_astnode(Str s, const Node* n) {
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
-    s = str_append_NodeArray(s, &n->t.tuple.a);
+    s = str_append_NodeArray(s, &n->t.array.a);
     return str_appendc(s, ')');
 
   // The remaining types are not expected to appear. Use their kind if they do.

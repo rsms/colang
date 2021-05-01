@@ -8,20 +8,6 @@ ASSUME_NONNULL_BEGIN
 typedef struct Build  Build;
 typedef struct Pkg    Pkg;
 typedef struct Source Source;
-typedef struct SrcPos SrcPos;
-
-// SrcPos represents a source code location
-// TODO: considering implementing something like lico and Pos/XPos from go
-//       https://golang.org/src/cmd/internal/src/pos.go
-//       https://golang.org/src/cmd/internal/src/xpos.go
-//       https://github.com/rsms/co/blob/master/src/pos.ts
-typedef struct SrcPos {
-  Source* src;   // source
-  u32     offs;  // offset into src->buf
-  u32     span;  // span length. 0 = unknown or does no apply.
-} SrcPos;
-
-typedef struct { u32 line; u32 col; } LineCol;
 
 // CoOptType identifies an optimization type/strategy
 typedef enum CoOptType {
@@ -39,10 +25,11 @@ typedef enum DiagLevel {
 } DiagLevel;
 
 typedef struct Diagnostic {
-  DiagLevel   level;
-  SrcPos      pos;
-  const char* message;
   Build*      build;
+  DiagLevel   level;
+  Pos         startpos;
+  Pos         endpos;
+  const char* message;
 } Diagnostic;
 
 // DiagHandler callback type.
@@ -82,10 +69,6 @@ typedef struct Source {
   u8         sha1[20]; // SHA-1 checksum of body, set with SourceChecksum
   int        fd;       // file descriptor
   bool       ismmap;   // true if the file is memory-mapped
-
-  // state used by SrcPos functions (lazy-initialized)
-  u32* lineoffs; // line-start offsets into body
-  u32  nlines;   // total number of lines
 } Source;
 
 // build_init initializes a Build structure
@@ -108,18 +91,25 @@ static void build_emit_diag(Build* b, Diagnostic* d);
 Diagnostic* build_mkdiag(Build*);
 
 // build_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
-void build_diag(Build*, DiagLevel, SrcPos, const char* message);
+void build_diag(Build*, DiagLevel, Pos start, Pos end, const char* message);
 
 // build_diagv formats a diagnostic message invokes b->diagh
-void build_diagv(Build*, DiagLevel, SrcPos, const char* format, va_list);
+void build_diagv(Build*, DiagLevel, Pos start, Pos end, const char* format, va_list);
 
 // build_diagf formats a diagnostic message invokes b->diagh
-void build_diagf(Build*, DiagLevel, SrcPos, const char* format, ...) ATTR_FORMAT(printf, 4, 5);
+void build_diagf(Build*, DiagLevel, Pos start, Pos end, const char* format, ...)
+  ATTR_FORMAT(printf, 5, 6);
 
 // convenience macros for build_diagf
-#define build_errf(b, pos, fmt, ...)  build_diagf((b), DiagError, (pos), (fmt), ##__VA_ARGS__)
-#define build_warnf(b, pos, fmt, ...) build_diagf((b), DiagWarn, (pos), (fmt), ##__VA_ARGS__)
-#define build_infof(b, pos, fmt, ...) build_diagf((b), DiagInfo, (pos), (fmt), ##__VA_ARGS__)
+#define build_errf(b, startpos, endpos, fmt, ...) \
+  build_diagf((b), DiagError, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+
+#define build_warnf(b, startpos, endpos, fmt, ...) \
+  build_diagf((b), DiagWarn, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+
+#define build_infof(b, startpos, endpos, fmt, ...) \
+  build_diagf((b), DiagInfo, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+
 
 // diag_fmt appends to s a ready-to-print representation of a Diagnostic message.
 Str diag_fmt(Str s, const Diagnostic*);
@@ -133,9 +123,9 @@ void diag_free(Diagnostic*);
 // DiagLevelName returns a printable string like "error".
 const char* DiagLevelName(DiagLevel);
 
-// build_get_source returns the source file corresponding to SrcPos.
-// Returns NULL if SrcPos does not name a source in the build (e.g. for generated code.)
-const Source* nullable build_get_source(const Build*, SrcPos);
+// build_get_source returns the source file corresponding to Pos.
+// Returns NULL if Pos does not name a source in the build (e.g. for generated code.)
+static const Source* nullable build_get_source(const Build*, Pos);
 
 #if R_UNIT_TEST_ENABLED
 // test_build_new creates a new Build in a new isolated Mem space with new pkg and syms
@@ -155,21 +145,13 @@ bool SourceClose(Source* src);
 void SourceDispose(Source* src);
 void SourceChecksum(Source* src);
 
-// NoSrcPos is the "null" of SrcPos
-#define NoSrcPos (({ SrcPos p = {NULL,0,0}; p; }))
-
-// LineCol
-LineCol SrcPosLineCol(SrcPos);
-
-// SrcPosFmt appends "file:line:col: format ..." to s including contextual source details
-Str SrcPosFmt(SrcPos, Str s, const char* fmt, ...) ATTR_FORMAT(printf, 3, 4);
-Str SrcPosFmtv(SrcPos, Str s, const char* fmt, va_list);
-
-// SrcPosStr appends "file:line:col" to s
-Str SrcPosStr(SrcPos, Str s);
 
 // -----------------------------------------------------------------------------------------------
 // implementations
+
+inline static const Source* nullable build_get_source(const Build* b, Pos pos) {
+  return (Source*)pos_source(&b->posmap, pos);
+}
 
 inline static void build_emit_diag(Build* b, Diagnostic* d) {
   if (d->level <= b->diaglevel && b->diagh)

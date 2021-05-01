@@ -32,13 +32,13 @@ R_UNIT_TEST(array_stack_to_heap) {
   // initially stack allocated, then moves to heap
   Array a; void* storage[2];
   ArrayInitWithStorage(&a, storage, 2);
-  asserteq(a.onheap, false);
+  asserteq(a.onstack, true);
   ArrayPush(&a, (void*)1, NULL);
-  asserteq(a.onheap, false);
+  asserteq(a.onstack, true);
   ArrayPush(&a, (void*)2, NULL);
-  asserteq(a.onheap, false);
+  asserteq(a.onstack, true);
   ArrayPush(&a, (void*)3, NULL);  // visits ArrayGrow's "move stack to heap" branch
-  asserteq(a.onheap, true); // should have moved to heap
+  asserteq(a.onstack, false); // should have moved to heap
 
   asserteq(a.len, 3);
   asserteq(a.cap, ARRAY_CAP_STEP);

@@ -70,25 +70,25 @@ const Sym sym_$x2a = &"\x9C\x1C\x9F\x3C\x01\x00\x00\x00""*\0"[8];
 const Sym sym_0 = &"\xFE\xED\xFA\xA1\x01\x00\x00\x00""0\0"[8];
 
 
-static const Node _Type_bool = {NBasicType,{0,0,0},NULL,{.t={sym_b,.basic={TypeCode_bool,sym_bool}}}};
-static const Node _Type_int8 = {NBasicType,{0,0,0},NULL,{.t={sym_1,.basic={TypeCode_int8,sym_int8}}}};
-static const Node _Type_uint8 = {NBasicType,{0,0,0},NULL,{.t={sym_2,.basic={TypeCode_uint8,sym_uint8}}}};
-static const Node _Type_int16 = {NBasicType,{0,0,0},NULL,{.t={sym_3,.basic={TypeCode_int16,sym_int16}}}};
-static const Node _Type_uint16 = {NBasicType,{0,0,0},NULL,{.t={sym_4,.basic={TypeCode_uint16,sym_uint16}}}};
-static const Node _Type_int32 = {NBasicType,{0,0,0},NULL,{.t={sym_5,.basic={TypeCode_int32,sym_int32}}}};
-static const Node _Type_uint32 = {NBasicType,{0,0,0},NULL,{.t={sym_6,.basic={TypeCode_uint32,sym_uint32}}}};
-static const Node _Type_int64 = {NBasicType,{0,0,0},NULL,{.t={sym_7,.basic={TypeCode_int64,sym_int64}}}};
-static const Node _Type_uint64 = {NBasicType,{0,0,0},NULL,{.t={sym_8,.basic={TypeCode_uint64,sym_uint64}}}};
-static const Node _Type_float32 = {NBasicType,{0,0,0},NULL,{.t={sym_f,.basic={TypeCode_float32,sym_float32}}}};
-static const Node _Type_float64 = {NBasicType,{0,0,0},NULL,{.t={sym_F,.basic={TypeCode_float64,sym_float64}}}};
-static const Node _Type_int = {NBasicType,{0,0,0},NULL,{.t={sym_i,.basic={TypeCode_int,sym_int}}}};
-static const Node _Type_uint = {NBasicType,{0,0,0},NULL,{.t={sym_u,.basic={TypeCode_uint,sym_uint}}}};
-static const Node _Type_str = {NBasicType,{0,0,0},NULL,{.t={sym_s,.basic={TypeCode_str,sym_str}}}};
-static const Node _Type_ideal = {NBasicType,{0,0,0},NULL,{.t={sym_$x2a,.basic={TypeCode_ideal,sym_ideal}}}};
-static const Node _Type_nil = {NBasicType,{0,0,0},NULL,{.t={sym_0,.basic={TypeCode_nil,sym_nil}}}};
-static const Node _Const_true = {NBoolLit,{0,0,0},(Node*)&_Type_bool,{.val={CType_bool,.i=1}}};
-static const Node _Const_false = {NBoolLit,{0,0,0},(Node*)&_Type_bool,{.val={CType_bool,.i=0}}};
-static const Node _Const_nil = {NNil,{0,0,0},(Node*)&_Type_nil,{.val={CType_nil,.i=0}}};
+static const Node _Type_bool = {NBasicType,NoPos,NULL,{.t={sym_b,.basic={TypeCode_bool,sym_bool}}}};
+static const Node _Type_int8 = {NBasicType,NoPos,NULL,{.t={sym_1,.basic={TypeCode_int8,sym_int8}}}};
+static const Node _Type_uint8 = {NBasicType,NoPos,NULL,{.t={sym_2,.basic={TypeCode_uint8,sym_uint8}}}};
+static const Node _Type_int16 = {NBasicType,NoPos,NULL,{.t={sym_3,.basic={TypeCode_int16,sym_int16}}}};
+static const Node _Type_uint16 = {NBasicType,NoPos,NULL,{.t={sym_4,.basic={TypeCode_uint16,sym_uint16}}}};
+static const Node _Type_int32 = {NBasicType,NoPos,NULL,{.t={sym_5,.basic={TypeCode_int32,sym_int32}}}};
+static const Node _Type_uint32 = {NBasicType,NoPos,NULL,{.t={sym_6,.basic={TypeCode_uint32,sym_uint32}}}};
+static const Node _Type_int64 = {NBasicType,NoPos,NULL,{.t={sym_7,.basic={TypeCode_int64,sym_int64}}}};
+static const Node _Type_uint64 = {NBasicType,NoPos,NULL,{.t={sym_8,.basic={TypeCode_uint64,sym_uint64}}}};
+static const Node _Type_float32 = {NBasicType,NoPos,NULL,{.t={sym_f,.basic={TypeCode_float32,sym_float32}}}};
+static const Node _Type_float64 = {NBasicType,NoPos,NULL,{.t={sym_F,.basic={TypeCode_float64,sym_float64}}}};
+static const Node _Type_int = {NBasicType,NoPos,NULL,{.t={sym_i,.basic={TypeCode_int,sym_int}}}};
+static const Node _Type_uint = {NBasicType,NoPos,NULL,{.t={sym_u,.basic={TypeCode_uint,sym_uint}}}};
+static const Node _Type_str = {NBasicType,NoPos,NULL,{.t={sym_s,.basic={TypeCode_str,sym_str}}}};
+static const Node _Type_ideal = {NBasicType,NoPos,NULL,{.t={sym_$x2a,.basic={TypeCode_ideal,sym_ideal}}}};
+static const Node _Type_nil = {NBasicType,NoPos,NULL,{.t={sym_0,.basic={TypeCode_nil,sym_nil}}}};
+static const Node _Const_true = {NBoolLit,NoPos,(Node*)&_Type_bool,{.val={CType_bool,.i=1}}};
+static const Node _Const_false = {NBoolLit,NoPos,(Node*)&_Type_bool,{.val={CType_bool,.i=0}}};
+static const Node _Const_nil = {NNil,NoPos,(Node*)&_Type_nil,{.val={CType_nil,.i=0}}};
 
 Node* Type_bool = (Node*)&_Type_bool;
 Node* Type_int8 = (Node*)&_Type_int8;
@@ -409,7 +409,7 @@ __attribute__((constructor,used)) static void gen_constants() {
   #define NODE_GEN(name)                                                        \
     printf(                                                                     \
       "static const Node _Type_%s = "                                           \
-      "{NBasicType,{0,0,0},NULL,{.t={sym_%s,.basic={TypeCode_%s,sym_%s}}}};\n", \
+      "{NBasicType,NoPos,NULL,{.t={sym_%s,.basic={TypeCode_%s,sym_%s}}}};\n", \
       #name, typecode_cident(TypeCodeEncoding[TypeCode_##name]), #name, #name   \
     );
   TYPE_SYMS(NODE_GEN)
@@ -420,7 +420,7 @@ __attribute__((constructor,used)) static void gen_constants() {
   // PREDEFINED_CONSTANTS
   #define NODE_GEN(name, type, value)                                             \
     printf(                                                                       \
-      "static const Node _Const_%s = {%s,{0,0,0},(Node*)&_Type_%s,{.val=%s}};\n", \
+      "static const Node _Const_%s = {%s,NoPos,(Node*)&_Type_%s,{.val=%s}};\n", \
       #name,                                                                      \
       strcmp(#type, "bool") == 0 ? "NBoolLit" :                                   \
       strcmp(#type, "nil") == 0 ?  "NNil" :                                       \

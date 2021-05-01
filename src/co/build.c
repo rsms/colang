@@ -39,19 +39,20 @@ void diag_free(Diagnostic* d) {
   memfree(d->build->mem, d);
 }
 
-void build_diag(Build* b, DiagLevel level, SrcPos pos, const char* message) {
+void build_diag(Build* b, DiagLevel level, Pos start, Pos end, const char* message) {
   if (level <= DiagError)
     b->errcount++;
   if (level > b->diaglevel || b->diagh == NULL)
     return;
   auto d = build_mkdiag(b);
   d->level = level;
-  d->pos = pos;
+  d->startpos = start;
+  d->endpos = end;
   d->message = memstrdup(b->mem, message);
   build_emit_diag(b, d);
 }
 
-void build_diagv(Build* b, DiagLevel level, SrcPos pos, const char* fmt, va_list ap) {
+void build_diagv(Build* b, DiagLevel level, Pos start, Pos end, const char* fmt, va_list ap) {
   if (level > b->diaglevel || b->diagh == NULL) {
     if (level <= DiagError)
       b->errcount++;
@@ -60,19 +61,19 @@ void build_diagv(Build* b, DiagLevel level, SrcPos pos, const char* fmt, va_list
   char buf[256];
   ssize_t n = vsnprintf(buf, sizeof(buf), fmt, ap);
   if (n < (ssize_t)sizeof(buf))
-    return build_diag(b, level, pos, buf);
+    return build_diag(b, level, start, end, buf);
   // buf too small; heap allocate
   auto msg = str_new(512);
   if (strlen(fmt) > 0)
     msg = str_appendfmtv(msg, fmt, ap);
-  build_diag(b, level, pos, msg);
+  build_diag(b, level, start, end, msg);
   str_free(msg);
 }
 
-void build_diagf(Build* b, DiagLevel level, SrcPos pos, const char* fmt, ...) {
+void build_diagf(Build* b, DiagLevel level, Pos start, Pos end, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  build_diagv(b, level, pos, fmt, ap);
+  build_diagv(b, level, start, end, fmt, ap);
   va_end(ap);
 }
 
@@ -88,16 +89,8 @@ const char* DiagLevelName(DiagLevel l) {
 
 Str diag_fmt(Str s, const Diagnostic* d) {
   assert(d->level <= DiagMAX);
-  return SrcPosFmt(d->pos, s, "%s: %s", DiagLevelName(d->level), d->message);
-}
-
-
-const Source* nullable build_get_source(const Build* b, SrcPos pos) {
-  // TODO: considering implementing something like lico and Pos/XPos from go
-  //       https://golang.org/src/cmd/internal/src/pos.go
-  //       https://golang.org/src/cmd/internal/src/xpos.go
-  //       https://github.com/rsms/co/blob/master/src/pos.ts
-  return pos.src;
+  return pos_fmt(&d->build->posmap, d->startpos, d->endpos, s,
+    "%s: %s", DiagLevelName(d->level), d->message);
 }
 
 

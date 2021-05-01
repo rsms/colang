@@ -4,50 +4,50 @@
 
 ASSUME_NONNULL_BEGIN
 
-// NoteClass describes classes of AST Nodes
+// NodeClassFlags classifies AST Node kinds
 typedef enum {
   NodeClassInvalid = 0,
-  NodeClassConst,  // literals like 123, true, nil.
-  NodeClassExpr,   // e.g. (+ x y)
-  NodeClassType,   // e.g. i32
-} NodeClass;
 
-// NodeClassName returns the name of a node class constant
-const char* NodeClassName(NodeClass);
+  // category
+  NodeClassConst   = 1 << 0, // literals like 123, true, nil.
+  NodeClassExpr    = 1 << 1, // e.g. (+ x y)
+  NodeClassType    = 1 << 2, // e.g. i32
+
+  // data attributes
+  NodeClassArray   = 1 << 3, // uses Node.array, or Node.t.array if NodeClassType
+} NodeClassFlags;
 
 // DEF_NODE_KINDS defines primary node kinds which are either expressions or start of expressions
 #define DEF_NODE_KINDS(_) \
-  /* N<kind>     NodeClass<class> */ \
-  _(None,        Invalid) \
-  _(Bad,         Invalid) /* substitute "filler node" for invalid syntax */ \
-  _(BoolLit,     Const) /* boolean literal */ \
-  _(IntLit,      Const) /* integer literal */ \
-  _(FloatLit,    Const) /* floating-point literal */ \
-  _(Nil,         Const) /* the nil atom */ \
-  _(Comment,     Expr) \
-  _(Assign,      Expr) \
-  _(Arg,         Expr) \
-  _(Block,       Expr) \
-  _(Call,        Expr) \
-  _(Field,       Expr) \
-  \
-  _(Pkg,         Expr) \
-  _(File,        Expr) \
-  _(Fun,         Expr) \
-  \
-  _(Id,          Expr) \
-  _(If,          Expr) \
-  _(Let,         Expr) \
-  _(BinOp,       Expr) \
-  _(PrefixOp,    Expr) \
-  _(PostfixOp,   Expr) \
-  _(Return,      Expr) \
-  _(Tuple,       Expr) \
-  _(TypeCast,    Expr) \
-  _(ZeroInit,    Expr) \
-  _(BasicType,   Type) /* Basic type, e.g. int, bool */ \
-  _(TupleType,   Type) /* Tuple type, e.g. (float,bool,int) */ \
-  _(FunType,     Type) /* Function type, e.g. (int,int)->(float,bool) */ \
+  /* N<kind>     classification */ \
+  _(None,        NodeClassInvalid) \
+  _(Bad,         NodeClassInvalid) /* substitute "filler node" for invalid syntax */ \
+  _(BoolLit,     NodeClassConst) /* boolean literal */ \
+  _(IntLit,      NodeClassConst) /* integer literal */ \
+  _(FloatLit,    NodeClassConst) /* floating-point literal */ \
+  _(Nil,         NodeClassConst) /* the nil atom */ \
+  _(Comment,     NodeClassExpr) \
+  _(Assign,      NodeClassExpr) \
+  _(Arg,         NodeClassExpr) \
+  _(Block,       NodeClassExpr|NodeClassArray) \
+  _(Call,        NodeClassExpr) \
+  _(Field,       NodeClassExpr) \
+  _(Pkg,         NodeClassExpr|NodeClassArray) \
+  _(File,        NodeClassExpr|NodeClassArray) \
+  _(Fun,         NodeClassExpr) \
+  _(Id,          NodeClassExpr) \
+  _(If,          NodeClassExpr) \
+  _(Let,         NodeClassExpr) \
+  _(BinOp,       NodeClassExpr) \
+  _(PrefixOp,    NodeClassExpr) \
+  _(PostfixOp,   NodeClassExpr) \
+  _(Return,      NodeClassExpr) \
+  _(Tuple,       NodeClassExpr|NodeClassArray) \
+  _(TypeCast,    NodeClassExpr) \
+  _(ZeroInit,    NodeClassExpr) \
+  _(BasicType,   NodeClassType) /* int, bool, ... */ \
+  _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
+  _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
 /*END DEF_NODE_KINDS*/
 
 // NodeKind { NNone, NBad, NBoolLit, ... ,_NodeKindMax }
@@ -60,6 +60,14 @@ typedef enum {
 
 // NodeKindName returns the name of node kind constant
 const char* NodeKindName(NodeKind);
+
+// DebugNodeClassStr returns a printable representation of NodeClassFlags. Not thread safe!
+#ifdef DEBUG
+  #define DebugNodeClassStr(fl) _DebugNodeClassStr((fl), __LINE__)
+  const char* _DebugNodeClassStr(NodeClassFlags, u32 lineno);
+#else
+  #define DebugNodeClassStr(fl) ("NodeClassFlags")
+#endif
 
 
 // Scope represents a lexical namespace
@@ -102,15 +110,12 @@ typedef struct NVal {
   };
 } NVal;
 
+// TODO: add function for computing the end Pos for an AST node. E.g. last item of a tuple.
+
 typedef struct Node {
   NodeKind       kind; // kind of node (e.g. NId)
-
-  // TODO: replace SrcPos with Pos.
-  // TODO: add function for computing the end Pos for an AST node. E.g. last item of a tuple.
-  SrcPos         pos;  // source origin & position
-  // Pos         pos;  // source origin & position
-
-  Node* nullable type; // value type. null if unknown.
+  Pos            pos;  // source origin & position
+  Node* nullable type; // value type. NULL if unknown.
   union {
     void* _never; // for initializers
     NVal val; // BoolLit, IntLit, FloatLit, StrLit
@@ -123,16 +128,16 @@ typedef struct Node {
       Node* target;
     } ref;
     /* op */ struct { // Op, PrefixOp, Return, Assign
-      Node* left;
-      Node* right;  // null for PrefixOp. null for Op when its a postfix op.
-      Tok   op;
+      Node*          left;
+      Node* nullable right;  // NULL for PrefixOp. NULL for Op when its a postfix op.
+      Tok            op;
     } op;
     // /* array */ struct { // Tuple, Block, File, Pkg
-    //   Scope*   scope; // non-null if kind==Block|File
+    //   Scope*   scope; // non-NULL if kind==Block|File
     //   NodeList a; // [NPkg: list of NFile nodes]
     // } array1;
     /* array */ struct { // Tuple, Block, File, Pkg
-      Scope* nullable scope;        // non-null if kind==Block|File
+      Scope* nullable scope;        // non-NULL if kind==Block|File
       NodeArray       a;            // array of nodes
       Node*           a_storage[4]; // in-struct storage for the first few entries of a
     } array;
@@ -140,12 +145,12 @@ typedef struct Node {
       Scope*          scope;  // parameter scope
       Node*  nullable params; // input params (NTuple)
       Node*  nullable result; // output results (NTuple | NExpr)
-      Sym    nullable name;   // null for lambda
-      Node*  nullable body;   // null for fun-declaration
+      Sym    nullable name;   // NULL for lambda
+      Node*  nullable body;   // NULL for fun-declaration
     } fun;
     /* call */ struct { // Call, TypeCast
       Node* receiver;      // either an NFun or a type (e.g. NBasicType)
-      Node* nullable args; // null if there are no args, else a NTuple
+      Node* nullable args; // NULL if there are no args, else a NTuple
     } call;
     /* field */ struct { // Arg, Field, Let
       Sym            name;
@@ -153,20 +158,19 @@ typedef struct Node {
       u32            index; // Arg: argument index.
     } field;
     /* cond */ struct { // If
-      Node* cond;
-      Node* thenb;
-      Node* elseb; // null or expr
+      Node*          cond;
+      Node*          thenb;
+      Node* nullable elseb; // NULL or expr
     } cond;
 
     // Type
     /* t */ struct {
-      Sym id; // lazy; initially NULL. Computed from Node.
+      Sym nullable id; // lazy; initially NULL. Computed from Node.
       union {
-        // NodeList tuple; // TupleType    TODO: Use NodeArray
-        /* tuple */ struct { // BasicType
+        /* array */ struct { // TupleType
           NodeArray a;            // array of nodes
           Node*     a_storage[4]; // in-struct storage for the first few entries of a
-        } tuple;
+        } array;
         /* basic */ struct { // BasicType
           TypeCode typeCode;
           Sym      name;
@@ -183,32 +187,32 @@ typedef struct Node {
 
 // Node* NodeAlloc(NodeKind); // one-off allocation using calloc()
 // inline static void NodeFree(Node* _) {}
-Str NodeRepr(const Node* n, Str s); // return human-readable printable text representation
+Str NodeRepr(const Node* nullable n, Str s); // return printable text representation
 
 // fmtast returns an s-expression representation of an AST.
 // Note: The returned string is garbage collected.
-ConstStr fmtast(const Node*);
+ConstStr fmtast(const Node* nullable n);
 
 // fmtnode returns a short representation of an AST node, suitable for use in error messages.
 // Note: The returned string is garbage collected.
-ConstStr fmtnode(const Node*);
+ConstStr fmtnode(const Node* nullable n);
 
 // str_append_astnode appends a short representation of an AST node to s.
 // It produces the same result as fmtnode.
-Str str_append_astnode(Str s, const Node* n);
+Str str_append_astnode(Str s, const Node* nullable n);
 
-// Lookup table N<kind> => NodeClass<class>
-extern const NodeClass NodeClassTable[_NodeKindMax];
+// NodeKindClass returns NodeClassFlags for kind. It's a fast inline table lookup.
+static NodeClassFlags NodeKindClass(NodeKind kind);
 
 // NodeKindIs{Type|Const|Expr} returns true if kind is of class Type, Const or Expr.
-static inline bool NodeKindIsType(NodeKind kind) { return NodeClassTable[kind] == NodeClassType; }
-static inline bool NodeKindIsConst(NodeKind kind) { return NodeClassTable[kind] == NodeClassConst;}
-static inline bool NodeKindIsExpr(NodeKind kind) { return NodeClassTable[kind] == NodeClassExpr; }
+inline static bool NodeKindIsType(NodeKind kind) { return NodeKindClass(kind) & NodeClassType; }
+inline static bool NodeKindIsConst(NodeKind kind) { return NodeKindClass(kind) & NodeClassConst;}
+inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & NodeClassExpr; }
 
 // NodeIs{Type|Const|Expr} calls NodeKindIs{Type|Const|Expr}(n->kind)
-static inline bool NodeIsType(const Node* n) { return NodeKindIsType(n->kind); }
-static inline bool NodeIsConst(const Node* n) { return NodeKindIsConst(n->kind); }
-static inline bool NodeIsExpr(const Node* n) { return NodeKindIsExpr(n->kind); }
+inline static bool NodeIsType(const Node* n) { return NodeKindIsType(n->kind); }
+inline static bool NodeIsConst(const Node* n) { return NodeKindIsConst(n->kind); }
+inline static bool NodeIsExpr(const Node* n) { return NodeKindIsExpr(n->kind); }
 
 // Retrieve the effective "printable" type of a node.
 // For nodes which are lazily typed, like IntLit, this returns the default type of the constant.
@@ -231,78 +235,47 @@ Node* ast_opt_ifcond(Node* n);
 // Format an NVal
 Str NValFmt(Str s, const NVal* v);
 
+// ArrayNodeLast returns the last element of array node n or NULL if empty
+Node* nullable ArrayNodeLast(Node* n);
 
-// // void NodeArrayForEach(&n->array.a, n) { use_n }
-// #define NodeArrayForEach(NodeArrayPtr, LOCALNAME) /*BODY*/ \
-//   ArrayForEach((NodeArrayPtr), Node*, LOCALNAME)
+// NodeEndPos returns the Pos representing the logical inclusive end of the node.
+// For example, for a tuple that is the pos of the last element.
+// Returns NoPos if the end of the node is the same as n->pos.
+Pos NodeEndPos(Node* n);
 
-// // NodeArray* NodeArrayMap(&n->array.a, n, new_n)
-// #define NodeArrayMap(NodeArrayPtr, LOCALNAME, EXPR)  ({ \
-//   __typeof__(NodeArrayPtr) a__ = (NodeArrayPtr);        \
-//   for (u32 i = 0; i < a__->len; i++) {                  \
-//     Node* LOCALNAME = a__->v[i];                        \
-//     a__->v[i] = EXPR;                                   \
-//   }                                                     \
-//   a;                                                    \
-// })
+static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n);
+static void NodeArrayClear(Array* a);
+
+
+extern const Node* NodeBad;  // kind==NBad
+
+// NewNode allocates a node in mem
+Node* NewNode(Mem nullable mem, NodeKind kind);
+
+// NodeCopy creates a shallow copy of n in mem
+static Node* NodeCopy(Mem nullable mem, const Node* n);
+
+// -----------------------------------------------------------------------------------------------
+// implementations
+
+extern const NodeClassFlags _NodeClassTable[_NodeKindMax];
+ALWAYS_INLINE static NodeClassFlags NodeKindClass(NodeKind kind) {
+  return _NodeClassTable[kind];
+}
+
+inline static Node* NodeCopy(Mem nullable mem, const Node* n) {
+  assert((NodeKindClass(n->kind) & NodeClassArray) == 0); // no support for copying these yet
+  Node* n2 = (Node*)memalloc(mem, sizeof(Node));
+  memcpy(n2, n, sizeof(Node));
+  return n2;
+}
 
 ALWAYS_INLINE static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n) {
   ArrayPush(a, n, mem);
 }
 
-ALWAYS_INLINE void NodeArrayClear(Array* a) {
+ALWAYS_INLINE static void NodeArrayClear(Array* a) {
   ArrayClear(a);
-}
-
-
-// // NodeList functions
-// #define NodeListForEach(list, nodename, body)               \
-//   do {                                                      \
-//     auto __l = (list)->head;                                \
-//     while (__l) {                                           \
-//       auto nodename = __l->node;                            \
-//       body;                                                 \
-//       __l = __l->next;                                      \
-//     }                                                       \
-//   } while(0)
-
-
-// #define NodeListMap(list, nodename, expr)                   \
-//   do {                                                      \
-//     auto __l = (list)->head;                                \
-//     while (__l) {                                           \
-//       auto nodename = __l->node;                            \
-//       __l->node = expr;                                     \
-//       __l = __l->next;                                      \
-//     }                                                       \
-//   } while(0)
-
-
-// // Add node to list
-// void NodeListAppend(Mem nullable mem, NodeList*, Node*);
-// static inline u32 NodeListLen(const NodeList* list) {
-//   return list->len;
-// }
-// static inline void NodeListClear(NodeList* list) {
-//   list->len = 0;
-//   list->head = NULL;
-//   list->tail = NULL;
-// }
-
-
-extern const Node* NodeBad;  // kind==NBad
-
-// allocate a node from an allocator
-static inline Node* NewNode(Mem nullable mem, NodeKind kind) {
-  Node* n = (Node*)memalloc(mem, sizeof(Node));
-  n->kind = kind;
-  return n;
-}
-
-static inline Node* NodeCopy(Mem nullable mem, const Node* src) {
-  Node* n = (Node*)memalloc(mem, sizeof(Node));
-  memcpy(n, src, sizeof(Node));
-  return n;
 }
 
 ASSUME_NONNULL_END

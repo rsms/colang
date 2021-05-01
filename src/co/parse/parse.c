@@ -98,9 +98,9 @@ typedef struct Unresolved {
 // It will point to the source location of the last-scanned token.
 // If n is not NULL, use source location of n instead of current location.
 //
-static void syntaxerrp(Parser* p, SrcPos pos, const char* format, ...) {
-  if (pos.src == NULL)
-    pos = ScannerSrcPos(&p->s);
+static void syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
+  if (pos == NoPos)
+    pos = ScannerPos(&p->s);
 
   va_list ap;
   va_start(ap, format);
@@ -136,14 +136,14 @@ static void syntaxerrp(Parser* p, SrcPos pos, const char* format, ...) {
   if (stmp)
     str_free(stmp);
 
-  build_diag(p->build, DiagError, pos, msg);
+  build_diag(p->build, DiagError, pos, NoPos, msg);
   str_free(msg);
 }
 
 
 // syntaxerr = syntaxerrp(p, <srcpos of current token>, ...)
 #define syntaxerr(p, format, ...) \
-  syntaxerrp((p), NoSrcPos, format, ##__VA_ARGS__)
+  syntaxerrp((p), NoPos, format, ##__VA_ARGS__)
 
 
 // toklistHas returns true if t is in list (list is expected to be 0-terminated)
@@ -201,18 +201,10 @@ static void advance(Parser* p, const Tok* followlist) {
 }
 
 
-// // PFreeNode is shallow; does not free node members
-// inline static void PFreeNode(Parser* p, Node* n) {
-//   memfree(p->build->mem, n);
-// }
-
-
-// allocate a new ast node
+// mknode allocates a new ast node
 inline static Node* mknode(Parser* p, NodeKind kind) {
   auto n = NewNode(p->build->mem, kind);
-  n->pos.src = p->s.src;
-  n->pos.offs = p->s.tokstart - p->s.src->body;
-  n->pos.span = p->s.tokend - p->s.tokstart;  assert(p->s.tokend >= p->s.tokstart);
+  n->pos = ScannerPos(&p->s);
   return n;
 }
 
