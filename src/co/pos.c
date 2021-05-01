@@ -209,7 +209,7 @@ R_UNIT_TEST(pos) {
   // exit(0);
 }
 
-
+#if 0
 R_UNIT_TEST(pos_fuzz) {
   //
   // A kind of basic quickcheck: for up to mintime call pos_make with random values within
@@ -250,3 +250,4 @@ R_UNIT_TEST(pos_fuzz) {
     }
   }
 }
+#endif
