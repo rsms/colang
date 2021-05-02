@@ -2,9 +2,7 @@
 
 fun main {
   a = 2
-  b = 4
-  c = 9
-  512
+  b = a
   add(a, b)
 }
 

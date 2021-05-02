@@ -69,6 +69,9 @@ const char* NodeKindName(NodeKind);
   #define DebugNodeClassStr(fl) ("NodeClassFlags")
 #endif
 
+// AST node types
+typedef struct Node Node;
+typedef Node Type;
 
 // Scope represents a lexical namespace
 typedef struct Scope Scope;
@@ -78,7 +81,6 @@ typedef struct Scope {
   SymMap       bindings;
 } Scope;
 
-typedef struct Node Node;
 Scope* ScopeNew(const Scope* nullable parent, Mem nullable mem);
 void ScopeFree(Scope*, Mem nullable mem);
 const Node* ScopeAssoc(Scope*, Sym, const Node* value); // Returns replaced value or NULL

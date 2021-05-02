@@ -238,7 +238,7 @@ int cmd_build(int argc, const char* argv[argc]) {
   pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
   // dump_ast("", pkgnode);
   // printf("————————————————————————————————————————————————————————————————\n");
-  ResolveType(&build, pkgnode);
+  pkgnode = ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");

@@ -5,6 +5,7 @@
 ASSUME_NONNULL_BEGIN
 
 typedef struct Node Node;
+typedef Node Type;
 
 // scanner tokens
 #define TOKENS(_)  \
@@ -198,12 +199,12 @@ Node* CreatePkgAST(Build*, Scope* pkgscope);
 // Returns NULL on error.
 Node* nullable Parse(Parser*, Build*, Source*, ParseFlags, Scope* pkgscope);
 
-// ResolveSym resolves unresolved symbols in an AST.
+// ResolveSym resolves unresolved symbols in an AST. May return a new version of n.
 // For top-level AST, scope should be pkgscope.
 Node* ResolveSym(Build*, ParseFlags, Node*, Scope*);
 
-// ResolveType resolves unresolved types in an AST
-void ResolveType(Build*, Node*);
+// ResolveType resolves unresolved types in an AST. May return a new version of n.
+Node* ResolveType(Build* b, Node* n);
 
 // GetTypeID retrieves the TypeID for the type node n.
 // This function may mutate n by computing and storing id to n.t.id.

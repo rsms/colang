@@ -582,12 +582,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     //     bar(x)   # ... is used by this NCall node.
     //   }
     //
-    // There's one exception which is unresolved let expressions with an unresolved value;
-    // that definitely means it's unused and we produce a diagnostic warning for that.
-    //
     dlog("skip unused %s", fmtnode(n));
-    if (n->kind == NLet && n->field.init->type == Type_ideal)
-      build_warnf(u->build, n->pos, NodeEndPos(n), "unused expression: %s", fmtnode(n));
     return NULL;
   }
   switch (n->kind) {

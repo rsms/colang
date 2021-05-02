@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -28,9 +28,9 @@ typedef struct {
 
   // typecontext is the "expected" type, if any.
   // E.g. the type of a var while resolving its rvalue.
-  Node* nullable typecontext;       // current value; top of typecontext_stack
-  Array          typecontext_stack; // stack of Node* which are all of NodeClassType
-  Node*          typecontext_storage[32];
+  Type* nullable typecontext;       // current value; top of typecontext_stack
+  Array          typecontext_stack; // stack of Type* which are all of NodeClassType
+  Type*          typecontext_storage[32];
 
   bool explicitTypeCast;
 
@@ -40,9 +40,9 @@ typedef struct {
 } ResCtx;
 
 
-static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl);
+static Type* resolve_type(ResCtx* ctx, Node* n, RFlag fl);
 
-void ResolveType(Build* build, Node* n) {
+Node* ResolveType(Build* build, Node* n) {
   // setup ResCtx
   ResCtx ctx = {
     .build = build,
@@ -50,14 +50,14 @@ void ResolveType(Build* build, Node* n) {
   ArrayInitWithStorage(
     &ctx.typecontext_stack,
     ctx.typecontext_storage,
-    countof(ctx.typecontext_storage));
-
-  n->type = resolve_type(&ctx, n, RFlagNone);
-
+    countof(ctx.typecontext_storage)
+  );
+  n = resolve_type(&ctx, n, RFlagNone);
   ArrayFree(&ctx.typecontext_stack, build->mem);
+  return n;
 }
 
-static void typecontext_push(ResCtx* ctx, Node* t) {
+static void typecontext_push(ResCtx* ctx, Type* t) {
   assert(NodeIsType(t));
   assertne(t, Type_ideal);
   dlog_mod("typecontext_push %s", fmtnode(t));
@@ -72,45 +72,20 @@ static void typecontext_pop(ResCtx* ctx) {
   if (ctx->typecontext_stack.len == 0) {
     ctx->typecontext = NULL;
   } else {
-    ctx->typecontext = (Node*)ArrayPop(&ctx->typecontext_stack);
+    ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
   }
 }
 
 
-static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
-  Node* ft = NewNode(ctx->build->mem, NFunType);
-
-  // Important: To avoid an infinite loop when resolving a function which calls itself,
-  // we set the unfinished function type objects ahead of calling resolve.
-  n->type = ft;
-
-  if (n->fun.params) {
-    resolve_type(ctx, n->fun.params, fl);
-    ft->t.fun.params = (Node*)n->fun.params->type;
-  }
-
-  if (n->fun.result)
-    ft->t.fun.result = (Node*)resolve_type(ctx, n->fun.result, fl);
-
-  if (n->fun.body) {
-    auto bodyType = resolve_type(ctx, n->fun.body, fl);
-    if (ft->t.fun.result == NULL) {
-      ft->t.fun.result = bodyType;
-    } else if (R_UNLIKELY(!TypeEquals(ctx->build, ft->t.fun.result, bodyType))) {
-      // function prototype claims to return type A while the body yields type B
-      build_errf(ctx->build, n->fun.body->pos, NodeEndPos(n->fun.body),
-        "cannot use type %s as return type %s",
-        fmtnode(bodyType), fmtnode(ft->t.fun.result));
-    }
-  }
-
-  // make sure its type id is set as codegen relies on this
-  if (!ft->t.id)
-    ft->t.id = GetTypeID(ctx->build, n);
-
-  n->type = ft;
-  return ft;
-}
+// RESOLVE_ARRAY_NODE_TYPE_MUT is a helper macro for applying resolve_type on an array element.
+// Node* RESOLVE_ARRAY_NODE_TYPE_MUT(NodeArray* a, u32 index)
+#define RESOLVE_ARRAY_NODE_TYPE_MUT(a, index) ({ \
+  __typeof__(index) idx__ = (index);         \
+  Node* cn = (Node*)(a)->v[idx__];           \
+  cn = resolve_type(ctx, cn, fl);            \
+  (a)->v[idx__] = cn;                        \
+  cn;                                        \
+})
 
 
 // resolve_ideal_type resolves the concrete type of n. If typecontext is provided, convlit is
@@ -131,30 +106,34 @@ static Node* resolve_ideal_type(
   // and lower CType to concrete type.
   // In case n is not a constant literal, we simply continue as the AST at n is a compound
   // which contains one or more untyped constants. I.e. continue to traverse AST.
+
   switch (n->kind) {
     case NIntLit:
-    case NFloatLit:
-      if (typecontext == NULL) {
-        n->type = IdealType(n->val.ct);
-      } else {
-        auto n2 = convlit(ctx->build, n, typecontext, /*explicit*/(fl & RFlagExplicitTypeCast));
-        if (n2 != n) {
-          memcpy(n, n2, sizeof(Node));
-        }
-      }
-      break;
+    case NFloatLit: {
+      if (typecontext)
+        return convlit(ctx->build, n, typecontext, /*explicit*/(fl & RFlagExplicitTypeCast));
+      // no type context; resolve to best effort based on value
+      Node* n2 = NodeCopy(ctx->build->mem, n);
+      n2->type = IdealType(n->val.ct);
+      return n2;
+    }
 
-    case NLet:
+    case NLet: {
       assert(n->field.init != NULL);
-      return n->type = resolve_ideal_type(ctx, n->field.init, typecontext, fl);
+      Node* init2 = resolve_ideal_type(ctx, n->field.init, typecontext, fl);
+      if (init2 != n->field.init) {
+        Node* n2 = NodeCopy(ctx->build->mem, n);
+        n2->field.init = init2;
+        n = n2;
+      }
+      n->type = init2->type;
+      break;
+    }
 
     case NId:
       assert(n->ref.target != NULL);
-      return n->type = resolve_ideal_type(ctx, n->ref.target, typecontext, fl);
-
-    case NBoolLit:
-      // always typed; should never be ideal
-      panic("NBoolLit with ideal type");
+      n->ref.target = resolve_ideal_type(ctx, n->ref.target, typecontext, fl);
+      n->type = n->ref.target->type;
       break;
 
     default:
@@ -163,7 +142,46 @@ static Node* resolve_ideal_type(
       panic("unexpected node type %s", NodeKindName(n->kind));
       break;
   }
-  return n->type;
+  return n;
+}
+
+
+static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
+  Type* ft = NewNode(ctx->build->mem, NFunType);
+
+  // Important: To avoid an infinite loop when resolving a function which calls itself,
+  // we set the unfinished function type objects ahead of calling resolve.
+  n->type = ft;
+
+  if (n->fun.params) {
+    resolve_type(ctx, n->fun.params, fl);
+    ft->t.fun.params = (Type*)n->fun.params->type;
+  }
+
+  if (n->fun.result) {
+    n->fun.result = resolve_type(ctx, n->fun.result, fl);
+    ft->t.fun.result = n->fun.result->type;
+  }
+
+  if (n->fun.body) {
+    n->fun.body = resolve_type(ctx, n->fun.body, fl);
+    auto bodyType = n->fun.body->type;
+    if (ft->t.fun.result == NULL) {
+      ft->t.fun.result = bodyType;
+    } else if (R_UNLIKELY(!TypeEquals(ctx->build, ft->t.fun.result, bodyType))) {
+      // function prototype claims to return type A while the body yields type B
+      build_errf(ctx->build, n->fun.body->pos, NodeEndPos(n->fun.body),
+        "cannot use type %s as return type %s",
+        fmtnode(bodyType), fmtnode(ft->t.fun.result));
+    }
+  }
+
+  // make sure its type id is set as codegen relies on this
+  if (!ft->t.id)
+    ft->t.id = GetTypeID(ctx->build, n);
+
+  n->type = ft;
+  return n;
 }
 
 
@@ -176,9 +194,8 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NB
     // resolve all but the last expression without requiring ideal-type resolution
     u32 lasti = n->array.a.len - 1;
     for (u32 i = 0; i < lasti; i++) {
-      Node* cn = (Node*)n->array.a.v[i];
-      auto t = resolve_type(ctx, cn, fl);
-      if (R_UNLIKELY(t == Type_ideal && NodeIsConst(cn))) {
+      Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i);
+      if (R_UNLIKELY(cn->type == Type_ideal && NodeIsConst(cn))) {
         // an unused constant expression, e.g.
         //   { 1  # <- warning: unused expression 1
         //     2
@@ -189,20 +206,18 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NB
     // Last node, in which case we set the flag to resolve literals
     // so that implicit return values gets properly typed.
     // This also becomes the type of the block.
-    Node* cn = (Node*)n->array.a.v[lasti];
-    n->type = resolve_type(ctx, cn, fl | RFlagResolveIdeal);
+    Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, lasti);
+    n->type = cn->type;
   }
-  // Note: No need to set n->type=Type_nil since that is done already,
-  //       before the switch in resolve_type.
-  return n->type;
+  return n;
 }
 
 
 static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NTuple
-  Node* tt = NewNode(ctx->build->mem, NTupleType);
+  Type* tt = NewNode(ctx->build->mem, NTupleType);
 
   // typecontext
-  Node* ct = ctx->typecontext;
+  Type* ct = ctx->typecontext;
   u32 ctindex = 0;
   if (ct) {
     if (R_UNLIKELY(ct->kind != NTupleType)) {
@@ -219,13 +234,12 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
 
   // for each tuple entry
   for (u32 i = 0; i < n->array.a.len; i++) {
-    Node* cn = (Node*)n->array.a.v[i];
-    auto t = resolve_type(ctx, cn, fl);
-    if (!t) {
-      t = (Node*)NodeBad;
+    Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i);
+    if (R_UNLIKELY(!cn->type)) {
+      cn->type = (Node*)NodeBad;
       build_errf(ctx->build, cn->pos, NodeEndPos(cn), "unknown type");
     }
-    NodeArrayAppend(ctx->build->mem, &tt->t.array.a, t);
+    NodeArrayAppend(ctx->build->mem, &tt->t.array.a, cn->type);
     if (ct)
       ctx->typecontext = ct->array.a.v[ctindex++];
   }
@@ -233,15 +247,15 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
   // restore typecontext, set type and return type
   ctx->typecontext = ct;
   n->type = tt;
-  return tt;
+  return n;
 }
 
 
 static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(n->op.right != NULL);
 
-  Node* lt = NULL;
-  Node* rt = NULL;
+  Type* lt = NULL;
+  Type* rt = NULL;
 
   // This is a bit of a mess, but what's going on here is making sure that untyped
   // operands are requested to become the type of typed operands.
@@ -262,11 +276,11 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   // resolve the operand with a concrete type, then set that type as the requested type and
   // finally we resolve the other, untyped, operand in the context of the requested type.
   //
-  auto fl1 = fl; // save fl
-  fl &= ~RFlagResolveIdeal; // clear "resolve ideal" flag
-  lt = resolve_type(ctx, n->op.left, fl);
-  rt = resolve_type(ctx, n->op.right, fl);
-  fl = fl1; // restore fl
+  // fl & ~RFlagResolveIdeal = clear "resolve ideal" flag
+  n->op.left = resolve_type(ctx, n->op.left, fl & ~RFlagResolveIdeal);
+  n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
+  lt = n->op.left->type;
+  rt = n->op.right->type;
   //
   // convert operand types as needed. The following code tests all branches:
   //
@@ -280,19 +294,20 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
       dlog_mod("[binop] 1  left & right are untyped");
       // TODO: we could pick the strongest type here by finding the CType of each operand
       // and then calling resolve_ideal_type on the stronger of the two. For example float > int.
-      lt = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
+      n->op.left = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
+      lt = n->op.left->type;
       // note: continue to statement outside these if blocks
     } else {
       dlog_mod("[binop] 2  left is untyped, right is typed (%s)", fmtnode(rt));
       n->op.left = ConvlitImplicit(ctx->build, n->op.left, rt);
       n->type = rt;
-      return rt;
+      return n;
     }
   } else if (rt == Type_ideal) {
     dlog_mod("[binop] 3  left is typed (%s), right is untyped", fmtnode(lt));
     n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
     n->type = lt;
-    return lt;
+    return n;
   } else {
     dlog_mod("[binop] 4  left & right are typed (%s, %s)", fmtnode(lt) , fmtnode(rt));
   }
@@ -304,7 +319,7 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
     n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
 
   n->type = lt;
-  return lt;
+  return n;
 }
 
 
@@ -313,47 +328,57 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
   if (!NodeKindIsType(n->call.receiver->kind)) {
     build_errf(ctx->build, n->pos, NodeEndPos(n),
       "invalid conversion to non-type %s", fmtnode(n->call.receiver));
-    return Type_nil;
+    n->type = Type_nil;
+    return n;
   }
 
   fl |= RFlagExplicitTypeCast;
 
-  n->type = resolve_type(ctx, n->call.receiver, fl);
+  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
+  n->type = n->call.receiver->type;
   typecontext_push(ctx, n->type);
 
-  auto argstype = resolve_type(ctx, n->call.args, fl);
-  if (argstype != NULL && TypeEquals(ctx->build, argstype, n->type)) {
-    // eliminate type cast since source is already target type
-    memcpy(n, n->call.args, sizeof(Node));
+  n->call.args = resolve_type(ctx, n->call.args, fl);
+  if (n->call.args->type && TypeEquals(ctx->build, n->call.args->type, n->type)) {
+    dlog("TODO: finish conversion of type resolve functions from type ret to node ret");
+    // // eliminate type cast since source is already target type
+    // memcpy(n, n->call.args, sizeof(Node));
   } else {
     // attempt conversion to eliminate type cast
     n->call.args = ConvlitExplicit(ctx->build, n->call.args, n->call.receiver);
-    if (TypeEquals(ctx->build, n->call.args->type, n->type))
+    if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
+      dlog("TODO: finish conversion of type resolve functions from type ret to node ret");
       memcpy(n, n->call.args, sizeof(Node));
+    }
   }
 
   typecontext_pop(ctx);
-  return n->type;
+  return n;
 }
 
 
 static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   // Note: resolve_fun_type breaks handles cycles where a function calls itself,
   // making this safe (i.e. will not cause an infinite loop.)
-  auto ft = resolve_type(ctx, n->call.receiver, fl);
+  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
+  auto ft = n->call.receiver->type;
   assert(ft != NULL);
+
   if (R_UNLIKELY(ft->kind != NFunType)) {
     build_errf(ctx->build, n->pos, n->call.receiver->pos,
       "cannot call %s", fmtnode(n->call.receiver));
-    return Type_nil;
+    n->type = Type_nil;
+    return n;
   }
+
   dlog_mod("resolve_call_type ft: %s", fmtnode(ft));
 
   // add parameter types to the "requested type" stack
   typecontext_push(ctx, ft->t.fun.params);
 
   // input arguments, in context of receiver parameters
-  auto argstype = resolve_type(ctx, n->call.args, fl);
+  n->call.args = resolve_type(ctx, n->call.args, fl);
+  auto argstype = n->call.args->type;
   dlog_mod("resolve_call_type argstype: %s", fmtnode(argstype));
 
   // pop parameter types off of the "requested type" stack
@@ -368,70 +393,63 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
       fmtnode(argstype), fmtnode(ft->t.fun.params));
   }
   n->type = ft->t.fun.result;
-  return n->type;
+  return n;
 }
 
 
 static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
-  auto cond = n->cond.cond;
-  auto condt = resolve_type(ctx, cond, fl);
-  if (R_UNLIKELY(condt != Type_bool)) {
-    build_errf(ctx->build, cond->pos, NodeEndPos(cond),
+  n->cond.cond = resolve_type(ctx, n->cond.cond, fl);
+
+  if (R_UNLIKELY(n->cond.cond->type != Type_bool)) {
+    build_errf(ctx->build, n->cond.cond->pos, NodeEndPos(n->cond.cond),
       "non-bool %s (type %s) used as condition",
-      fmtnode(cond), fmtnode(condt));
-    return Type_nil;
+      fmtnode(n->cond.cond), fmtnode(n->cond.cond->type));
+    n->type = Type_nil;
+    return n;
   }
-  auto thent = resolve_type(ctx, n->cond.thenb, fl);
+
+  // visit then branch
+  n->cond.thenb = resolve_type(ctx, n->cond.thenb, fl);
+  auto thentype = n->cond.thenb->type;
+
+  // visit else branch
   if (n->cond.elseb) {
-    typecontext_push(ctx, thent);
-    auto elset = resolve_type(ctx, n->cond.elseb, fl);
+    typecontext_push(ctx, thentype);
+    n->cond.elseb = resolve_type(ctx, n->cond.elseb, fl);
     typecontext_pop(ctx);
+
     // branches must be of the same type
-    if (!TypeEquals(ctx->build, thent, elset)) {
+    auto elsetype = n->cond.elseb->type;
+    if (!TypeEquals(ctx->build, thentype, elsetype)) {
       // attempt implicit cast. E.g.
       //
       // x = 3 as int16 ; y = if true x else 0
       //                              ^      ^
       //                            int16   int
       //
-      n->cond.elseb = ConvlitImplicit(ctx->build, n->cond.elseb, thent);
-      if (R_UNLIKELY(!TypeEquals(ctx->build, thent, n->cond.elseb->type))) {
+      n->cond.elseb = ConvlitImplicit(ctx->build, n->cond.elseb, thentype);
+      if (R_UNLIKELY(!TypeEquals(ctx->build, thentype, n->cond.elseb->type))) {
         build_errf(ctx->build, n->pos, NodeEndPos(n),
           "if..else branches of mixed incompatible types %s %s",
-          fmtnode(thent), fmtnode(elset));
+          fmtnode(thentype), fmtnode(elsetype));
       }
     }
   }
-  n->type = thent;
-  return thent;
+
+  n->type = thentype;
+  return n;
 }
 
 
-static Node* resolve_id_type(ResCtx* ctx, Node* n, RFlag fl) {
-  auto target = n->ref.target;
-  if (target == NULL) // identifier failed to resolve
-    return Type_nil;
-
-  // if (target->type == Type_ideal && (fl & RFlagResolveIdeal) == 0) {
-  //   // identifier names a let binding to an untyped constant expression.
-  //   // Replace the NId node with a copy of the constant expression node and resolve its
-  //   // type to a concrete type.
-  //   assert(target->kind == NLet);
-  //   assert(target->field.init != NULL); // let always has init
-  //   assert(NodeIsConst(target->field.init)); // only constants can be of "ideal" type
-  //   auto reqt = ctx->typecontext;
-  //   if (reqt != NULL) {
-  //     memcpy(n, target->field.init, sizeof(Node)); // convert n to copy of value of let binding.
-  //     resolve_ideal_type(ctx, n, reqt, fl);
-  //   } else {
-  //     // leave untyped for now
-  //     n->type = Type_ideal;
-  //   }
-  //   break;
-  // }
-
-  n->type = resolve_type(ctx, target, fl);
-  return n->type;
+static Type* resolve_id_type(ResCtx* ctx, Node* n, RFlag fl) {
+  if (R_UNLIKELY(n->ref.target == NULL)) {
+    // identifier failed to resolve
+    n->type = Type_nil;
+    return n;
+  }
+  n->ref.target = resolve_type(ctx, n->ref.target, fl);
+  n->type = n->ref.target->type;
+  return n;
 }
 
 
@@ -449,11 +467,11 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl) {
     ctx->typecontext ? fmtnode(ctx->typecontext) : "" );
 
   ctx->debug_depth++;
-  Node* t = _resolve_type(ctx, n, fl);
+  Node* n2 = _resolve_type(ctx, n, fl);
   ctx->debug_depth--;
 
-  dlog_mod("● %s => %s", fmtnode(n), fmtnode(n->type));
-  return t;
+  dlog_mod("● %s => %s", fmtnode(n), fmtnode(n2->type));
+  return n2;
 }
 static Node* _resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 #else
@@ -468,20 +486,11 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   if (n->type) {
     // Has type already. Constant literals might have ideal type.
     if (n->type == Type_ideal) {
-      if (fl & RFlagResolveIdeal) {
-        auto rt = ctx->typecontext;
-        return resolve_ideal_type(ctx, n, rt, fl);
-      }
+      if (/*fl & RFlagResolveIdeal || */ctx->typecontext)
+        R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
       // else: leave as ideal, for now
     }
-    return n->type;
-  } else {
-    // Set type to nil here to break any self-referencing cycles.
-    // NFun is special-cased as it stores result type in n->type. Note that resolve_fun_type
-    // handles breaking of cycles.
-    // A nice side effect of this is that for error cases and nodes without types, the
-    // type "defaults" to nil and we can avoid setting Type_nil in the switch below.
-    n->type = Type_nil;
+    return n;
   }
 
   // branch on node kind
@@ -493,7 +502,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NFile:
     n->type = Type_nil;
     for (u32 i = 0; i < n->array.a.len; i++)
-      resolve_type(ctx, (Node*)n->array.a.v[i], fl);
+      n->array.a.v[i] = resolve_type(ctx, (Node*)n->array.a.v[i], fl);
     break;
 
   case NBlock:
@@ -508,10 +517,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   // uses u.op
   case NPostfixOp:
   case NPrefixOp:
-    n->type = resolve_type(ctx, n->op.left, fl);
+    n->op.left = resolve_type(ctx, n->op.left, fl);
+    n->type = n->op.left->type;
     break;
   case NReturn:
-    n->type = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
+    n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
+    n->type = n->op.left->type;
     break;
 
   case NBinOp:
@@ -527,14 +538,14 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   // uses u.field
   case NLet:
   case NArg:
-  case NField: {
+  case NField:
     if (n->field.init) {
-      n->type = resolve_type(ctx, n->field.init, fl);
+      n->field.init = resolve_type(ctx, n->field.init, fl);
+      n->type = n->field.init->type;
     } else {
       n->type = Type_nil;
     }
     break;
-  }
 
   // uses u.cond
   case NIf:
@@ -546,15 +557,11 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NIntLit:
   case NFloatLit:
     if (fl & RFlagResolveIdeal) {
-      auto rt = ctx->typecontext;
-      if (rt == NULL) {
-        n->type = IdealType(n->val.ct);
-      } else {
-        auto n2 = convlit(ctx->build, n, rt, /*explicit*/(fl & RFlagExplicitTypeCast));
-        if (n2 != n) {
-          memcpy(n, n2, sizeof(Node));
-        }
-      }
+      if (ctx->typecontext)
+        R_MUSTTAIL return convlit(ctx->build, n, ctx->typecontext, (fl & RFlagExplicitTypeCast));
+      // fallback
+      n = NodeCopy(ctx->build->mem, n);
+      n->type = IdealType(n->val.ct);
       break;
     }
     // else: not ideal type; should be typed already!
@@ -575,7 +582,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   }  // switch (n->kind)
 
-  return n->type;
+  // when and if we get here the node should be typed.
+  assert(n->type);
+  return n;
 }
 
 
