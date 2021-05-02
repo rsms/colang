@@ -7,5 +7,5 @@ fun main {
 }
 
 fun add(x int, y uint) int {
-  x + y
+  x + (y as int)
 }

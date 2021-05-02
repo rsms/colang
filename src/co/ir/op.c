@@ -651,7 +651,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
 
 
 static TypeCode TypeCodeIntSignedCounterpart(TypeCode intType) {
-  assert(TypeCode_int8 <= intType && intType <= TypeCode_uint64);
+  assertf(TypeCode_int8 <= intType && intType <= TypeCode_uint64,
+    "unexpected intType %d \"%s\"", intType, TypeCodeName(intType));
   if ((TypeCodeFlagMap[intType] & TypeCodeFlagSigned) == 0) {
     // intType is not signed. Signed is just before in TypeCode enum.
     return intType-1;

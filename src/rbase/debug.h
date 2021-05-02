@@ -33,7 +33,7 @@ ASSUME_NONNULL_BEGIN
   }while(0)
 
   #define assertf(cond, fmt, ...) do{ \
-    if (R_UNLIKELY(!(cond))) panic("Assertion failed: %s" fmt, #cond, ##__VA_ARGS__); \
+    if (R_UNLIKELY(!(cond))) panic("Assertion failed: %s; " fmt, #cond, ##__VA_ARGS__); \
   }while(0)
 
   #define assertop(a,op,b) ({                                             \
