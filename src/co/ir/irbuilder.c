@@ -708,17 +708,12 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
 
 static IRFun* ast_add_fun(IRBuilder* u, Node* n) {
   assert(n->kind == NFun);
-  assert(n->fun.body != NULL); // not a concrete function
+  assertnotnull(n->fun.body); // must have a body (not be just a declaration)
+  assertnotnull(n->fun.name); // functions must be named
 
-  if (!n->fun.name) {
-    // functions must be named
-    char buf[14];
-    u32 len = (u32)snprintf(buf, sizeof(buf), "$f%u", u->pkg->funs.len);
-    n->fun.name = symget(u->build->syms, buf, len);
-  }
-
-  auto f = IRPkgGetFun(u->pkg, n->fun.name);
-  if (f != NULL) {
+  // const char* name;
+  IRFun* f = IRPkgGetFun(u->pkg, n->fun.name);
+  if (f) {
     // fun already built or in progress of being built
     return f;
   }

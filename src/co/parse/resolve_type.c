@@ -68,11 +68,13 @@ static void typecontext_push(ResCtx* ctx, Type* t) {
 
 static void typecontext_pop(ResCtx* ctx) {
   assertnotnull(ctx->typecontext);
-  dlog_mod("typecontext_pop %s", fmtnode(ctx->typecontext));
   if (ctx->typecontext_stack.len == 0) {
+    dlog_mod("typecontext_pop %s (now nil)", fmtnode(ctx->typecontext));
     ctx->typecontext = NULL;
   } else {
+    auto was = ctx->typecontext;
     ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
+    dlog_mod("typecontext_pop %s (now %s)", was, fmtnode(ctx->typecontext));
   }
 }
 
@@ -402,7 +404,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   dlog_mod("resolve_call_type argstype: %s", fmtnode(argstype));
 
   // pop parameter types off of the "requested type" stack
-  typecontext_push(ctx, ft->t.fun.params);
+  typecontext_pop(ctx);
 
   // Note: Consider arguments with defaults:
   // fun foo(a, b int, c int = 0)
@@ -510,7 +512,8 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   if (n->type) {
     // Has type already. Constant literals might have ideal type.
     if (n->type == Type_ideal) {
-      if (fl & RFlagResolveIdeal)
+      // if (fl & RFlagResolveIdeal)
+      if (ctx->typecontext)
         R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
       // else: leave as ideal, for now
     }

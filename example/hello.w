@@ -1,4 +1,3 @@
-# x = 4 # unused
 
 fun main() nil {
   a = 2

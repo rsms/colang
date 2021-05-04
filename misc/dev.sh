@@ -35,7 +35,7 @@ if $HELP; then
 	Rebuild incrementally as source files change
 	usage: $0 [options] [args to make ...]
 	options:
-		-run[=<args>]  Run $RUN_EXE [with optional <args>] after building
+		-run[=<args>]  Run bin/co [with optional <args>] after building
 		-clean         Discard build caches before building (just once in -watch mode)
 		-release       Build release build instead of the default debug build
 		-with-llvm     Sets LLVM=1 for make which casues llvm to be linked and WITH_LLVM to be defined
@@ -45,7 +45,6 @@ if $HELP; then
 	exit 0
 fi
 
-$OPT_SEQ || MAKE_ARGS="$MAKE_ARGS -j$(nproc)"
 
 if [ -z "$RUN_EXE" ]; then
 	RUN_EXE=bin/co
@@ -60,7 +59,11 @@ if [ -z "$RUN_EXE" ]; then
 fi
 
 # $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1 SANITIZE=1" # asan not compat with coco
-$OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1"
+$OPT_RELEASE ||    MAKE_ARGS="$MAKE_ARGS DEBUG=1"
+if $OPT_LLVM; then MAKE_ARGS="$MAKE_ARGS LLVM=1"; fi
+$OPT_SEQ ||        MAKE_ARGS="$MAKE_ARGS -j$(nproc)"
+
+MAKE_ARGS="$MAKE_ARGS $RUN_EXE"
 
 ! $OPT_CLEAN || make clean
 

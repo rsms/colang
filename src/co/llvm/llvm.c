@@ -7,7 +7,6 @@
 
 // make the code more readable by using short name aliases
 typedef LLVMValueRef  Value;
-typedef LLVMTypeRef   Type;
 
 // B is internal data used during IR construction
 typedef struct B {
@@ -66,15 +65,15 @@ static Value build_call1(B* b, const char* calleeName) {
   return LLVMBuildCall(b->builder, callee, args, nargs, "");
 }
 
-static Type build_funtype1(B* b) {
-  Type returnType = b->t_i32;
-  Type paramTypes[] = {b->t_i32, b->t_i32};
+static LLVMTypeRef build_funtype1(B* b) {
+  LLVMTypeRef returnType = b->t_i32;
+  LLVMTypeRef paramTypes[] = {b->t_i32, b->t_i32};
   LLVMBool isVarArg = false;
   return LLVMFunctionType(returnType, paramTypes, countof(paramTypes), isVarArg);
 }
 
 static Value build_funproto1(B* b, const char* name) {
-  Type fnt = build_funtype1(b);
+  LLVMTypeRef fnt = build_funtype1(b);
   Value fn = LLVMAddFunction(b->mod, name, fnt);
   // set argument names (for debugging)
   Value arg1 = LLVMGetParam(fn, 0);
@@ -120,23 +119,20 @@ static Value build_fun1(B* b, const char* name) {
 }
 
 
-static Type get_type(B* b, Node* nullable n);
+static LLVMTypeRef get_type(B* b, Node* nullable n);
 static Value build_expr(B* b, Node* n, const char* debugname);
 
 
-static Type build_funtype(B* b, Node* nullable params, Node* nullable result) {
-  Type returnType = get_type(b, result);
-  Type* paramsv = NULL;
+static LLVMTypeRef build_funtype(B* b, Node* nullable params, Node* nullable result) {
+  LLVMTypeRef returnType = get_type(b, result);
+  LLVMTypeRef* paramsv = NULL;
   u32 paramsc = 0;
   if (params != NULL) {
     assert(params->kind == NTupleType);
-    paramsc = NodeListLen(&params->array.a);
+    paramsc = params->array.a.len;
     paramsv = memalloc_raw(b->build->mem, sizeof(void*) * paramsc);
-    auto paramLink = params->array.a.head;
     for (u32 i = 0; i < paramsc; i++) {
-      assert(paramLink->node);
-      paramsv[i] = get_type(b, paramLink->node);
-      paramLink = paramLink->next;
+      paramsv[i] = get_type(b, params->array.a.v[i]);
     }
   }
   auto ft = LLVMFunctionType(returnType, paramsv, paramsc, /*isVarArg*/false);
@@ -146,10 +142,10 @@ static Type build_funtype(B* b, Node* nullable params, Node* nullable result) {
 }
 
 
-static Type get_funtype(B* b, Node* funTypeNode) {
+static LLVMTypeRef get_funtype(B* b, Node* funTypeNode) {
   assert(funTypeNode->kind == NFunType);
   assert(funTypeNode->t.id);
-  Type ft = (Type)SymMapGet(&b->typemap, funTypeNode->t.id);
+  LLVMTypeRef ft = (LLVMTypeRef)SymMapGet(&b->typemap, funTypeNode->t.id);
   if (!ft) {
     ft = build_funtype(b, funTypeNode->t.fun.params, funTypeNode->t.fun.result);
     SymMapSet(&b->typemap, funTypeNode->t.id, ft);
@@ -158,7 +154,7 @@ static Type get_funtype(B* b, Node* funTypeNode) {
 }
 
 
-static Type get_type(B* b, Node* nullable n) {
+static LLVMTypeRef get_type(B* b, Node* nullable n) {
   if (!n)
     return b->t_void;
   switch (n->kind) {
@@ -179,36 +175,37 @@ static Type get_type(B* b, Node* nullable n) {
         case TypeCode_int:
         case TypeCode_uint:
           return b->t_int;
+        case TypeCode_nil:
+          return b->t_void;
         default: {
-          dlog("TODO basic type %s", n->t.basic.name);
+          panic("TODO basic type %s", n->t.basic.name);
           break;
         }
       }
       break;
     }
     default:
-      dlog("TODO node kind %s", NodeKindName(n->kind));
+      panic("TODO node kind %s", NodeKindName(n->kind));
       break;
   }
-  errlog("invalid node kind %s", NodeKindName(n->kind));
+  panic("invalid node kind %s", NodeKindName(n->kind));
   return NULL;
 }
 
 
-static Value build_funproto(B* b, Node* n) {
-  Type ft = get_funtype(b, n->type);
+static Value build_funproto(B* b, Node* n, const char* name) {
+  LLVMTypeRef ft = get_funtype(b, n->type);
   auto f = &n->fun;
-  const char* name = f->name ? f->name : "";
   Value fn = LLVMAddFunction(b->mod, name, ft);
   // set argument names (for debugging)
   if (b->prettyIR && n->fun.params) {
-    u32 i = 0;
-    NodeListForEach(&n->fun.params->array.a, param, {
+    auto a = n->fun.params->array.a;
+    for (u32 i = 0; i < a.len; i++) {
+      auto param = (Node*)a.v[i];
       // param->kind==NArg
       Value p = LLVMGetParam(fn, i);
       LLVMSetValueName2(p, param->field.name, symlen(param->field.name));
-      i++;
-    });
+    }
   }
   return fn;
 }
@@ -217,11 +214,18 @@ static Value build_funproto(B* b, Node* n) {
 static Value get_funproto(B* b, Node* n) { // n->kind==NFun
   LLVMValueRef fn = NULL;
   auto f = &n->fun;
+
+  // name
+  assertnotnull(f->name);
+  const char* name = f->name;
+  // add typeid (experiment with function overloading)
+  if (strcmp(name, "main") != 0)
+    name = str_fmt("%s%s", name, n->type->t.id); // LEAKS!
+
   // llvm maintains a map of all named functions in the module; query it
-  if (f->name)
-    fn = LLVMGetNamedFunction(b->mod, f->name);
+  fn = LLVMGetNamedFunction(b->mod, name);
   if (!fn)
-    fn = build_funproto(b, n);
+    fn = build_funproto(b, n, name);
   return fn;
 }
 
@@ -247,11 +251,13 @@ static Value build_fun(B* b, Node* n) {
     LLVMPositionBuilderAtEnd(b->builder, bb);
 
     Value retval = build_expr(b, n->fun.body, "");
-    if (!retval) {
-      retval = LLVMBuildRetVoid(b->builder);
+
+    if (!retval || n->type->t.fun.result == Type_nil) {
+      LLVMBuildRetVoid(b->builder);
       // retval = LLVMConstInt(b->t_int, 0, /*signext*/false); // XXX TMP
+    } else {
+      LLVMBuildRet(b->builder, retval);
     }
-    LLVMBuildRet(b->builder, retval);
   }
 
   return fn;
@@ -265,11 +271,9 @@ static Value get_current_fun(B* b) {
 
 
 static Value build_block(B* b, Node* n) { // n->kind==NBlock
-  auto ent = n->array.a.head;
   Value v = NULL; // return null to signal "empty block"
-  while (ent) {
-    v = build_expr(b, ent->node, "");
-    ent = ent->next;
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    v = build_expr(b, n->array.a.v[i], "");
   }
   // last expr of block is its value (TODO: is this true? is that Co's semantic?)
   return v;
@@ -295,12 +299,10 @@ static Value build_call(B* b, Node* n) { // n->kind==NCall
   auto args = n->call.args;
   if (args) {
     asserteq(args->kind, NTuple);
-    argc = NodeListLen(&args->array.a);
+    argc = args->array.a.len;
     argv = memalloc_raw(b->build->mem, sizeof(void*) * argc);
-    auto ent = args->array.a.head;
     for (u32 i = 0; i < argc; i++) {
-      argv[i] = build_expr(b, ent->node, "arg");
-      ent = ent->next;
+      argv[i] = build_expr(b, args->array.a.v[i], "arg");
     }
   }
 
@@ -316,6 +318,23 @@ static Value build_call(B* b, Node* n) { // n->kind==NCall
   if (argv)
     memfree(b->build->mem, argv);
   return v;
+}
+
+
+static Value build_typecast(B* b, Node* n, const char* debugname) { // n->kind==NTypeCast
+  LLVMBool isSigned = false;
+  LLVMTypeRef dsttype = b->t_i32;
+  // switch (n->call.receiver->kind) {
+  //   case NBasicType: {
+  //     dlog(">>>>");
+  //     break;
+  //   }
+  //   default:
+  //     dlog("other");
+  //     break;
+  // }
+  LLVMValueRef srcval = build_expr(b, n->call.args, "");
+  return LLVMBuildIntCast2(b->builder, srcval, dsttype, isSigned, debugname);
 }
 
 
@@ -350,18 +369,21 @@ retry:
       return build_block(b, n);
     case NCall:
       return build_call(b, n);
+    case NTypeCast:
+      return build_typecast(b, n, debugname);
     default:
-      dlog("TODO node kind %s", NodeKindName(n->kind));
+      panic("TODO node kind %s", NodeKindName(n->kind));
       break;
   }
-  errlog("invalid node kind %s", NodeKindName(n->kind));
+  panic("invalid node kind %s", NodeKindName(n->kind));
   return NULL;
 }
 
 
 static void build_pkgpart(B* b, Node* n) {
   assert(n->kind == NFile);
-  NodeListForEach(&n->array.a, cn, {
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    auto cn = (Node*)n->array.a.v[i];
     switch (cn->kind) {
       case NFun:
         build_fun(b, cn);
@@ -370,7 +392,7 @@ static void build_pkgpart(B* b, Node* n) {
         dlog("TODO: %s", NodeKindName(cn->kind));
         break;
     }
-  });
+  }
 }
 
 
@@ -410,9 +432,10 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   }
 
   // build package parts
-  NodeListForEach(&pkgnode->array.a, cn, {
+  for (u32 i = 0; i < pkgnode->array.a.len; i++) {
+    auto cn = (Node*)pkgnode->array.a.v[i];
     build_pkgpart(b, cn);
-  });
+  }
 
   // // build demo functions
   // build_fun1(b, "foo");

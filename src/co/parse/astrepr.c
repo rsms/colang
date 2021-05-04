@@ -349,10 +349,6 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     } else {
       s = str_appendcstr(s, "()");
     }
-    s = str_appendcstr(s, " <");
-    if (n->t.id)
-      s = str_append(s, n->t.id, symlen(n->t.id));
-    s = str_appendcstr(s, ">");
     break;
 
   // uses u.t.tuple

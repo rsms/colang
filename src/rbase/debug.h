@@ -38,7 +38,7 @@ ASSUME_NONNULL_BEGIN
 
   #define assertop(a,op,b) ({                                             \
     __typeof__(a) A = a;                                                  \
-    __typeof__(b) B = b;                                                  \
+    __typeof__(a) B = b; /* intentionally typeof(a) and not b for lits */ \
     if (R_UNLIKELY(!(A op B)))                                            \
       panic("Assertion failed: %s %s %s (%s %s %s)",                      \
             #a, #op, #b, debug_quickfmt(0,A), #op, debug_quickfmt(1,B));  \

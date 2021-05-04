@@ -134,10 +134,6 @@ typedef struct Node {
       Node* nullable right;  // NULL for PrefixOp. NULL for Op when its a postfix op.
       Tok            op;
     } op;
-    // /* array */ struct { // Tuple, Block, File, Pkg
-    //   Scope*   scope; // non-NULL if kind==Block|File
-    //   NodeList a; // [NPkg: list of NFile nodes]
-    // } array1;
     /* array */ struct { // Tuple, Block, File, Pkg
       Scope* nullable scope;        // non-NULL if kind==Block|File
       NodeArray       a;            // array of nodes

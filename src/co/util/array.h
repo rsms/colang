@@ -52,7 +52,7 @@ inline static void ArrayInit(Array* a) {
 }
 
 inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap) {
-  a->v = ptr;
+  a->v = (void**)ptr;
   a->cap = cap;
   a->len = 0;
   a->onstack = true;
