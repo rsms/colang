@@ -8,7 +8,7 @@ IRPkg* IRPkgNew(Mem nullable mem, const char* id) {
   size_t idlen = id ? strlen(id) : 0;
   auto pkg = (IRPkg*)memalloc(mem, sizeof(IRPkg) + idlen + 1);
   pkg->mem = mem;
-  ArrayInitWithStorage(&pkg->funs, pkg->funsStorage, sizeof(pkg->funsStorage)/sizeof(void*));
+  SymMapInit(&pkg->funs, 32, mem);
   if (id == NULL) {
     pkg->id = "_";
   } else {
@@ -22,20 +22,27 @@ IRPkg* IRPkgNew(Mem nullable mem, const char* id) {
 
 
 void IRPkgAddFun(IRPkg* pkg, IRFun* f) {
-  ArrayPush(&pkg->funs, f, pkg->mem);
+  assertnotnull(f->name);
+  SymMapSet(&pkg->funs, f->name, f);
+}
+
+
+IRFun* nullable IRPkgGetFun(IRPkg* pkg, Sym name) {
+  assertnotnull(name);
+  return SymMapGet(&pkg->funs, name);
 }
 
 // ===============================================================================================
 // fun
 
-IRFun* IRFunNew(Mem nullable mem, Sym typeid, Sym nullable name, Pos pos, u32 nparams) {
+IRFun* IRFunNew(Mem mem, Sym typeid, Sym name, Pos pos, u32 nparams) {
   auto f = (IRFun*)memalloc(mem, sizeof(IRFun));
   f->mem = mem;
-  ArrayInitWithStorage(&f->blocks, f->blocksStorage, sizeof(f->blocksStorage)/sizeof(void*));
   f->typeid = typeid;
-  f->name = name; // may be NULL
+  f->name = name; assertnotnull(name);
   f->pos = pos; // copy
   f->nparams = nparams;
+  ArrayInitWithStorage(&f->blocks, f->blocksStorage, sizeof(f->blocksStorage)/sizeof(void*));
   return f;
 }
 
@@ -156,18 +163,13 @@ void IRBlockDiscard(IRBlock* b) {
 }
 
 
-void IRBlockAddValue(IRBlock* b, IRValue* v) {
-  ArrayPush(&b->values, v, b->f->mem);
-}
-
 void IRBlockSetControl(IRBlock* b, IRValue* v) {
-  if (b->control) {
-    b->control->uses--;
-  }
+  auto prev = b->control;
   b->control = v;
-  if (v) {
+  if (v)
     v->uses++;
-  }
+  if (prev)
+    prev->uses--;
 }
 
 
@@ -242,43 +244,48 @@ void IRBlockDelSucc(IRBlock* b, u32 index) {
 // ===============================================================================================
 // value
 
-IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, Pos pos) {
-  assert(f->vid < 0xFFFFFFFF); // too many block IDs generated
-  auto v = (IRValue*)memalloc(f->mem, sizeof(IRValue));
-  v->id = f->vid++;
+IRValue* IRValueAlloc(Mem mem, IROp op, TypeCode type, Pos pos) {
+  auto v = (IRValue*)memalloc(mem, sizeof(IRValue));
+  v->id = IRValueNoID;
   v->op = op;
   v->type = type;
   v->pos = pos;
-  if (b != NULL) {
-    ArrayPush(&b->values, v, b->f->mem);
-  } else {
-    dlog("WARN IRValueNew b=NULL");
-  }
+  ArrayInitWithStorage(&v->args, v->argsStorage, countof(v->argsStorage));
   return v;
 }
 
-void IRValueAddComment(IRValue* v, Mem mem, ConstStr comment) {
-  if (comment != NULL) { // allow passing NULL to do nothing
-    auto commentLen = str_len(comment);
-    if (commentLen > 0) {
-      if (v->comment == NULL) {
-        v->comment = memdup(mem, comment, commentLen + 1);
-      } else {
-        const char* delim = "; ";
-        u32 len = strlen(v->comment);
-        auto ptr = (char*)memalloc_raw(mem, len + strlen(delim) + commentLen + 1);
-        memcpy(ptr, v->comment, len);
-        memcpy(&ptr[len], delim, strlen(delim));
-        memcpy(&ptr[len + strlen(delim)], comment, commentLen + 1); // +1 include nul
-        v->comment = ptr;
-      }
-    }
+IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, Pos pos) {
+  auto v = IRValueAlloc(f->mem, op, type, pos);
+  if (b)
+    IRBlockAddValue(b, v);
+  return v;
+}
+
+IRValue* IRValueClone(Mem mem, IRValue* v1) {
+  auto v2 = (IRValue*)memalloc_raw(mem, sizeof(IRValue));
+  *v2 = *v1;
+  v2->uses = 0;
+  ArrayInitWithStorage(&v2->args, v2->argsStorage, countof(v2->argsStorage));
+  for (u32 i = 0; i < v1->args.len; i++)
+    IRValueAddArg(v2, mem, v1->args.v[i]);
+  if (v2->comment)
+    v1->comment = str_cpy(v2->comment, str_len(v2->comment));
+  return v2;
+}
+
+void IRValueAddComment(IRValue* v, Mem mem, const char* comment, u32 len) {
+  if (len == 0)
+    return;
+  if (v->comment) {
+    v->comment = str_appendcstr(v->comment, "; ");
+    v->comment = str_append(v->comment, comment, len);
+  } else {
+    v->comment = str_cpy(comment, len);
   }
 }
 
-void IRValueAddArg(IRValue* v, IRValue* arg) {
-  assert(v->argslen < countof(v->args));
-  v->args[v->argslen++] = arg;
-  arg->uses ++;
+void IRValueAddArg(IRValue* v, Mem mem, IRValue* arg) {
+  arg->uses++;
+  ArrayPush(&v->args, arg, mem);
 }
 

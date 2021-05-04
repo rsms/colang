@@ -209,11 +209,11 @@ Node* ResolveType(Build* b, Node* n);
 // GetTypeID retrieves the TypeID for the type node n.
 // This function may mutate n by computing and storing id to n.t.id.
 // This function may add symbols to b->syms
-Sym GetTypeID(Build* b, Node* n);
+Sym GetTypeID(Build* b, Type* n);
 
 // TypeEquals returns true if x and y are equivalent types (i.e. identical).
 // This function may call GetTypeID which may mutate b->syms, x and y.
-bool TypeEquals(Build* b, Node* x, Node* y);
+bool TypeEquals(Build* b, Type* x, Type* y);
 
 // TypeConv describes the effect of converting one type to another
 typedef enum TypeConv {

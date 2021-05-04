@@ -6,7 +6,7 @@ typedef struct {
   bool includeTypes;
 } IRRepr;
 
-static void reprValue(IRRepr* r, const IRValue* v) {
+static void ir_repr_value(IRRepr* r, const IRValue* v) {
   assert(v->op < Op_MAX);
 
   // vN type = Op
@@ -19,8 +19,9 @@ static void reprValue(IRRepr* r, const IRValue* v) {
   );
 
   // arg arg
-  for (u8 i = 0; i < v->argslen; i++) {
-    r->buf = str_appendfmt(r->buf, i+1 < v->argslen ? " v%-2u " : " v%u", v->args[i]->id);
+  for (u8 i = 0; i < v->args.len; i++) {
+    IRValue* arg = (IRValue*)v->args.v[i];
+    r->buf = str_appendfmt(r->buf, i+1 < v->args.len ? " v%-2u" : " v%u", arg->id);
   }
 
   // [auxInt]
@@ -34,14 +35,20 @@ static void reprValue(IRRepr* r, const IRValue* v) {
     case IRAuxI32:
       r->buf = str_appendfmt(r->buf, " [0x%X]", (u32)v->auxInt);
       break;
-    case IRAuxF32:
-      r->buf = str_appendfmt(r->buf, " [%f]", *(f32*)(&v->auxInt));
-      break;
     case IRAuxI64:
       r->buf = str_appendfmt(r->buf, " [0x%llX]", v->auxInt);
       break;
+    case IRAuxF32:
+      r->buf = str_appendfmt(r->buf, " [%f]", *(f32*)(&v->auxInt));
+      break;
     case IRAuxF64:
       r->buf = str_appendfmt(r->buf, " [%f]", *(f64*)(&v->auxInt));
+      break;
+    case IRAuxMem:
+      r->buf = str_appendfmt(r->buf, " [%p]", (void*)v->auxInt);
+      break;
+    case IRAuxSym:
+      r->buf = str_appendfmt(r->buf, " [%s]", v->auxSym);
       break;
   }
 
@@ -49,10 +56,11 @@ static void reprValue(IRRepr* r, const IRValue* v) {
   // TODO non-numeric aux
 
   // comment
-  if (v->comment != NULL) {
-    r->buf = str_appendfmt(r->buf, "\t# %u use ; %s", v->uses, v->comment);
+  const char* use = v->uses == 1 ? "use" : "uses";
+  if (v->comment) {
+    r->buf = str_appendfmt(r->buf, "\t# %s; %u %s", v->comment, v->uses, use);
   } else {
-    r->buf = str_appendfmt(r->buf, "\t# %u use", v->uses);
+    r->buf = str_appendfmt(r->buf, "\t# %u %s", v->uses, use);
   }
 
   r->buf = str_appendc(r->buf, '\n');
@@ -60,7 +68,7 @@ static void reprValue(IRRepr* r, const IRValue* v) {
 
 
 
-static void reprBlock(IRRepr* r, const IRBlock* b) {
+static void ir_repr_block(IRRepr* r, const IRBlock* b) {
   // start of block header
   r->buf = str_appendfmt(r->buf, "  b%u:", b->id);
 
@@ -76,14 +84,13 @@ static void reprBlock(IRRepr* r, const IRBlock* b) {
   }
 
   // end block header
-  if (b->comment != NULL) {
+  if (b->comment)
     r->buf = str_appendfmt(r->buf, "\t # %s", b->comment);
-  }
   r->buf = str_appendc(r->buf, '\n');
 
   // values
   for (u32 i = 0; i < b->values.len; i++)
-    reprValue(r, b->values.v[i]);
+    ir_repr_value(r, b->values.v[i]);
 
   // successors
   switch (b->kind) {
@@ -118,8 +125,11 @@ static void reprBlock(IRRepr* r, const IRBlock* b) {
   }
 
   case IRBlockRet:
-    assert(b->control != NULL);
-    r->buf = str_appendfmt(r->buf, "  ret v%u\n", b->control->id);
+    if (b->control) {
+      r->buf = str_appendfmt(r->buf, "  ret v%u\n", b->control->id);
+    } else {
+      r->buf = str_appendcstr(r->buf, "  ret\n");
+    }
     break;
 
   }
@@ -128,27 +138,32 @@ static void reprBlock(IRRepr* r, const IRBlock* b) {
 }
 
 
-static void reprFun(IRRepr* r, const IRFun* f) {
-  r->buf = str_appendfmt(r->buf,
-    "fun %s %s %p\n",
-    f->name == NULL ? "_" : f->name,
-    f->typeid == NULL ? "()" : f->typeid,
-    f
-  );
+static void ir_repr_fun(IRRepr* r, const IRFun* f) {
+  r->buf = str_appendfmt(r->buf, "fun %s %s", f->name, f->typeid);
+  if (f->ncalls == 0)
+    r->buf = str_appendcstr(r->buf, " nocall");
+  if (IRFunIsPure(f))
+    r->buf = str_appendcstr(r->buf, " pure");
+  r->buf = str_appendc(r->buf, '\n');
   for (u32 i = 0; i < f->blocks.len; i++)
-    reprBlock(r, f->blocks.v[i]);
+    ir_repr_block(r, f->blocks.v[i]);
 }
 
 
-static void reprPkg(IRRepr* r, const IRPkg* pkg) {
+static void fun_iter(Sym name, IRFun* f, bool* stop, IRRepr* r) {
+  ir_repr_fun(r, f);
+}
+
+static void ir_repr_pkg(IRRepr* r, const IRPkg* pkg) {
   r->buf = str_appendfmt(r->buf, "package %s\n", pkg->id);
-  for (u32 i = 0; i < pkg->funs.len; i++)
-    reprFun(r, pkg->funs.v[i]);
+  SymMapIter(&pkg->funs, (SymMapIterator)fun_iter, r);
+  // for (u32 i = 0; i < pkg->funs.len; i++)
+  //   ir_repr_fun(r, pkg->funs.v[i]);
 }
 
 
 Str IRReprPkgStr(const IRPkg* pkg, Str init) {
   IRRepr r = { .buf=init, .includeTypes=true };
-  reprPkg(&r, pkg);
+  ir_repr_pkg(&r, pkg);
   return r.buf;
 }

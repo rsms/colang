@@ -6,10 +6,11 @@
 __attribute__((used))
 static Str debug_fmtval1(Str s, const IRValue* v, int indent) {
   s = str_appendfmt(s, "v%u(op=%s type=%s args=[", v->id, IROpName(v->op), TypeCodeName(v->type));
-  if (v->argslen > 0) {
-    for (int i = 0; i < v->argslen; i++) {
+  if (v->args.len > 0) {
+    for (u32 i = 0; i < v->args.len; i++) {
+      IRValue* arg = (IRValue*)v->args.v[i];
       s = str_appendfmt(s, "\n  %*s", (indent * 2), "");
-      s = debug_fmtval1(s, v->args[i], indent + 1);
+      s = debug_fmtval1(s, arg, indent + 1);
     }
     s = str_appendfmt(s, "\n%*s", (indent * 2), "");
   }
@@ -35,14 +36,25 @@ void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
   u->build = build;
   u->mem = MemNew(0);
   u->pkg = IRPkgNew(u->mem, build->pkg->id);
-  PtrMapInit(&u->funs, 32, u->mem);
   u->vars = SymMapNew(8, u->mem);
   u->flags = flags;
-  ArrayInitWithStorage(&u->defvars, u->defvarsStorage, sizeof(u->defvarsStorage)/sizeof(void*));
+  ArrayInitWithStorage(&u->defvars, u->defvarsStorage, countof(u->defvarsStorage));
+  ArrayInitWithStorage(&u->funstack, u->funstackStorage, countof(u->funstackStorage));
 }
 
 void IRBuilderDispose(IRBuilder* u) {
   MemFree(u->mem);
+}
+
+
+static TypeCode canonical_int_type(IRBuilder* u_unused_reserved, TypeCode t) {
+  // aliases. e.g. int, uint
+  switch (t) {
+    case TypeCode_int:  t = TypeCode_int32; break;
+    case TypeCode_uint: t = TypeCode_uint32; break;
+    default: break;
+  }
+  return t;
 }
 
 
@@ -100,9 +112,21 @@ static IRBlock* endBlock(IRBuilder* u) {
   return b;
 }
 
+typedef struct FunBuildState {
+  IRFun*   f;
+  IRBlock* b;
+} FunBuildState;
 
 static void startFun(IRBuilder* u, IRFun* f) {
-  assert(u->f == NULL); // starting function with existing function
+  if (u->f) {
+    // save current function generation state
+    dlog("startFun suspend building %p", u->f);
+    auto fbs = (FunBuildState*)memalloct(u->mem, FunBuildState);
+    fbs->f = u->f;
+    fbs->b = u->b;
+    ArrayPush(&u->funstack, fbs, u->mem);
+    u->b = NULL;
+  }
   u->f = f;
   dlog("startFun %p", u->f);
 }
@@ -110,9 +134,18 @@ static void startFun(IRBuilder* u, IRFun* f) {
 static void endFun(IRBuilder* u) {
   assert(u->f != NULL); // no current function
   dlog("endFun %p", u->f);
-  #if DEBUG
-  u->f = NULL;
-  #endif
+  if (u->funstack.len > 0) {
+    // restore function generation state
+    auto fbs = (FunBuildState*)ArrayPop(&u->funstack);
+    u->f = fbs->f;
+    u->b = fbs->b;
+    memfree(u->mem, fbs);
+    dlog("endFun resume building %p", u->f);
+  } else {
+    #if DEBUG
+    u->f = NULL;
+    #endif
+  }
 }
 
 
@@ -175,45 +208,25 @@ static IRValue* readVariable(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/
 
 static IRValue* ast_add_expr(IRBuilder* u, Node* n);
 static bool ast_add_toplevel(IRBuilder* u, Node* n);
+static IRFun* ast_add_fun(IRBuilder* u, Node* n);
 
 
-static IRValue* ast_add_intconst(IRBuilder* u, Node* n) {
-  assert(n->kind == NIntLit);
+static IRValue* ast_add_intconst(IRBuilder* u, Node* n) { // n->kind==NIntLit
   assert(n->type->kind == NBasicType);
-  auto v = IRFunGetConstInt(u->f, n->type->t.basic.typeCode, n->val.i);
+  auto t = canonical_int_type(u, n->type->t.basic.typeCode);
+  auto v = IRFunGetConstInt(u->f, t, n->val.i);
   return v;
 }
 
 
-static IRValue* ast_add_boolconst(IRBuilder* u, Node* n) {
-  assert(n->kind == NBoolLit);
+static IRValue* ast_add_boolconst(IRBuilder* u, Node* n) { // n->kind==NBoolLit
   assert(n->type->kind == NBasicType);
   assert(n->type->t.basic.typeCode == TypeCode_bool);
   return IRFunGetConstBool(u->f, (bool)n->val.i);
 }
 
 
-static IRValue* addAssign(IRBuilder* u, Sym name /*nullable*/, IRValue* value) {
-  assert(value != NULL);
-  if (name == NULL) {
-    // dummy assignment to "_"; i.e. "_ = x" => "x"
-    return value;
-  }
-
-  // instead of issuing an intermediate "copy", simply associate variable
-  // name with the value on the right-hand side.
-  writeVariable(u, name, value, u->b);
-
-  if (u->flags & IRBuilderComments) {
-    IRValueAddComment(value, u->mem, name);
-  }
-
-  return value;
-}
-
-
-static IRValue* ast_add_id(IRBuilder* u, Node* n) {
-  assert(n->kind == NId);
+static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
   assert(n->ref.target != NULL); // never unresolved
   // dlog("ast_add_id \"%s\" target = %s", n->ref.name, fmtnode(n->ref.target));
   if (n->ref.target->kind == NLet) {
@@ -225,58 +238,74 @@ static IRValue* ast_add_id(IRBuilder* u, Node* n) {
 }
 
 
-static IRValue* ast_add_typecast(IRBuilder* u, Node* n) {
-  assert(n->kind == NTypeCast);
+inline static bool is_free_typecast(TypeCode srcType, TypeCode dstType) {
+  auto fl = TypeCodeFlags(srcType);
+  if ((fl & TypeCodeFlagInt) &&
+      (fl & ~TypeCodeFlagSigned) == (TypeCodeFlags(dstType) & ~TypeCodeFlagSigned))
+  {
+    // integers which differ only by sign
+    return true;
+  }
+  return false;
+}
+
+
+static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   assert(n->call.receiver != NULL);
   assert(n->call.args != NULL);
 
   // generate rvalue
-  auto inval = ast_add_expr(u, n->call.args);
-  auto dstType = n->call.receiver;
+  auto srcValue = ast_add_expr(u, n->call.args);
 
-  if (R_UNLIKELY(dstType->kind != NBasicType)) {
-    build_errf(u->build, n->pos, NoPos, "invalid type %s in type cast", fmtnode(dstType));
+  // load type codes
+  auto srcType = srcValue->type;
+  auto dstType = canonical_int_type(u, n->call.receiver->t.basic.typeCode);
+  if (R_UNLIKELY(n->call.receiver->kind != NBasicType)) {
+    build_errf(u->build, n->pos, NoPos, "invalid type %s in type cast", fmtnode(n->call.receiver));
     return TODO_Value(u);
   }
 
-  auto totype = dstType->t.basic.typeCode;
-  // aliases. e.g. int, uint
-  switch (totype) {
-    case TypeCode_int:  totype = TypeCode_int32; break;
-    case TypeCode_uint: totype = TypeCode_uint32; break;
-    default: break;
-  }
-  if (totype == inval->type) {
-    return inval;
-  }
-  IROp convop = IROpConvertType(inval->type, totype);
+  // if the conversion if "free" (e.g. int32 -> uint32), short circuit
+  if (dstType == srcType || is_free_typecast(srcType, dstType))
+    return srcValue;
+  //
+  // Variant with a Copy op in between:
+  // // if the conversion if "free" (e.g. int32 -> uint32), short circuit
+  // if (is_free_typecast(srcType, dstType)) {
+  //   auto v = IRValueNew(u->f, u->b, OpCopy, dstType, n->pos);
+  //   IRValueAddArg(v, u->mem, srcValue);
+  //   return v;
+  // }
+
+  // select conversion operation
+  IROp convop = IROpConvertType(srcType, dstType);
   if (R_UNLIKELY(convop == OpNil)) {
     build_errf(u->build, n->pos, NoPos, "invalid type conversion %s to %s",
-      TypeCodeName(inval->type), TypeCodeName(dstType->t.basic.typeCode));
+      TypeCodeName(srcType), TypeCodeName(dstType));
     return TODO_Value(u);
   }
-  auto v = IRValueNew(u->f, u->b, convop, totype, n->pos);
-  IRValueAddArg(v, inval);
+
+  // build value for convertion op
+  auto v = IRValueNew(u->f, u->b, convop, dstType, n->pos);
+  IRValueAddArg(v, u->mem, srcValue);
   return v;
 }
 
 
-static IRValue* ast_add_arg(IRBuilder* u, Node* n) {
-  assert(n->kind == NArg);
+static IRValue* ast_add_arg(IRBuilder* u, Node* n) { // n->kind==NArg
   if (R_UNLIKELY(n->type->kind != NBasicType)) {
     // TODO add support for NTupleType et al
     build_errf(u->build, n->pos, NoPos, "invalid argument type %s", fmtnode(n->type));
     return TODO_Value(u);
   }
-  auto v = IRValueNew(u->f, u->b, OpArg, n->type->t.basic.typeCode, n->pos);
+  auto t = canonical_int_type(u, n->type->t.basic.typeCode);
+  auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
   v->auxInt = n->field.index;
   return v;
 }
 
 
-static IRValue* ast_add_binop(IRBuilder* u, Node* n) {
-  assert(n->kind == NBinOp);
-
+static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
   dlog("ast_add_binop %s %s = %s",
     TokName(n->op.op),
     fmtnode(n->op.left),
@@ -290,37 +319,53 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) {
   dlog("[BinOp] left:  %s", debug_fmtval(0, left));
   dlog("[BinOp] right: %s", debug_fmtval(0, right));
 
+  // auto t = canonical_int_type(u, n->type->t.basic.typeCode);
+
   // lookup IROp
   IROp op = IROpFromAST(n->op.op, left->type, right->type);
   assert(op != OpNil);
 
   // read result type
+  asserteq(n->type, n->op.left->type); // we assume binop type == op1 type.
+  TypeCode restype = left->type;
+
+  // [debug] check that the type we think n will have is actually the type of the resulting value
   #if DEBUG
-  // ensure that the type we think n will have is actually the type of the resulting value.
-  TypeCode restype = IROpInfo(op)->outputType;
-  if (restype > TypeCode_NUM_END) {
+  TypeCode optype = IROpInfo(op)->outputType;
+  if (optype > TypeCode_NUM_END) {
     // result type is parametric; is the same as an input type.
-    assert(restype == TypeCode_param1 || restype == TypeCode_param2);
-    if (restype == TypeCode_param1) {
-      restype = left->type;
-    } else {
-      restype = right->type;
-    }
+    assert(optype == TypeCode_param1 || optype == TypeCode_param2);
+    optype = (optype == TypeCode_param1) ? left->type : right->type;
   }
-  assert( restype == n->type->t.basic.typeCode);
-  #else
-  TypeCode restype = n->type->t.basic.typeCode;
+  asserteq(optype, restype);
   #endif
 
   auto v = IRValueNew(u->f, u->b, op, restype, n->pos);
-  IRValueAddArg(v, left);
-  IRValueAddArg(v, right);
+  IRValueAddArg(v, u->mem, left);
+  IRValueAddArg(v, u->mem, right);
   return v;
 }
 
 
-static IRValue* ast_add_let(IRBuilder* u, Node* n) {
-  assert(n->kind == NLet);
+static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* value) {
+  assert(value != NULL);
+  if (name == NULL) {
+    // dummy assignment to "_"; i.e. "_ = x" => "x"
+    return value;
+  }
+
+  // instead of issuing an intermediate "copy", simply associate variable
+  // name with the value on the right-hand side.
+  writeVariable(u, name, value, u->b);
+
+  if (u->flags & IRBuilderComments)
+    IRValueAddComment(value, u->mem, name, symlen(name));
+
+  return value;
+}
+
+
+static IRValue* ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
   assertnotnull(n->field.init);
   assertnotnull(n->type);
   assert(n->type != Type_ideal);
@@ -330,7 +375,7 @@ static IRValue* ast_add_let(IRBuilder* u, Node* n) {
     n->field.init ? fmtnode(n->field.init) : "nil"
   );
   auto v = ast_add_expr(u, n->field.init); // right-hand side
-  return addAssign(u, n->field.name, v);
+  return ast_add_assign(u, n->field.name, v);
 }
 
 
@@ -339,8 +384,7 @@ static IRValue* ast_add_let(IRBuilder* u, Node* n) {
 //      (Let x (Int 1))          ; then block
 //      (Let x (Int 2)) )        ; else block
 // Returns a new empty block that's the block after the if.
-static IRValue* ast_add_if(IRBuilder* u, Node* n) {
-  assert(n->kind == NIf);
+static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
   //
   // if..end has the following semantics:
   //
@@ -471,9 +515,10 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
     }
 
     if (u->flags & IRBuilderComments) {
-      thenb->comment = memsprintf(u->mem, "b%u.then", ifb->id);
-      if (elseb != NULL) { elseb->comment = memsprintf(u->mem, "b%u.else", ifb->id); }
-      contb->comment = memsprintf(u->mem, "b%u.end", ifb->id);
+      thenb->comment = str_fmt("b%u.then", ifb->id);
+      if (elseb)
+        elseb->comment = str_fmt("b%u.else", ifb->id);
+      contb->comment = str_fmt("b%u.end", ifb->id);
     }
 
   } else {
@@ -487,8 +532,8 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
     IRFunMoveBlockToEnd(u->f, elsebIndex);
 
     if (u->flags & IRBuilderComments) {
-      thenb->comment = memsprintf(u->mem, "b%u.then", ifb->id);
-      elseb->comment = memsprintf(u->mem, "b%u.end", ifb->id);
+      thenb->comment = str_fmt("b%u.then", ifb->id);
+      elseb->comment = str_fmt("b%u.end", ifb->id);
     }
 
     // Consider and decide what semantics we want for if..then expressions without else.
@@ -552,12 +597,38 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) {
   // make Phi, joining the two branches together
   auto phi = IRValueNew(u->f, u->b, OpPhi, thenv->type, n->pos);
   assertf(u->b->preds[0] != NULL, "phi in block without predecessors");
-  phi->args[0] = thenv;
-  phi->args[1] = elsev;
-  thenv->uses++;
-  elsev->uses++;
-  phi->argslen = 2;
+  IRValueAddArg(phi, u->mem, thenv);
+  IRValueAddArg(phi, u->mem, elsev);
   return phi;
+}
+
+
+static IRValue* ast_add_call(IRBuilder* u, Node* n) { // n->kind==NCall
+  asserteq(n->call.receiver->kind, NFun);
+  IRFun* fn = ast_add_fun(u, n->call.receiver);
+  // TODO: closures, lambdas etc:
+  // IRValue* recv = ast_add_expr(u, n->call.receiver);
+
+  Node* argstuple = n->call.args;
+  auto v = IRValueAlloc(u->mem, OpCall, TypeCode_fun, n->pos); // preallocate
+  v->auxInt = (i64)fn->name;
+  if (argstuple) {
+    for (u32 i = 0; i < argstuple->array.a.len; i++) {
+      Node* argnode = (Node*)argstuple->array.a.v[i];
+      IRValue* arg = ast_add_expr(u, argnode);
+      IRValueAddArg(v, u->mem, arg);
+    }
+  }
+  IRBlockAddValue(u->b, v);
+
+  u->f->ncalls++;
+  u->f->npurecalls += ((u32)IRFunIsPure(fn));
+
+  // TODO: if the function was not directly named, add a recognizable name as a comment
+  // if ((u->flags & IRBuilderComments) && fn->name)
+  //   IRValueAddComment(v, u->mem, fn->name, symlen(fn->name));
+
+  return v;
 }
 
 
@@ -568,6 +639,14 @@ static IRValue* ast_add_block(IRBuilder* u, Node* n) {  // language block, not I
     v = ast_add_expr(u, (Node*)n->array.a.v[i]);
   return v;
 }
+
+
+// static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
+//   IRFun* fn = ast_add_fun(u, n);
+//   auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_mem, n->pos);
+//   v->auxInt = (i64)fn;
+//   return v;
+// }
 
 
 static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
@@ -595,15 +674,16 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NIf:       return ast_add_if(u, n);
     case NTypeCast: return ast_add_typecast(u, n);
     case NArg:      return ast_add_arg(u, n);
+    case NCall:     return ast_add_call(u, n);
+
+    case NFun:      //return ast_add_funexpr(u, n);
 
     case NFloatLit:
     case NNil:
     case NAssign:
     case NBasicType:
-    case NCall:
     case NComment:
     case NField:
-    case NFun:
     case NFunType:
     case NPrefixOp:
     case NPostfixOp:
@@ -630,7 +710,14 @@ static IRFun* ast_add_fun(IRBuilder* u, Node* n) {
   assert(n->kind == NFun);
   assert(n->fun.body != NULL); // not a concrete function
 
-  auto f = (IRFun*)PtrMapGet(&u->funs, (void*)n);
+  if (!n->fun.name) {
+    // functions must be named
+    char buf[14];
+    u32 len = (u32)snprintf(buf, sizeof(buf), "$f%u", u->pkg->funs.len);
+    n->fun.name = symget(u->build->syms, buf, len);
+  }
+
+  auto f = IRPkgGetFun(u->pkg, n->fun.name);
   if (f != NULL) {
     // fun already built or in progress of being built
     return f;
@@ -641,16 +728,14 @@ static IRFun* ast_add_fun(IRBuilder* u, Node* n) {
   // allocate a new function and its entry block
   assert(n->type != NULL);
   assert(n->type->kind == NFunType);
-  auto params = n->type->fun.params;
+  auto params = n->fun.params;
   u32 nparams = 0;
   if (params)
     nparams = params->kind == NTuple ? params->array.a.len : 1;
   f = IRFunNew(u->mem, n->type->t.id, n->fun.name, n->pos, nparams);
   auto entryb = IRBlockNew(f, IRBlockCont, n->pos);
 
-  // Since functions can be anonymous and self-referential, short-circuit using a PtrMap
-  // Add the function before we generate its body.
-  PtrMapSet(&u->funs, n, f);
+  // Since functions can be self-referential, add the function before we generate its body
   IRPkgAddFun(u->pkg, f);
 
   // start function
@@ -661,9 +746,10 @@ static IRFun* ast_add_fun(IRBuilder* u, Node* n) {
   auto bodyval = ast_add_expr(u, n->fun.body);
 
   // end last block, if not already ended
-  if (u->b != NULL) {
+  if (u->b) {
     u->b->kind = IRBlockRet;
-    IRBlockSetControl(u->b, bodyval);
+    if (n->type->t.fun.result != Type_nil)
+      IRBlockSetControl(u->b, bodyval);
     endBlock(u);
   }
 

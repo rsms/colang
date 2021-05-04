@@ -69,6 +69,8 @@ auxTypes = [
   "IRAuxI64",
   "IRAuxF32",
   "IRAuxF64",
+  "IRAuxMem",
+  "IRAuxSym",
 ]
 irtypeToAuxType = {
   "bool" : "IRAuxBool",
@@ -78,10 +80,12 @@ irtypeToAuxType = {
   "i64"  : "IRAuxI64",
   "f32"  : "IRAuxF32",
   "f64"  : "IRAuxF64",
+  "mem"  : "IRAuxMem",
+  "sym"  : "IRAuxSym",
 }
 
 # irtype => [ TypeCode ... ]
-irTypeToTypeCode = {}
+irTypeToTypeCode = {"mem":"mem"}
 for typeCodeName, irtypes in typeCodeToIRType.items():
   for irtype in irtypes:
     v = irTypeToTypeCode.get(irtype, [])
@@ -342,7 +346,7 @@ def gen_IROpDescr():
       name + ";",
       comment,
       typeWidth=typeWidth,
-      nameWidth=nameWidth+1)).strip())
+      nameWidth=nameWidth+1)).rstrip())
   lines.append(endline)
   if DEBUG:
     print("\n".join(lines))

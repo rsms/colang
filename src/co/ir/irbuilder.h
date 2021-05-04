@@ -16,7 +16,6 @@ typedef enum IRBuilderFlags {
 typedef struct IRBuilder {
   Build*         build; // current source context (source-file specific)
   Mem            mem;   // arena for all IR data constructed by this builder
-  PtrMap         funs;  // Node* => IRFun* -- generated functions
   IRBuilderFlags flags;
   IRPkg*         pkg;
 
@@ -31,6 +30,10 @@ typedef struct IRBuilder {
   Array defvars; void* defvarsStorage[512]; // PtrMap*[]  (from vars)
     // all defined variables at the end of each block. Indexed by block id.
     // null indicates there are no variables in that block.
+
+  Array funstack; void* funstackStorage[8];
+    // used for saving current function generation state when stumbling upon a call op
+    // to a not-yet-generated function.
 
   // incompletePhis :Map<Block,Map<ByteStr,Value>>|null
     // tracks pending, incomplete phis that are completed by sealBlock for

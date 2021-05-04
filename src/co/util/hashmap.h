@@ -64,7 +64,7 @@ HASHMAP_VALUE nullable HM_FUN(Del)(HASHMAP_NAME*, HASHMAP_KEY key);
 void HM_FUN(Clear)(HASHMAP_NAME*);
 
 // Iterator function type. Set stop=true to stop iteration.
-typedef void(HM_FUN(Iterator))(HASHMAP_KEY key, HASHMAP_VALUE value, bool* stop, void* userdata);
+typedef void(*HM_FUN(Iterator))(HASHMAP_KEY key, HASHMAP_VALUE value, bool* stop, void* userdata);
 
 // Iter iterates over entries of the map.
 void HM_FUN(Iter)(const HASHMAP_NAME*, HM_FUN(Iterator)*, void* userdata);

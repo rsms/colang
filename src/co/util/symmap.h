@@ -33,9 +33,9 @@ void* nullable SymMapDel(SymMap*, Sym key);
 void SymMapClear(SymMap*);
 
 // Iterator function type. Set stop=true to stop iteration.
-typedef void(SymMapIterator)(Sym key, void* value, bool* stop, void* nullable userdata);
+typedef void(*SymMapIterator)(Sym key, void* value, bool* stop, void* nullable userdata);
 
 // SymMapIter iterates over entries of the map.
-void SymMapIter(const SymMap*, SymMapIterator*, void* nullable userdata);
+void SymMapIter(const SymMap*, SymMapIterator, void* nullable userdata);
 
 ASSUME_NONNULL_END

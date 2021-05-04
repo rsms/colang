@@ -9,6 +9,8 @@ typedef struct Array {
   bool   onstack; // true if v is space on stack
 } Array;
 
+// TODO: move onstack flag into a single bit of len or cap
+
 #define Array_INIT { NULL, 0, 0, false }
 #define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, true }
 #define Array_INIT_ON_STACK(initcap) ({ void* st[initcap]; (Array){ st, initcap, 0, true }; })

@@ -349,6 +349,10 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     } else {
       s = str_appendcstr(s, "()");
     }
+    s = str_appendcstr(s, " <");
+    if (n->t.id)
+      s = str_append(s, n->t.id, symlen(n->t.id));
+    s = str_appendcstr(s, ">");
     break;
 
   // uses u.t.tuple
@@ -447,9 +451,11 @@ Str str_append_astnode(Str s, const Node* n) {
   case NId: // foo
     return str_append(s, n->ref.name, symlen(n->ref.name));
 
-  case NBinOp: // foo+bar
+  case NBinOp: // foo + bar
     s = str_append_astnode(s, n->op.left);
+    s = str_appendc(s, ' ');
     s = str_appendcstr(s, TokName(n->op.op));
+    s = str_appendc(s, ' ');
     return str_append_astnode(s, n->op.right);
 
   case NPostfixOp: // foo++

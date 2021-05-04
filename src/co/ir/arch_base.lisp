@@ -18,7 +18,7 @@
 ;   FaultOnNilArg0      this op will fault if arg0 is nil (and aux encodes a small offset)
 ;   FaultOnNilArg1      this op will fault if arg1 is nil (and aux encodes a small offset)
 ;   UsesScratch         this op requires scratch memory space
-;   HasSideEffects      for "reasons", not to be eliminated.  E.g., atomic store.
+;   HasSideEffects      not to be eliminated. E.g. atomic store. Implied for Call
 ;   Generic             generic op
 ;
 ; Types:
@@ -39,12 +39,22 @@
 ;   f32      32-bit floating point number
 ;   f64      64-bit floating point number
 ;   mem      memory location
+;   sym      symbolic name
 ;   nil      void
 ;
 (ops
-  (Nil ()->() ZeroWidth)
-  (Phi ()->() ZeroWidth) ; select an argument based on which predecessor block we came from
-  (Arg ()->() (aux i32))
+  ; Format: (op (inputs) -> (outputs) flags...)
+  ;
+  (Nil  ()->() ZeroWidth)
+  (NoOp ()->() ZeroWidth) ; passthrough "no operation"
+  (Phi  ()->() ZeroWidth) ; select an argument based on which predecessor block we came from
+  (Copy ()->() ZeroWidth) ; alias, usually with a different logical but technically equivalent type
+  (Fun  ()->() ZeroWidth (aux mem))  ; auxint = IRFun* address
+  (Arg  ()->() (aux i32))
+  ;
+  ; Function calls
+  ; ["Call", 1, Call, t.mem, {aux: "SymOff"}], ; auxint=arglen, arg0=mem, returns mem
+  (Call () -> mem Call  (aux sym)) ; auxint=arglen, arg0=mem
   ;
   ; Constant values. Stored in IRValue.aux
   (ConstBool  () -> bool  Constant  (aux bool))  ; aux is 0=false, 1=true

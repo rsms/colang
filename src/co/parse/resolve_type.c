@@ -99,8 +99,8 @@ static Node* resolve_ideal_type(
   RFlag            fl
 ) {
   // lower ideal types in all cases but NLet
-  assert(typecontext == NULL || typecontext->kind == NBasicType);
   dlog_mod("resolve_ideal_type node %s to typecontext %s", fmtnode(n), fmtnode(typecontext));
+  assert(typecontext == NULL || typecontext->kind == NBasicType);
 
   // It's really only constant literals which are actually of ideal type, so switch on those
   // and lower CType to concrete type.
@@ -170,7 +170,10 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
     auto bodyType = n->fun.body->type;
     if (ft->t.fun.result == NULL) {
       ft->t.fun.result = bodyType;
-    } else if (R_UNLIKELY(!TypeEquals(ctx->build, ft->t.fun.result, bodyType))) {
+    } else if (R_UNLIKELY(
+      ft->t.fun.result != Type_nil &&
+      !TypeEquals(ctx->build, ft->t.fun.result, bodyType) ))
+    {
       // function prototype claims to return type A while the body yields type B
       build_errf(ctx->build, n->fun.body->pos, NodeEndPos(n->fun.body),
         "cannot use type %s as return type %s",
@@ -180,7 +183,7 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
 
   // make sure its type id is set as codegen relies on this
   if (!ft->t.id)
-    ft->t.id = GetTypeID(ctx->build, n);
+    ft->t.id = GetTypeID(ctx->build, ft);
 
   n->type = ft;
   return n;
@@ -317,8 +320,21 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   // we get here from either of the two conditions:
   // - left & right are both untyped (lhs has been resolved, above)
   // - left & right are both typed
-  if (!TypeEquals(ctx->build, lt, rt))
+  if (!TypeEquals(ctx->build, lt, rt)) {
     n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
+
+    if (R_UNLIKELY(!TypeEquals(ctx->build, lt, rt))) {
+      build_errf(ctx->build, n->op.left->pos, n->op.right->pos,
+        "invalid operation: %s (mismatched types %s and %s)",
+        fmtnode(n), fmtnode(lt), fmtnode(rt));
+      if (lt->kind == NBasicType) {
+        // suggest type cast: x + (y as int)
+        build_infof(ctx->build, n->op.right->pos, NodeEndPos(n->op.right),
+          "try a type cast: %s %s (%s as %s)",
+          fmtnode(n->op.left), TokName(n->op.op), fmtnode(n->op.right), fmtnode(lt));
+      }
+    }
+  }
 
   n->type = lt;
   return n;
@@ -327,6 +343,7 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(n->call.receiver != NULL);
+
   if (R_UNLIKELY(!NodeKindIsType(n->call.receiver->kind))) {
     build_errf(ctx->build, n->pos, NodeEndPos(n),
       "invalid conversion to non-type %s", fmtnode(n->call.receiver));

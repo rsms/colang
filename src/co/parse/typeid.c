@@ -99,11 +99,9 @@ static Str mktypestr(Str s, const Node* n) {
 
 
 // GetTypeID returns the type Sym identifying n
-Sym GetTypeID(Build* b, Node* n) {
-  if (n->t.id != NULL) {
-    // Note: All built-in non-generic types have predefined type ids
+Sym GetTypeID(Build* b, Type* n) {
+  if (n->t.id) // Note: All built-in non-generic types have predefined type ids
     return n->t.id;
-  }
   auto tmpstr = mktypestr(str_new(128), n);
   n->t.id = symget(b->syms, tmpstr, str_len(tmpstr));
   str_free(tmpstr);
@@ -111,10 +109,11 @@ Sym GetTypeID(Build* b, Node* n) {
 }
 
 
-bool TypeEquals(Build* b, Node* x, Node* y) {
+bool TypeEquals(Build* b, Type* x, Type* y) {
   assert(x != NULL);
   assert(y != NULL);
-  assert(NodeKindIsType(x->kind));
+  assertf(NodeKindIsType(x->kind), "x is not a type but %s.", NodeKindName(x->kind));
+  assertf(NodeKindIsType(y->kind), "y is not a type but %s.", NodeKindName(x->kind));
   if (x == y)
     return true;
   if (x->kind != y->kind)

@@ -205,7 +205,7 @@ void HM_FUN(Clear)(HASHMAP_NAME* m) {
 }
 
 
-void HM_FUN(Iter)(const HASHMAP_NAME* m, HM_FUN(Iterator)* it, void* userdata) {
+void HM_FUN(Iter)(const HASHMAP_NAME* m, HM_FUN(Iterator) it, void* userdata) {
   bool stop = false;
   for (u32 bi = 0; bi < m->cap; bi++) {
     auto b = &((Bucket*)m->buckets)[bi];

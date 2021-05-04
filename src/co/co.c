@@ -236,6 +236,10 @@ int cmd_build(int argc, const char* argv[argc]) {
   // resolve identifiers & types
   printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
+  if (build.errcount) {
+    errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
+    return 1;
+  }
   // dump_ast("", pkgnode);
   // printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveType(&build, pkgnode);

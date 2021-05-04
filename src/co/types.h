@@ -24,7 +24,7 @@ typedef enum TypeCodeFlag {
   /* Note: order of intrinsic integer types must be signed,unsigned,signed,unsigned...       */\
   /* Reordering these requires updating TypeCodeIsInt() below.                               */\
   /*                                                                                         */\
-  /* name       encoding                                                                     */\
+  /* name       encoding  flags                                                              */\
   _( bool      , 'b', 0 )                                                                      \
   _( int8      , '1', TypeCodeFlagSize1 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
   _( uint8     , '2', TypeCodeFlagSize1 | TypeCodeFlagInt )                                    \
@@ -45,6 +45,7 @@ typedef enum TypeCodeFlag {
   _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                       \
   /*                                                                                         */\
   /* internal types not directly reachable by names in the language */                         \
+  _( mem       , 'M', 0 ) /* memory location */                                                \
   _( fun       , '^', 0 )                                                                      \
   _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                              \
   _( list      , '[', 0 ) _( listEnd   , ']', 0 )                                              \
@@ -130,7 +131,14 @@ inline static const char* TypeCodeName(TypeCode tc) {
 // access TypeCodeFlag
 extern const TypeCodeFlag TypeCodeFlagMap[TypeCode_MAX];
 
-inline static bool TypeCodeIsInt(TypeCode t) { return TypeCodeFlagMap[t] & TypeCodeFlagInt; }
-inline static bool TypeCodeIsFloat(TypeCode t) { return TypeCodeFlagMap[t] & TypeCodeFlagFloat; }
+ALWAYS_INLINE static TypeCodeFlag TypeCodeFlags(TypeCode t) {
+  return TypeCodeFlagMap[t];
+}
+ALWAYS_INLINE static bool TypeCodeIsInt(TypeCode t) {
+  return TypeCodeFlags(t) & TypeCodeFlagInt;
+}
+ALWAYS_INLINE static bool TypeCodeIsFloat(TypeCode t) {
+  return TypeCodeFlags(t) & TypeCodeFlagFloat;
+}
 
 ASSUME_NONNULL_END
