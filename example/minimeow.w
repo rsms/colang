@@ -31,6 +31,10 @@ var user User?     # C equiv: User* user = 0;
 var user MutableHandle(User)
 # C equiv: User u = {}; struct { User* p; } user = {&u};
 
+# Rust's Ownership Rules:
+# - Each value in Rust has a variable that’s called its owner.
+# - There can only be one owner at a time.
+# - When the owner goes out of scope, the value will be dropped.
 fun borrowUser(u &User) {
   print(u.name)  # reading is ok
   u.id = 0       # ERROR: u is borrowed; it's immutable

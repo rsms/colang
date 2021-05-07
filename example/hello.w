@@ -2,6 +2,7 @@
 fun main() nil {
   a = 2
   b = a
+  z = int32
   add(a, b)
 }
 
