@@ -5,19 +5,9 @@
 // NodeType is used in Node.tag to communicate a node's type
 typedef enum {
   THamt      = 0, // tag bits 00
-  TValue     = 1, // tag bits 01
-  TCollision = 2, // tag bits 10
+  TCollision = 1, // tag bits 10
+  TValue     = 2, // tag bits 01
 } NodeType;
-
-// Node is either a HAMT, value or a collision (set of values with same key/hash)
-// typedef struct HamtNode Node;
-// typedef struct Node {
-//   atomic_u32 refs;      // reference count -- MUST BE FIRST FIELD! --
-//   u32        tag;       // bit 0-2 = type, bit 3-31 = len
-//   HamtUInt   bmap;      // used for key when type==TValue
-//   Node*      entries[]; // THamt:[THamt|TCollision|TValue], TCollision:[TValue], TValue:void*
-// } Node;
-
 
 #define TAG_TYPE_NBITS 2 // bits reserved in tag for type (2 = 0-3: 00, 01, 10, 11)
 #define TAG_LEN_MASK   (UINT32_MAX << TAG_TYPE_NBITS) // 0b11111111111111111111111111111100
@@ -103,7 +93,7 @@ static void node_free_noentries(HamtCtx* ctx, HamtNode* n) {
 }
 
 static void node_free(HamtCtx* ctx, HamtNode* n) {
-  //dlog("free node %p (type %u)", n, NODE_TYPE(n));
+  // dlog("free node %p (type %u)", n, NODE_TYPE(n));
   u32 len = NODE_LEN(n);
   if (NODE_TYPE(n) == TValue) {
     assert(len == 0);
@@ -127,7 +117,8 @@ inline static void node_release(HamtCtx* ctx, HamtNode* n) {
 
 void _hamt_free(Hamt h) {
   // called by hamt_release when a Hamt handle's refcount drops to 0
-  node_free(h.ctx, (HamtNode*)h.root);
+  assert(h.root != &_empty_hamt);
+  node_free(h.ctx, h.root);
 }
 
 // node_clone makes a copy of a THamt or TCollision node, including entries.
@@ -458,6 +449,7 @@ static HamtNode* collision_without(HamtCtx* ctx, HamtNode* c1, const void* refen
 }
 
 
+// Note: If not found, returns m1 _without an incresed refcount_
 static HamtNode* hamt_remove(
   HamtCtx*     ctx,
   HamtNode*    m1,
@@ -526,7 +518,8 @@ static HamtNode* hamt_remove(
     } // switch
   }
 
-  return node_retain(m1);
+  // not found (intentionally not calling node_retain)
+  return m1;
 }
 
 
@@ -794,6 +787,8 @@ Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
   // TODO: consider mutating h when h.refs==1
   auto m2 = hamt_remove(h.ctx, h.root, key, entry, 0);
   *removed = m2 != h.root;
+  if (!*removed)
+    node_retain(m2); // a new reference to h.root
   return (Hamt){ m2, h.ctx };
 }
 

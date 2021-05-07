@@ -212,7 +212,7 @@ inline static Hamt hamt_retain(Hamt h) {
 }
 
 inline static void hamt_release(Hamt h) {
-  if (AtomicSub((atomic_u32*)h.root, 1) == 1)
+  if (AtomicSub(&h.root->refs, 1) == 1)
     _hamt_free(h);
 }
 

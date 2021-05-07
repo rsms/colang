@@ -30,11 +30,15 @@ static bool TestValueEqual(HamtCtx* ctx, const void* a, const void* b) {
   return strcmp(((const TestValue*)a)->str, ((const TestValue*)b)->str) == 0;
 }
 
-static void TestValueFree(HamtCtx* ctx, void* vp) {
+static void TestValueReset(HamtCtx* ctx, void* vp) {
   TestValue* v = (TestValue*)vp;
-  // dlog("_TestValueFree %u \"%s\"", v->key, v->str);
+  // dlog("TestValueReset %u \"%s\"", v->key, v->str);
   memset(v, 0, sizeof(TestValue));
-  memfree(NULL, v);
+}
+
+static void TestValueFree(HamtCtx* ctx, void* vp) {
+  TestValueReset(ctx, vp);
+  memfree(NULL, vp);
 }
 
 static Str TestValueRepr(HamtCtx* ctx, Str s, const void* vp) {
@@ -42,6 +46,23 @@ static Str TestValueRepr(HamtCtx* ctx, Str s, const void* vp) {
   return str_appendfmt(s,
     (sizeof(HamtUInt) == 8 ? "TestValue(0x%llX \"%s\")" : "TestValue(0x%X \"%s\")"),
     v->key, v->str);
+}
+
+// randkey returns a random Hamt key
+static HamtUInt randkey() {
+  long n = random();
+  return (HamtUInt)n;
+}
+
+static void shuffle_array(void** a, size_t len) {
+  if (len > 1) {
+    for (size_t i = 0; i < len - 1; i++) {
+      size_t j = i + rand() / (RAND_MAX / (len - i) + 1);
+      void* v = a[j];
+      a[j] = a[i];
+      a[i] = v;
+    }
+  }
 }
 
 // MakeTestValue takes a string of slash-separated integers and builds a Value
@@ -109,6 +130,83 @@ R_UNIT_TEST(hamt) {
   assert(v2 == v);
   assert(strcmp(v->str, "hello") == 0);
   hamt_release(h);
+}
+
+
+R_UNIT_TEST(hamt_mem) {
+  HamtCtx ctx = {
+    // required
+    .entkey  = TestValueKey,
+    .enteq   = TestValueEqual,
+    .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
+    // optional
+    .entrepr = TestValueRepr,
+  };
+  TestValue values[10];
+  char strs[countof(values)][17]; // "0000000000000000"-"ffffffffffffffff"
+
+  Hamt h = hamt_new(&ctx);
+
+  // add values using hamt_set
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = &values[i];
+    v->refs = 1;
+    v->key = i;
+    snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
+    v->str = strs[i];
+    hamt_set(&h, v);
+    asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
+  }
+
+  // remove values using hamt_del
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = &values[i];
+    asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
+    assert(hamt_del(&h, v));
+    asserteq(hamt_count(h), countof(values) - i - 1);
+  }
+
+  assert(hamt_empty(h));
+
+  // add values using hamt_with
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = &values[i];
+    v->refs = 1;
+    v->key = i;
+    snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
+    v->str = strs[i];
+    bool didadd;
+    Hamt h2 = hamt_with(h, v, &didadd);
+    hamt_release(h);
+    h = h2;
+    assert(didadd);
+    asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
+  }
+
+  // remove values using hamt_without
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = &values[i];
+    dlog("del %u", i);
+    asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
+    bool removed;
+    Hamt h2 = hamt_without(h, v, &removed);
+    hamt_release(h);
+    h = h2;
+    assert(removed);
+    asserteq(hamt_count(h), countof(values) - i - 1);
+  }
+
+  // note: we can't check refcount of h.root here as it is likely _empty_hamt
+  hamt_release(h);
+
+  // verify entfree was called for all values
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = &values[i];
+    // TestValueReset should have been called when node_release decremented
+    // the refcount of the value. TestValueReset zeroes the value, so we check for that:
+    assert(v->key == 0);
+    assert(v->str == NULL);
+  }
 }
 
 
@@ -299,29 +397,6 @@ R_UNIT_TEST(hamt_iterator) {
 }
 
 
-// randkey returns a random Hamt key
-static HamtUInt randkey() {
-  long n = random();
-  return (HamtUInt)n;
-}
-
-static void TestValueReset(HamtCtx* ctx, void* vp) {
-  TestValue* v = (TestValue*)vp;
-  // dlog("TestValueReset %x", v->key);
-  memset(v, 0, sizeof(TestValue));
-}
-
-static void shuffle_array(void** a, size_t len) {
-  if (len > 1) {
-    for (size_t i = 0; i < len - 1; i++) {
-      size_t j = i + rand() / (RAND_MAX / (len - i) + 1);
-      void* v = a[j];
-      a[j] = a[i];
-      a[i] = v;
-    }
-  }
-}
-
 __attribute__((used))
 static void HamtFuzzTest(unsigned int randseed) {
   HamtCtx ctx = {
@@ -388,14 +463,20 @@ static void HamtFuzzTest(unsigned int randseed) {
     auto v = randvals[i];
     assert(hamt_del(&h, v));
     asserteq(hamt_count(h), countof(values) - i - 1);
+  }
+
+  assert(hamt_empty(h));
+  hamt_release(h);
+
+  // all values should have been released and entfree called for them
+  for (u32 i = 0; i < countof(values); i++) {
+    auto v = randvals[i];
     // TestValueReset should have been called when node_release decremented
     // the refcount of the value. TestValueReset zeroes the value, so we check for that:
     assert(v->key == 0);
     assert(v->str == NULL);
   }
 
-  assert(hamt_empty(h));
-  hamt_release(h);
 }
 
 R_UNIT_TEST(hamt_fuzz) {
