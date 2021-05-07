@@ -105,6 +105,7 @@ typedef struct IRPkg {
   Mem nullable mem;  // owning allocator
   const char*  id;   // c-string. "_" if NULL is passed for name to IRPkgNew. (TODO use Sym?)
   SymMap       funs; // functions in this package
+  // TODO: ordered function array or list in addition to funs lookup map
 } IRPkg;
 
 
@@ -140,7 +141,7 @@ static void IRValueClearArg(IRValue*, u32 index);
 
 
 // IRReprPkgStr appends to append_to_str a human-readable representation of a package's IR.
-Str IRReprPkgStr(const IRPkg* f, Str append_to_str);
+Str IRReprPkgStr(const IRPkg* f, const PosMap* posmap, Str append_to_str);
 
 
 // Note: Must use the same Mem for all calls to the same IRConstCache.

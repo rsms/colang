@@ -48,9 +48,8 @@ IRFun* IRFunNew(Mem mem, Sym typeid, Sym name, Pos pos, u32 nparams) {
 
 
 static IRValue* getConst64(IRFun* f, TypeCode t, u64 value) {
-
-  // TODO: simplify const cache to just hold int32 and int64 since we can store all
-  // values in these.
+  // sign-normalize types; i.e. uint32 => int32
+  t = TypeCodeSignNormalized(t);
 
   // dlog("getConst64 t=%s value=%llX", TypeCodeName(t), value);
   int addHint = 0;

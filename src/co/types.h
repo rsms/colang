@@ -114,31 +114,72 @@ const char* CTypeName(CType ct);
   _( nil ) \
 /*END TYPE_SYMS_PRIVATE*/
 
-// Note: The following function is provided by sym.h
-// static Node* TypeCodeToTypeNode(TypeCode t);
+// TypeCodeEncoding returns the string encoding character for type code t.
+// It does an inlined a O(1) branch-less table lookup.
+static char TypeCodeEncoding(TypeCode t);
+
+// TypeCodeName returns a symbolic name of type code. Eg "int32"
+// It does an inlined a O(1) branch-less table lookup.
+static const char* TypeCodeName(TypeCode);
+
+// TypeCodeFlags accesses attributes of type code t.
+// It does an inlined a O(1) branch-less table lookup.
+static TypeCodeFlag TypeCodeFlags(TypeCode t);
+static bool TypeCodeIsInt(TypeCode t);   // check for flag TypeCodeFlagInt
+static bool TypeCodeIsFloat(TypeCode t); // check for flag TypeCodeFlagFloat
+
+// TypeCodeSignNormalized returns intN for both intN and uintN
+static TypeCode TypeCodeSignNormalized(TypeCode t);
+
+
+// -----------------------------------------------------------------------------------------------
+// implementations
 
 // Lookup table TypeCode => string encoding char
-extern const char TypeCodeEncoding[TypeCode_MAX];
+extern const char _TypeCodeEncodingMap[TypeCode_MAX];
+ALWAYS_INLINE static char TypeCodeEncoding(TypeCode t) {
+  return _TypeCodeEncodingMap[t];
+}
 
-// Symbolic name of type code. Eg "int32"
-static const char* TypeCodeName(TypeCode);
+// Lookup table TypeCode => name string
 extern const char* _TypeCodeName[TypeCode_MAX];
 inline static const char* TypeCodeName(TypeCode tc) {
   assert(tc >= 0 && tc < TypeCode_MAX);
   return _TypeCodeName[tc];
 }
 
-// access TypeCodeFlag
-extern const TypeCodeFlag TypeCodeFlagMap[TypeCode_MAX];
-
+// Lookup table TypeCode => flags
+extern const TypeCodeFlag _TypeCodeFlagMap[TypeCode_MAX];
 ALWAYS_INLINE static TypeCodeFlag TypeCodeFlags(TypeCode t) {
-  return TypeCodeFlagMap[t];
+  return _TypeCodeFlagMap[t];
 }
 ALWAYS_INLINE static bool TypeCodeIsInt(TypeCode t) {
   return TypeCodeFlags(t) & TypeCodeFlagInt;
 }
 ALWAYS_INLINE static bool TypeCodeIsFloat(TypeCode t) {
   return TypeCodeFlags(t) & TypeCodeFlagFloat;
+}
+
+// TypeCodeSignNormalized returns intN for both intN and uintN
+ALWAYS_INLINE static TypeCode TypeCodeSignNormalized(TypeCode t) {
+  // subtract 1 if int and signed, 0 if not.
+  // This relies on type constants of the same width having even and odd enum values.
+  // E.g.
+  //   int16  = 3
+  //   uint16 = 4
+  //   int32  = 5
+  //   uint32 = 6
+  //   ...
+  auto fl = TypeCodeFlags(t);
+  return t - (
+    ( 1 -
+      !MIN(
+        (fl & TypeCodeFlagInt), // 0 if not int
+        !(fl & TypeCodeFlagSigned) // 0 if signed
+      ) // => 0 if int and signed, 1 if not
+    ) // => 1 if int and signed, 0 if not
+  );
+  // it was fun to make this branch less, that's the only reason it's so strange :-)
 }
 
 ASSUME_NONNULL_END

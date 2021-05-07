@@ -64,7 +64,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
   switch (v->ct) {
     case CType_int:
       // int -> int; check overflow and simply leave as-is (reinterpret.)
-      if ((i64)v->i < min_intval[tc] || max_intval[tc] < v->i) {
+      if (R_UNLIKELY((i64)v->i < min_intval[tc] || max_intval[tc] < v->i)) {
         auto nval = NValFmt(str_new(16), v);
         build_errf(b, srcnode->pos, NoPos, "constant %s overflows %s", nval, TypeCodeName(tc));
         str_free(nval);
@@ -104,7 +104,7 @@ static bool convval(Build* b, Node* srcnode, NVal* v, Node* targetType, bool exp
   }
 
   auto tc = targetType->t.basic.typeCode;
-  auto tcfl = TypeCodeFlagMap[tc];
+  auto tcfl = TypeCodeFlags(tc);
 
   // * -> integer
   if (tcfl & TypeCodeFlagInt) {
@@ -177,7 +177,7 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
       // }
       n->op.left  = convlit(b, n->op.left, t, /* explicit */ false);
       n->op.right = convlit(b, n->op.right, t, /* explicit */ false);
-      if (!TypeEquals(b, n->op.left->type, n->op.right->type)) {
+      if (R_UNLIKELY(!TypeEquals(b, n->op.left->type, n->op.right->type))) {
         err_invalid_binop(b, n);
         break;
       }
@@ -192,9 +192,9 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
     break;
   }
 
-  if (n->type == Type_ideal) {
+  if (n->type == Type_ideal)
     n->type = t;
-  }
+
   return n;
 }
 

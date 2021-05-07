@@ -301,6 +301,8 @@ static IRValue* ast_add_arg(IRBuilder* u, Node* n) { // n->kind==NArg
   auto t = canonical_int_type(u, n->type->t.basic.typeCode);
   auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
   v->auxInt = n->field.index;
+  if (u->flags & IRBuilderComments)
+    IRValueAddComment(v, u->mem, n->field.name, symlen(n->field.name));
   return v;
 }
 

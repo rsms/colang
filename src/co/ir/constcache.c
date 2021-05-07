@@ -140,7 +140,7 @@ IRConstCache* IRConstCacheAdd(
   // Invariant: t>=0 and t<32
   // Note: TypeCode_NUM_END is static_assert to be <= 32
 
-  // dlog("IRConstCacheAdd type=%c (%u) value=0x%lX", TypeCodeEncoding[t], t, value);
+  // dlog("IRConstCacheAdd type=%c (%u) value=0x%lX", TypeCodeEncoding(t), t, value);
 
   const u32 bitpos = 1 << t;
 

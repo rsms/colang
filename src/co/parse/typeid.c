@@ -64,27 +64,27 @@ static Str mktypestr(Str s, const Node* n) {
   switch (n->kind) {
 
     case NBasicType:
-      s = str_appendc(s, TypeCodeEncoding[n->t.basic.typeCode]);
+      s = str_appendc(s, TypeCodeEncoding(n->t.basic.typeCode));
       break;
 
     case NTupleType:
-      s = str_appendc(s, TypeCodeEncoding[TypeCode_tuple]);
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_tuple));
       for (u32 i = 0; i < n->t.array.a.len; i++)
         s = mktypestr(s, (Node*)n->t.array.a.v[i]);
-      s = str_appendc(s, TypeCodeEncoding[TypeCode_tupleEnd]);
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_tupleEnd));
       break;
 
     case NFunType: {
-      s = str_appendc(s, TypeCodeEncoding[TypeCode_fun]);
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_fun));
       if (n->t.fun.params) {
         s = mktypestr(s, n->t.fun.params);
       } else {
-        s = str_appendc(s, TypeCodeEncoding[TypeCode_nil]);
+        s = str_appendc(s, TypeCodeEncoding(TypeCode_nil));
       }
       if (n->t.fun.result) {
         s = mktypestr(s, n->t.fun.result);
       } else {
-        s = str_appendc(s, TypeCodeEncoding[TypeCode_nil]);
+        s = str_appendc(s, TypeCodeEncoding(TypeCode_nil));
       }
       break;
     }

@@ -19,7 +19,7 @@
 // which builds the "parselets" table (see end of file.)
 //
 // enable debug messages for pushScope() and popScope()
-// #define DEBUG_SCOPE_PUSH_POP
+#define DEBUG_SCOPE_PUSH_POP
 //
 // enable debug messages for defsym()
 // #define DEBUG_DEFSYM
@@ -253,6 +253,7 @@ static Scope* popScope(Parser* p) {
 
 
 static const Node* defsym(Parser* p, Sym s, Node* n) {
+  // TODO: for imports, make sure to add to file scope instead of package scope
   const Node* existing = ScopeAssoc(p->scope, s, n);
 
   #ifdef DEBUG_DEFSYM
@@ -923,6 +924,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
   p->scope = pkgscope;
   p->fnest = 0;
   p->unresolved = 0;
+  p->filescope = ScopeNew(pkgscope, p->build->mem);
 
   // read first token
   nexttok(p);
@@ -930,7 +932,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
   // TODO: ParseFlags, where one option is PARSE_IMPORTS to parse only imports and then stop.
 
   auto file = mknode(p, NFile);
-  pushScope(p);
+  file->array.scope = p->filescope;
 
   while (p->s.tok != TNone) {
     Node* n = exprOrTuple(p, PREC_LOWEST, PFlagNone);
@@ -951,6 +953,5 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
     }
   }
 
-  file->array.scope = popScope(p);
   return file;
 }

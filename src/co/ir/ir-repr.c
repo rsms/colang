@@ -2,8 +2,9 @@
 #include "ir.h"
 
 typedef struct {
-  Str  buf;
-  bool includeTypes;
+  Str           buf;
+  const PosMap* posmap;
+  bool          includeTypes;
 } IRRepr;
 
 static void ir_repr_value(IRRepr* r, const IRValue* v) {
@@ -61,6 +62,12 @@ static void ir_repr_value(IRRepr* r, const IRValue* v) {
     r->buf = str_appendfmt(r->buf, "\t# %s; %u %s", v->comment, v->uses, use);
   } else {
     r->buf = str_appendfmt(r->buf, "\t# %u %s", v->uses, use);
+  }
+
+  if (pos_isknown(v->pos)) {
+    r->buf = str_appendcstr(r->buf, " (");
+    r->buf = pos_str(r->posmap, v->pos, r->buf);
+    r->buf = str_appendc(r->buf, ')');
   }
 
   r->buf = str_appendc(r->buf, '\n');
@@ -162,8 +169,12 @@ static void ir_repr_pkg(IRRepr* r, const IRPkg* pkg) {
 }
 
 
-Str IRReprPkgStr(const IRPkg* pkg, Str init) {
-  IRRepr r = { .buf=init, .includeTypes=true };
+Str IRReprPkgStr(const IRPkg* pkg, const PosMap* posmap, Str init) {
+  IRRepr r = {
+    .buf = init,
+    .posmap = posmap,
+    .includeTypes = true,
+  };
   ir_repr_pkg(&r, pkg);
   return r.buf;
 }

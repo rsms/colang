@@ -188,7 +188,8 @@ ASSUME_NONNULL_BEGIN
 typedef struct Parser {
   Scanner s;          // parser is based on a scanner
   Build*  build;      // compilation context
-  Scope*  scope;      // current scope
+  Scope*  scope;      // current scope (pkgscope at file level; use filescope for imports etc)
+  Scope*  filescope;  // scope for file; never in the scope stack
   u32     fnest;      // function nesting level (for error handling)
   u32     unresolved; // number of unresolved identifiers
 } Parser;

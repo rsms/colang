@@ -661,7 +661,7 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
 static TypeCode TypeCodeIntSignedCounterpart(TypeCode intType) {
   assertf(TypeCode_int8 <= intType && intType <= TypeCode_uint64,
     "unexpected intType %d \"%s\"", intType, TypeCodeName(intType));
-  if ((TypeCodeFlagMap[intType] & TypeCodeFlagSigned) == 0) {
+  if ((TypeCodeFlags(intType) & TypeCodeFlagSigned) == 0) {
     // intType is not signed. Signed is just before in TypeCode enum.
     return intType-1;
   } else {
@@ -686,8 +686,8 @@ IROp IROpConvertType(TypeCode fromType, TypeCode toType) {
   // - boolean => failure (boolean cast must use boolean ops like < and ==)
   //
   // To understand the types, load their flags
-  auto fromfl = TypeCodeFlagMap[fromType];
-  auto tofl   = TypeCodeFlagMap[toType];
+  auto fromfl = TypeCodeFlags(fromType);
+  auto tofl   = TypeCodeFlags(toType);
   if (fromfl & TypeCodeFlagInt && tofl & TypeCodeFlagInt) {
     // from and to are ints
     if ((fromfl & TypeCodeFlagSigned) != (tofl & TypeCodeFlagSigned)) {
@@ -789,7 +789,7 @@ R_UNIT_TEST(ir_op) {
   //
   // auto irop = irOpTable[n->type->t.basic.typeCode];
   // dlog("irop: TypeCode %c #%d => #%u %s",
-  //   TypeCodeEncoding[n->type->t.basic.typeCode], n->type->t.basic.typeCode,
+  //   TypeCodeEncoding(n->type->t.basic.typeCode), n->type->t.basic.typeCode,
   //   irop, IROpNames[irop]);
   // assert(irop == OpAddI32);
   //

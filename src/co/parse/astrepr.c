@@ -241,9 +241,11 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     if (n->field.name) {
       s = str_append(s, n->field.name, symlen(n->field.name));
     } else {
-      s = str_append(s, "_", 1);
+      s = str_appendc(s, '_');
     }
-    if (n->field.init != NULL) {
+    if (n->field.init) {
+      if (NodeKindIsType(n->field.init->kind))
+        s = str_appendc(s, ' ');
       s = nodeRepr(n->field.init, s, ctx, depth + 1);
     }
     break;

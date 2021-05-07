@@ -2,7 +2,7 @@
 #include "types.h"
 
 // Lookup table TypeCode => string encoding char
-const char TypeCodeEncoding[TypeCode_MAX] = {
+const char _TypeCodeEncodingMap[TypeCode_MAX] = {
   #define I_ENUM(name, encoding, _flags) encoding,
   TYPE_CODES(I_ENUM)
   #undef  I_ENUM
@@ -17,7 +17,7 @@ const char* _TypeCodeName[TypeCode_MAX] = {
 };
 
 
-const TypeCodeFlag TypeCodeFlagMap[TypeCode_MAX] = {
+const TypeCodeFlag _TypeCodeFlagMap[TypeCode_MAX] = {
   #define I_ENUM(_name, _encoding, flags) flags,
   TYPE_CODES(I_ENUM)
   #undef  I_ENUM

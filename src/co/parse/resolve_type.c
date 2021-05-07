@@ -74,7 +74,7 @@ static void typecontext_pop(ResCtx* ctx) {
   } else {
     auto was = ctx->typecontext;
     ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
-    dlog_mod("typecontext_pop %s (now %s)", was, fmtnode(ctx->typecontext));
+    dlog_mod("typecontext_pop %s (now %s)", fmtnode(was), fmtnode(ctx->typecontext));
   }
 }
 
@@ -604,13 +604,19 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NZeroInit:
   case _NodeKindMax:
     dlog("unexpected %s", fmtast(n));
-    assert(0 && "expected to be typed");
+    assert(!"expected to be typed");
     break;
 
   }  // switch (n->kind)
 
   // when and if we get here the node should be typed.
-  assert(n->type);
+
+  #ifdef DEBUG
+  if (!n->type)
+    errlog("untyped node! %s", fmtnode(n));
+  assertnotnull(n->type);
+  #endif
+
   return n;
 }
 

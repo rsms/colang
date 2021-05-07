@@ -135,8 +135,8 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
-static void dump_ir(const IRPkg* pkg) {
-  auto s = IRReprPkgStr(pkg, str_new(512));
+static void dump_ir(const PosMap* posmap, const IRPkg* pkg) {
+  auto s = IRReprPkgStr(pkg, posmap, str_new(512));
   s = str_appendc(s, '\n');
   fwrite(s, str_len(s), 1, stderr);
   str_free(s);
@@ -221,7 +221,7 @@ int cmd_build(int argc, const char* argv[argc]) {
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
   Node* pkgnode = CreatePkgAST(&build, pkgscope);
 
-  // process source files
+  // parse source files
   Source* src = pkg.srclist;
   while (src) {
     Node* filenode = parse_source(&build, pkgscope, src);
@@ -230,18 +230,23 @@ int cmd_build(int argc, const char* argv[argc]) {
     NodeArrayAppend(build.mem, &pkgnode->array.a, filenode);
     src = src->next;
   }
+  dump_ast("", pkgnode);
+  printf("————————————————————————————————————————————————————————————————\n");
+  if (build.errcount) {
+    errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
+    return 1;
+  }
 
   // package
-  // TODO: call ResolveSym on pkgnode only if needed
+  // TODO: call ResolveSym on pkg only if needed
   // resolve identifiers & types
-  printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
   }
-  // dump_ast("", pkgnode);
-  // printf("————————————————————————————————————————————————————————————————\n");
+  dump_ast("", pkgnode);
+  printf("————————————————————————————————————————————————————————————————\n");
   pkgnode = ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
   if (build.errcount) {
@@ -254,7 +259,7 @@ int cmd_build(int argc, const char* argv[argc]) {
   IRBuilder irbuilder = {};
   IRBuilderInit(&irbuilder, &build, IRBuilderComments);
   IRBuilderAddAST(&irbuilder, pkgnode);
-  dump_ir(irbuilder.pkg);
+  dump_ir(&build.posmap, irbuilder.pkg);
   IRBuilderDispose(&irbuilder);
 
   // emit target code

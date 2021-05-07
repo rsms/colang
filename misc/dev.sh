@@ -7,7 +7,7 @@ set -e
 HELP=false
 RUN=false
 RUN_EXE=
-RUN_ARGS="build ./example/hello.w"
+RUN_ARGS="build example/hello.w"
 OPT_CLEAN=false
 OPT_RELEASE=false
 OPT_LLVM=false
