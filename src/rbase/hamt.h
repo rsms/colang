@@ -96,7 +96,7 @@ typedef struct HamtCtx {
   // entrepr is called by hamt_repr and is expected to append a human-readable
   // representation of an entry to s.
   // This callback is optional and may be NULL.
-  Str(*entrepr)(Str s, const void* entry);
+  Str(*entrepr)(HamtCtx* ctx, Str s, const void* entry);
 } HamtCtx;
 
 

@@ -673,12 +673,12 @@ static const char* fmt_key(HamtUInt key) {
   return buf;
 }
 
-typedef Str(*EntReprFun)(Str s, const void* entry);
+typedef Str(*EntReprFun)(HamtCtx* ctx, Str s, const void* entry);
 
 static Str node_repr(
+  HamtCtx*   ctx,
   HamtNode*  n,
   Str        s,
-  EntReprFun entrepr,
   int        level,
   Str        indent,
   u32        rindex)
@@ -720,16 +720,16 @@ static Str node_repr(
       break;
     case TValue:
       if (level < 0) {
-        if (entrepr) {
-          s = entrepr(s, n->entries[0]);
+        if (ctx->entrepr) {
+          s = ctx->entrepr(ctx, s, n->entries[0]);
         } else {
           s = str_appendfmt(s, "%p", n->entries[0]);
         }
       } else {
         s = str_appendfmt(s, "Value %p %s", n, fmt_key(NODE_KEY(n)));
-        if (entrepr) {
+        if (ctx->entrepr) {
           s = str_appendc(s, ' ');
-          s = entrepr(s, n->entries[0]);
+          s = ctx->entrepr(ctx, s, n->entries[0]);
         }
       }
       str_setlen(indent, indent_len);
@@ -738,7 +738,7 @@ static Str node_repr(
 
   u32 len = NODE_LEN(n);
   for (u32 i = 0; i < len; i++) {
-    s = node_repr(n->entries[i], s, entrepr, level + 1, indent, len - i);
+    s = node_repr(ctx, n->entries[i], s, level + 1, indent, len - i);
   }
 
   if (level < 0)
@@ -753,7 +753,7 @@ static Str node_repr(
 Str hamt_repr(Hamt h, Str s, bool pretty) {
   assert(NODE_TYPE(h.root) == THamt);
   auto indent = str_new(HAMT_MAXDEPTH * 8);
-  return node_repr(h.root, s, h.ctx->entrepr, pretty ? 0 : -100, indent, 0);
+  return node_repr(h.ctx, h.root, s, pretty ? 0 : -100, indent, 0);
 }
 
 Hamt hamt_new(HamtCtx* ctx) {

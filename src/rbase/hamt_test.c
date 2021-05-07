@@ -37,7 +37,7 @@ static void TestValueFree(HamtCtx* ctx, void* vp) {
   memfree(NULL, v);
 }
 
-static Str TestValueRepr(Str s, const void* vp) {
+static Str TestValueRepr(HamtCtx* ctx, Str s, const void* vp) {
   auto v = (const TestValue*)vp;
   return str_appendfmt(s,
     (sizeof(HamtUInt) == 8 ? "TestValue(0x%llX \"%s\")" : "TestValue(0x%X \"%s\")"),
@@ -89,7 +89,7 @@ static HamtCtx ctx = {
     (h), str_setlen((tmpstr == NULL ? str_new(128) : tmpstr), 0), /*pretty*/true))
 
 #define REPR_VAL(testval) \
-  (tmpstr = TestValueRepr(str_setlen(tmpstr, 0), (testval)))
+  (tmpstr = TestValueRepr(NULL, str_setlen(tmpstr, 0), (testval)))
 
 
 R_UNIT_TEST(hamt) {
@@ -286,7 +286,8 @@ R_UNIT_TEST(hamt_iterator) {
     TestValue* expectentry = values[len];
     if (expectentry != entry) {
       errlog("expected %s; got %s",
-        TestValueRepr(str_new(0), expectentry), TestValueRepr(str_new(0), entry));
+        TestValueRepr(NULL, str_new(0), expectentry),
+        TestValueRepr(NULL, str_new(0), entry));
       asserteq(entry, expectentry);
     }
     //dlog("it>> entry %p %s", entry, REPR_VAL(entry));
