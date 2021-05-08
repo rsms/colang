@@ -180,20 +180,20 @@ all: bin/co$(BIN_SUFFIX) bin/rt-test$(BIN_SUFFIX)
 
 .PHONY: test_unit test_usan test_asan test_msan
 test_unit:
-	$(MAKE) DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co test
+	$(MAKE) DEBUG=1 V=$(V) -j$(shell nproc) co
+	R_UNIT_TEST=1 ./bin/co-debug test
 
 test_usan:
-	$(MAKE) SANITIZE=undefined DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co build example/hello.w
+	$(MAKE) SANITIZE=undefined DEBUG=1 V=$(V) -j$(shell nproc) co
+	R_UNIT_TEST=1 ./bin/co-debug-usan build example/hello.w
 
 test_asan:
-	$(MAKE) SANITIZE=address DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co build example/hello.w
+	$(MAKE) SANITIZE=address DEBUG=1 V=$(V) -j$(shell nproc) co
+	R_UNIT_TEST=1 ./bin/co-debug-asan build example/hello.w
 
 test_msan:
-	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) bin/co
-	R_UNIT_TEST=1 ./bin/co build example/hello.w
+	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) co
+	R_UNIT_TEST=1 ./bin/co-debug-msan build example/hello.w
 
 
 bin/co$(BIN_SUFFIX): $(CO_OBJS) $(BUILDDIR)/rbase.a

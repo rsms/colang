@@ -11,6 +11,7 @@ RUN_ARGS="build example/hello.w"
 OPT_CLEAN=false
 OPT_RELEASE=false
 OPT_LLVM=false
+OPT_ASAN=false
 OPT_SEQ=false
 MAKE_ARGS=
 
@@ -21,6 +22,7 @@ while [[ $# -gt 0 ]]; do
 	-run=*)     RUN=true; RUN_ARGS="${1:5}"; shift ;;
 	-clean)     OPT_CLEAN=true; shift ;;
 	-release)   OPT_RELEASE=true; shift ;;
+	-asan)      OPT_ASAN=true; shift ;;
 	-with-llvm) OPT_LLVM=true; shift ;;
 	-seq)       OPT_SEQ=true; shift ;;
 	--)         MAKE_ARGS="$MAKE_ARGS $@"; break ;;
@@ -38,6 +40,7 @@ if $HELP; then
 		-run[=<args>]  Run bin/co [with optional <args>] after building
 		-clean         Discard build caches before building (just once in -watch mode)
 		-release       Build release build instead of the default debug build
+		-asan          Build with address sanitizer (clang only)
 		-with-llvm     Sets LLVM=1 for make which casues llvm to be linked and WITH_LLVM to be defined
 		-seq           Run make sequentially instead of in parallel mode (i.e. no -j flag to make)
 		-h, -help      Print help and exit
@@ -53,14 +56,14 @@ if [ -z "$RUN_EXE" ]; then
 	else
 		RUN_EXE="$RUN_EXE-debug"
 	fi
-	if $OPT_LLVM; then
-		RUN_EXE="$RUN_EXE-llvm"
-	fi
+	if $OPT_LLVM; then RUN_EXE="$RUN_EXE-llvm"; fi
+	if $OPT_ASAN; then RUN_EXE="$RUN_EXE-asan"; fi
 fi
 
 # $OPT_RELEASE || MAKE_ARGS="$MAKE_ARGS DEBUG=1 SANITIZE=1" # asan not compat with coco
 $OPT_RELEASE ||    MAKE_ARGS="$MAKE_ARGS DEBUG=1"
 if $OPT_LLVM; then MAKE_ARGS="$MAKE_ARGS LLVM=1"; fi
+if $OPT_ASAN; then MAKE_ARGS="$MAKE_ARGS SANITIZE=address"; fi
 $OPT_SEQ ||        MAKE_ARGS="$MAKE_ARGS -j$(nproc)"
 
 MAKE_ARGS="$MAKE_ARGS $RUN_EXE"
