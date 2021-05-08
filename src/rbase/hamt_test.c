@@ -154,7 +154,7 @@ R_UNIT_TEST(hamt_add_fork_remove) {
       .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
       .entrepr = TestValueRepr,
     };
-    TestValue values[10/*00*/]; // large enough to cause a few branches to be created
+    TestValue values[1000]; // large enough to cause a few branches to be created
     char strs[countof(values)][20]; // "0000000000000000"-"ffffffffffffffff"
 
     Hamt h = hamt_new(&ctx);

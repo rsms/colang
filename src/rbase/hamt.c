@@ -451,11 +451,8 @@ static HamtNode* hamt_insert(HamtCtx* ctx, HamtNode* m, u32 shift, HamtNode* v2,
   } // switch
 
   m2->entries[bi] = newobj;
-  if (m2 == m) {
+  if (m2 == m)
     node_release(ctx, v1);
-  } else {
-    assert(v1 != newobj);
-  }
   return m2;
 }
 
