@@ -6,6 +6,10 @@
 
 #if R_UNIT_TEST_ENABLED
 
+// declaration of special functions defined in hamt.c used only for testing
+void hamt_testing_disable_mut_opts();
+void hamt_testing_enable_mut_opts();
+
 
 #ifdef SILENCE_LOG
   #undef dlog
@@ -38,7 +42,7 @@ static void TestValueReset(HamtCtx* ctx, void* vp) {
 
 static void TestValueFree(HamtCtx* ctx, void* vp) {
   TestValueReset(ctx, vp);
-  memfree(NULL, vp);
+  HAMT_MEMFREE(vp);
 }
 
 static Str TestValueRepr(HamtCtx* ctx, Str s, const void* vp) {
@@ -85,10 +89,11 @@ static TestValue* MakeTestValue(const char* str) {
     key |= index << shift;
     shift += HAMT_BITS;
   }
-  auto v = memalloct(NULL, TestValue);
+  auto v = (TestValue*)HAMT_MEMALLOC(sizeof(TestValue));
   v->refs = 1;
   v->key = key;
   v->str = str;
+  // printf("testval %p key=0x%X str=%s\n", v, v->key, v->str);
   return v;
 }
 
@@ -114,369 +119,427 @@ static HamtCtx ctx = {
 
 
 R_UNIT_TEST(hamt) {
-  Hamt h = hamt_new(&ctx);
-  assert(h.root != NULL);
-  auto v = MakeTestValue("1");
-  v->str = "hello";
-  bool didadd;
-  auto h1 = h;
-  h = hamt_with(h, v, &didadd);
-  assert(h.root != h1.root);
-  assert(didadd == true);
-  dlog("%s", REPR(h));
+  hamt_testing_disable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
+    Hamt h = hamt_new(&ctx);
+    assert(h.root != NULL);
+    auto v = MakeTestValue("1");
+    v->str = "hello";
+    bool didadd;
+    auto h1 = h;
+    h = hamt_with(h, v, &didadd);
+    assert(h.root != h1.root);
+    assert(didadd == true);
+    dlog("%s", REPR(h));
 
-  auto v2 = (TestValue*)hamt_getp(h, v);
-  assert(v2 != NULL);
-  assert(v2 == v);
-  assert(strcmp(v->str, "hello") == 0);
-  hamt_release(h);
+    auto v2 = (TestValue*)hamt_getp(h, v);
+    assert(v2 != NULL);
+    assert(v2 == v);
+    assert(strcmp(v->str, "hello") == 0);
+    hamt_release(h);
+    hamt_testing_enable_mut_opts();
+  }
 }
 
 
 R_UNIT_TEST(hamt_mem) {
-  HamtCtx ctx = {
-    // required
-    .entkey  = TestValueKey,
-    .enteq   = TestValueEqual,
-    .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
-    // optional
-    .entrepr = TestValueRepr,
-  };
-  TestValue values[10];
-  char strs[countof(values)][17]; // "0000000000000000"-"ffffffffffffffff"
+  hamt_testing_disable_mut_opts();
+  // hamt_testing_enable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
 
-  Hamt h = hamt_new(&ctx);
+    HamtCtx ctx = {
+      // required
+      .entkey  = TestValueKey,
+      .enteq   = TestValueEqual,
+      .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
+      .entrepr = TestValueRepr,
+    };
+    TestValue values[10/*00*/]; // large enough to cause a few branches to be created
+    char strs[countof(values)][20]; // "0000000000000000"-"ffffffffffffffff"
 
-  // add values using hamt_set
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    v->refs = 1;
-    v->key = i;
-    snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
-    v->str = strs[i];
-    hamt_set(&h, v);
-    asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
-  }
+    Hamt h = hamt_new(&ctx);
+    Hamt h2 = hamt_new(&ctx); // will hold a ref to some values to test immutable path
 
-  // remove values using hamt_del
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
-    assert(hamt_del(&h, v));
-    asserteq(hamt_count(h), countof(values) - i - 1);
-  }
+    srandom(3);
+    const u32 collision_N = 8;
 
-  assert(hamt_empty(h));
+    // add values using hamt_set
+    u32 lastkey = 0;
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      v->refs = 1;
 
-  // add values using hamt_with
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    v->refs = 1;
-    v->key = i;
-    snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
-    v->str = strs[i];
-    bool didadd;
-    Hamt h2 = hamt_with(h, v, &didadd);
+      // collision every N entry
+      if (i % collision_N == 1) {
+        v->key = lastkey;
+        snprintf(strs[i], sizeof(strs[0]), "%x B", v->key);
+        v->str = strs[i];
+      } else {
+        v->key = randkey();
+        lastkey = v->key;
+        snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
+        v->str = strs[i];
+      }
+
+      hamt_set(&h, v);
+      if (i == countof(values)/2) {
+        hamt_release(h2);
+        h2 = hamt_retain(h);
+      } else {
+        asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
+      }
+      asserteq(hamt_getp(h, v), &values[i]);
+    }
+
+    // dlog("h:\n%s", REPR(h));
+    // dlog("h2:\n%s", REPR(h2));
+
+    // remove values using hamt_del
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
+
+      // if (v->key == 1056) {
+      //   dlog("%s\nkey = 0x%X, i = %u", REPR(h), v->key, i);
+      // }
+
+      asserteq(hamt_getp(h, v), &values[i]);
+      assert(hamt_del(&h, v));
+      asserteq(hamt_count(h), countof(values) - i - 1);
+    }
+
+    // dlog("h:\n%s", REPR(h));
+    // dlog("h2:\n%s", REPR(h2));
+    assert(hamt_empty(h));
+    assert(!hamt_empty(h2));
+    hamt_release(h2);
+
+    // add values using hamt_with
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      v->refs = 1;
+      v->key = i*2;
+      snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
+      v->str = strs[i];
+      bool didadd;
+      Hamt h2 = hamt_with(h, v, &didadd);
+      hamt_release(h);
+      h = h2;
+      assert(didadd);
+      asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
+    }
+
+    // remove values using hamt_without
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
+      bool removed;
+      Hamt h2 = hamt_without(h, v, &removed);
+      hamt_release(h);
+      h = h2;
+      assert(removed);
+      asserteq(hamt_count(h), countof(values) - i - 1);
+    }
+
+    // note: we can't check refcount of h.root here as it is likely _empty_hamt
     hamt_release(h);
-    h = h2;
-    assert(didadd);
-    asserteq(AtomicLoad(&h.root->refs), 1); // must check after set to avoid _hamt_empty
-  }
 
-  // remove values using hamt_without
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    dlog("del %u", i);
-    asserteq(AtomicLoad(&h.root->refs), 1); // must check before del to avoid _hamt_empty
-    bool removed;
-    Hamt h2 = hamt_without(h, v, &removed);
-    hamt_release(h);
-    h = h2;
-    assert(removed);
-    asserteq(hamt_count(h), countof(values) - i - 1);
-  }
-
-  // note: we can't check refcount of h.root here as it is likely _empty_hamt
-  hamt_release(h);
-
-  // verify entfree was called for all values
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    // TestValueReset should have been called when node_release decremented
-    // the refcount of the value. TestValueReset zeroes the value, so we check for that:
-    assert(v->key == 0);
-    assert(v->str == NULL);
+    // verify entfree was called for all values
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      // TestValueReset should have been called when node_release decremented
+      // the refcount of the value. TestValueReset zeroes the value, so we check for that:
+      assert(v->key == 0);
+      assert(v->str == NULL);
+    }
+    hamt_testing_enable_mut_opts();
   }
 }
 
 
 R_UNIT_TEST(hamt_tree) {
-  Hamt h = hamt_new(&ctx);
+  hamt_testing_disable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
+    Hamt h = hamt_new(&ctx);
 
-  // key
-  dlog("\n");
-  auto v = MakeTestValue("1/2/3/4"); // 00100_00011_00010_00001 (LE)
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // key
+    dlog("\n");
+    auto v = MakeTestValue("1/2/3/4"); // 00100_00011_00010_00001 (LE)
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // cause a branch to be forked
-  dlog("\n");
-  v = MakeTestValue("1/2/1"); // 00001_00010_00001 (LE)
-  hamt_set(&h, v);
-  assert(hamt_getp(h, v) == v);
-  dlog("%s", REPR(h));
+    // cause a branch to be forked
+    dlog("\n");
+    v = MakeTestValue("1/2/1"); // 00001_00010_00001 (LE)
+    hamt_set(&h, v);
+    assert(hamt_getp(h, v) == v);
+    dlog("%s", REPR(h));
 
-  // cause a collision; converts a value into a collision branch
-  v = MakeTestValue("1/2/1");
-  v->str = "1/2/1 (B)";
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // cause a collision; converts a value into a collision branch
+    v = MakeTestValue("1/2/1");
+    v->str = "1/2/1 (B)";
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // create a new branch (forks existing branch)
-  v = MakeTestValue("1/3/1");
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // create a new branch (forks existing branch)
+    v = MakeTestValue("1/3/1");
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // replace equivalent value in hamt node
-  v = MakeTestValue("1/3/1");
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // replace equivalent value in hamt node
+    v = MakeTestValue("1/3/1");
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // cause another collision; adds to existing collision set
-  v = MakeTestValue("1/2/1");
-  v->str = "1/2/1 (C)";
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // cause another collision; adds to existing collision set
+    v = MakeTestValue("1/2/1");
+    v->str = "1/2/1 (C)";
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // replace equivalent value in collision node
-  v = MakeTestValue("1/2/1");
-  v->str = "1/2/1 (C)";
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // replace equivalent value in collision node
+    v = MakeTestValue("1/2/1");
+    v->str = "1/2/1 (C)";
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // move a collision out to a deeper branch
-  v = MakeTestValue("1/2/1/1");
-  hamt_set(&h, v);
-  dlog("%s", REPR(h));
+    // move a collision out to a deeper branch
+    v = MakeTestValue("1/2/1/1");
+    hamt_set(&h, v);
+    dlog("%s", REPR(h));
 
-  // retrieve value in collision node
-  v = MakeTestValue("1/2/1");
-  auto v2 = (TestValue*)hamt_getp(h, v);
-  assert(v2 != NULL);
-  assert(v2->key == v->key);
-  assert(strcmp(v->str, v2->str) == 0);
-  TestValueFree(h.ctx, v);
+    // retrieve value in collision node
+    v = MakeTestValue("1/2/1");
+    auto v2 = (TestValue*)hamt_getp(h, v);
+    assert(v2 != NULL);
+    assert(v2->key == v->key);
+    assert(strcmp(v->str, v2->str) == 0);
+    TestValueFree(h.ctx, v);
 
-  // remove non-collision value (first add a few)
-  hamt_set(&h, MakeTestValue("1/3/2"));
-  hamt_set(&h, MakeTestValue("1/3/3"));
-  dlog("%s", REPR(h));
+    // remove non-collision value (first add a few)
+    hamt_set(&h, MakeTestValue("1/3/2"));
+    hamt_set(&h, MakeTestValue("1/3/3"));
+    dlog("%s", REPR(h));
 
-  v = MakeTestValue("1/3/2");
-  assert(hamt_del(&h, v));
-  assert(hamt_getp(h, v) == NULL);
-  TestValueFree(h.ctx, v);
-  dlog("%s", REPR(h));
+    v = MakeTestValue("1/3/2");
+    assert(hamt_del(&h, v));
+    assert(hamt_getp(h, v) == NULL);
+    TestValueFree(h.ctx, v);
+    dlog("%s", REPR(h));
 
-  // remove remaining values on the same branch
-  v = MakeTestValue("1/3/1");
-  assert(hamt_del(&h, v));
-  assert(hamt_getp(h, v) == NULL);
-  TestValueFree(h.ctx, v);
+    // remove remaining values on the same branch
+    v = MakeTestValue("1/3/1");
+    assert(hamt_del(&h, v));
+    assert(hamt_getp(h, v) == NULL);
+    TestValueFree(h.ctx, v);
 
-  v = MakeTestValue("1/3/3");
-  assert(hamt_del(&h, v));
-  assert(hamt_getp(h, v) == NULL);
-  TestValueFree(h.ctx, v);
-  dlog("%s", REPR(h));
+    v = MakeTestValue("1/3/3");
+    assert(hamt_del(&h, v));
+    assert(hamt_getp(h, v) == NULL);
+    TestValueFree(h.ctx, v);
+    dlog("%s", REPR(h));
 
-  // remove value in collision node with multiple values
-  v = MakeTestValue("1/2/1");
-  v->str = "1/2/1 (B)";
-  assert(hamt_del(&h, v));
-  assert(hamt_getp(h, v) == NULL);
-  TestValueFree(h.ctx, v);
-  dlog("%s", REPR(h));
+    // remove value in collision node with multiple values
+    v = MakeTestValue("1/2/1");
+    v->str = "1/2/1 (B)";
+    assert(hamt_del(&h, v));
+    assert(hamt_getp(h, v) == NULL);
+    TestValueFree(h.ctx, v);
+    dlog("%s", REPR(h));
 
-  // remove remaining values in a collision node
-  v = MakeTestValue("1/2/1");
-  assert(hamt_del(&h, v));
-  assert(hamt_getp(h, v) == NULL);
-  TestValueFree(h.ctx, v);
-  dlog("%s", REPR(h));
+    // remove remaining values in a collision node
+    v = MakeTestValue("1/2/1");
+    assert(hamt_del(&h, v));
+    assert(hamt_getp(h, v) == NULL);
+    TestValueFree(h.ctx, v);
+    dlog("%s", REPR(h));
 
-  dlog("\n");
-  hamt_release(h);
+    dlog("\n");
+    hamt_release(h);
+    hamt_testing_enable_mut_opts();
+  }
 }
 
 
 R_UNIT_TEST(hamt_remove_collisions) {
-  // removal in collision
-  Hamt h = hamt_new(&ctx);
+  hamt_testing_disable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
+    // removal in collision
+    Hamt h = hamt_new(&ctx);
 
-  auto A = MakeTestValue("1/2/3/4");
-  A->str = "1/2/3/4 (A)";
-  hamt_set(&h, A);
+    auto A = MakeTestValue("1/2/3/4");
+    A->str = "1/2/3/4 (A)";
+    hamt_set(&h, A);
 
-  auto B = MakeTestValue("1/2/3/4");
-  B->str = "1/2/3/4 (B)";
-  hamt_set(&h, B);
+    auto B = MakeTestValue("1/2/3/4");
+    B->str = "1/2/3/4 (B)";
+    hamt_set(&h, B);
 
-  auto C = MakeTestValue("1/2/3/4");
-  C->str = "1/2/3/4 (C)";
-  hamt_set(&h, C);
+    auto C = MakeTestValue("1/2/3/4");
+    C->str = "1/2/3/4 (C)";
+    hamt_set(&h, C);
 
-  hamt_set(&h, MakeTestValue("1/2/4"));
-  dlog("%s", REPR(h));
-  asserteq(hamt_count(h), 4);
-  assert(!hamt_empty(h));
+    hamt_set(&h, MakeTestValue("1/2/4"));
+    dlog("%s", REPR(h));
+    asserteq(hamt_count(h), 4);
+    assert(!hamt_empty(h));
 
-  assert(hamt_del(&h, A));
-  dlog("%s", REPR(h));
+    assert(hamt_del(&h, A));
+    dlog("%s", REPR(h));
 
-  assert(hamt_del(&h, B));
-  dlog("%s", REPR(h));
+    assert(hamt_del(&h, B));
+    dlog("%s", REPR(h));
 
-  assert(hamt_del(&h, C));
-  dlog("%s", REPR(h));
+    assert(hamt_del(&h, C));
+    dlog("%s", REPR(h));
 
-  asserteq(hamt_count(h), 1);
-  assert(!hamt_empty(h));
+    asserteq(hamt_count(h), 1);
+    assert(!hamt_empty(h));
 
-  auto v = MakeTestValue("1/2/4");
-  assert(hamt_del(&h, v));
-  TestValueFree(h.ctx, v);
+    auto v = MakeTestValue("1/2/4");
+    assert(hamt_del(&h, v));
+    TestValueFree(h.ctx, v);
 
-  asserteq(hamt_count(h), 0);
-  assert(hamt_empty(h));
+    asserteq(hamt_count(h), 0);
+    assert(hamt_empty(h));
 
-  hamt_release(h);
+    hamt_release(h);
+    hamt_testing_enable_mut_opts();
+  }
 }
 
 
 R_UNIT_TEST(hamt_iterator) {
-  auto A = MakeTestValue("1/2/2/1"); A->str = "1/2/2/1 (A)"; // collision w/ B
-  auto B = MakeTestValue("1/2/2/1"); B->str = "1/2/2/1 (B)"; // collision w/ A
-  // these test values should be in the order we expect them during iteration
-  TestValue* values[] = {
-    MakeTestValue("1/1/1"),
-    MakeTestValue("1/2"),
-    MakeTestValue("1/2/1"),
-    MakeTestValue("1/2/2"),
-    A,
-    B,
-    MakeTestValue("1/2/3"),
-    MakeTestValue("1/3"),
-  };
+  hamt_testing_disable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
+    auto A = MakeTestValue("1/2/2/1"); A->str = "1/2/2/1 (A)"; // collision w/ B
+    auto B = MakeTestValue("1/2/2/1"); B->str = "1/2/2/1 (B)"; // collision w/ A
+    // these test values should be in the order we expect them during iteration
+    TestValue* values[] = {
+      MakeTestValue("1/1/1"),
+      MakeTestValue("1/2"),
+      MakeTestValue("1/2/1"),
+      MakeTestValue("1/2/2"),
+      A,
+      B,
+      MakeTestValue("1/2/3"),
+      MakeTestValue("1/3"),
+    };
 
-  Hamt h = hamt_new(&ctx);
-  for (size_t i = 0; i < countof(values); i++)
-    hamt_set(&h, values[i]);
+    Hamt h = hamt_new(&ctx);
+    for (size_t i = 0; i < countof(values); i++)
+      hamt_set(&h, values[i]);
 
-  dlog("%s", REPR(h));
+    dlog("%s", REPR(h));
 
-  // iterate and verify that we get all values and in the correct order
-  HamtIter it;
-  hamt_iter_init(h, &it);
-  const TestValue* entry = NULL;
-  u32 len = 0;
-  while (hamt_iter_next(&it, (const void**)&entry) && len < countof(values)) {
-    TestValue* expectentry = values[len];
-    if (expectentry != entry) {
-      errlog("expected %s; got %s",
-        TestValueRepr(NULL, str_new(0), expectentry),
-        TestValueRepr(NULL, str_new(0), entry));
-      asserteq(entry, expectentry);
+    // iterate and verify that we get all values and in the correct order
+    HamtIter it;
+    hamt_iter_init(h, &it);
+    const TestValue* entry = NULL;
+    u32 len = 0;
+    while (hamt_iter_next(&it, (const void**)&entry) && len < countof(values)) {
+      TestValue* expectentry = values[len];
+      if (expectentry != entry) {
+        errlog("expected %s; got %s",
+          TestValueRepr(NULL, str_new(0), expectentry),
+          TestValueRepr(NULL, str_new(0), entry));
+        asserteq(entry, expectentry);
+      }
+      //dlog("it>> entry %p %s", entry, REPR_VAL(entry));
+      entry = NULL;
+      len++;
     }
-    //dlog("it>> entry %p %s", entry, REPR_VAL(entry));
-    entry = NULL;
-    len++;
+    asserteq(countof(values), len);
+    hamt_release(h);
+    hamt_testing_enable_mut_opts();
   }
-  asserteq(countof(values), len);
-  hamt_release(h);
 }
 
 
 __attribute__((used))
 static void HamtFuzzTest(unsigned int randseed) {
-  HamtCtx ctx = {
-    // required
-    .entkey  = TestValueKey,
-    .enteq   = TestValueEqual,
-    .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
-    // optional
-    .entrepr = TestValueRepr,
-  };
-  Hamt h = hamt_new(&ctx);
+  hamt_testing_disable_mut_opts();
+  for (u32 N = 0; N < 2; N++) {
+    HamtCtx ctx = {
+      // required
+      .entkey  = TestValueKey,
+      .enteq   = TestValueEqual,
+      .entfree = TestValueReset, // <-- since we use heap-allocated TestValues
+      // optional
+      .entrepr = TestValueRepr,
+    };
+    Hamt h = hamt_new(&ctx);
 
-  TestValue values[1000];
-  char strs[countof(values)][17]; // "0000000000000000"-"ffffffffffffffff"
+    TestValue values[1000];
+    char strs[countof(values)][17]; // "0000000000000000"-"ffffffffffffffff"
 
-  // seed the pseudo-random number generator to make tests predictable
-  srandom(randseed);
+    // seed the pseudo-random number generator to make tests predictable
+    srandom(randseed);
 
-  // insert random entries
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    v->refs = 1;
-    v->key = randkey();
-    snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
-    v->str = strs[i];
-    // dlog("val %s", strs[i]);
-    hamt_set(&h, v);
-  }
+    // insert random entries
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      v->refs = 1;
+      v->key = randkey();
+      snprintf(strs[i], sizeof(strs[0]), "%x", v->key);
+      v->str = strs[i];
+      // dlog("val %s", strs[i]);
+      hamt_set(&h, v);
+    }
 
-  // dlog("\n");
-  // dlog("%s", REPR(h));
-  // dlog("\n");
+    // dlog("\n");
+    // dlog("%s", REPR(h));
+    // dlog("\n");
 
-  // lookup random entries which should all fail (not found)
-  for (u32 i = 0; i < 100; i++) {
-    TestValue v;
-    v.str = ""; // unused; will never entcmp
-    bool keycollision = true;
-    while (keycollision) {
-      v.key = randkey();
-      keycollision = false;
-      for (u32 i = 0; i < countof(values); i++) {
-        if (values[i].key == v.key) {
-          keycollision = true;
-          break;
+    // lookup random entries which should all fail (not found)
+    for (u32 i = 0; i < 100; i++) {
+      TestValue v;
+      v.str = ""; // unused; will never entcmp
+      bool keycollision = true;
+      while (keycollision) {
+        v.key = randkey();
+        keycollision = false;
+        for (u32 i = 0; i < countof(values); i++) {
+          if (values[i].key == v.key) {
+            keycollision = true;
+            break;
+          }
         }
       }
+      assert(hamt_getp(h, &v) == NULL);
     }
-    assert(hamt_getp(h, &v) == NULL);
+
+    // lookup all known values
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = &values[i];
+      asserteq(hamt_getp(h, v), v);
+    }
+
+    // remove values in random order
+    TestValue* randvals[countof(values)];
+    for (u32 i = 0; i < countof(values); i++)
+      randvals[i] = &values[i];
+    shuffle_array((void**)randvals, countof(values));
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = randvals[i];
+      assert(hamt_del(&h, v));
+      asserteq(hamt_count(h), countof(values) - i - 1);
+    }
+
+    assert(hamt_empty(h));
+    hamt_release(h);
+
+    // all values should have been released and entfree called for them
+    for (u32 i = 0; i < countof(values); i++) {
+      auto v = randvals[i];
+      // TestValueReset should have been called when node_release decremented
+      // the refcount of the value. TestValueReset zeroes the value, so we check for that:
+      assert(v->key == 0);
+      assert(v->str == NULL);
+    }
+
+    hamt_testing_enable_mut_opts();
   }
-
-  // lookup all known values
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = &values[i];
-    asserteq(hamt_getp(h, v), v);
-  }
-
-  // remove values in random order
-  TestValue* randvals[countof(values)];
-  for (u32 i = 0; i < countof(values); i++)
-    randvals[i] = &values[i];
-  shuffle_array((void**)randvals, countof(values));
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = randvals[i];
-    assert(hamt_del(&h, v));
-    asserteq(hamt_count(h), countof(values) - i - 1);
-  }
-
-  assert(hamt_empty(h));
-  hamt_release(h);
-
-  // all values should have been released and entfree called for them
-  for (u32 i = 0; i < countof(values); i++) {
-    auto v = randvals[i];
-    // TestValueReset should have been called when node_release decremented
-    // the refcount of the value. TestValueReset zeroes the value, so we check for that:
-    assert(v->key == 0);
-    assert(v->str == NULL);
-  }
-
 }
 
 R_UNIT_TEST(hamt_fuzz) {

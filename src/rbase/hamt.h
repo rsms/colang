@@ -42,7 +42,11 @@ static_assert(HAMT_BRANCHES==8||HAMT_BRANCHES==16||HAMT_BRANCHES==32||HAMT_BRANC
 // memory allocator
 #ifndef HAMT_MEMALLOC
   #define HAMT_MEMALLOC(nbyte) memalloc_raw(NULL, (nbyte))
-  #define HAMT_MEMFREE(ptr)    memfree(NULL, (ptr));
+  #define HAMT_MEMFREE(ptr)    memfree(NULL, (ptr))
+  // #define HAMT_MEMALLOC(nbyte) malloc(nbyte)
+  // #define HAMT_MEMFREE(ptr)    free(ptr)
+  // #define HAMT_MEMALLOC(nbyte) ({ dlog("malloc %zu", (nbyte)); malloc(nbyte); })
+  // #define HAMT_MEMFREE(ptr)    ({ dlog("free %p", (ptr)); free(ptr); })
 #endif
 
 // forward declaration

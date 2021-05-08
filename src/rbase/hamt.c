@@ -4,24 +4,31 @@
 
 // NodeType is used in Node.tag to communicate a node's type
 typedef enum {
-  THamt      = 0, // tag bits 00
-  TCollision = 1, // tag bits 10
-  TValue     = 2, // tag bits 01
+  THamt      = 0, // tag bits 00 (0)
+  TCollision = 1, // tag bits 01 (1)
+  TValue     = 2, // tag bits 10 (2)
+  // reserved     // tag bits 11 (3)
 } NodeType;
 
 #define TAG_TYPE_NBITS 2 // bits reserved in tag for type (2 = 0-3: 00, 01, 10, 11)
-#define TAG_LEN_MASK   (UINT32_MAX << TAG_TYPE_NBITS) // 0b11111111111111111111111111111100
-#define TAG_TYPE_MASK  (TAG_LEN_MASK ^ UINT32_MAX)    // 0b00000000000000000000000000000011
-#define NODE_LEN_MAX   (UINT32_MAX >> TAG_TYPE_NBITS) // 0b00111111111111111111111111111111
-// Using last 30 bits of tag as len, we can store up to 1 073 741 823 values
+#define TAG_SHIFT      (TAG_TYPE_NBITS + 1) // 1 bit for "mutated" flag
+#define TAG_LEN_MASK   (UINT32_MAX << TAG_SHIFT)   // 0b11111111111111111111111111111000
+#define TAG_MUT_MASK   4                           // 0b00000000000000000000000000000100
+#define TAG_TYPE_MASK  3                           // 0b00000000000000000000000000000011
+#define NODE_LEN_MAX   (UINT32_MAX >> TAG_SHIFT)   // 0b00011111111111111111111111111111
+// Using last 30 bits of tag as len, we can store up to 536 870 911 values
 // in one collision node. That's more than enough.
 
-#define NODE_TYPE(n)          ((NodeType)( (n)->tag & TAG_TYPE_MASK ))
+#define NODE_TYPE(n)          ( (NodeType)( (n)->tag & TAG_TYPE_MASK ) )
 #define NODE_SET_TYPE(n, typ) ({ (n)->tag = ((n)->tag & ~TAG_TYPE_MASK) | (typ); })
 
-#define NODE_LEN(n)           ( (n)->tag >> TAG_TYPE_NBITS )
-#define NODE_SET_LEN(n, len)  \
-  ({ (n)->tag = ((len) << TAG_TYPE_NBITS) | ((n)->tag & TAG_TYPE_MASK); })
+#define NODE_IS_MUT(n)        ( (n)->tag & TAG_MUT_MASK )
+#define NODE_SET_MUT(n)       ({ (n)->tag |= TAG_MUT_MASK; })
+
+#define NODE_LEN(n)           ( (n)->tag >> TAG_SHIFT )
+#define NODE_SET_LEN(n, len)  ({ \
+  (n)->tag = ((len) << TAG_SHIFT) | ((n)->tag & TAG_TYPE_MASK) | TAG_MUT_MASK; \
+})
 
 // NODE_KEY retrieves a TValue's key/hash
 #define NODE_KEY(n)          ((n)->bmap)
@@ -35,6 +42,16 @@ static HamtNode _empty_hamt = {
   .bmap = 0,
   .tag = THamt, // len = 0
 };
+
+// MUT_OPTS_ENABLED is only used when testing to disable/enable mutation optimizations
+#if R_UNIT_TEST_ENABLED
+  static bool _mut_opts_enabled = true;
+  void hamt_testing_disable_mut_opts() { _mut_opts_enabled = false; }
+  void hamt_testing_enable_mut_opts() { _mut_opts_enabled = true; }
+  #define MUT_OPTS_ENABLED _mut_opts_enabled
+#else
+  #define MUT_OPTS_ENABLED true
+#endif
 
 // static inline u32 hamt_mask(u32 hash, u32 shift) { return ((hash >> shift) & HAMT_MASK); }
 // static inline u32 bitpos(u32 hash, u32 shift) { return (u32)1 << hamt_mask(hash, shift); }
@@ -66,13 +83,13 @@ static HamtNode* node_alloc(u32 len, NodeType typ) {
   }
   auto n = (HamtNode*)HAMT_MEMALLOC(sizeof(HamtNode) + (sizeof(HamtNode*) * len));
   n->refs = 1;
-  n->tag = (len << TAG_TYPE_NBITS) | typ;
+  n->tag = (len << TAG_SHIFT) | (typ & TAG_TYPE_MASK);
   return n;
 }
 
 // steals reference of value
 static HamtNode* value_alloc(HamtUInt key, void* value) {
-  auto n = node_alloc(0, TValue);
+  auto n = node_alloc(1, TValue);
   NODE_SET_KEY(n, key);
   n->entries[0] = value;
   return n;
@@ -82,8 +99,9 @@ static void node_release(HamtCtx* ctx, HamtNode* n);
 
 // node_free_noentries assumes that n->entries are released or invalid
 static void node_free_noentries(HamtCtx* ctx, HamtNode* n) {
+  assert(n != &_empty_hamt);
   u32 len = NODE_LEN(n);
-  if (len > HAMT_BRANCHES) {
+  if (len > HAMT_BRANCHES || NODE_IS_MUT(n)) {
     HAMT_MEMFREE(n);
   } else {
     // put into free list pool
@@ -96,7 +114,7 @@ static void node_free(HamtCtx* ctx, HamtNode* n) {
   // dlog("free node %p (type %u)", n, NODE_TYPE(n));
   u32 len = NODE_LEN(n);
   if (NODE_TYPE(n) == TValue) {
-    assert(len == 0);
+    assert(len == 1);
     ctx->entfree(ctx, n->entries[0]);
   } else { // THamt, TCollision
     for (u32 i = 0; i < len; i++)
@@ -428,6 +446,25 @@ static HamtNode* hamt_insert(HamtCtx* ctx, HamtNode* m, u32 shift, HamtNode* v2,
 }
 
 
+static HamtNode* node_remove_entry_mut(HamtNode* n, u32 index) {
+  u32 len = NODE_LEN(n);
+  assert(len > 0);
+  len--;
+  if (index != len) {
+    // index is not the last value. Move tail up.
+    // i.e. [A B C D E] -> [A B _ D E] -> [A B D E _] where index=2
+    // dlog("  move up entries copy [%u:] <- [%u:%u] (tail_len %u)",
+    //   index, index + 1, index + 1 + (len - index), len - index);
+    for (u32 i = index; i < len; i++) {
+      n->entries[i] = n->entries[i + 1];
+    }
+  }
+  NODE_SET_LEN(n, len);
+  assert(NODE_IS_MUT(n)); // NODE_SET_LEN should have marked the node as "mutated"
+  return n;
+}
+
+
 // collision_without returns a new collection that is a copy of c1 but without v2
 // IMPORTANT: If v2 is not found then c1 is returned _without an incresed refcount_.
 //            However when v2 is found a copy with a _+1 refcount_ is returned.
@@ -439,6 +476,7 @@ static HamtNode* collision_without(HamtCtx* ctx, HamtNode* c1, const void* refen
     if (ctx->enteq(ctx, (const void*)v1->entries[0], refentry)) {
       if (len == 2) {
         // collapse the collision set; return the other entry
+        // TODO: Shouldn't we node_release(ctx,c1) here?
         return node_retain(c1->entries[!i]); // !i = (i == 0 ? 1 : 0)
       }
       // clone without entry i
@@ -446,6 +484,33 @@ static HamtNode* collision_without(HamtCtx* ctx, HamtNode* c1, const void* refen
     }
   }
   return c1;
+}
+
+
+static HamtNode* collision_remove_mut(
+  HamtCtx*    ctx,
+  HamtNode*   c,
+  const void* refentry,
+  bool*       found)
+{
+  assert(NODE_TYPE(c) == TCollision);
+  assert(AtomicLoad(&c->refs) == 1); // must be exclusive owner to mutate
+  u32 len = NODE_LEN(c);
+  for (u32 i = 0; i < len; i++) {
+    HamtNode* v1 = c->entries[i];
+    if (ctx->enteq(ctx, (const void*)v1->entries[0], refentry)) {
+      *found = true;
+      if (len == 2) {
+        // collapse the collision set; return the other entry
+        HamtNode* n = node_retain(c->entries[!i]); // !i = (i == 0 ? 1 : 0)
+        node_free(ctx, c);
+        return n;
+      }
+      // remove entry i from c and return c
+      return node_remove_entry_mut(c, i);
+    }
+  }
+  return c;
 }
 
 
@@ -519,6 +584,95 @@ static HamtNode* hamt_remove(
   }
 
   // not found (intentionally not calling node_retain)
+  return m1;
+}
+
+
+// hamt_remove_mut behaves like hamt_remove but modifies m1 in place (i.e. mutation)
+static HamtNode* hamt_remove_mut(
+  HamtCtx*     ctx,
+  HamtNode*    m1,
+  HamtUInt     key,
+  const void*  refentry,
+  u32          shift,
+  bool*        found)
+{
+  assert(NODE_TYPE(m1) == THamt);
+  assert(AtomicLoad(&m1->refs) == 1); // must be exclusive owner to mutate
+
+  u32 bitpos = 1u << ((key >> shift) & HAMT_MASK); // key bit position
+  u32 bi     = bitindex(m1->bmap, bitpos);         // bucket index
+
+  // dlog("hamt_remove_mut level=%u, key=%u, bitindex(bitpos 0x%x) => %u",
+  //   shift / HAMT_BITS, key, bitpos, bi);
+
+  if ((m1->bmap & bitpos) != 0) {
+    HamtNode* n = m1->entries[bi];
+
+    switch (NODE_TYPE(n)) {
+
+    case THamt: {
+      if (AtomicLoad(&n->refs) > 1) {
+        // we are not the exclusive owners; switch to an immutable code path
+        HamtNode* n2 = hamt_remove(ctx, n, key, refentry, shift + HAMT_BITS);
+        if (n != n2) {
+          *found = true;
+          node_release(ctx, n);
+          m1->entries[bi] = n2;
+        }
+        return m1;
+      }
+
+      HamtNode* n2 = hamt_remove_mut(ctx, n, key, refentry, shift + HAMT_BITS, found);
+      if (n2 != n) {
+        assert(*found);
+        asserteq(NODE_LEN(n2), 0);
+        asserteq(n2, &_empty_hamt);
+        if (NODE_LEN(m1) == 1) {
+          node_free_noentries(ctx, m1);
+          return node_retain(&_empty_hamt);
+        }
+        // note: n has been freed already by the previous hamt_remove_mut call
+        m1->bmap = m1->bmap & ~bitpos;
+        return node_remove_entry_mut(m1, bi);
+      }
+      break;
+    }
+
+    case TCollision: {
+      if (AtomicLoad(&n->refs) > 1) {
+        // we are not the exclusive owners; switch to an immutable code path
+        HamtNode* v2 = collision_without(ctx, n, refentry);
+        if (v2 != n) {
+          *found = true;
+          node_release(ctx, n);
+          m1->entries[bi] = v2;
+        }
+      } else {
+        m1->entries[bi] = collision_remove_mut(ctx, n, refentry, found);
+      }
+      break;
+    }
+
+    case TValue: {
+      // dlog("hamt_remove_mut TValue");
+      if (key == NODE_KEY(n) && ctx->enteq(ctx, (const void*)n->entries[0], refentry)) {
+        // value matches; remove it
+        *found = true;
+        node_release(ctx, n);
+        if (NODE_LEN(m1) == 1) {
+          // lone value on branch; drop branch and return the empty hamt
+          node_free_noentries(ctx, m1);
+          return node_retain(&_empty_hamt);
+        }
+        m1->bmap = m1->bmap & ~bitpos;
+        return node_remove_entry_mut(m1, bi);
+      }
+      break;
+    }
+    } // switch
+  }
+
   return m1;
 }
 
@@ -696,6 +850,10 @@ static Str node_repr(
     s = str_appendc(s, ' ');
   }
 
+  // for debugging, include refcount:
+  u32 refs = AtomicLoad(&n->refs);
+  s = str_appendfmt(s, "\e[%s;1m%u\e[0m ", refs == 0 ? "31" : refs == 1 ? "35" : "33", refs);
+
   switch (NODE_TYPE(n)) {
     case THamt:
       if (level < 0) {
@@ -756,6 +914,15 @@ Hamt hamt_new(HamtCtx* ctx) {
   return (Hamt){ node_retain(&_empty_hamt), ctx };
 }
 
+// returns borrowed ref to entry, or NULL if not found
+bool hamt_getk(Hamt h, const void** entry, HamtUInt key) {
+  const HamtNode* v = hamt_lookup(h.ctx, h.root, key, *entry);
+  if (v == NULL)
+    return false;
+  *entry = v->entries[0];
+  return true;
+}
+
 // steals ref to entry
 Hamt hamt_with(Hamt h, void* entry, bool* didadd) {
   // TODO: consider mutating h.root when h.root->refs==1
@@ -773,18 +940,9 @@ bool hamt_set(Hamt* h, void* entry) {
   return didadd;
 }
 
-// returns borrowed ref to entry, or NULL if not found
-bool hamt_getk(Hamt h, const void** entry, HamtUInt key) {
-  const HamtNode* v = hamt_lookup(h.ctx, h.root, key, *entry);
-  if (v == NULL)
-    return false;
-  *entry = v->entries[0];
-  return true;
-}
-
 // borrows ref to entry
 Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
-  // TODO: consider mutating h when h.refs==1
+  // TODO: consider mutating h.root when h.root->refs==1
   auto m2 = hamt_remove(h.ctx, h.root, key, entry, 0);
   *removed = m2 != h.root;
   if (!*removed)
@@ -793,7 +951,15 @@ Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
 }
 
 bool hamt_delk(Hamt* h, const void* entry, HamtUInt key) {
-  // TODO: consider mutating h when h.refs==1
+  // TODO: consider mutating h.root when h.root->refs==1
+  if (MUT_OPTS_ENABLED && AtomicLoad(&h->root->refs) == 1) {
+    bool found = false;
+    h->root = hamt_remove_mut(h->ctx, h->root, key, entry, 0, &found);
+    return found;
+  }
+  // if (MUT_OPTS_ENABLED && AtomicLoad(&h->root->refs) == 1)
+  //   return hamt_remove_mut(h->ctx, h->root, key, entry, 0);
+
   auto m2 = hamt_remove(h->ctx, h->root, key, entry, 0);
   if (h->root == m2)
     return false;
