@@ -118,7 +118,7 @@ static HamtCtx ctx = {
   (tmpstr = TestValueRepr(NULL, str_setlen(tmpstr, 0), (testval)))
 
 
-R_UNIT_TEST(hamt) {
+R_UNIT_TEST(hamt_sanity) {
   hamt_testing_disable_mut_opts();
   for (u32 N = 0; N < 2; N++) {
     Hamt h = hamt_new(&ctx);
@@ -142,9 +142,9 @@ R_UNIT_TEST(hamt) {
 }
 
 
-R_UNIT_TEST(hamt_mem) {
-  hamt_testing_disable_mut_opts();
-  // hamt_testing_enable_mut_opts();
+R_UNIT_TEST(hamt_add_fork_remove) {
+  // hamt_testing_disable_mut_opts();
+  hamt_testing_enable_mut_opts(); // TMP
   for (u32 N = 0; N < 2; N++) {
 
     HamtCtx ctx = {
@@ -213,6 +213,7 @@ R_UNIT_TEST(hamt_mem) {
     assert(hamt_empty(h));
     assert(!hamt_empty(h2));
     hamt_release(h2);
+    // exit(0);
 
     // add values using hamt_with
     for (u32 i = 0; i < countof(values); i++) {
@@ -546,9 +547,13 @@ R_UNIT_TEST(hamt_fuzz) {
   // spend 100ms on fuzzying
   u64 max_time_spend_ns = 100*1000000;
   auto starttm = nanotime();
-  for (u32 i = 1; nanotime() - starttm < max_time_spend_ns; i++) {
+  u32 i = 1;
+  for (; nanotime() - starttm < max_time_spend_ns; i++) {
     HamtFuzzTest(/* randseed */ i);
   }
+  char durbuf[128];
+  fmtduration(durbuf, sizeof(durbuf), nanotime() - starttm);
+  fprintf(stderr, "hamt_fuzz managed %u runs in %s\n", i-1, durbuf);
 }
 
 

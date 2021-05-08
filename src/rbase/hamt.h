@@ -153,8 +153,9 @@ static Hamt hamt_without(Hamt h, const void* refentry, bool* removed);
 Hamt hamt_withoutk(Hamt h, const void* refentry, HamtUInt key, bool* removed);
 
 // hamt_del is a convenience function with behavior similar to hamt_without but instead
-// of returning a new version of h, it replaces h. It really just saves you from calling
-// hamt_release after calling hamt_without.
+// of returning a new version of h, it replaces h. This function may use a mutation optimization
+// when the caller is the exclusive single owner of h (no other references to h.) This is in
+// contrast to hamt_without which always returns a fork of h.
 // Returns true if an entry was removed.
 static bool hamt_del(Hamt* h, const void* refentry);
 

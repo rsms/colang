@@ -258,6 +258,7 @@ static HamtNode* collision_with(HamtCtx* ctx, HamtNode* c1, HamtNode* v2, bool* 
  replace:
   // we guessed wrong; replace a node. i is the index of the node to replace.
   // release entries added so far
+
   for (u32 j = 0; j < i; j++)
     node_release(ctx, c2->entries[j]);
   // free the node of incorrect length
@@ -396,9 +397,18 @@ static HamtNode* hamt_insert(HamtCtx* ctx, HamtNode* m, u32 shift, HamtNode* v2,
 
   // An entry or branch occupies the slot; replace m2->entries[bi]
 
-  HamtNode* m2 = node_clone(m, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
+  HamtNode* m2;
   HamtNode* v1 = m->entries[bi]; // current entry
   HamtNode* newobj; // to be assigned as m2->entries[bi]
+
+  if (MUT_OPTS_ENABLED && AtomicAdd(&m->refs, 1) == 1) {
+    // mutable path since caller is exclusive owner
+    m2 = m;
+  } else {
+    if (MUT_OPTS_ENABLED)
+      AtomicSub(&m->refs, 1);
+    m2 = node_clone(m, bi,bi+1, bi+1, 0); // e.g. [1,2,3,4] => [1,2, ,4] where bi=2
+  }
 
   switch (NODE_TYPE(v1)) {
 
@@ -440,8 +450,12 @@ static HamtNode* hamt_insert(HamtCtx* ctx, HamtNode* m, u32 shift, HamtNode* v2,
 
   } // switch
 
-  assert(v1 != newobj);
   m2->entries[bi] = newobj;
+  if (m2 == m) {
+    node_release(ctx, v1);
+  } else {
+    assert(v1 != newobj);
+  }
   return m2;
 }
 
@@ -655,7 +669,6 @@ static HamtNode* hamt_remove_mut(
     }
 
     case TValue: {
-      // dlog("hamt_remove_mut TValue");
       if (key == NODE_KEY(n) && ctx->enteq(ctx, (const void*)n->entries[0], refentry)) {
         // value matches; remove it
         *found = true;
@@ -925,7 +938,6 @@ bool hamt_getk(Hamt h, const void** entry, HamtUInt key) {
 
 // steals ref to entry
 Hamt hamt_with(Hamt h, void* entry, bool* didadd) {
-  // TODO: consider mutating h.root when h.root->refs==1
   auto v = value_alloc(h.ctx->entkey(h.ctx, entry), entry);
   *didadd = true;
   return (Hamt){ hamt_insert(h.ctx, h.root, 0, v, didadd), h.ctx };
@@ -933,16 +945,22 @@ Hamt hamt_with(Hamt h, void* entry, bool* didadd) {
 
 // steals ref to entry, mutates h
 bool hamt_set(Hamt* h, void* entry) {
-  bool didadd;
-  auto h2 = hamt_with(*h, entry, &didadd);
+  bool didadd = true;
+  auto v = value_alloc(h->ctx->entkey(h->ctx, entry), entry);
+  HamtNode* root2 = hamt_insert(h->ctx, h->root, 0, v, &didadd);
   node_release(h->ctx, h->root);
-  h->root = h2.root;
+  h->root = root2;
   return didadd;
 }
 
 // borrows ref to entry
 Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
-  // TODO: consider mutating h.root when h.root->refs==1
+  // Note: We can not take the mutation code path here since the h.root is always
+  // referenced at least twice, technically.
+  // I.e. if we would call hamt_remove_mut on a h.root with just a single value
+  // and that value is removed, hamt_remove_mut will free h.root which will subsequently
+  // cause a double free or memory access violation when the caller of this function
+  // calls hamt_release on the input h.
   auto m2 = hamt_remove(h.ctx, h.root, key, entry, 0);
   *removed = m2 != h.root;
   if (!*removed)
@@ -951,14 +969,12 @@ Hamt hamt_withoutk(Hamt h, const void* entry, HamtUInt key, bool* removed) {
 }
 
 bool hamt_delk(Hamt* h, const void* entry, HamtUInt key) {
-  // TODO: consider mutating h.root when h.root->refs==1
   if (MUT_OPTS_ENABLED && AtomicLoad(&h->root->refs) == 1) {
+    // caller is exclusive owner of root; start with mutable code path
     bool found = false;
     h->root = hamt_remove_mut(h->ctx, h->root, key, entry, 0, &found);
     return found;
   }
-  // if (MUT_OPTS_ENABLED && AtomicLoad(&h->root->refs) == 1)
-  //   return hamt_remove_mut(h->ctx, h->root, key, entry, 0);
 
   auto m2 = hamt_remove(h->ctx, h->root, key, entry, 0);
   if (h->root == m2)
