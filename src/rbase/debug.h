@@ -47,7 +47,10 @@ ASSUME_NONNULL_BEGIN
   #define asserteq(a,b)    assertop((a),==,(b))
   #define assertne(a,b)    assertop((a),!=,(b))
   #define assertnull(a)    assertop((a),==,NULL)
-  #define assertnotnull(a) ({ __typeof__(a) v = (a); assertop((v),!=,NULL); v; })
+  #define assertnotnull(a) ({ \
+    __typeof__(a) val##__LINE__##__ = (a); \
+    assertop((val##__LINE__##__),!=,NULL); \
+    val##__LINE__##__; })
 
 #else /* !defined(NDEBUG) */
   #ifndef assert
