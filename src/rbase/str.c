@@ -102,8 +102,10 @@ Str str_append(Str s, const char* p, u32 len) {
 
 Str str_appendc(Str s, char c) {
   auto h = STR_HEADER(s);
-  if (h->cap - h->len == 0)
+  if (h->cap - h->len == 0) {
     s = str_makeroom(s, 1);
+    h = STR_HEADER(s);
+  }
   memtrace("str_appendc %p", h);
   s[h->len++] = c;
   s[h->len] = 0;
