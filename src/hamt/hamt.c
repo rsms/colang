@@ -1,6 +1,6 @@
-#include "rbase.h"
+#include <rbase/rbase.h>
+#include <rbase/pool.h>
 #include "hamt.h"
-#include "pool.h"
 
 // NodeType is used in Node.tag to communicate a node's type
 typedef enum {

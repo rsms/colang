@@ -19,8 +19,9 @@ extern "C" {
 #include "thread.h"
 #include "path.h"
 #include "fs.h"
-#include "mpscq.h"
-#include "chan.h"
+// #include "mpscq.h"
+// #include "chan.h"
+// #include "pool.h"
 
 #ifdef __cplusplus
 }

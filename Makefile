@@ -195,7 +195,7 @@ test_msan:
 	$(MAKE) SANITIZE=memory DEBUG=1 V=$(V) -j$(shell nproc) co
 	R_UNIT_TEST=1 ./bin/co-debug-msan build example/hello.w
 
-
+#---- executables ----
 bin/co$(BIN_SUFFIX): $(CO_OBJS) $(BUILDDIR)/rbase.a
 	@echo "link $@"
 	@mkdir -p "$(dir $@)"
@@ -206,6 +206,7 @@ bin/rt-test$(BIN_SUFFIX): $(RT_TEST_OBJS) $(BUILDDIR)/rbase.a $(BUILDDIR)/rt.a
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(LDFLAGS) -o $@ $^
 
+#---- libs ----
 $(BUILDDIR)/rt.a: $(RT_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	$(Q)$(AR) rcs $@ $^
@@ -214,6 +215,7 @@ $(BUILDDIR)/rbase.a: $(RBASE_OBJS)
 	@echo "ar $@ ($(foreach fn,$^,$(notdir ${fn:.o=})))"
 	$(Q)$(AR) rcs $@ $^
 
+#---- PCHs ----
 $(RBASE_PCH): $(RBASE_H)
 	@echo "cc $< -> $@"
 	@mkdir -p "$(dir $@)"
@@ -224,6 +226,7 @@ $(LLVM_INCLUDES_PCH): $(LLVM_INCLUDES_H)
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CXX) $(COMPILE_FLAGS) $(CXXFLAGS) -c -o "$@" $<
 
+#---- objects ----
 $(OBJDIR)/%.c.o: %.c | $(RBASE_PCH)
 	@echo "cc $<"
 	@mkdir -p "$(dir $@)"
@@ -239,6 +242,7 @@ $(OBJDIR)/%.S.o: %.S
 	@mkdir -p "$(dir $@)"
 	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
+#---- etc ----
 $(OBJDIR)/src/co/parse/parse.c.o: $(BUILDDIR)/gen_parselet_map.mark
 $(BUILDDIR)/gen_parselet_map.mark: src/co/parse/parse.c
 	$(Q)python3 misc/gen_parselet_map.py $< $@
