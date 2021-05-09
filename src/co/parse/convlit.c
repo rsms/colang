@@ -17,7 +17,7 @@ static void err_invalid_binop(Build* b, Node* n) {
   assert(n->kind == NBinOp);
   auto ltype = NodeEffectiveType(n->op.left);
   auto rtype = NodeEffectiveType(n->op.right);
-  build_errf(b, n->pos, n->op.right->pos,
+  build_errf(b, NodePosSpan(n),
     "invalid operation: %s (mismatched types %s and %s)",
     TokName(n->op.op),
     fmtnode(ltype),
@@ -66,7 +66,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
       // int -> int; check overflow and simply leave as-is (reinterpret.)
       if (R_UNLIKELY((i64)v->i < min_intval[tc] || max_intval[tc] < v->i)) {
         auto nval = NValFmt(str_new(16), v);
-        build_errf(b, srcnode->pos, NoPos, "constant %s overflows %s", nval, TypeCodeName(tc));
+        build_errf(b, NodePosSpan(srcnode), "constant %s overflows %s", nval, TypeCodeName(tc));
         str_free(nval);
       }
       return true;

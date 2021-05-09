@@ -5,6 +5,8 @@
   /* Name               16       RGB */ \
   _(none,        "0",     "0") \
   _(nocolor,     "39",    "39") \
+  _(defaultfg,   "39",    "39") \
+  _(defaultbg,   "49",    "49") \
   _(bold,        "1",     "1") \
   _(dim,         "2",     "2") \
   _(italic,      "3",     "3") \

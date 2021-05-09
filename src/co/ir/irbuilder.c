@@ -261,7 +261,8 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   auto srcType = srcValue->type;
   auto dstType = canonical_int_type(u, n->call.receiver->t.basic.typeCode);
   if (R_UNLIKELY(n->call.receiver->kind != NBasicType)) {
-    build_errf(u->build, n->pos, NoPos, "invalid type %s in type cast", fmtnode(n->call.receiver));
+    build_errf(u->build, NodePosSpan(n),
+      "invalid type %s in type cast", fmtnode(n->call.receiver));
     return TODO_Value(u);
   }
 
@@ -280,8 +281,8 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   // select conversion operation
   IROp convop = IROpConvertType(srcType, dstType);
   if (R_UNLIKELY(convop == OpNil)) {
-    build_errf(u->build, n->pos, NoPos, "invalid type conversion %s to %s",
-      TypeCodeName(srcType), TypeCodeName(dstType));
+    build_errf(u->build, NodePosSpan(n),
+      "invalid type conversion %s to %s", TypeCodeName(srcType), TypeCodeName(dstType));
     return TODO_Value(u);
   }
 
@@ -295,7 +296,7 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
 static IRValue* ast_add_arg(IRBuilder* u, Node* n) { // n->kind==NArg
   if (R_UNLIKELY(n->type->kind != NBasicType)) {
     // TODO add support for NTupleType et al
-    build_errf(u->build, n->pos, NoPos, "invalid argument type %s", fmtnode(n->type));
+    build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
     return TODO_Value(u);
   }
   auto t = canonical_int_type(u, n->type->t.basic.typeCode);
@@ -415,7 +416,7 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
   auto control = ast_add_expr(u, n->cond.cond);
   if (R_UNLIKELY(control->type != TypeCode_bool)) {
     // AST should not contain conds that are non-bool
-    build_errf(u->build, n->cond.cond->pos, NoPos,
+    build_errf(u->build, NodePosSpan(n->cond.cond),
       "invalid non-bool type in condition %s", fmtnode(n->cond.cond));
   }
 
@@ -606,10 +607,26 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
 
 
 static IRValue* ast_add_call(IRBuilder* u, Node* n) { // n->kind==NCall
-  asserteq(n->call.receiver->kind, NFun);
-  IRFun* fn = ast_add_fun(u, n->call.receiver);
-  // TODO: closures, lambdas etc:
-  // IRValue* recv = ast_add_expr(u, n->call.receiver);
+  // TODO: resolve Id (can be NId or NFun, NField in future)
+  // asserteq(n->call.receiver->kind, NFun);
+
+  IRFun* fn;
+  Node* recv = n->call.receiver;
+  if (recv->kind == NFun) {
+    // target is function directly. e.g. from direct call on function value:
+    //   (fun(x int) { ... })(123)
+    fn = ast_add_fun(u, recv);
+  } else if (recv->kind == NId && recv->ref.target && recv->ref.target->kind == NFun) {
+    // common case of function referenced by name. e.g.
+    //   fun foo(x int) { ... }
+    //   foo(123)
+    fn = ast_add_fun(u, recv->ref.target);
+  } else {
+    // function is a value
+    IRValue* fnval = ast_add_expr(u, recv);
+    asserteq(fnval->op, OpFun);
+    fn = (IRFun*)fnval->auxInt;
+  }
 
   Node* argstuple = n->call.args;
   auto v = IRValueAlloc(u->mem, OpCall, TypeCode_fun, n->pos); // preallocate
@@ -643,12 +660,27 @@ static IRValue* ast_add_block(IRBuilder* u, Node* n) {  // language block, not I
 }
 
 
-// static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
-//   IRFun* fn = ast_add_fun(u, n);
-//   auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_mem, n->pos);
-//   v->auxInt = (i64)fn;
-//   return v;
-// }
+static IRValue* ast_add_ret(IRBuilder* u, Node* n) { //
+  assert(n->kind == NReturn);
+  auto retval = ast_add_expr(u, n->op.left);
+
+  // set current block as "ret"
+  u->b->kind = IRBlockRet;
+  IRBlockSetControl(u->b, retval);
+
+  // Note: ast_add_fun sets up the function block as ret unconditionally
+  // for the value of the block, which is the last expression.
+  // Because of this we return retval here to make sure the effect is unchanged.
+  return retval;
+}
+
+
+static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
+  IRFun* fn = ast_add_fun(u, n);
+  auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_mem, n->pos);
+  v->auxInt = (i64)fn;
+  return v;
+}
 
 
 static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
@@ -677,8 +709,8 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NTypeCast: return ast_add_typecast(u, n);
     case NArg:      return ast_add_arg(u, n);
     case NCall:     return ast_add_call(u, n);
-
-    case NFun:      //return ast_add_funexpr(u, n);
+    case NReturn:   return ast_add_ret(u, n);
+    case NFun:      return ast_add_funexpr(u, n);
 
     case NFloatLit:
     case NNil:
@@ -689,11 +721,10 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NFunType:
     case NPrefixOp:
     case NPostfixOp:
-    case NReturn:
     case NTuple:
     case NTupleType:
     case NZeroInit:
-      dlog("TODO ast_add_expr kind %s", NodeKindName(n->kind));
+      panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 
     case NFile:
@@ -701,7 +732,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NNone:
     case NBad:
     case _NodeKindMax:
-      build_errf(u->build, n->pos, NoPos, "invalid AST node %s", NodeKindName(n->kind));
+      build_errf(u->build, NodePosSpan(n), "invalid AST node %s", NodeKindName(n->kind));
       break;
   }
   return TODO_Value(u);
@@ -815,7 +846,7 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
     case NTypeCast:
     case NZeroInit:
     case _NodeKindMax:
-      build_errf(u->build, n->pos, NoPos, "invalid top-level AST node %s", NodeKindName(n->kind));
+      build_errf(u->build, NodePosSpan(n), "invalid top-level AST node %s", NodeKindName(n->kind));
       break;
   }
   return false;

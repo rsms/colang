@@ -30,7 +30,10 @@ typedef struct {
   // E.g. the type of a var while resolving its rvalue.
   Type* nullable typecontext;       // current value; top of typecontext_stack
   Array          typecontext_stack; // stack of Type* which are all of NodeClassType
-  Type*          typecontext_storage[32];
+  Type*          typecontextstack_storage[32];
+
+  Array funstack; // stack of Node*[kind==NFun] of current function scope
+  Node* funstack_storage[8];
 
   bool explicitTypeCast;
 
@@ -47,13 +50,23 @@ Node* ResolveType(Build* build, Node* n) {
   ResCtx ctx = {
     .build = build,
   };
+
+  // typecontext_stack
   ArrayInitWithStorage(
     &ctx.typecontext_stack,
-    ctx.typecontext_storage,
-    countof(ctx.typecontext_storage)
+    ctx.typecontextstack_storage,
+    countof(ctx.typecontextstack_storage)
   );
+
+  // funstack
+  ArrayInitWithStorage(&ctx.funstack, ctx.funstack_storage, countof(ctx.funstack_storage));
+  // always one slot so we can access the top of the stack without checks
+  ctx.funstack_storage[0] = NULL;
+  ctx.funstack.len = 1;
+
   n = resolve_type(&ctx, n, RFlagNone);
   ArrayFree(&ctx.typecontext_stack, build->mem);
+  ArrayFree(&ctx.funstack, build->mem);
   return n;
 }
 
@@ -76,6 +89,23 @@ static void typecontext_pop(ResCtx* ctx) {
     ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
     dlog_mod("typecontext_pop %s (now %s)", fmtnode(was), fmtnode(ctx->typecontext));
   }
+}
+
+inline static void funstack_push(ResCtx* ctx, Node* n) {
+  asserteq(n->kind, NFun);
+  dlog_mod("funstack_push %s", fmtnode(n));
+  ArrayPush(&ctx->funstack, n, ctx->build->mem);
+}
+
+inline static void funstack_pop(ResCtx* ctx) {
+  assert(ctx->funstack.len > 1); // must never remove the bottom of the stack (NULL value)
+  auto n = ArrayPop(&ctx->funstack);
+  dlog_mod("funstack_pop %s", fmtnode(n));
+}
+
+// curr_fun accesses the current function. NULL for top-level.
+inline static Node* nullable curr_fun(ResCtx* ctx) {
+  return ctx->funstack.v[ctx->funstack.len - 1];
 }
 
 
@@ -150,7 +180,39 @@ static Node* resolve_ideal_type(
 }
 
 
-static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
+static void err_ret_type(ResCtx* ctx, Node* fun, Node* retval) {
+  auto expect = fun->type->t.fun.result;
+  auto rettype = retval->type;
+  // function prototype claims to return type A while the body yields type B
+  auto focusnode = retval->kind == NReturn ? retval->op.left : retval;
+  const char* msgfmt = "cannot use %s (type %s) as return type %s";
+  if (focusnode->kind == NCall) {
+    msgfmt = "cannot use result from %s (type %s) as return type %s";
+  }
+  build_errf(ctx->build, NodePosSpan(focusnode), msgfmt,
+    fmtnode(focusnode), fmtnode(rettype), fmtnode(expect));
+  node_diag_trail(ctx->build, DiagInfo, focusnode);
+}
+
+
+static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NReturn
+  n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
+  n->type = n->op.left->type;
+
+  // check for return type match (result type is NULL for functions with inferred types)
+  auto fn = curr_fun(ctx); // NULL|Node[kind==NFun]
+  assertnotnull(fn); // return can only occur inside a function (parser ensures this)
+  assertnotnull(fn->type); // function's type should be resolved
+  auto fnrettype = fn->type->t.fun.result;
+  if (R_UNLIKELY( fnrettype && !TypeEquals(ctx->build, fnrettype, n->type) ))
+    err_ret_type(ctx, fn, n);
+
+  return n;
+}
+
+
+static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NFun
+  funstack_push(ctx, n);
   Type* ft = NewNode(ctx->build->mem, NFunType);
 
   // Important: To avoid an infinite loop when resolving a function which calls itself,
@@ -171,15 +233,19 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
     n->fun.body = resolve_type(ctx, n->fun.body, fl);
     auto bodyType = n->fun.body->type;
     if (ft->t.fun.result == NULL) {
+      // inferred return type, e.g. "fun foo() { 123 } => ()->int"
       ft->t.fun.result = bodyType;
-    } else if (R_UNLIKELY(
-      ft->t.fun.result != Type_nil &&
-      !TypeEquals(ctx->build, ft->t.fun.result, bodyType) ))
-    {
-      // function prototype claims to return type A while the body yields type B
-      build_errf(ctx->build, n->fun.body->pos, NodeEndPos(n->fun.body),
-        "cannot use type %s as return type %s",
-        fmtnode(bodyType), fmtnode(ft->t.fun.result));
+    } else {
+      // function's return type is explicit, e.g. "fun foo() int"
+      if (R_UNLIKELY(
+        ft->t.fun.result != Type_nil &&
+        !TypeEquals(ctx->build, ft->t.fun.result, bodyType) ))
+      {
+        // function prototype claims to return type A while the body yields type B
+        build_errf(ctx->build, NodePosSpan(ArrayNodeLast(n->fun.body)),
+          "cannot use type %s as return type %s",
+          fmtnode(bodyType), fmtnode(ft->t.fun.result));
+      }
     }
   }
 
@@ -188,6 +254,7 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
     ft->t.id = GetTypeID(ctx->build, ft);
 
   n->type = ft;
+  funstack_pop(ctx);
   return n;
 }
 
@@ -207,7 +274,7 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NB
         //   { 1  # <- warning: unused expression 1
         //     2
         //   }
-        build_warnf(ctx->build, cn->pos, NodeEndPos(cn), "unused expression: %s", fmtnode(cn));
+        build_warnf(ctx->build, NodePosSpan(cn), "unused expression: %s", fmtnode(cn));
       }
     }
     // Last node, in which case we set the flag to resolve literals
@@ -228,11 +295,9 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
   u32 ctindex = 0;
   if (ct) {
     if (R_UNLIKELY(ct->kind != NTupleType)) {
-      build_errf(ctx->build, n->pos, NodeEndPos(n),
-        "tuple where %s is expected", fmtnode(ct));
+      build_errf(ctx->build, NodePosSpan(n), "tuple where %s is expected", fmtnode(ct));
     } else if (R_UNLIKELY(ct->array.a.len != n->array.a.len)) {
-      build_errf(ctx->build, n->pos, NodeEndPos(n),
-        "%u expressions where %u expressions are expected %s",
+      build_errf(ctx->build, NodePosSpan(n), "%u expressions where %u expressions are expected %s",
         n->array.a.len, ct->array.a.len, fmtnode(ct));
     }
     assert(ct->array.a.len > 0); // tuples should never be empty
@@ -244,7 +309,7 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
     Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
     if (R_UNLIKELY(!cn->type)) {
       cn->type = (Node*)NodeBad;
-      build_errf(ctx->build, cn->pos, NodeEndPos(cn), "unknown type");
+      build_errf(ctx->build, NodePosSpan(cn), "unknown type");
     }
     NodeArrayAppend(ctx->build->mem, &tt->t.array.a, cn->type);
     if (ct)
@@ -326,12 +391,11 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
     n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
 
     if (R_UNLIKELY(!TypeEquals(ctx->build, lt, rt))) {
-      build_errf(ctx->build, n->op.left->pos, n->op.right->pos,
-        "invalid operation: %s (mismatched types %s and %s)",
+      build_errf(ctx->build, NodePosSpan(n), "invalid operation: %s (mismatched types %s and %s)",
         fmtnode(n), fmtnode(lt), fmtnode(rt));
       if (lt->kind == NBasicType) {
         // suggest type cast: x + (y as int)
-        build_infof(ctx->build, n->op.right->pos, NodeEndPos(n->op.right),
+        build_infof(ctx->build, NodePosSpan(n->op.right),
           "try a type cast: %s %s (%s as %s)",
           fmtnode(n->op.left), TokName(n->op.op), fmtnode(n->op.right), fmtnode(lt));
       }
@@ -347,7 +411,7 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(n->call.receiver != NULL);
 
   if (R_UNLIKELY(!NodeKindIsType(n->call.receiver->kind))) {
-    build_errf(ctx->build, n->pos, NodeEndPos(n),
+    build_errf(ctx->build, NodePosSpan(n),
       "invalid conversion to non-type %s", fmtnode(n->call.receiver));
     n->type = Type_nil;
     return n;
@@ -387,7 +451,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(ft != NULL);
 
   if (R_UNLIKELY(ft->kind != NFunType)) {
-    build_errf(ctx->build, n->pos, n->call.receiver->pos,
+    build_errf(ctx->build, NodePosSpan(n->call.receiver),
       "cannot call %s", fmtnode(n->call.receiver));
     n->type = Type_nil;
     return n;
@@ -410,7 +474,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   // fun foo(a, b int, c int = 0)
   // foo(1, 2) == foo(1, 2, 0)
   if (R_UNLIKELY(!TypeEquals(ctx->build, ft->t.fun.params, argstype))) {
-    build_errf(ctx->build, n->call.args->pos, NodeEndPos(n->call.args),
+    build_errf(ctx->build, NodePosSpan(n->call.args),
       "incompatible arguments %s in function call; expected %s",
       fmtnode(argstype), fmtnode(ft->t.fun.params));
   }
@@ -423,7 +487,7 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
   n->cond.cond = resolve_type(ctx, n->cond.cond, fl);
 
   if (R_UNLIKELY(n->cond.cond->type != Type_bool)) {
-    build_errf(ctx->build, n->cond.cond->pos, NodeEndPos(n->cond.cond),
+    build_errf(ctx->build, NodePosSpan(n->cond.cond),
       "non-bool %s (type %s) used as condition",
       fmtnode(n->cond.cond), fmtnode(n->cond.cond->type));
     n->type = Type_nil;
@@ -451,7 +515,7 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
       //
       n->cond.elseb = ConvlitImplicit(ctx->build, n->cond.elseb, thentype);
       if (R_UNLIKELY(!TypeEquals(ctx->build, thentype, n->cond.elseb->type))) {
-        build_errf(ctx->build, n->pos, NodeEndPos(n),
+        build_errf(ctx->build, NodePosSpan(n),
           "if..else branches of mixed incompatible types %s %s",
           fmtnode(thentype), fmtnode(elsetype));
       }
@@ -548,9 +612,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     n->type = n->op.left->type;
     break;
   case NReturn:
-    n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
-    n->type = n->op.left->type;
-    break;
+    R_MUSTTAIL return resolve_ret_type(ctx, n, fl);
 
   case NBinOp:
   case NAssign:

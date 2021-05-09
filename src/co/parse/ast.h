@@ -115,9 +115,10 @@ typedef struct NVal {
 // TODO: add function for computing the end Pos for an AST node. E.g. last item of a tuple.
 
 typedef struct Node {
-  NodeKind       kind; // kind of node (e.g. NId)
-  Pos            pos;  // source origin & position
-  Node* nullable type; // value type. NULL if unknown.
+  NodeKind       kind;   // kind of node (e.g. NId)
+  Pos            pos;    // source origin & position
+  Pos            endpos; // Used by compount types like tuple. NoPos means "only use pos".
+  Node* nullable type;   // value type. NULL if unknown.
   union {
     void* _never; // for initializers
     NVal val; // BoolLit, IntLit, FloatLit, StrLit
@@ -147,7 +148,7 @@ typedef struct Node {
       Node*  nullable body;   // NULL for fun-declaration
     } fun;
     /* call */ struct { // Call, TypeCast
-      Node* receiver;      // either an NFun or a type (e.g. NBasicType)
+      Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;
     /* field */ struct { // Arg, Field, Let
@@ -236,10 +237,10 @@ Str NValFmt(Str s, const NVal* v);
 // ArrayNodeLast returns the last element of array node n or NULL if empty
 Node* nullable ArrayNodeLast(Node* n);
 
-// NodeEndPos returns the Pos representing the logical inclusive end of the node.
-// For example, for a tuple that is the pos of the last element.
-// Returns NoPos if the end of the node is the same as n->pos.
-Pos NodeEndPos(Node* n);
+
+// NodePosSpan returns the Pos span representing the logical span of the node.
+// For example, for a tuple that is the pos of the first to last element, inclusive.
+PosSpan NodePosSpan(Node* n);
 
 static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n);
 static void NodeArrayClear(Array* a);
@@ -252,6 +253,12 @@ Node* NewNode(Mem nullable mem, NodeKind kind);
 
 // NodeCopy creates a shallow copy of n in mem
 static Node* NodeCopy(Mem nullable mem, const Node* n);
+
+// node_diag_trail calls b->diagh zero or more times with contextual information that forms a
+// trail to the provided node n. For example, if n is a call the trail will report on the
+// function that is called along with any identifier indirections.
+// Note: The output does NOT include n itself.
+void node_diag_trail(Build* b, DiagLevel dlevel, Node* n);
 
 // -----------------------------------------------------------------------------------------------
 // implementations

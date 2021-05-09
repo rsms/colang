@@ -136,7 +136,7 @@ static void syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
   if (stmp)
     str_free(stmp);
 
-  build_diag(p->build, DiagError, pos, NoPos, msg);
+  build_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msg);
   str_free(msg);
 }
 
@@ -205,6 +205,11 @@ static void advance(Parser* p, const Tok* followlist) {
 inline static Node* mknode(Parser* p, NodeKind kind) {
   auto n = NewNode(p->build->mem, kind);
   n->pos = ScannerPos(&p->s);
+  return n;
+}
+
+ALWAYS_INLINE static Node* set_endpos(Parser* p, Node* n) {
+  n->endpos = ScannerPos(&p->s);
   return n;
 }
 
@@ -298,7 +303,7 @@ static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok
   do {
     NodeArrayAppend(p->build->mem, &tuple->array.a, expr(p, precedence, fl));
   } while (got(p, TComma) && p->s.tok != stoptok);
-  return tuple;
+  return set_endpos(p, tuple);
 }
 
 // ============================================================================================
@@ -491,10 +496,9 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   //   default: n->call.args = args; break;
   // }
 
-  if (NodeKindIsType(receiver->kind)) {
+  if (NodeKindIsType(receiver->kind))
     n->kind = NTypeCast;
-    return n;
-  }
+
   return n;
 }
 
@@ -520,6 +524,7 @@ static Node* PBlock(Parser* p, PFlag fl) {
     nexttok(p);
   }
 
+  set_endpos(p, n);
   n->array.scope = popScope(p);
 
   return n;
@@ -595,6 +600,10 @@ static Node* PIf(Parser* p, PFlag fl) {
 //!PrefixParselet TReturn
 static Node* PReturn(Parser* p, PFlag fl) {
   auto n = mknode(p, NReturn);
+  if (R_UNLIKELY(p->fnest == 0)) {
+    // return outside a function
+    syntaxerrp(p, n->pos, "return outside function body");
+  }
   nexttok(p);
   if (p->s.tok != TSemi && p->s.tok != TRBrace)
     n->op.left = exprOrTuple(p, PREC_LOWEST, fl | PFlagRValue);
@@ -714,6 +723,7 @@ static Node* params(Parser* p) { // => NTuple
 static Node* PFun(Parser* p, PFlag fl) {
   auto n = mknode(p, NFun);
   nexttok(p);
+
   // name
   if (p->s.tok == TId) {
     auto name = p->s.name;
@@ -724,6 +734,7 @@ static Node* PFun(Parser* p, PFlag fl) {
     syntaxerr(p, "expecting name");
     nexttok(p);
   }
+
   // parameters
   pushScope(p);
   if (p->s.tok == TLParen) {
@@ -739,12 +750,21 @@ static Node* PFun(Parser* p, PFlag fl) {
     //   case 1:  n->fun.params = pa->array.a.head->node; break;
     //   default: n->fun.params = pa; break;
     // }
+  }
 
-  }
   // result type(s)
-  if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr) {
+  if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr)
     n->fun.result = pType(p, fl | PFlagRValue);
-  }
+
+  // set endpos
+  // FIXME: this sets endpos to the next following token, not the last token.
+  // Example:
+  // 1  fun add(x int, y uint) int
+  // 2
+  // Gets an endpos of 2:0 (which is invalid since column is zero so formatters will ignore it)
+  // It should get endpos 1:24 (for "int")
+  set_endpos(p, n);
+
   // body
   p->fnest++;
   if (p->s.tok == TLBrace) {
@@ -896,6 +916,7 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
         NodeArrayAppend(p->build->mem, &g->array.a, prefixExpr(p, fl));
       } while (got(p, TComma));
     }
+    set_endpos(p, g);
     left = g;
   }
   if (fl & PFlagRValue) {

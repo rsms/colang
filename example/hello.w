@@ -1,11 +1,20 @@
 
-fun main() nil {
+fun main() {
   a = 2
   b = a
-  z = int32
-  add(a, b)
+  addfn = add
+  return addfn(a, b)
 }
 
 fun add(x int, y uint) int {
   x + (y as int)
 }
+
+# This crashes parse.c
+# fun main() nil {
+#   addfn = add
+#   return addfn(1, 2)
+# }
+# fun add(x, y int) int {
+#   x + y
+# }

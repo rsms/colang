@@ -10,27 +10,108 @@ typedef struct ReprCtx {
   TStyleTable style;
   bool        pretty;
   bool        includeTypes;
-  Array       seen; // cycle guard
+  Array       funscope; // cycle guard
+  Node*       funscope_storage[4];
+
+  // style
+  Array stylestack;
+  Str   stylestack_storage[4];
+  Str   nobg_color;
+  Str   nofg_color;
+  Str   id_color;
+  Str   ptr_color;
+  Str   type_color;
+  Str   unimportant_color;
 } ReprCtx;
 
+static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth);
 
-// seen_add adds n to ctx->seen. Returns true if added, false if already in ctx->seen
-static bool ctx_seen_add(ReprCtx* ctx, const Node* n) {
-  if (n->kind != NFun)
-    return true;
-  //dlog("seen_add %s", fmtnode(n));
-  if (ArrayIndexOf(&ctx->seen, (void*)n) > -1)
-    return false; // already in ctx->seen
-  ArrayPush(&ctx->seen, (void*)n, NULL);
+Str NodeRepr(const Node* n, Str s) {
+  TStyleTable style = TStyle16;
+  ReprCtx ctx = {
+    .maxdepth     = 48,
+    .pretty       = true,
+    .includeTypes = true,
+    .style        = style,
+  };
+
+  ArrayInitWithStorage(&ctx.funscope, ctx.funscope_storage, countof(ctx.funscope_storage));
+  ArrayInitWithStorage(&ctx.stylestack, ctx.stylestack_storage, countof(ctx.stylestack_storage));
+
+  auto bold_style = str_cpycstr(style[TStyle_bold]);
+  if (style != TStyleNone) {
+    ctx.nobg_color = str_cpycstr(style[TStyle_defaultbg]);
+    ctx.nofg_color = str_cpycstr(style[TStyle_defaultfg]);
+    ctx.id_color   = str_cpycstr(style[TStyle_orange]);
+    ctx.ptr_color  = str_cpycstr(style[TStyle_red]);
+    ctx.type_color = str_cpycstr(style[TStyle_blue]);
+    // ctx.type_color = str_cpycstr("\x1b[44m");
+    ctx.unimportant_color = str_cpycstr(style[TStyle_grey]);
+    ArrayPush(&ctx.stylestack, (void*)bold_style, NULL);
+  }
+
+  s = nodeRepr(n, s, &ctx, /*depth*/ 1);
+
+  ArrayFree(&ctx.funscope, NULL);
+  ArrayFree(&ctx.stylestack, NULL);
+  str_free(bold_style);
+  str_free(ctx.nobg_color);
+  str_free(ctx.nofg_color);
+  str_free(ctx.id_color);
+  str_free(ctx.ptr_color);
+  str_free(ctx.type_color);
+  str_free(ctx.unimportant_color);
+  return s;
+}
+
+static Str style_apply(ReprCtx* ctx, Str s) {
+  if (ctx->stylestack.len == 0)
+    return str_appendcstr(s, ctx->style[TStyle_none]);
+  bool nofg = true;
+  bool nobg = true;
+  s = str_makeroom(s, ctx->stylestack.len * 8);
+  for (u32 i = 0; i < ctx->stylestack.len; i++) {
+    Str style = ctx->stylestack.v[i];
+    s = str_append(s, style, str_len(style));
+    if (style[2] == '3' || style[2] == '9') {
+      nofg = false;
+    } else if (style[2] == '4') {
+      nobg = false;
+    }
+  }
+  if (nofg)
+    s = str_append(s, ctx->nofg_color, str_len(ctx->nofg_color));
+  if (nobg)
+    s = str_append(s, ctx->nobg_color, str_len(ctx->nobg_color));
+  return s;
+}
+
+static Str style_push(ReprCtx* ctx, Str s, Str style) {
+  if (ctx->style == TStyleNone)
+    return s;
+  ArrayPush(&ctx->stylestack, (void*)style, NULL);
+  return style_apply(ctx, s);
+}
+
+static Str style_pop(ReprCtx* ctx, Str s) {
+  ArrayPop(&ctx->stylestack);
+  return style_apply(ctx, s);
+}
+
+
+// funscope_push adds n to ctx->funscope. Returns true if added.
+static bool funscope_push(ReprCtx* ctx, const Node* n) {
+  assert(n->kind == NFun);
+  //dlog("funscope_push %s", fmtnode(n));
+  if (ArrayIndexOf(&ctx->funscope, (void*)n) > -1)
+    return false;
+  ArrayPush(&ctx->funscope, (void*)n, NULL);
   return true;
 }
 
-// seen_rm removes n from ctx->seen
-static void ctx_seen_rm(ReprCtx* ctx, const Node* n) {
-  if (n->kind != NFun)
-    return;
-  auto i = ArrayLastIndexOf(&ctx->seen, (void*)n); // last since most likely last
-  assert(i > -1);
+// funscope_pop removes n from ctx->funscope
+static void funscope_pop(ReprCtx* ctx) {
+  ArrayPop(&ctx->funscope);
 }
 
 
@@ -118,15 +199,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   // s = str_appendfmt(s, "[%p] ", n);
 
   if (depth > ctx->maxdepth) {
-    s = str_appendcstr(s, ctx->style[TStyle_grey]);
+    s = style_push(ctx, s, ctx->unimportant_color);
     s = str_appendcstr(s, "...");
-    s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
-    return s;
-  }
-
-  // cycle guard
-  if (!ctx_seen_add(ctx, n)) {
-    s = str_appendfmt(s, " [cyclic %s]", NodeKindName(n->kind));
+    s = style_pop(ctx, s);
     return s;
   }
 
@@ -135,15 +210,14 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     s = indent(s, ctx);
 
     if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes) {
-      s = str_appendcstr(s, ctx->style[TStyle_blue]);
+      s = style_push(ctx, s, ctx->type_color);
       if (n->type) {
         s = nodeRepr(n->type, s, ctx, depth + 1);
-        s = str_appendcstr(s, ctx->style[TStyle_blue]); // in case nodeRepr changed color
         s = str_append(s, ":", 1);
       } else {
         s = str_append(s, "?:", 2);
       }
-      s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
+      s = style_pop(ctx, s);
     }
     s = str_appendfmt(s, "(%s ", NodeKindName(n->kind));
   }
@@ -189,12 +263,18 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
 
   // uses u.ref
   case NId:
-    s = str_appendcstr(s, ctx->style[TStyle_red]);
     assert(n->ref.name != NULL);
+    s = style_push(ctx, s, ctx->id_color);
     s = str_append(s, n->ref.name, symlen(n->ref.name));
-    s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
+    s = style_pop(ctx, s);
     if (n->ref.target) {
-      s = str_appendfmt(s, " @%s", NodeKindName(n->ref.target->kind));
+      if (n->ref.target->kind == NFun) {
+        auto f = n->ref.target;
+        s = str_appendfmt(s, " @(Fun %s %s%p%s)",
+          f->fun.name ? f->fun.name : "_", ctx->ptr_color, f, ctx->nofg_color);
+      } else {
+        s = str_appendfmt(s, " @%s", NodeKindName(n->ref.target->kind));
+      }
       // s = nodeRepr(n->ref.target, s, ctx, depth + 1);
     }
     break;
@@ -253,6 +333,13 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
 
   // uses u.fun
   case NFun: {
+    // cycle guard for functions which may refer to themselves.
+    // TODO: include structs and complex types here in the future.
+    if (!funscope_push(ctx, n)) {
+      s = str_appendfmt(s, "[cycle %s %s%p%s]",
+        NodeKindName(n->kind), ctx->ptr_color, n, ctx->nofg_color);
+      return s;
+    }
     auto f = &n->fun;
 
     if (f->name) {
@@ -262,9 +349,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     }
 
     // include address
-    s = str_appendcstr(s, ctx->style[TStyle_red]);
-    s = str_appendfmt(s, " %p", n);
-    s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
+    s = str_appendfmt(s, " %s%p%s", ctx->ptr_color, n, ctx->nofg_color);
 
     if (f->params) {
       s = nodeRepr(f->params, s, ctx, depth + 1);
@@ -284,6 +369,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = nodeRepr(f->body, s, ctx, depth + 1);
     }
 
+    funscope_pop(ctx);
     break;
   }
 
@@ -299,16 +385,10 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       NULL
     );
 
-    if (funTarget != NULL) {
-      // print receiver function when we know it
-      if (funTarget->fun.name) {
-        s = str_append(s, funTarget->fun.name, symlen(funTarget->fun.name));
-      } else {
-        s = str_append(s, "_", 1);
-      }
-      s = str_appendcstr(s, ctx->style[TStyle_red]);
-      s = str_appendfmt(s, " %p", funTarget);
-      s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
+    s = nodeRepr(recv, s, ctx, depth + 1);
+
+    if (funTarget) {
+      //
     } else if (recv->kind == NId && recv->ref.target == NULL) {
       // when the receiver is an ident without a resolved target, print its name
       s = str_append(s, recv->ref.name, symlen(recv->ref.name));
@@ -330,13 +410,13 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     break;
 
   case NBasicType:
-    s = str_appendcstr(s, ctx->style[TStyle_blue]);
+    s = style_push(ctx, s, ctx->type_color);
     if (n == Type_ideal) {
       s = str_appendc(s, '*');
     } else {
       s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
     }
-    s = str_appendcstr(s, ctx->style[TStyle_nocolor]);
+    s = style_pop(ctx, s);
     break;
 
   case NFunType: // TODO
@@ -376,26 +456,10 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   }
 
   ctx->ind -= 2;
-  ctx_seen_rm(ctx, n);
 
   if (!isType) {
     s = str_append(s, ")", 1);
   }
-  return s;
-}
-
-
-Str NodeRepr(const Node* n, Str s) {
-  ReprCtx ctx = {
-    .maxdepth     = 48,
-    .pretty       = true,
-    .includeTypes = true,
-    .style        = TStyle16,
-  };
-  void* seen_storage[16];
-  ArrayInitWithStorage(&ctx.seen, seen_storage, countof(seen_storage));
-  s = nodeRepr(n, s, &ctx, /*depth*/ 1);
-  ArrayFree(&ctx.seen, NULL);
   return s;
 }
 
@@ -506,8 +570,7 @@ Str str_append_astnode(Str s, const Node* n) {
     return str_appendc(s, '>');
 
   case NCall: // call foo
-    s = str_appendcstr(s, "call ");
-    return str_append_astnode(s, n->call.receiver);
+    return str_appendcstr(s, "call");
 
   case NIf: // if
     return str_appendcstr(s, "if");

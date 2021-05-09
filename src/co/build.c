@@ -39,20 +39,19 @@ void diag_free(Diagnostic* d) {
   memfree(d->build->mem, d);
 }
 
-void build_diag(Build* b, DiagLevel level, Pos start, Pos end, const char* message) {
+void build_diag(Build* b, DiagLevel level, PosSpan pos, const char* message) {
   if (level <= DiagError)
     b->errcount++;
   if (level > b->diaglevel || b->diagh == NULL)
     return;
   auto d = build_mkdiag(b);
   d->level = level;
-  d->startpos = start;
-  d->endpos = end;
+  d->pos = pos;
   d->message = memstrdup(b->mem, message);
   build_emit_diag(b, d);
 }
 
-void build_diagv(Build* b, DiagLevel level, Pos start, Pos end, const char* fmt, va_list ap) {
+void build_diagv(Build* b, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {
   if (level > b->diaglevel || b->diagh == NULL) {
     if (level <= DiagError)
       b->errcount++;
@@ -61,19 +60,19 @@ void build_diagv(Build* b, DiagLevel level, Pos start, Pos end, const char* fmt,
   char buf[256];
   ssize_t n = vsnprintf(buf, sizeof(buf), fmt, ap);
   if (n < (ssize_t)sizeof(buf))
-    return build_diag(b, level, start, end, buf);
+    return build_diag(b, level, pos, buf);
   // buf too small; heap allocate
   auto msg = str_new(512);
   if (strlen(fmt) > 0)
     msg = str_appendfmtv(msg, fmt, ap);
-  build_diag(b, level, start, end, msg);
+  build_diag(b, level, pos, msg);
   str_free(msg);
 }
 
-void build_diagf(Build* b, DiagLevel level, Pos start, Pos end, const char* fmt, ...) {
+void build_diagf(Build* b, DiagLevel level, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  build_diagv(b, level, start, end, fmt, ap);
+  build_diagv(b, level, pos, fmt, ap);
   va_end(ap);
 }
 
@@ -89,7 +88,7 @@ const char* DiagLevelName(DiagLevel l) {
 
 Str diag_fmt(Str s, const Diagnostic* d) {
   assert(d->level <= DiagMAX);
-  return pos_fmt(&d->build->posmap, d->startpos, d->endpos, s,
+  return pos_fmt(&d->build->posmap, d->pos, s,
     "%s: %s", DiagLevelName(d->level), d->message);
 }
 

@@ -8,6 +8,7 @@ Build:
 - Verbose make: `make V=1`
 
 Development:
-- Live dev: `./misc/dev.sh -run`
+- Live dev: `./misc/dev.sh -run -asan`
+- Live dev with asan: (requires clang) `CC=deps/llvm/bin/clang ./misc/dev.sh -run -asan`
 - With llvm: `./misc/dev.sh -run -with-llvm`
 - Specific test: (prefix) `R_UNIT_TEST=foo ./misc/dev.sh -run`

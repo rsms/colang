@@ -13,7 +13,7 @@
 
 
 // NBad node
-static const Node _NodeBad = {NBad,NoPos,NULL,{0}};
+static const Node _NodeBad = {NBad,NoPos,NoPos,NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
 
@@ -169,16 +169,30 @@ Node* nullable ArrayNodeLast(Node* n) {
   return n->array.a.v[n->array.a.len - 1];
 }
 
-Pos NodeEndPos(Node* n) {
-  // returns the Pos representing the logical inclusive end of the node.
-  // For example, for a tuple that is the pos of the last element.
-  // Returns NoPos if the end of the node is the same as n->pos.
-  Node* lastn = NULL;
-  if (NodeKindClass(n->kind) & NodeClassArray) {
-    lastn = ArrayNodeLast(n);
+
+PosSpan NodePosSpan(Node* n) {
+  PosSpan span = { n->pos, n->endpos };
+  dlog("-- NodePosSpan %s %u:%u", NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
+  if (!pos_isknown(span.end))
+    span.end = span.start;
+
+  switch (n->kind) {
+    case NBinOp:
+      span.start = n->op.left->pos;
+      span.end = n->op.right->pos;
+      break;
+
+    case NCall:
+      span.start = NodePosSpan(n->call.receiver).start;
+      if (n->call.args)
+        span.end = NodePosSpan(n->call.args).end;
+      break;
+
+    default:
+      break;
   }
-  // TODO: more node types and configurations
-  return lastn ? lastn->pos : NoPos;
+
+  return span;
 }
 
 
@@ -205,6 +219,74 @@ Node* ast_opt_ifcond(Node* n) {
     return n->cond.elseb != NULL ? n->cond.elseb : Const_nil;
   }
   return n;
+}
+
+
+// err_trail_node returns the child node of n, if any, which should be included in error trails
+//
+// Example:
+//   fun main() nil {
+//     addfn = add
+//     return addfn(1, 2)
+//   }
+//   fun add(x, y int) int {
+//     x + y
+//   }
+//
+// Output:
+//   example/hello.w:3:10: error: cannot use result from call (type int) as return type nil
+//     return addfn(1, 2)
+//            ~~~~~~~~~~~
+//
+//   example/hello.w:2:3: info: addfn defined here
+//     addfn = add
+//     ~~~~~
+//
+//   example/hello.w:5:1: info: fun add defined here
+//   fun add(x int, y uint) int {
+//   ~~~
+//
+static Node* nullable diag_trail_next(Node* n, const char** msg) {
+  *msg = NULL;
+  while (1) {
+    switch (n->kind) {
+
+      case NId:
+        *msg = n->ref.name;
+        n = n->ref.target;
+        break;
+
+      case NCall:
+        n = n->call.receiver;
+        break;
+
+      case NLet:
+        // *msg = n->field.name;
+        n = n->field.init;
+        break;
+
+      // TODO: more node kinds
+      default:
+        //dlog(">> %s", NodeKindName(n->kind));
+        return NULL;
+    }
+    if (!n || n->kind != NId)
+      break;
+  }
+  return n;
+}
+
+
+static void diag_trail(Build* b, DiagLevel dlevel, const char* nullable msg, Node* n, int depth) {
+  build_diagf(b, dlevel, NodePosSpan(n), "%s defined here", msg ? msg : fmtnode(n));
+}
+
+
+void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
+  const char* msg = NULL;
+  while ((n = diag_trail_next(n, &msg))) {
+    diag_trail(b, dlevel, msg, n, 1);
+  }
 }
 
 

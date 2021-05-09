@@ -27,8 +27,7 @@ typedef enum DiagLevel {
 typedef struct Diagnostic {
   Build*      build;
   DiagLevel   level;
-  Pos         startpos;
-  Pos         endpos;
+  PosSpan     pos;
   const char* message;
 } Diagnostic;
 
@@ -91,24 +90,24 @@ static void build_emit_diag(Build* b, Diagnostic* d);
 Diagnostic* build_mkdiag(Build*);
 
 // build_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
-void build_diag(Build*, DiagLevel, Pos start, Pos end, const char* message);
+void build_diag(Build*, DiagLevel, PosSpan, const char* message);
 
 // build_diagv formats a diagnostic message invokes b->diagh
-void build_diagv(Build*, DiagLevel, Pos start, Pos end, const char* format, va_list);
+void build_diagv(Build*, DiagLevel, PosSpan, const char* format, va_list);
 
 // build_diagf formats a diagnostic message invokes b->diagh
-void build_diagf(Build*, DiagLevel, Pos start, Pos end, const char* format, ...)
-  ATTR_FORMAT(printf, 5, 6);
+void build_diagf(Build*, DiagLevel, PosSpan, const char* format, ...)
+  ATTR_FORMAT(printf, 4, 5);
 
 // convenience macros for build_diagf
-#define build_errf(b, startpos, endpos, fmt, ...) \
-  build_diagf((b), DiagError, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+#define build_errf(b, pos, fmt, ...) \
+  build_diagf((b), DiagError, (pos), (fmt), ##__VA_ARGS__)
 
-#define build_warnf(b, startpos, endpos, fmt, ...) \
-  build_diagf((b), DiagWarn, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+#define build_warnf(b, pos, fmt, ...) \
+  build_diagf((b), DiagWarn, (pos), (fmt), ##__VA_ARGS__)
 
-#define build_infof(b, startpos, endpos, fmt, ...) \
-  build_diagf((b), DiagInfo, (startpos), (endpos), (fmt), ##__VA_ARGS__)
+#define build_infof(b, pos, fmt, ...) \
+  build_diagf((b), DiagInfo, (pos), (fmt), ##__VA_ARGS__)
 
 
 // diag_fmt appends to s a ready-to-print representation of a Diagnostic message.

@@ -83,7 +83,7 @@ static void serr(Scanner* s, const char* fmt, ...) {
   auto pos = ScannerPos(s);
   va_list ap;
   va_start(ap, fmt);
-  build_diagv(s->build, DiagError, pos, NoPos, fmt, ap);
+  build_diagv(s->build, DiagError, (PosSpan){pos, pos}, fmt, ap);
   va_end(ap);
 }
 

@@ -71,7 +71,9 @@ static const u8* src_line_contents(Source* s, u32 line, u32* out_len) {
   return lineptr;
 }
 
-static Str pos_add_src_context(const PosMap* pm, Pos start, Pos end, Str s, Source* src) {
+static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* src) {
+  Pos start = span.start;
+  Pos end = span.end;
   s = str_appendc(s, '\n');
   u32 linelen = 0;
   auto lineptr = src_line_contents(src, pos_line(start), &linelen);
@@ -85,14 +87,14 @@ static Str pos_add_src_context(const PosMap* pm, Pos start, Pos end, Str s, Sour
     s = str_appendfill(s, col - 1, ' '); // indentation
 
   // squiggle "~~~" or arrow "^"
-  u32 span = pos_span(start);
-  if (pos_isknown(end)) {
+  u32 width = pos_width(start);
+  if (pos_isknown(end) && start != end) {
     if (pos_line(start) == pos_line(end) && pos_isbefore(start, end))
-      span = (u32)(pos_col(end) - pos_col(start)) + pos_span(end);
+      width = (u32)(pos_col(end) - pos_col(start)) + pos_width(end);
     // else: TODO: span lines
   }
-  if (span > 0) {
-    s = str_appendfill(s, span, '~'); // squiggle
+  if (width > 0) {
+    s = str_appendfill(s, width, '~'); // squiggle
     s = str_appendc(s, '\n');
   } else {
     s = str_appendcstr(s, "^\n");
@@ -101,28 +103,28 @@ static Str pos_add_src_context(const PosMap* pm, Pos start, Pos end, Str s, Sour
 }
 
 
-Str pos_fmtv(const PosMap* pm, Pos start, Pos end, Str s, const char* fmt, va_list ap) {
+Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap) {
   TStyleTable style = TStyle16;
 
   // "file:line:col: message ..."
   s = str_appendcstr(s, style[TStyle_bold]);
-  s = pos_str(pm, start, s);
+  s = pos_str(pm, span.start, s);
   s = str_appendcstr(s, ": ");
   s = str_appendcstr(s, style[TStyle_none]);
   s = str_appendfmtv(s, fmt, ap);
 
   // include line contents
-  auto src = (Source*)pos_source(pm, start);
+  auto src = (Source*)pos_source(pm, span.start);
   if (src)
-    s = pos_add_src_context(pm, start, end, s, src);
+    s = pos_add_src_context(pm, span, s, src);
 
   return s;
 }
 
-Str pos_fmt(const PosMap* pm, Pos start, Pos end, Str s, const char* fmt, ...) {
+Str pos_fmt(const PosMap* pm, PosSpan span, Str s, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  s = pos_fmtv(pm, start, end, s, fmt, ap);
+  s = pos_fmtv(pm, span, s, fmt, ap);
   va_end(ap);
   return s;
 }
@@ -172,12 +174,12 @@ R_UNIT_TEST(pos) {
   asserteq((uintptr_t)pos_source(&pm, p2_7_3), source2);
 
   // make sure line and column getters works as expected
-  asserteq(pos_line(p1_1_1), 1); asserteq(pos_col(p1_1_1), 1); asserteq(pos_span(p1_1_1), 5);
-  asserteq(pos_line(p1_1_9), 1); asserteq(pos_col(p1_1_9), 9); asserteq(pos_span(p1_1_9), 4);
-  asserteq(pos_line(p1_7_3), 7); asserteq(pos_col(p1_7_3), 3); asserteq(pos_span(p1_7_3), 6);
-  asserteq(pos_line(p2_1_1), 1); asserteq(pos_col(p2_1_1), 1); asserteq(pos_span(p2_1_1), 5);
-  asserteq(pos_line(p2_1_9), 1); asserteq(pos_col(p2_1_9), 9); asserteq(pos_span(p2_1_9), 4);
-  asserteq(pos_line(p2_7_3), 7); asserteq(pos_col(p2_7_3), 3); asserteq(pos_span(p2_7_3), 6);
+  asserteq(pos_line(p1_1_1), 1); asserteq(pos_col(p1_1_1), 1); asserteq(pos_width(p1_1_1), 5);
+  asserteq(pos_line(p1_1_9), 1); asserteq(pos_col(p1_1_9), 9); asserteq(pos_width(p1_1_9), 4);
+  asserteq(pos_line(p1_7_3), 7); asserteq(pos_col(p1_7_3), 3); asserteq(pos_width(p1_7_3), 6);
+  asserteq(pos_line(p2_1_1), 1); asserteq(pos_col(p2_1_1), 1); asserteq(pos_width(p2_1_1), 5);
+  asserteq(pos_line(p2_1_9), 1); asserteq(pos_col(p2_1_9), 9); asserteq(pos_width(p2_1_9), 4);
+  asserteq(pos_line(p2_7_3), 7); asserteq(pos_col(p2_7_3), 3); asserteq(pos_width(p2_7_3), 6);
 
   // known
   asserteq(pos_isknown(NoPos), false);
@@ -238,14 +240,14 @@ R_UNIT_TEST(pos_fuzz) {
     failed = failed || pos_origin(p) != origin;
     failed = failed || pos_line(p) != line;
     failed = failed || pos_col(p) != col;
-    failed = failed || pos_span(p) != span;
+    failed = failed || pos_width(p) != span;
     if (failed) {
       fprintf(stderr, "seed: srandom(%u)\n", randseed);
       fprintf(stderr, "pos_make(%u, %u, %u, %u)\n", origin, line, col, span);
       asserteq(pos_origin(p), origin);
       asserteq(pos_line(p), line);
       asserteq(pos_col(p), col);
-      asserteq(pos_span(p), span);
+      asserteq(pos_width(p), span);
       assert(p != NoPos);
     }
   }

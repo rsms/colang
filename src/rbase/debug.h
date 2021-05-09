@@ -36,21 +36,21 @@ ASSUME_NONNULL_BEGIN
     if (R_UNLIKELY(!(cond))) panic("Assertion failed: %s; " fmt, #cond, ##__VA_ARGS__); \
   }while(0)
 
-  #define assertop(a,op,b) ({                                             \
-    __typeof__(a) A = a;                                                  \
-    __typeof__(a) B = b; /* intentionally typeof(a) and not b for lits */ \
-    if (R_UNLIKELY(!(A op B)))                                            \
-      panic("Assertion failed: %s %s %s (%s %s %s)",                      \
-            #a, #op, #b, debug_quickfmt(0,A), #op, debug_quickfmt(1,B));  \
+  #define assertop(a,op,b) ({                                               \
+    __typeof__(a) A__ = a;                                                  \
+    __typeof__(a) B__ = b; /* intentionally typeof(a) and not b for lits */ \
+    if (R_UNLIKELY(!(A__ op B__)))                                          \
+      panic("Assertion failed: %s %s %s (%s %s %s)",                        \
+        #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
   })
 
   #define asserteq(a,b)    assertop((a),==,(b))
   #define assertne(a,b)    assertop((a),!=,(b))
   #define assertnull(a)    assertop((a),==,NULL)
   #define assertnotnull(a) ({ \
-    __typeof__(a) val##__LINE__##__ = (a); \
-    assertop((val##__LINE__##__),!=,NULL); \
-    val##__LINE__##__; })
+    __typeof__(a) val__ = (a); \
+    if (R_UNLIKELY(val__ == NULL)) panic("Assertion failed: %s != NULL", #a); \
+    val__; })
 
 #else /* !defined(NDEBUG) */
   #ifndef assert
