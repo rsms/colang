@@ -149,7 +149,7 @@ bool TypeEquals(Build* b, Type* x, Type* y) {
 // ——————————————————————————————————————————————————————————————————————————————————————————————
 // unit test
 
-#if R_UNIT_TEST_ENABLED
+#if R_TESTING_ENABLED
 
 // static const char* TypeConvName(TypeConv c) {
 //   switch (c) {
@@ -171,7 +171,7 @@ bool TypeEquals(Build* b, Type* x, Type* y) {
 //   }
 // }
 
-R_UNIT_TEST(typeid) {
+R_TEST(typeid) {
   // printf("--------------------------------------------------\n");
   auto build = test_build_new();
   auto mem = build->mem;
@@ -343,7 +343,7 @@ R_UNIT_TEST(typeid) {
   // printf("--------------------------------------------------\n");
 }
 
-#endif /* R_UNIT_TEST_ENABLED */
+#endif /* R_TESTING_ENABLED */
 
 
 // // TypeGTEq returns true if L >= R. I.e. R fits in L.

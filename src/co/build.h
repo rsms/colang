@@ -126,7 +126,7 @@ const char* DiagLevelName(DiagLevel);
 // Returns NULL if Pos does not name a source in the build (e.g. for generated code.)
 static const Source* nullable build_get_source(const Build*, Pos);
 
-#if R_UNIT_TEST_ENABLED
+#if R_TESTING_ENABLED
 // test_build_new creates a new Build in a new isolated Mem space with new pkg and syms
 Build* test_build_new();
 void   test_build_free(Build*);

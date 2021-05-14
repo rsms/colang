@@ -141,7 +141,7 @@ Str pos_str(const PosMap* pm, Pos p, Str s) {
 }
 
 
-R_UNIT_TEST(pos) {
+R_TEST(pos) {
   PosMap pm;
   posmap_init(&pm, NULL);
   uintptr_t source1 = 1;
@@ -212,7 +212,7 @@ R_UNIT_TEST(pos) {
 }
 
 #if 0
-R_UNIT_TEST(pos_fuzz) {
+R_TEST(pos_fuzz) {
   //
   // A kind of basic quickcheck: for up to mintime call pos_make with random values within
   // expected valid bounds and then verify that the "read" functions returns the expected values.

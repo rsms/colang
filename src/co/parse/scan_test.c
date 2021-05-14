@@ -1,6 +1,6 @@
 #include <rbase/rbase.h>
 #include "parse.h"
-#if R_UNIT_TEST_ENABLED
+#if R_TESTING_ENABLED
 
 typedef struct ScanTestCtx {
   u32         nerrors;
@@ -26,7 +26,7 @@ inline static ScanTestCtx* test_scanner_ctx(Scanner* s) {
 static const Tok TComment = TMax;
 
 
-R_UNIT_TEST(scan_testutil) {
+R_TEST(scan_testutil) {
   // make sure our test utilities work so we can rely on them for further testing
   size_t expectlen = 0;
   auto expectlist = make_expectlist(&expectlen, "hello = 123\n",
@@ -44,7 +44,7 @@ R_UNIT_TEST(scan_testutil) {
 }
 
 
-R_UNIT_TEST(scan_basics) {
+R_TEST(scan_basics) {
   u32 nerrors = testscan(ParseFlagsDefault,
     "hello = 123\n"
     "fun",
@@ -56,7 +56,7 @@ R_UNIT_TEST(scan_basics) {
 }
 
 
-R_UNIT_TEST(scan_comments) {
+R_TEST(scan_comments) {
   auto source = "hello # trailing\n# leading1\n# leading2\n123";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
@@ -82,7 +82,7 @@ R_UNIT_TEST(scan_comments) {
 }
 
 
-R_UNIT_TEST(scan_indent) {
+R_TEST(scan_indent) {
   const u32 noerrors = 0;
   asserteq(noerrors, testscan(ParseIndent,
     "1 A\n"
@@ -131,7 +131,7 @@ R_UNIT_TEST(scan_indent) {
 }
 
 
-R_UNIT_TEST(scan_nulbyte) {
+R_TEST(scan_nulbyte) {
   // nul byte in source is invalid
   auto scanner = test_scanner_newn(ParseFlagsDefault, "a\0b", 3);
   asserteq(ScannerNext(scanner), TId);
@@ -145,7 +145,7 @@ R_UNIT_TEST(scan_nulbyte) {
 }
 
 
-R_UNIT_TEST(scan_id_sym) {
+R_TEST(scan_id_sym) {
   // Sym interning and equivalence
   Tok t;
   auto scanner = test_scanner_new(ParseFlagsDefault, "hello foo hello foo");
@@ -181,7 +181,7 @@ R_UNIT_TEST(scan_id_sym) {
 }
 
 
-R_UNIT_TEST(scan_id_utf8) {
+R_TEST(scan_id_utf8) {
   { // valid unicode
     // 日本語 ("Japanese") U+65E5 U+672C U+8A9E
     auto scanner = test_scanner_new(ParseFlagsDefault, "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e");
@@ -226,7 +226,7 @@ R_UNIT_TEST(scan_id_utf8) {
 }
 
 
-R_UNIT_TEST(scan_pos) {
+R_TEST(scan_pos) {
   // source position
   Tok t;
   Pos p;
@@ -464,4 +464,4 @@ static u32 testscan(ParseFlags flags, const char* sourcetext, ...) {
 }
 
 
-#endif /* R_UNIT_TEST_ENABLED */
+#endif /* R_TESTING_ENABLED */

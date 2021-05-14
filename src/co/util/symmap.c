@@ -13,7 +13,7 @@
 #undef HASHMAP_KEY_HASH
 #undef HASHMAP_VALUE
 
-#if R_UNIT_TEST_ENABLED
+#if R_TESTING_ENABLED
 
 static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
   // dlog("\"%s\" => %zu", key, (size_t)value);
@@ -21,7 +21,7 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
   (*n)++;
 }
 
-R_UNIT_TEST(symmap) {
+R_TEST(symmap) {
   auto m = SymMapNew(64, NULL);
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
@@ -230,4 +230,4 @@ R_UNIT_TEST(symmap) {
   SymMapFree(m);
 }
 
-#endif /* R_UNIT_TEST_ENABLED */
+#endif /* R_TESTING_ENABLED */

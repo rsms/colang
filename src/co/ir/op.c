@@ -717,7 +717,7 @@ IROp IROpConvertType(TypeCode fromType, TypeCode toType) {
 }
 
 
-R_UNIT_TEST(ir_op) {
+R_TEST(ir_op) {
   //
   // this test is work in progress
   return;

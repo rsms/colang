@@ -42,7 +42,7 @@ static void testMapIterator(const void* key, void* value, bool* stop, void* user
 #endif
 
 
-R_UNIT_TEST(ptrmap) {
+R_TEST(ptrmap) {
   auto mem = MemNew(0);
   auto m = PtrMapNew(8, mem);
 

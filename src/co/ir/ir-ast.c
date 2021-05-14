@@ -494,7 +494,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
     //!END_AST_TO_IR_OP_SWITCHES
 }
 
-R_UNIT_TEST(ast_ir_opmap) {
+R_TEST(ast_ir_opmap) {
   // IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2)
 
   asserteq(IROpFromAST(TMinus, TypeCode_int32, TypeCode_nil), OpNegI32);

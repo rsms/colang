@@ -93,7 +93,7 @@ Str diag_fmt(Str s, const Diagnostic* d) {
 }
 
 
-#if R_UNIT_TEST_ENABLED
+#if R_TESTING_ENABLED
 
 Build* test_build_new() {
   Mem mem = MemNew(0); // 0 = pagesize
@@ -117,4 +117,4 @@ void test_build_free(Build* b) {
   MemFree(mem); // drop all memory, thus no memfree calls need above
 }
 
-#endif /* R_UNIT_TEST_ENABLED */
+#endif /* R_TESTING_ENABLED */

@@ -3,7 +3,7 @@
 
 #define ARRAY_CAP_STEP 32 /* copied from array.c */
 
-R_UNIT_TEST(array_heap) {
+R_TEST(array_heap) {
   // starts empty and immediately becomes fully heap allocated
   Array a = Array_INIT;
   ArrayPush(&a, (void*)1, NULL); // visits ArrayGrow's "onheap" branch
@@ -28,7 +28,7 @@ R_UNIT_TEST(array_heap) {
   ArrayFree(&a, NULL);
 }
 
-R_UNIT_TEST(array_stack_to_heap) {
+R_TEST(array_stack_to_heap) {
   // initially stack allocated, then moves to heap
   Array a; void* storage[2];
   ArrayInitWithStorage(&a, storage, 2);
@@ -53,7 +53,7 @@ R_UNIT_TEST(array_stack_to_heap) {
   ArrayFree(&a, NULL);
 }
 
-R_UNIT_TEST(array_copy) {
+R_TEST(array_copy) {
   Array a = Array_INIT;
   for (intptr_t i = 0; i < 10; i++) {
     ArrayPush(&a, (void*)i, NULL);
@@ -78,7 +78,7 @@ R_UNIT_TEST(array_copy) {
   ArrayFree(&a, NULL);
 }
 
-R_UNIT_TEST(array_remove) {
+R_TEST(array_remove) {
   Array a = Array_INIT;
   // a.v = [0 1 2 3 4 5 6 7 8 9]
   for (intptr_t i = 0; i < 10; i++) {

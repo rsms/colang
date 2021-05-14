@@ -218,7 +218,7 @@ Str sympool_repr(const SymPool* p, Str s) {
 // ----------------------------------------------------------------------------
 // unit tests
 
-R_UNIT_TEST(sym) {
+R_TEST(sym) {
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
 
@@ -255,7 +255,7 @@ R_UNIT_TEST(sym) {
 }
 
 
-R_UNIT_TEST(symflags) {
+R_TEST(symflags) {
   SymPool syms;
   sympool_init(&syms, NULL, NULL, NULL);
   auto s = symgetcstr(&syms, "hello");
@@ -269,7 +269,7 @@ R_UNIT_TEST(symflags) {
 }
 
 
-R_UNIT_TEST(sym_hash) {
+R_TEST(sym_hash) {
   const char* buffer = "hello";
   size_t size = strlen(buffer);
 
@@ -296,7 +296,7 @@ inline static Str rbkeyfmt(Str s, RBKEY k) {
   return str_appendfmt(s, "Sym(\"%s\" %x)", k, symhash(k));
 }
 
-R_UNIT_TEST(sympool) {
+R_TEST(sympool) {
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;

@@ -22,7 +22,7 @@ ASSUME_NONNULL_BEGIN
 #endif
 
 
-#if !defined(NDEBUG)
+#if !defined(NDEBUG) || defined(R_TESTING_ENABLED)
   // TODO: see wlang/src/common/assert.c
   #ifdef assert
     #undef assert
@@ -42,6 +42,13 @@ ASSUME_NONNULL_BEGIN
     if (R_UNLIKELY(!(A__ op B__)))                                          \
       panic("Assertion failed: %s %s %s (%s %s %s)",                        \
         #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
+  })
+
+  #define assertcstreq(cstr1, cstr2) ({                      \
+    __typeof__(cstr1) cstr1__ = (cstr1);                     \
+    __typeof__(cstr2) cstr2__ = (cstr2);                     \
+    if (R_UNLIKELY(strcmp(cstr1__, cstr2__) != 0))           \
+      panic("Assertion failed: %s != %s", cstr1__, cstr2__); \
   })
 
   #define asserteq(a,b)    assertop((a),==,(b))
@@ -65,7 +72,7 @@ ASSUME_NONNULL_BEGIN
 #endif /* !defined(NDEBUG) */
 
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(R_TESTING_ENABLED)
 
 // debug_quickfmt formats a value x and returns a temporary string for use in printing.
 // The buffer argument should be a number in the inclusive range [0-5], determining which

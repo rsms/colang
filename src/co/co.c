@@ -333,7 +333,7 @@ static bool init(const char* argv0) {
 }
 
 int main(int argc, const char* argv[argc+1]) {
-  #if R_UNIT_TEST_ENABLED
+  #if R_TESTING_ENABLED
   if (argc > 1 && strcmp(argv[1], "test") == 0)
     return 0;
   #endif

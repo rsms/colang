@@ -218,7 +218,7 @@ const SymPool* universe_syms() {
 // ---------------------------------------------------------------------------------------
 // test
 
-// R_UNIT_TEST(universe) {
+// R_TEST(universe) {
 //   auto s = sympool_repr(&_universe_syms, str_new(0));
 //   dlog("%s", s);
 //   str_free(s);
