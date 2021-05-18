@@ -1,10 +1,10 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "ir.h"
 
 // ===============================================================================================
 // pkg
 
-IRPkg* IRPkgNew(Mem nullable mem, const char* id) {
+IRPkg* IRPkgNew(Mem mem, const char* id) {
   size_t idlen = id ? strlen(id) : 0;
   auto pkg = (IRPkg*)memalloc(mem, sizeof(IRPkg) + idlen + 1);
   pkg->mem = mem;
@@ -261,7 +261,7 @@ IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, Pos pos) {
 }
 
 IRValue* IRValueClone(Mem mem, IRValue* v1) {
-  auto v2 = (IRValue*)memalloc_raw(mem, sizeof(IRValue));
+  auto v2 = memalloct(mem, IRValue);
   *v2 = *v1;
   v2->uses = 0;
   ArrayInitWithStorage(&v2->args, v2->argsStorage, countof(v2->argsStorage));

@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "parse.h"
 #include "universe.h"
 
@@ -209,7 +209,7 @@ const SymPool* universe_syms() {
   static SymPool p = {};
   if (p.root == NULL) {
     init_type_nodes();
-    sympool_init(&p, NULL, NULL, _symroot);
+    sympool_init(&p, NULL, MemInvalid(), _symroot);
   }
   return &p;
 }

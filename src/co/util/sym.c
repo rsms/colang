@@ -2,7 +2,7 @@
 // sym is a string type that is interned and can be efficiently compared
 // for equality by pointer value. It's used for identifiers.
 //
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "sym.h"
 #include "array.h"
 
@@ -90,7 +90,7 @@ static Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
   assert(len <= 0xFFFFFFFF);
 
   // allocate a new Sym
-  auto hp = (SymHeader*)memalloc_raw(p->mem, sizeof(SymHeader) + (size_t)len + 1);
+  auto hp = (SymHeader*)memalloc(p->mem, sizeof(SymHeader) + (size_t)len + 1);
   hp->hash = hash;
   hp->len = SYM_MAKELEN(len, /*flags*/ 0);
   auto sp = &hp->p[0];
@@ -179,9 +179,15 @@ Str sympool_repr_unsorted(const SymPool* p, Str s) {
   return s;
 }
 
+typedef struct ReprCtx {
+  Mem   mem;
+  Array a;
+  void* astorage[64];
+} ReprCtx;
+
 static bool sym_rb_iter(const RBNode* n, void* userdata) {
-  auto a = (Array*)userdata;
-  ArrayPush(a, (void*)n->key, NULL);
+  auto rctx = (ReprCtx*)userdata;
+  ArrayPush(&rctx->a, (void*)n->key, rctx->mem);
   return true; // keep going
 }
 
@@ -190,15 +196,15 @@ static int str_sortf(ConstStr a, ConstStr b, void* userdata) {
 }
 
 Str sympool_repr(const SymPool* p, Str s) {
-  Array a;
-  void* astorage[64];
-  ArrayInitWithStorage(&a, astorage, countof(astorage));
-  RBIter((const RBNode*)p->root, sym_rb_iter, &a);
-  ArraySort(&a, (ArraySortFun)str_sortf, NULL);
+  ReprCtx rctx;
+  rctx.mem = p->mem;
+  ArrayInitWithStorage(&rctx.a, rctx.astorage, countof(rctx.astorage));
+  RBIter((const RBNode*)p->root, sym_rb_iter, &rctx);
+  ArraySort(&rctx.a, (ArraySortFun)str_sortf, NULL);
   bool first = true;
   s = str_appendc(s, '{');
-  for (u32 i = 0; i < a.len; i++) {
-    Sym sym = a.v[i];
+  for (u32 i = 0; i < rctx.a.len; i++) {
+    Sym sym = rctx.a.v[i];
     if (first) {
       first = false;
       s = str_appendc(s, '"');
@@ -210,7 +216,7 @@ Str sympool_repr(const SymPool* p, Str s) {
     s = str_appendc(s, '"');
   }
   s = str_appendc(s, '}');
-  ArrayFree(&a, NULL);
+  ArrayFree(&rctx.a, rctx.mem);
   return s;
 }
 
@@ -219,8 +225,9 @@ Str sympool_repr(const SymPool* p, Str s) {
 // unit tests
 
 R_TEST(sym) {
+  auto mem = MemArenaAlloc();
   SymPool syms;
-  sympool_init(&syms, NULL, NULL, NULL);
+  sympool_init(&syms, NULL, mem, NULL);
 
   asserteq(SYM_MAKELEN(5, 0), 5);
 
@@ -252,12 +259,14 @@ R_TEST(sym) {
   str_free(s);
 
   sympool_dispose(&syms);
+  MemArenaFree(mem);
 }
 
 
 R_TEST(symflags) {
+  auto mem = MemArenaAlloc();
   SymPool syms;
-  sympool_init(&syms, NULL, NULL, NULL);
+  sympool_init(&syms, NULL, mem, NULL);
   auto s = symgetcstr(&syms, "hello");
   u32 msglen = strlen("hello");
   for (u32 i = 0; i <= SYM_FLAGS_MAX; i++) {
@@ -266,6 +275,7 @@ R_TEST(symflags) {
     asserteq(symlen(s), msglen); // len should still be accurate
   }
   sympool_dispose(&syms);
+  MemArenaFree(mem);
 }
 
 
@@ -297,12 +307,13 @@ inline static Str rbkeyfmt(Str s, RBKEY k) {
 }
 
 R_TEST(sympool) {
+  auto mem = MemArenaAlloc();
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;
-  sympool_init(&syms1, NULL, NULL, NULL);
-  sympool_init(&syms2, &syms1, NULL, NULL);
-  sympool_init(&syms3, &syms2, NULL, NULL);
+  sympool_init(&syms1, NULL, mem, NULL);
+  sympool_init(&syms2, &syms1, mem, NULL);
+  sympool_init(&syms3, &syms2, mem, NULL);
 
   auto A1 = symadd(&syms1, "A", 1);
   symadd(&syms1, "B", 1);
@@ -329,4 +340,5 @@ R_TEST(sympool) {
   sympool_dispose(&syms1);
   sympool_dispose(&syms2);
   sympool_dispose(&syms3);
+  MemArenaFree(mem);
 }

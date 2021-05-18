@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "ir.h"
 
 #define RBKEY      u64
@@ -110,7 +110,7 @@ inline static IRConstCache* IRConstCacheAlloc(Mem mem, size_t entryCount) {
 
 IRValue* nullable IRConstCacheGet(
   const IRConstCache* c,
-  Mem  nullable       mem,
+  Mem                 mem,
   TypeCode            t,
   u64                 value,
   int*                out_addHint
@@ -131,7 +131,7 @@ IRValue* nullable IRConstCacheGet(
 
 IRConstCache* IRConstCacheAdd(
   IRConstCache* c,
-  Mem nullable  mem,
+  Mem           mem,
   TypeCode      t,
   u64           value,
   IRValue*      v,
@@ -190,7 +190,7 @@ IRConstCache* IRConstCacheAdd(
 
 R_TEST(constcache) {
   // printf("--------------------------------------------------\n");
-  Mem mem = MemNew(0);
+  auto mem = MemArenaAlloc();
 
   IRConstCache* c = NULL;
   u64 testValueGen = 1; // IRValue pointer simulator (generator)
@@ -231,6 +231,6 @@ R_TEST(constcache) {
   assert((u64)v4 == expect4);
 
 
-  MemFree(mem);
+  MemArenaFree(mem);
   // printf("--------------------------------------------------\n");
 }

@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "common.h"
 #include "types.h"
 
 // Lookup table TypeCode => string encoding char

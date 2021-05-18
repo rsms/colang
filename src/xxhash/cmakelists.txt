@@ -1,0 +1,14 @@
+cmake_minimum_required(VERSION 3.12)
+project(xxhash  VERSION 0.1.0  LANGUAGES C)
+
+include($ENV{CKIT_DIR}/ckit.cmake)
+ckit_configure_project(C)
+ckit_require_package(rbase)
+
+add_library(${PROJECT_NAME}
+  xxhash.c
+)
+target_compile_options(${PROJECT_NAME} PRIVATE -Wno-implicit-fallthrough)
+target_link_libraries(${PROJECT_NAME} rbase)
+
+# ckit_define_test(${PROJECT_NAME})

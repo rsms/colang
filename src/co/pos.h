@@ -8,9 +8,9 @@ typedef u64 Pos;
 
 // PosMap maps sources to Pos indices
 typedef struct PosMap {
-  Mem nullable mem; // used to allocate extra memory for a
-  Array        a;
-  void*        a_storage[32]; // slot 0 is always NULL
+  Mem   mem; // used to allocate extra memory for a
+  Array a;
+  void* a_storage[32]; // slot 0 is always NULL
 } PosMap;
 
 // PosSpan describes a span in a source
@@ -22,7 +22,7 @@ typedef struct PosSpan {
 // NoPos is a valid unknown position; pos_isknown(NoPos) returns false.
 static const Pos NoPos = 0;
 
-void posmap_init(PosMap* pm, Mem nullable mem);
+void posmap_init(PosMap* pm, Mem mem);
 void posmap_dispose(PosMap* pm);
 
 // posmap_origin retrieves the origin for source, allocating one if needed.

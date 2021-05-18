@@ -1,9 +1,9 @@
-#include <rbase/rbase.h>
+#include "common.h"
 #include "build.h"
 #include "parse/parse.h" // universe_syms
 
 void build_init(Build* b,
-  Mem nullable           mem,
+  Mem                    mem,
   SymPool*               syms,
   Pkg*                   pkg,
   DiagHandler* nullable  diagh,
@@ -96,7 +96,7 @@ Str diag_fmt(Str s, const Diagnostic* d) {
 #if R_TESTING_ENABLED
 
 Build* test_build_new() {
-  Mem mem = MemNew(0); // 0 = pagesize
+  Mem mem = MemArenaAlloc();
 
   auto syms = memalloct(mem, SymPool);
   sympool_init(syms, universe_syms(), mem, NULL);
@@ -114,7 +114,7 @@ void test_build_free(Build* b) {
   auto mem = b->mem;
   // sympool_dispose(b->syms); // not needed because of MemFree
   build_dispose(b);
-  MemFree(mem); // drop all memory, thus no memfree calls need above
+  MemArenaFree(mem);
 }
 
 #endif /* R_TESTING_ENABLED */

@@ -37,7 +37,7 @@ typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
 // Build holds information for one "build" of one top-level package
 typedef struct Build {
-  Mem nullable          mem;       // memory space for AST nodes, diagnostics etc.
+  Mem                   mem;       // memory space for AST nodes, diagnostics etc.
   Pkg*                  pkg;       // top-level package for which we are building
   CoOptType             opt;       // optimization type
   SymPool*              syms;      // symbol pool
@@ -72,7 +72,7 @@ typedef struct Source {
 
 // build_init initializes a Build structure
 void build_init(Build*,
-  Mem nullable           mem,
+  Mem                    mem,
   SymPool*               syms,
   Pkg*                   pkg,
   DiagHandler* nullable  diagh,

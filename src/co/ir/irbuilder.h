@@ -15,7 +15,7 @@ typedef enum IRBuilderFlags {
 
 typedef struct IRBuilder {
   Build*         build; // current source context (source-file specific)
-  Mem            mem;   // arena for all IR data constructed by this builder
+  Mem            mem;   // memory for all IR data constructed by this builder
   IRBuilderFlags flags;
   IRPkg*         pkg;
 

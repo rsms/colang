@@ -81,8 +81,8 @@ typedef struct Scope {
   SymMap       bindings;
 } Scope;
 
-Scope* ScopeNew(const Scope* nullable parent, Mem nullable mem);
-void ScopeFree(Scope*, Mem nullable mem);
+Scope* ScopeNew(const Scope* nullable parent, Mem mem);
+void ScopeFree(Scope*, Mem mem);
 const Node* ScopeAssoc(Scope*, Sym, const Node* value); // Returns replaced value or NULL
 const Node* ScopeLookup(const Scope*, Sym);
 const Scope* GetGlobalScope();
@@ -242,17 +242,17 @@ Node* nullable ArrayNodeLast(Node* n);
 // For example, for a tuple that is the pos of the first to last element, inclusive.
 PosSpan NodePosSpan(Node* n);
 
-static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n);
+static void NodeArrayAppend(Mem mem, Array* a, Node* n);
 static void NodeArrayClear(Array* a);
 
 
 extern const Node* NodeBad;  // kind==NBad
 
 // NewNode allocates a node in mem
-Node* NewNode(Mem nullable mem, NodeKind kind);
+Node* NewNode(Mem mem, NodeKind kind);
 
 // NodeCopy creates a shallow copy of n in mem
-static Node* NodeCopy(Mem nullable mem, const Node* n);
+static Node* NodeCopy(Mem mem, const Node* n);
 
 // node_diag_trail calls b->diagh zero or more times with contextual information that forms a
 // trail to the provided node n. For example, if n is a call the trail will report on the
@@ -268,14 +268,14 @@ ALWAYS_INLINE static NodeClassFlags NodeKindClass(NodeKind kind) {
   return _NodeClassTable[kind];
 }
 
-inline static Node* NodeCopy(Mem nullable mem, const Node* n) {
+inline static Node* NodeCopy(Mem mem, const Node* n) {
   assert((NodeKindClass(n->kind) & NodeClassArray) == 0); // no support for copying these yet
   Node* n2 = (Node*)memalloc(mem, sizeof(Node));
   memcpy(n2, n, sizeof(Node));
   return n2;
 }
 
-ALWAYS_INLINE static void NodeArrayAppend(Mem nullable mem, Array* a, Node* n) {
+ALWAYS_INLINE static void NodeArrayAppend(Mem mem, Array* a, Node* n) {
   ArrayPush(a, n, mem);
 }
 

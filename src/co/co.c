@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "common.h"
 #include "parse/parse.h"
 #include "ir/ir.h"
 #include "ir/irbuilder.h"
@@ -179,7 +179,7 @@ static void diag_handler(Diagnostic* d, void* userdata) {
 }
 
 
-int cmd_build(int argc, const char* argv[argc]) {
+int cmd_build(int argc, const char** argv) {
   if (argc < 3) {
     errlog("missing input");
     return 1;
@@ -187,13 +187,14 @@ int cmd_build(int argc, const char* argv[argc]) {
 
   auto timestart = nanotime();
   Pkg pkg = {
+    .mem  = MemHeap,
     .dir  = ".",
     .id   = "foo/bar",
     .name = "bar",
   };
 
   // make sure COCACHE exists
-  if (!fs_mkdirs(NULL, COCACHE, 0700)) {
+  if (!fs_mkdirs(MemHeap, COCACHE, 0700)) {
     errlog("failed to create directory %s", COCACHE);
     return 1;
   }
@@ -212,8 +213,8 @@ int cmd_build(int argc, const char* argv[argc]) {
 
   // setup build context
   SymPool syms;
-  sympool_init(&syms, universe_syms(), NULL, NULL);
-  Mem astmem = NULL; // allocate AST in global memory pool
+  sympool_init(&syms, universe_syms(), MemHeap, NULL);
+  Mem astmem = MemHeap; // allocate AST in global memory pool
   Build build;
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
 
@@ -332,10 +333,10 @@ static bool init(const char* argv0) {
   return true;
 }
 
-int main(int argc, const char* argv[argc+1]) {
+int main(int argc, const char** argv) {
   #if R_TESTING_ENABLED
-  if (argc > 1 && strcmp(argv[1], "test") == 0)
-    return 0;
+  if (testing_main(1, argv) != 0)
+    return 1;
   #endif
 
   if (!init(argv[0]))

@@ -9,10 +9,10 @@
 ASSUME_NONNULL_BEGIN
 
 // Creates and initializes a new SymMap in mem, or global memory if mem is NULL.
-SymMap* SymMapNew(u32 initbuckets, Mem nullable mem);
+SymMap* SymMapNew(u32 initbuckets, Mem mem);
 
 // SymMapInit initializes a map structure. initbuckets is the number of initial buckets.
-void SymMapInit(SymMap*, u32 initbuckets, Mem nullable mem);
+void SymMapInit(SymMap*, u32 initbuckets, Mem mem);
 
 // SymMapFree frees SymMap along with its data.
 void SymMapFree(SymMap*);

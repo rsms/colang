@@ -1,4 +1,5 @@
 #pragma once
+ASSUME_NONNULL_BEGIN
 
 // Sym is an immutable type of string with a precomputed hash.
 // Being it is also a valid C-string (i.e. null-terminated.)
@@ -25,7 +26,7 @@ typedef struct SymPool SymPool;
 typedef struct SymPool {
   SymRBNode*              root;
   const SymPool* nullable base;
-  Mem nullable            mem;
+  Mem            mem;
   rwmtx_t                 mu;
 } SymPool;
 
@@ -35,7 +36,7 @@ typedef struct SymPool {
 // mem is the memory to use for SymRBNodes.
 // root may be a preallocated red-black tree. Be mindful of interactions with sympool_dispose.
 void sympool_init(
-  SymPool* p, const SymPool* nullable base, Mem nullable mem, SymRBNode* nullable root);
+  SymPool* p, const SymPool* nullable base, Mem mem, SymRBNode* nullable root);
 
 // sympool_dispose frees up memory used by p (but does not free p itself)
 // When a SymPool has been disposed, all symbols in it becomes invalid.
@@ -138,3 +139,6 @@ inline static void sym_dangerously_set_len(Sym s, u32 len) {
   h->len = (h->len & _sym_flag_mask) | len;
   h->p[h->len] = 0;
 }
+
+
+ASSUME_NONNULL_END

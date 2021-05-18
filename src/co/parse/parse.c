@@ -27,7 +27,7 @@
 // enable debug messages for unresolved identifiers
 // #define DEBUG_UNRESOLVED
 //
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "parse.h"
 
 

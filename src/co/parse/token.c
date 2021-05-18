@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "parse.h"
 
 const char* TokName(Tok t) {

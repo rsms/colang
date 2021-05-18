@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "sym.h"
 #include "symmap.h"
 
@@ -22,9 +22,10 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
 }
 
 R_TEST(symmap) {
-  auto m = SymMapNew(64, NULL);
+  auto mem = MemArenaAlloc();
+  auto m = SymMapNew(64, mem);
   SymPool syms;
-  sympool_init(&syms, NULL, NULL, NULL);
+  sympool_init(&syms, NULL, mem, NULL);
 
   assert(m->len == 0);
 
@@ -228,6 +229,7 @@ R_TEST(symmap) {
   assert(SymMapGet(m, SYM("int"))         == 0);
 
   SymMapFree(m);
+  MemArenaFree(mem);
 }
 
 #endif /* R_TESTING_ENABLED */

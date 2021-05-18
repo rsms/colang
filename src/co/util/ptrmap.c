@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "ptrmap.h"
 #include <math.h> /* log2 */
 #include <limits.h> /* *_MAX */
@@ -33,17 +33,17 @@
 #undef HASHMAP_KEY_HASH
 
 
-#if DEBUG
+#if R_TESTING_ENABLED
+
 static void testMapIterator(const void* key, void* value, bool* stop, void* userdata) {
   // dlog("\"%s\" => %zu", key, (size_t)value);
   size_t* n = (size_t*)userdata;
   (*n)++;
 }
-#endif
 
 
 R_TEST(ptrmap) {
-  auto mem = MemNew(0);
+  auto mem = MemArenaAlloc();
   auto m = PtrMapNew(8, mem);
 
   assert(m->len == 0);
@@ -113,5 +113,7 @@ R_TEST(ptrmap) {
   assert(PtrMapGet(m, "hello") == (void*)2);
 
   PtrMapFree(m);
-  MemFree(mem);
+  MemArenaFree(mem);
 }
+
+#endif

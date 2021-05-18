@@ -1,0 +1,82 @@
+cmake_minimum_required(VERSION 3.12)
+project(
+  co
+  VERSION   0.1.0
+  LANGUAGES C)
+
+set(CC ${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm/bin/clang)
+include($ENV{CKIT_DIR}/ckit.cmake)
+ckit_configure_project(C)
+
+# enable tests in the regular executable for debug builds
+if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+  add_definitions(-DR_TESTING_ENABLED=1)
+
+  # enable address sanitizer
+  add_compile_options(
+    -DASAN_ENABLED=1
+    -fsanitize=address
+    -fsanitize-address-use-after-scope
+    -fno-omit-frame-pointer
+    -fno-optimize-sibling-calls
+  )
+  add_link_options(
+    -fsanitize=address
+  )
+endif()
+
+ckit_require_package(rbase)
+
+# optimize for native/host arch
+add_compile_options(-march=native)
+
+# TODO
+# add_library(co-llvm
+#   src/co/llvm/llvm.c
+#   src/co/llvm/llvm.cc
+#   src/co/llvm/lld.cc
+# )
+
+# add_library(xxhash
+#   src/xxhash/xxhash.c
+# )
+# target_compile_options(xxhash PRIVATE -Wno-implicit-fallthrough)
+add_subdirectory(src/xxhash EXCLUDE_FROM_ALL)
+add_subdirectory(deps/jemalloc EXCLUDE_FROM_ALL)
+
+add_executable(co
+  src/co/build.c
+  src/co/co.c
+  src/co/pos.c
+  src/co/source.c
+  src/co/types.c
+  src/co/ir/constcache.c
+  src/co/ir/ir-ast.c
+  src/co/ir/ir-repr.c
+  src/co/ir/ir.c
+  src/co/ir/irbuilder.c
+  src/co/ir/op.c
+  src/co/parse/ast.c
+  src/co/parse/astrepr.c
+  src/co/parse/convlit.c
+  src/co/parse/parse.c
+  src/co/parse/resolve_sym.c
+  src/co/parse/resolve_type.c
+  src/co/parse/scan.c
+  src/co/parse/scan_test.c
+  src/co/parse/token.c
+  src/co/parse/typeid.c
+  src/co/parse/universe.c
+  src/co/util/array.c
+  src/co/util/array_test.c
+  src/co/util/ptrmap.c
+  src/co/util/sym.c
+  src/co/util/symmap.c
+  src/co/util/tstyle.c
+)
+target_include_directories(co PRIVATE src)
+target_link_libraries(co rbase)
+target_link_libraries(co jemalloc)
+target_link_libraries(co xxhash)
+
+ckit_define_test(co src/co/co.c)

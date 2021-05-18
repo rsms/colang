@@ -1,7 +1,7 @@
 // Resolve identifiers in an AST. Usuaully run right after parsing.
-#include <rbase/rbase.h>
-#include "parse.h"
+#include "../common.h"
 #include "../util/array.h"
+#include "parse.h"
 
 
 // DEBUG_MODULE: define to enable trace logging

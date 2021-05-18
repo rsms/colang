@@ -17,17 +17,17 @@ typedef struct Array {
 
 static void  ArrayInit(Array* a);
 static void  ArrayInitWithStorage(Array* a, void* storage, u32 storagecap);
-static void  ArrayFree(Array* a, Mem nullable mem);
+static void  ArrayFree(Array* a, Mem mem);
 static void  ArrayClear(Array* a); // sets len to 0
-void         ArrayGrow(Array* a, size_t addl, Mem nullable mem); // cap=align2(len+addl)
-static void  ArrayPush(Array* a, void* nullable v, Mem nullable mem);
+void         ArrayGrow(Array* a, size_t addl, Mem mem); // cap=align2(len+addl)
+static void  ArrayPush(Array* a, void* nullable v, Mem mem);
 static void* ArrayPop(Array* a);
 void         ArrayRemove(Array* a, u32 start, u32 count);
 ssize_t      ArrayIndexOf(Array* a, void* nullable entry); // -1 on failure
 ssize_t      ArrayLastIndexOf(Array* a, void* nullable entry); // -1 on failure
 
 // ArrayCopy copies src of srclen to a, starting at a.v[start], growing a if needed using m.
-void ArrayCopy(Array* a, u32 start, const void* src, u32 srclen, Mem nullable m);
+void ArrayCopy(Array* a, u32 start, const void* src, u32 srclen, Mem m);
 
 // The comparison function must return an integer less than, equal to, or greater than zero if
 // the first argument is considered to be respectively less than, equal to, or greater than the
@@ -58,7 +58,7 @@ inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap) {
   a->onstack = true;
 }
 
-inline static void ArrayFree(Array* a, Mem nullable mem) {
+inline static void ArrayFree(Array* a, Mem mem) {
   if (!a->onstack) {
     memfree(mem, a->v);
     #if DEBUG
@@ -71,7 +71,7 @@ ALWAYS_INLINE static void ArrayClear(Array* a) {
   a->len = 0;
 }
 
-ALWAYS_INLINE static void ArrayPush(Array* a, void* nullable v, Mem nullable mem) {
+ALWAYS_INLINE static void ArrayPush(Array* a, void* nullable v, Mem mem) {
   if (R_UNLIKELY(a->len == a->cap))
     ArrayGrow(a, 1, mem);
   a->v[a->len++] = v;

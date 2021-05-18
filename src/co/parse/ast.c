@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "parse.h"
 
 //#include "../build/source.h"
@@ -32,7 +32,7 @@ const NodeClassFlags _NodeClassTable[_NodeKindMax] = {
 };
 
 
-Node* NewNode(Mem nullable mem, NodeKind kind) {
+Node* NewNode(Mem mem, NodeKind kind) {
   Node* n = (Node*)memalloc(mem, sizeof(Node));
   n->kind = kind;
   auto cfl = NodeKindClass(kind);
@@ -314,7 +314,7 @@ void ScopeFree(Scope* s, Mem mem) {
 
 const Scope* GetGlobalScope() {
   if (globalScope == NULL) {
-    auto s = ScopeNew(NULL, NULL);
+    auto s = ScopeNew(NULL, MemHeap);
 
     #define X(name) SymMapSet(&s->bindings, sym_##name, (void*)Type_##name);
     TYPE_SYMS(X)

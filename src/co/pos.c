@@ -1,9 +1,9 @@
-#include <rbase/rbase.h>
+#include "common.h"
 #include "pos.h"
 #include "util/tstyle.h"
 #include "build.h"
 
-void posmap_init(PosMap* pm, Mem nullable mem) {
+void posmap_init(PosMap* pm, Mem mem) {
   ArrayInitWithStorage(&pm->a, pm->a_storage, countof(pm->a_storage));
   // the first slot is used to return NULL in pos_source for unknown positions
   pm->a.v[0] = NULL;
@@ -30,7 +30,7 @@ static u32* computeLineOffsets(Source* s, u32* nlines_out) {
     SourceOpenBody(s);
 
   size_t cap = 256; // best guess for common line numbers, to allocate up-front
-  u32* lineoffs = (u32*)memalloc(NULL, sizeof(u32) * cap);
+  u32* lineoffs = (u32*)memalloc(MemHeap, sizeof(u32) * cap);
   lineoffs[0] = 0;
 
   u32 linecount = 1;
@@ -40,7 +40,7 @@ static u32* computeLineOffsets(Source* s, u32* nlines_out) {
       if (linecount == cap) {
         // more lines
         cap = cap * 2;
-        lineoffs = (u32*)memrealloc(NULL, lineoffs, sizeof(u32) * cap);
+        lineoffs = (u32*)memrealloc(MemHeap, lineoffs, sizeof(u32) * cap);
       }
       lineoffs[linecount] = i;
       linecount++;
@@ -67,7 +67,7 @@ static const u8* src_line_contents(Source* s, u32 line, u32* out_len) {
       *out_len = (s->body + s->len) - lineptr;
     }
   }
-  memfree(NULL, lineoffs);
+  memfree(MemHeap, lineoffs);
   return lineptr;
 }
 

@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "parse.h"
 #if R_TESTING_ENABLED
 
@@ -10,7 +10,7 @@ typedef struct TokStringPair { Tok tok; const char* value; } TokStringPair;
 // testscan(fl, sourcetext, tok1, value1, tok2, value2, ..., TNone)
 static u32 testscan(ParseFlags, const char* sourcetext, ...);
 // make_expectlist(len, tok1, value1, tok2, value2, ..., TNone)
-static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, ...);
+static TokStringPair* make_expectlist(Mem, size_t* len_out, const char* sourcetext, ...);
 // test_scanner_new creates a new scanner with all new dedicated resources like sympool
 static Scanner* test_scanner_new(ParseFlags, const char* sourcetext);
 static Scanner* test_scanner_newn(ParseFlags flags, const char* sourcetext, size_t len);
@@ -29,7 +29,7 @@ static const Tok TComment = TMax;
 R_TEST(scan_testutil) {
   // make sure our test utilities work so we can rely on them for further testing
   size_t expectlen = 0;
-  auto expectlist = make_expectlist(&expectlen, "hello = 123\n",
+  auto expectlist = make_expectlist(MemHeap, &expectlen, "hello = 123\n",
     TId,     "hello",
     TAssign, "=",
     TIntLit, "123",
@@ -40,7 +40,7 @@ R_TEST(scan_testutil) {
   asserteq(expectlen, 4);
   asserteq(expectlist[0].tok, TId);
   assert(strcmp(expectlist[0].value, "hello") == 0);
-  memfree(NULL, expectlist);
+  memfree(MemHeap, expectlist);
 }
 
 
@@ -334,7 +334,9 @@ static void test_scanner_free(Scanner* s) {
 
 // expects an odd number of arguments in pairs with a TNone terminator:
 // tok1, value1, tok2, value2, ... ,TNone
-static TokStringPair* make_expectlistv(size_t* len_out, const char* sourcetext, va_list ap) {
+static TokStringPair* make_expectlistv(
+  Mem mem, size_t* len_out, const char* sourcetext, va_list ap)
+{
   va_list ap2;
   va_copy(ap2, ap);
   size_t len = 0;
@@ -351,7 +353,7 @@ static TokStringPair* make_expectlistv(size_t* len_out, const char* sourcetext, 
   }
   va_end(ap2);
 
-  TokStringPair* expectlist = memalloc(NULL, sizeof(TokStringPair) * len);
+  TokStringPair* expectlist = memalloc(mem, sizeof(TokStringPair) * len);
   *len_out = len;
 
   va_copy(ap2, ap);
@@ -372,10 +374,10 @@ static TokStringPair* make_expectlistv(size_t* len_out, const char* sourcetext, 
 }
 
 // make_expectlist(len, tok1, value1, tok2, value2, ..., TNone)
-static TokStringPair* make_expectlist(size_t* len_out, const char* sourcetext, ...) {
+static TokStringPair* make_expectlist(Mem mem, size_t* len_out, const char* sourcetext, ...) {
   va_list ap;
   va_start(ap, sourcetext);
-  auto expectlist = make_expectlistv(len_out, sourcetext, ap);
+  auto expectlist = make_expectlistv(mem, len_out, sourcetext, ap);
   va_end(ap);
   return expectlist;
 }
@@ -456,10 +458,11 @@ static u32 testscan(ParseFlags flags, const char* sourcetext, ...) {
   va_list ap;
   va_start(ap, sourcetext);
   size_t nexpect;
-  auto expectlist = make_expectlistv(&nexpect, sourcetext, ap);
+  auto mem = MemHeap;
+  auto expectlist = make_expectlistv(mem, &nexpect, sourcetext, ap);
   va_end(ap);
   u32 nerrors = testscanp(flags, sourcetext, expectlist, nexpect);
-  memfree(NULL, expectlist);
+  memfree(mem, expectlist);
   return nerrors;
 }
 

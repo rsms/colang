@@ -45,7 +45,7 @@ HASHMAP_NAME* HM_FUN(New)(u32 initbuckets, Mem)
 void HM_FUN(Free)(HASHMAP_NAME*);
 
 // Init initializes a map structure. initbuckets is the number of initial buckets.
-void HM_FUN(Init)(HASHMAP_NAME*, u32 initbuckets, Mem nullable mem);
+void HM_FUN(Init)(HASHMAP_NAME*, u32 initbuckets, Mem mem);
 
 // Dispose frees buckets data (but not the hashmap itself.)
 // The hashmap is invalid after this call. Call Init to reuse.

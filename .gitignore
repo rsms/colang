@@ -4,6 +4,8 @@
 /.build
 /_*
 /bin
+/**/out/
+/out*
 /deps
 /work
 /src/**/*.d

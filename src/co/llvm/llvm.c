@@ -1,6 +1,6 @@
-#include <rbase/rbase.h>
-#include "llvm.h"
+#include "../common.h"
 #include "../parse/parse.h"
+#include "llvm.h"
 
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
 #include <llvm-c/Transforms/Scalar.h>

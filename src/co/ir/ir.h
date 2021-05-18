@@ -80,7 +80,7 @@ typedef struct IRBlock {
 
 // Fun represents a function
 typedef struct IRFun {
-  Mem nullable mem; // owning allocator
+  Mem mem; // owning allocator
   Array        blocks; void* blocksStorage[4]; // IRBlock*[]
   Sym          typeid; // TypeCode encoding
   Sym          name;
@@ -102,18 +102,18 @@ typedef struct IRFun {
 
 // Pkg represents a package with functions and data
 typedef struct IRPkg {
-  Mem nullable mem;  // owning allocator
+  Mem mem;  // owning allocator
   const char*  id;   // c-string. "_" if NULL is passed for name to IRPkgNew. (TODO use Sym?)
   SymMap       funs; // functions in this package
   // TODO: ordered function array or list in addition to funs lookup map
 } IRPkg;
 
 
-IRPkg*          IRPkgNew(Mem nullable, const char* name/*null*/);
+IRPkg*          IRPkgNew(Mem, const char* name/*null*/);
 void            IRPkgAddFun(IRPkg* pkg, IRFun* f);
 IRFun* nullable IRPkgGetFun(IRPkg* pkg, Sym name);
 
-IRFun*      IRFunNew(Mem nullable mem, Sym typeid, Sym name, Pos pos, u32 nparams);
+IRFun*      IRFunNew(Mem mem, Sym typeid, Sym name, Pos pos, u32 nparams);
 IRValue*    IRFunGetConstBool(IRFun* f, bool value);
 IRValue*    IRFunGetConstInt(IRFun* f, TypeCode t, u64 n);
 IRValue*    IRFunGetConstFloat(IRFun* f, TypeCode t, double n);
@@ -134,9 +134,9 @@ void        IRBlockDelSucc(IRBlock* b, u32 index);
 IRValue*    IRValueNew(IRFun*, IRBlock* nullable b, IROp, TypeCode, Pos pos);
 IRValue*    IRValueAlloc(Mem mem, IROp op, TypeCode type, Pos pos);
 IRValue*    IRValueClone(Mem mem, IRValue*);
-void        IRValueAddComment(IRValue*, Mem nullable, const char* comment, u32 len);
-void        IRValueAddArg(IRValue*, Mem nullable, IRValue* arg);
-static void IRValueSetArg(IRValue*, Mem nullable, u32 index, IRValue* arg);
+void        IRValueAddComment(IRValue*, Mem, const char* comment, u32 len);
+void        IRValueAddArg(IRValue*, Mem, IRValue* arg);
+static void IRValueSetArg(IRValue*, Mem, u32 index, IRValue* arg);
 static void IRValueClearArg(IRValue*, u32 index);
 
 
@@ -147,9 +147,9 @@ Str IRReprPkgStr(const IRPkg* f, const PosMap* posmap, Str append_to_str);
 // Note: Must use the same Mem for all calls to the same IRConstCache.
 // Note: addHint is only valid until the next call to a mutating function like Add.
 IRValue* nullable IRConstCacheGet(
-  const IRConstCache*, Mem nullable mem, TypeCode, u64 value, int* out_addHint);
+  const IRConstCache*, Mem mem, TypeCode, u64 value, int* out_addHint);
 IRConstCache* IRConstCacheAdd(
-  IRConstCache* c, Mem nullable, TypeCode t, u64 value, IRValue* v, int addHint);
+  IRConstCache* c, Mem, TypeCode t, u64 value, IRValue* v, int addHint);
 
 // -----------------------------------------------------------------------------------------------
 // implementations
@@ -171,7 +171,7 @@ inline static void IRBlockAddValue(IRBlock* b, IRValue* v) {
   ArrayPush(&b->values, v, b->f->mem);
 }
 
-inline static void IRValueSetArg(IRValue* v, Mem nullable mem, u32 index, IRValue* arg) {
+inline static void IRValueSetArg(IRValue* v, Mem mem, u32 index, IRValue* arg) {
   arg->uses++;
   if (v->args.len > index) {
     auto prevarg = (IRValue*)v->args.v[index];

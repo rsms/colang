@@ -1,4 +1,4 @@
-#include <rbase/rbase.h>
+#include "../common.h"
 #include "ir.h"
 #include "irbuilder.h"
 
@@ -34,7 +34,7 @@ static const char* debug_fmtval(u32 bufid, const IRValue* v) {
 void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
   memset(u, 0, sizeof(IRBuilder));
   u->build = build;
-  u->mem = MemNew(0);
+  u->mem = MemArenaAlloc();
   u->pkg = IRPkgNew(u->mem, build->pkg->id);
   u->vars = SymMapNew(8, u->mem);
   u->flags = flags;
@@ -43,7 +43,7 @@ void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
 }
 
 void IRBuilderDispose(IRBuilder* u) {
-  MemFree(u->mem);
+  MemArenaFree(u->mem);
 }
 
 

@@ -1,7 +1,7 @@
-#include <rbase/rbase.h>
-#include "parse.h"
+#include "../common.h"
 #include "../util/tstyle.h"
 #include "../util/array.h"
+#include "parse.h"
 
 
 typedef struct ReprCtx {
@@ -27,6 +27,7 @@ typedef struct ReprCtx {
 static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth);
 
 Str NodeRepr(const Node* n, Str s) {
+  auto mem = MemHeap;
   TStyleTable style = TStyle16;
   ReprCtx ctx = {
     .maxdepth     = 48,
@@ -47,13 +48,13 @@ Str NodeRepr(const Node* n, Str s) {
     ctx.type_color = str_cpycstr(style[TStyle_blue]);
     // ctx.type_color = str_cpycstr("\x1b[44m");
     ctx.unimportant_color = str_cpycstr(style[TStyle_grey]);
-    ArrayPush(&ctx.stylestack, (void*)bold_style, NULL);
+    ArrayPush(&ctx.stylestack, (void*)bold_style, mem);
   }
 
   s = nodeRepr(n, s, &ctx, /*depth*/ 1);
 
-  ArrayFree(&ctx.funscope, NULL);
-  ArrayFree(&ctx.stylestack, NULL);
+  ArrayFree(&ctx.funscope, mem);
+  ArrayFree(&ctx.stylestack, mem);
   str_free(bold_style);
   str_free(ctx.nobg_color);
   str_free(ctx.nofg_color);
@@ -89,7 +90,7 @@ static Str style_apply(ReprCtx* ctx, Str s) {
 static Str style_push(ReprCtx* ctx, Str s, Str style) {
   if (ctx->style == TStyleNone)
     return s;
-  ArrayPush(&ctx->stylestack, (void*)style, NULL);
+  ArrayPush(&ctx->stylestack, (void*)style, MemHeap);
   return style_apply(ctx, s);
 }
 
@@ -105,7 +106,7 @@ static bool funscope_push(ReprCtx* ctx, const Node* n) {
   //dlog("funscope_push %s", fmtnode(n));
   if (ArrayIndexOf(&ctx->funscope, (void*)n) > -1)
     return false;
-  ArrayPush(&ctx->funscope, (void*)n, NULL);
+  ArrayPush(&ctx->funscope, (void*)n, MemHeap);
   return true;
 }
 

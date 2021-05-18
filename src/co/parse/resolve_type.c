@@ -1,7 +1,7 @@
 // Resolve types in an AST. Usuaully run after Parse() and ResolveSym()
-#include <rbase/rbase.h>
-#include "parse.h"
+#include "../common.h"
 #include "../util/array.h"
+#include "parse.h"
 
 ASSUME_NONNULL_BEGIN
 
