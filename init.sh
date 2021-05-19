@@ -27,9 +27,12 @@ _init_ckit() {
   local CKIT_DIR=$DEPS_DIR/ckit
   _log "---- ckit ----"
 
-  _git_pull_if_needed https://github.com/rsms/ckit.git "$DEPS_DIR/ckit" "$CKIT_GIT_BRANCH" || true
+  _git_pull_if_needed \
+    https://github.com/rsms/ckit.git \
+    "$CKIT_DIR" \
+    "$CKIT_GIT_BRANCH" || true
 
-  _log "Using ckit at $CKIT_DIR"
+  _log "Using ckit at $(_relpath "$CKIT_DIR")"
 
   # check PATH
   local inpath=false
@@ -46,6 +49,20 @@ _init_ckit() {
 }
 
 
+_init_jemalloc() {
+  local JEMALLOC_GIT_BRANCH=main
+  local JEMALLOC_DIR=$DEPS_DIR/jemalloc
+  _log "---- jemalloc ----"
+
+  _git_pull_if_needed \
+    https://github.com/rsms/ckit-jemalloc.git \
+    "$JEMALLOC_DIR" \
+    "$JEMALLOC_GIT_BRANCH" || true
+
+  _log "Using jemalloc at $(_relpath "$JEMALLOC_DIR")"
+}
+
+
 _init_llvm() {
   _log "---- LLVM ----"
   local args=()
@@ -58,4 +75,5 @@ _init_llvm() {
 
 _init_githooks
 _init_ckit
+_init_jemalloc
 _init_llvm

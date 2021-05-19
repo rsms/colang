@@ -34,7 +34,7 @@ fi
 
 export CC="$HOST_LLVM_PREFIX"/bin/clang
 if [ ! -x "$CC" ]; then
-  echo "clang not found at ${CC} (not an executable file)" >&2
+  _log "clang not found at ${CC} (not an executable file)"
   exit 1
 fi
 
@@ -174,14 +174,13 @@ _llvm_build() {
   ninja
 
   # install
-  echo "installing llvm at $LLVM_DESTDIR"
+  _log "installing llvm at $(_relpath "$LLVM_DESTDIR")"
   rm -rf "$LLVM_DESTDIR"
   mkdir -p "$LLVM_DESTDIR"
   # cmake -DCMAKE_INSTALL_PREFIX="$DESTDIR/llvm" -P cmake_install.cmake
   cmake --build . --target install
 }
 
-SOURCE_CHANGED=true
 if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   OPT_QUIET=false
 
@@ -216,7 +215,7 @@ if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   #       copying from the actual build step, so consider breaking build-libcxx.sh apart
   #       into two separate steps ("copy sources" and "build libs".)
 else
-  _log "$LLVM_DESTDIR is up to date. To rebuild, remove that dir and try again."
+  _log "$(_relpath "$LLVM_DESTDIR") is up to date. To rebuild, remove that dir and try again."
 fi
 
 #-- END ------------------------------------------------------------------------------------

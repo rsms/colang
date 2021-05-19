@@ -10,6 +10,7 @@ WORK_BUILD_DIR="$WORK_DIR/build"
 DOWNLOAD_DIR="$WORK_DIR/download"
 TMPFILES_LIST="$WORK_DIR/tmp/tmpfiles.$$"
 OPT_QUIET=false
+INITIAL_PWD=$PWD
 
 # internal state
 SOURCE_DIR_STACK=()
@@ -51,9 +52,20 @@ _err() {
 }
 
 # _relpath path [parentpath]
-# Prints path relative to parentpath (or PWD if parentpath is not given)
+# Prints path relative to parentpath (or INITIAL_PWD if parentpath is not given)
 _relpath() {
-  echo "${1##${2:-$PWD}/}"
+  local parentdir=${2:-$INITIAL_PWD}
+  case "$1" in
+    "$parentdir/"*)
+      echo "${1##${2:-$INITIAL_PWD}/}"
+      ;;
+    "$parentdir")
+      echo "."
+      ;;
+    *)
+    echo "$1"
+      ;;
+  esac
 }
 
 # _checksum [-sha256|-sha512] [<file>]
@@ -74,13 +86,13 @@ _random_id() {
 _pushd() {
   local old_pwd=$PWD
   pushd "$1" >/dev/null
-  $OPT_QUIET || echo "changed directory to $PWD"
+  $OPT_QUIET || echo "changed directory to $(_relpath "$PWD")"
 }
 
 _popd() {
   local old_pwd=$PWD
   popd >/dev/null
-  $OPT_QUIET || echo "returned to directory $PWD"
+  $OPT_QUIET || echo "returned to directory $(_relpath "$PWD")"
 }
 
 # _tmpfile
