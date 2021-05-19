@@ -11,13 +11,11 @@ Build:
 - Optimized with assertions: `ckit build -safe`
 - Optimized without assertions: `ckit build -fast`
 - Unoptimized with all checks enabled: `ckit build`
-- With LLVM: _Not yet supported with the new cmake setup_
-- Runtime test program: _Not yet supported with the new cmake setup_
+- RT test program: _Not yet supported with the new cmake setup_
 - Verbose build: `ckit build -v`
 
 Development:
 - Live main program: `ckit watch -rsh="{BUILD}/co build example/hello.w" co`
-- Live with LLVM: _Not yet supported with the new cmake setup_
 - Live testing: `ckit watch test`
 - Live testing of a specific test: `ckit watch test scan`
 

@@ -1,8 +1,6 @@
 #include "../common.h"
 #include "llvm.h"
 #include "llvm-includes.hh"
-#include "lld/Common/Driver.h"
-#include "lld/Common/ErrorHandler.h"
 
 using namespace llvm;
 

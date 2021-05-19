@@ -1,4 +1,5 @@
-PROJECT := @PROJECT@
+DEPSDIR := @DEPSDIR@
+DESTDIR := @DESTDIR@
 LIBCXX_OBJS := @LIBCXX_OBJS@
 LIBCXXABI_OBJS := @LIBCXXABI_OBJS@
 
@@ -8,16 +9,16 @@ LIBCXXABI_OBJDIR := libcxxabi
 LIBCXX_OBJS := $(foreach fn,$(LIBCXX_OBJS),$(LIBCXX_OBJDIR)/$(fn))
 LIBCXXABI_OBJS := $(foreach fn,$(LIBCXXABI_OBJS),$(LIBCXXABI_OBJDIR)/$(fn))
 
-CXXC := $(PROJECT)/deps/llvm/bin/clang++
-AR   := $(PROJECT)/deps/llvm/bin/llvm-ar
+CXXC := $(DEPSDIR)/llvm/bin/clang++
+AR   := $(DEPSDIR)/llvm/bin/llvm-ar
 
 CFLAGS := \
 	-Wall -nostdinc++ -fvisibility-inlines-hidden -std=c++14 -Wno-user-defined-literals \
 	-DNDEBUG \
 	-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS \
 	-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS \
-	-I$(PROJECT)/lib/libcxx/include \
-	-I$(PROJECT)/lib/libcxxabi/include
+	-I$(DESTDIR)/include \
+	-I$(DESTDIR)/libcxxabi/include
 
 ifneq ($(MUSL_ABI),)
 	CFLAGS += -D_LIBCPP_HAS_MUSL_LIBC
@@ -38,19 +39,21 @@ CFLAGS_LIBCPPABI := \
 	-D_LIBCPP_ENABLE_CXX17_REMOVED_UNEXPECTED_FUNCTIONS \
 	-D_LIBCXXABI_BUILDING_LIBRARY
 
-all: $(PROJECT)/work/build/libc++.a $(PROJECT)/work/build/libc++abi.a
+all: $(DESTDIR)/lib/libc++.a $(DESTDIR)/lib/libc++abi.a
 
-$(PROJECT)/work/build/libc++.a: $(LIBCXX_OBJS)
+$(DESTDIR)/lib/libc++.a: $(LIBCXX_OBJS)
+	@mkdir -p $(dir $@)
 	$(AR) -r $@ $^
 
-$(PROJECT)/work/build/libc++abi.a: $(LIBCXXABI_OBJS)
+$(DESTDIR)/lib/libc++abi.a: $(LIBCXXABI_OBJS)
+	@mkdir -p $(dir $@)
 	$(AR) -r $@ $^
 
-$(LIBCXX_OBJDIR)/%.o: $(PROJECT)/lib/libcxx/src/%.cpp
+$(LIBCXX_OBJDIR)/%.o: $(DESTDIR)/libcxx/src/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXXC) $(CFLAGS) $(CFLAGS_LIBCPP) -c -o $@ $<
 
-$(LIBCXXABI_OBJDIR)/%.o: $(PROJECT)/lib/libcxxabi/src/%.cpp
+$(LIBCXXABI_OBJDIR)/%.o: $(DESTDIR)/libcxxabi/src/%.cpp
 	@mkdir -p $(dir $@)
 	$(CXXC) $(CFLAGS) $(CFLAGS_LIBCPPABI) -c -o $@ $<
 

@@ -1,10 +1,33 @@
 cmake_minimum_required(VERSION 3.12)
-project(
-  co
-  VERSION   0.1.0
-  LANGUAGES C)
+set(LLVM_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm)
+set(CMAKE_C_COMPILER   ${LLVM_PREFIX}/bin/clang)
+set(CMAKE_CPP_COMPILER ${LLVM_PREFIX}/bin/clang++)
+set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
-set(CC ${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm/bin/clang)
+# CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
+set(CO_WITH_LLVM yes)
+
+# CO_LLVM_LINK_TYPE = SHARED | STATIC
+#   llvm libraries can either be statically linked into the co executable
+#   which produces a compact portable binary but takes a long time to link,
+#   or it can be built as a shared dynamic library that is lodaded by co at
+#   runtime. The SHARED type gives much faster compile turn-around times at
+#   the expese of less portable and larger code.
+if (NOT CO_LLVM_LINK_TYPE)
+  set(CO_LLVM_LINK_TYPE STATIC)
+  if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+    set(CO_LLVM_LINK_TYPE SHARED)
+  endif()
+endif()
+
+set(PROJECT_LANGUAGES C)
+if (CO_WITH_LLVM)
+  set(PROJECT_LANGUAGES C CXX)
+endif()
+
+project(co
+  LANGUAGES ${PROJECT_LANGUAGES})
+
 include($ENV{CKIT_DIR}/ckit.cmake)
 ckit_configure_project(C)
 
@@ -29,23 +52,119 @@ endif()
 
 ckit_require_package(rbase)
 
-# TODO
-# add_library(co-llvm
-#   src/co/llvm/llvm.c
-#   src/co/llvm/llvm.cc
-#   src/co/llvm/lld.cc
-# )
-
-# add_library(xxhash
-#   src/xxhash/xxhash.c
-# )
-# target_compile_options(xxhash PRIVATE -Wno-implicit-fallthrough)
 add_subdirectory(src/xxhash EXCLUDE_FROM_ALL)
 add_subdirectory(deps/jemalloc EXCLUDE_FROM_ALL)
 
+
+#————————————————————————————————————————————————————————————————————————————————————————————————
+# llvm
+
+set(CO_LLVM_COMPONENTS
+  # LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
+  # windowsmanifest: needed for lld COFF
+  engine
+  option
+  passes
+  all-targets
+  libdriver
+  lto
+  linker
+  debuginfopdb
+  debuginfodwarf
+  windowsmanifest
+)
+
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --cflags
+  OUTPUT_VARIABLE LLVM_C_FLAGS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --cxxflags
+  OUTPUT_VARIABLE LLVM_CXX_FLAGS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --ldflags
+  OUTPUT_VARIABLE LLVM_LD_FLAGS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --system-libs
+  OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --link-static --libs ${CO_LLVM_COMPONENTS}
+  OUTPUT_VARIABLE LLVM_LLVM_LIBS
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+separate_arguments(LLVM_C_FLAGS UNIX_COMMAND ${LLVM_C_FLAGS})
+separate_arguments(LLVM_CXX_FLAGS UNIX_COMMAND ${LLVM_CXX_FLAGS})
+separate_arguments(LLVM_LD_FLAGS UNIX_COMMAND ${LLVM_LD_FLAGS})
+
+message(VERBOSE "LLVM_C_FLAGS     '${LLVM_C_FLAGS}'")
+message(VERBOSE "LLVM_CXX_FLAGS   '${LLVM_CXX_FLAGS}'")
+message(VERBOSE "LLVM_LD_FLAGS    '${LLVM_LD_FLAGS}'")
+message(VERBOSE "LLVM_SYSTEM_LIBS '${LLVM_SYSTEM_LIBS}'")
+message(VERBOSE "LLVM_LLVM_LIBS   '${LLVM_LLVM_LIBS}'")
+
+
+#————————————————————————————————————————————————————————————————————————————————————————————————
+# libcollvm
+
+execute_process(
+  COMMAND ${LLVM_PREFIX}/bin/llvm-config --libfiles --link-static ${CO_LLVM_COMPONENTS}
+  OUTPUT_VARIABLE LLVM_LIBFILES
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+separate_arguments(LLVM_LIBFILES UNIX_COMMAND ${LLVM_LIBFILES})
+file(GLOB LLD_LIBFILES "${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm/lib/liblld*.a")
+set(static_libs
+  ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib/libc++.a
+  # ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib/libc++abi.a
+  ${LLVM_LIBFILES}
+  ${LLD_LIBFILES}
+)
+
+add_library(collvm ${CO_LLVM_LINK_TYPE} src/co/llvm/llvmlib-dummy.cc)
+
+if (CO_LLVM_LINK_TYPE STREQUAL "SHARED")
+  # make sure nothing is stripped from the static libs
+  foreach(lib IN LISTS static_libs)
+    target_link_options(collvm PRIVATE "-Wl,-force_load,${lib}")
+  endforeach()
+endif()
+
+# target_precompile_headers(collvm PRIVATE
+#   "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/co/llvm/llvm-includes.hh>"
+# )
+target_include_directories(collvm
+  PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/include
+)
+target_compile_options(collvm PUBLIC
+  $<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++ -nostdinc++>
+  $<$<COMPILE_LANGUAGE:C>:${LLVM_C_FLAGS}>
+  $<$<COMPILE_LANGUAGE:CXX>:${LLVM_CXX_FLAGS}>
+)
+target_link_directories(collvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/zlib/lib)
+target_link_directories(collvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib)
+target_link_options(collvm PRIVATE "-Wl,-no_pie" ${LLVM_LD_FLAGS})
+target_link_libraries(collvm PRIVATE
+  # c++
+  c++abi
+  ${LLVM_SYSTEM_LIBS}
+  ${LLVM_LIBFILES}
+  ${LLD_LIBFILES}
+)
+
+
+#————————————————————————————————————————————————————————————————————————————————————————————————
+# co
 add_executable(co
-  src/co/build.c
   src/co/co.c
+  src/co/build.c
   src/co/pos.c
   src/co/source.c
   src/co/types.c
@@ -74,8 +193,24 @@ add_executable(co
   src/co/util/tstyle.c
 )
 target_include_directories(co PRIVATE src)
-target_link_libraries(co rbase)
-target_link_libraries(co jemalloc)
-target_link_libraries(co xxhash)
+target_link_libraries(co PRIVATE
+  rbase
+  jemalloc
+  xxhash
+)
+
+if (CO_WITH_LLVM)
+  target_sources(co PRIVATE
+    src/co/llvm/llvm.c
+    src/co/llvm/llvm.cc
+    src/co/llvm/lld.cc
+  )
+  target_compile_definitions(co PRIVATE CO_WITH_LLVM=1)
+  target_link_options(co PRIVATE "-Wl,-no_pie")
+  target_link_libraries(co PRIVATE collvm)
+  target_precompile_headers(co PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/co/llvm/llvm-includes.hh>"
+  )
+endif()
 
 ckit_define_test(co src/co/co.c)

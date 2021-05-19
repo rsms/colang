@@ -1,8 +1,6 @@
 #include "../common.h"
 #include "llvm.h"
 #include "llvm-includes.hh"
-#include "lld/Common/Driver.h"
-#include "lld/Common/ErrorHandler.h"
 #include <sstream>
 
 // DEBUG_LLD_INVOCATION: define to print arguments used for linker invocations to stderr
@@ -146,8 +144,9 @@ static LinkFun build_args(
     // Rest of the world (flavor=!lld-link, flagstyle="-flag")
     auto archname = (const char*)Triple::getArchTypeName(triple.getArch()).bytes_begin();
     args.emplace_back("-arch"); args.emplace_back(archname);
-    if (options.outfile)
+    if (options.outfile) {
       args.emplace_back("-o"); args.emplace_back(options.outfile);
+    }
   }
 
   // linker flavor-specific arguments

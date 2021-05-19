@@ -215,18 +215,22 @@ _in_PATH() {
   return 1
 }
 
-# _git_HEAD_is <hash|name>
-_git_HEAD_is() {
-  local want_hash=$(git rev-parse "$1")
-  local head_hash=$(git rev-parse HEAD)
-  [ "$want_hash" = "$head_hash" ] || return 1
-}
-
 # _git_hash_is_symbolic <hash|name>
 _git_hash_is_symbolic() {
   if (echo "$1" | grep -q -E '^[a-fA-F0-9]+$'); then
     return 1
   fi
+}
+
+# _git_HEAD_is <hash|name>
+_git_HEAD_is() {
+  # local want_hash=$(git rev-parse "$1")
+  local want_hash=$1
+  if _git_hash_is_symbolic "$want_hash"; then
+    want_hash=$(git rev-list -n 1 "$want_hash")
+  fi
+  local head_hash=$(git rev-parse HEAD)
+  [ "$want_hash" = "$head_hash" ] || return 1
 }
 
 # _git_is_dirty [<gitdir>]
@@ -246,13 +250,15 @@ _git_pull_if_needed() {
     _pushd "$gitdir"
 
     local githash_is_symbolic=false
-    if _git_hash_is_symbolic "$githash"; then
+    # if _git_hash_is_symbolic "$githash"; then
+    if [ "$githash" = "main" ] || [ "$githash" = "master" ]; then
       githash_is_symbolic=true
       _log git fetch origin
            git fetch origin
     fi
 
     if _git_HEAD_is "$githash"; then
+      echo "git source is up to date (at $githash)"
       _popd
       return 1  # up to date
     fi

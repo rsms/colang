@@ -5,10 +5,16 @@ cd "$(dirname "$0")/.."
 . misc/_common.sh
 
 # what git ref to build (commit, tag or branch)
-# LLVM_GIT_BRANCH=llvmorg-12.0.0
-LLVM_GIT_BRANCH=5f2b27666797c6462641434fee7ee010c77d22c0  # master at early pre-tag v13
+LLVM_GIT_BRANCH=llvmorg-12.0.0
+# LLVM_GIT_BRANCH=5f2b27666797c6462641434fee7ee010c77d22c0  # master at early pre-tag v13
 ZLIB_VERSION=1.2.11
 ZLIB_CHECKSUM=e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
+
+# CO_LLVM_BUILD_COMPILER_RT: Enables building the compiler-rt suite with llvm.
+# This is only required for co debug builds as it provides sanitizer runtimes.
+# Building compiler-rt makes the build SIGNIFICANTLY slower (~7k extra sources.)
+# TODO: make this configurable for a CI -safe or -fast build.
+CO_LLVM_BUILD_COMPILER_RT=true
 
 # DESTDIR: where to install stuff
 # This is a prefix; each project is installed in a subdirectory, e.g. DESTDIR/zlib.
@@ -106,6 +112,23 @@ _llvm_build() {
   if command -v xcrun >/dev/null; then
     EXTRA_CMAKE_ARGS+=( -DDEFAULT_SYSROOT="$(xcrun --show-sdk-path)" )
   fi
+
+  LLVM_ENABLE_PROJECTS="clang;lld"
+
+  if $CO_LLVM_BUILD_COMPILER_RT; then
+    LLVM_ENABLE_PROJECTS="$LLVM_ENABLE_PROJECTS;compiler-rt"
+    EXTRA_CMAKE_ARGS+=( \
+      -DCOMPILER_RT_BUILD_XRAY=OFF \
+      -DCOMPILER_RT_USE_LIBCXX=OFF \
+      -DCOMPILER_RT_CAN_EXECUTE_TESTS=OFF \
+      -DCOMPILER_RT_BUILD_LIBFUZZER=OFF \
+      -DCOMPILER_RT_BUILD_CRT=OFF \
+      -DCOMPILER_RT_BUILD_PROFILE=OFF \
+      -DCOMPILER_RT_BUILD_MEMPROF=OFF \
+      -DSANITIZER_USE_STATIC_CXX_ABI=ON \
+    )
+  fi
+
   EXTRA_CMAKE_ARGS+=( "$@" )
 
   local LLVM_CFLAGS="-I$DESTDIR/zlib/include"
@@ -124,13 +147,16 @@ _llvm_build() {
       -DCMAKE_EXE_LINKER_FLAGS="$LLVM_LDFLAGS" \
       -DCMAKE_SHARED_LINKER_FLAGS="$LLVM_LDFLAGS" \
       -DCMAKE_MODULE_LINKER_FLAGS="$LLVM_LDFLAGS" \
+      \
       -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;AVR;BPF;Mips;RISCV;WebAssembly;X86" \
-      -DLLVM_ENABLE_PROJECTS="clang;lld" \
+      -DLLVM_ENABLE_PROJECTS="$LLVM_ENABLE_PROJECTS" \
       -DLLVM_ENABLE_MODULES=ON \
       -DLLVM_ENABLE_BINDINGS=OFF \
       -DLLVM_ENABLE_LIBXML2=OFF \
       -DLLVM_ENABLE_TERMINFO=OFF \
+      \
       -DCLANG_ENABLE_OBJC_REWRITER=OFF \
+      \
       "${EXTRA_CMAKE_ARGS[@]}" \
       ../llvm
     then
@@ -155,6 +181,7 @@ _llvm_build() {
   cmake --build . --target install
 }
 
+SOURCE_CHANGED=true
 if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   OPT_QUIET=false
 
@@ -162,7 +189,7 @@ if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   # _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
   # _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
   # _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=Off
-  time _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
+  _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
 
   # misc/myclang: copy "driver" code (main program code) and patch it
   _pushd "$PROJECT"
@@ -185,24 +212,9 @@ if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   # cp -a "$DESTDIR"/llvm/lib/clang/*/include "$PROJECT"/lib/clang
 
   # # Copy headers & sources for lib/libcxx, lib/libcxxabi, lib/libunwind
-  # for dir in libcxx libcxxabi libunwind; do
-  #   echo "copy lib sources: llvm-src/$dir -> lib/$dir"
-  #   dstdir="$PROJECT"/lib/$dir
-  #   rm -rf "$dstdir"
-  #   mkdir -p "$dstdir"
-  #   cd "$DEPS_DIR"/llvm-src/$dir
-  #   cp LICENSE.txt "$dstdir"/LICENSE.txt
-  #   for f in \
-  #     $(find include -not -name CMakeLists.txt) \
-  #     $(find src -not -name CMakeLists.txt -and -not -path 'src/support/win32*')
-  #   do
-  #     if [ -d "$f" ]; then
-  #       mkdir "$dstdir"/$f
-  #     else
-  #       cp -a $f "$dstdir"/$f
-  #     fi
-  #   done
-  # done
+  # TODO: this moved to build-libcxx.sh but we may want to separate the source file
+  #       copying from the actual build step, so consider breaking build-libcxx.sh apart
+  #       into two separate steps ("copy sources" and "build libs".)
 else
   _log "$LLVM_DESTDIR is up to date. To rebuild, remove that dir and try again."
 fi

@@ -1,3 +1,4 @@
+// precompiled header
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
@@ -65,6 +66,9 @@
 #include "llvm/Transforms/Utils/CanonicalizeAliases.h"
 #include "llvm/Transforms/Utils/NameAnonGlobals.h"
 #include "llvm-c/Core.h" /* for LLVMDisposeMessage */
+
+#include "lld/Common/Driver.h"
+#include "lld/Common/ErrorHandler.h"
 
 #include <algorithm>
 #include <cctype>

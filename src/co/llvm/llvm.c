@@ -130,7 +130,7 @@ static LLVMTypeRef build_funtype(B* b, Node* nullable params, Node* nullable res
   if (params != NULL) {
     assert(params->kind == NTupleType);
     paramsc = params->array.a.len;
-    paramsv = memalloc_raw(b->build->mem, sizeof(void*) * paramsc);
+    paramsv = memalloc(b->build->mem, sizeof(void*) * paramsc);
     for (u32 i = 0; i < paramsc; i++) {
       paramsv[i] = get_type(b, params->array.a.v[i]);
     }
@@ -195,7 +195,7 @@ static LLVMTypeRef get_type(B* b, Node* nullable n) {
 
 static Value build_funproto(B* b, Node* n, const char* name) {
   LLVMTypeRef ft = get_funtype(b, n->type);
-  auto f = &n->fun;
+  // auto f = &n->fun;
   Value fn = LLVMAddFunction(b->mod, name, ft);
   // set argument names (for debugging)
   if (b->prettyIR && n->fun.params) {
@@ -300,7 +300,7 @@ static Value build_call(B* b, Node* n) { // n->kind==NCall
   if (args) {
     asserteq(args->kind, NTuple);
     argc = args->array.a.len;
-    argv = memalloc_raw(b->build->mem, sizeof(void*) * argc);
+    argv = memalloc(b->build->mem, sizeof(void*) * argc);
     for (u32 i = 0; i < argc; i++) {
       argv[i] = build_expr(b, args->array.a.v[i], "arg");
     }
