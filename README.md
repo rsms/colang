@@ -1,9 +1,11 @@
 # co2
 
-Setup:
-- You'll need [ckit](https://github.com/rsms/ckit) in your PATH.
-- Optionally, instead of installing ckit in a shared location, install it locally:
-  `git clone https://github.com/rsms/ckit.git && PATH=$PWD/ckit/bin:$PATH`
+## Building
+
+Initial setup: `./init.sh` will install the following into `deps/`:
+- [ckit](https://github.com/rsms/ckit) build tool and rbase library
+- [zlib](https://zlib.net) static library
+- [llvm+clang](https://llvm.org) tools and static libraries
 
 Build:
 - Optimized with assertions: `ckit build -safe`

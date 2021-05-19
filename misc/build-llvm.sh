@@ -15,6 +15,8 @@ ZLIB_CHECKSUM=e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
 DESTDIR="$DEPS_DIR"
 mkdir -p "$DESTDIR"
 
+[ "$1" != "-quiet" ] || OPT_QUIET=true
+
 # Host compiler location
 # HOST_LLVM_PREFIX=/usr/local/Cellar/llvm/11.0.0
 if [ -z "$HOST_LLVM_PREFIX" ]; then
@@ -52,6 +54,7 @@ fi
 ZLIB_VERSION_INSTALLED=$(grep -E ' version ([0-9\.]+)' "$DESTDIR"/zlib/include/zlib.h 2>/dev/null \
   | sed -E -e 's/^.* version ([0-9\\.]+).*$/\1/')
 if [ ! -f "$DESTDIR"/zlib/lib/libz.a ] || [ "$ZLIB_VERSION_INSTALLED" != "$ZLIB_VERSION" ]; then
+  OPT_QUIET=false
   _download_pushsrc https://zlib.net/zlib-${ZLIB_VERSION}.tar.xz "$ZLIB_CHECKSUM"
   ./configure --static --prefix=
   make -j$(nproc)
@@ -153,6 +156,8 @@ _llvm_build() {
 }
 
 if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
+  OPT_QUIET=false
+
   # _llvm_build Debug -DLLVM_ENABLE_ASSERTIONS=On
   # _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
   # _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
@@ -199,7 +204,7 @@ if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   #   done
   # done
 else
-  echo "$LLVM_DESTDIR is up to date. To rebuild, remove that dir and try again."
+  _log "$LLVM_DESTDIR is up to date. To rebuild, remove that dir and try again."
 fi
 
 #-- END ------------------------------------------------------------------------------------

@@ -9,6 +9,7 @@ WORK_DIR="$PROJECT/work"
 WORK_BUILD_DIR="$WORK_DIR/build"
 DOWNLOAD_DIR="$WORK_DIR/download"
 TMPFILES_LIST="$WORK_DIR/tmp/tmpfiles.$$"
+OPT_QUIET=false
 
 # internal state
 SOURCE_DIR_STACK=()
@@ -41,7 +42,7 @@ trap __atexit EXIT
 trap _onsigint SIGINT
 
 
-_log() { echo "$@" >&2; }
+_log() { $OPT_QUIET || echo "$@" >&2; }
 
 
 _err() {
@@ -73,13 +74,13 @@ _random_id() {
 _pushd() {
   local old_pwd=$PWD
   pushd "$1" >/dev/null
-  echo "changed directory to $PWD"
+  $OPT_QUIET || echo "changed directory to $PWD"
 }
 
 _popd() {
   local old_pwd=$PWD
   popd >/dev/null
-  echo "returned to directory $PWD"
+  $OPT_QUIET || echo "returned to directory $PWD"
 }
 
 # _tmpfile
@@ -206,6 +207,14 @@ _pidfile_kill() {
   fi
 }
 
+# _in_PATH <path>
+_in_PATH() {
+  case "$PATH" in
+    "$1:"*|*":$1:"*|*":$1") return 0 ;;
+  esac
+  return 1
+}
+
 # _git_HEAD_is <hash|name>
 _git_HEAD_is() {
   local want_hash=$(git rev-parse "$1")
@@ -239,7 +248,7 @@ _git_pull_if_needed() {
     local githash_is_symbolic=false
     if _git_hash_is_symbolic "$githash"; then
       githash_is_symbolic=true
-      echo git fetch origin
+      _log git fetch origin
            git fetch origin
     fi
 
@@ -255,14 +264,14 @@ _git_pull_if_needed() {
     fi
 
     if ! $githash_is_symbolic; then
-      echo git fetch origin
+      _log git fetch origin
            git fetch origin
     fi
 
-    echo git checkout "$githash"
+    _log git checkout "$githash"
          git checkout "$githash"
   else
-    echo git clone --branch "$githash" "$repourl" "$gitdir"
+    _log git clone --branch "$githash" "$repourl" "$gitdir"
          git clone --branch "$githash" "$repourl" "$gitdir"
   fi
   _popd

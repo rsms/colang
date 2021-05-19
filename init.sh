@@ -3,17 +3,27 @@ set -e
 cd "$(dirname "$0")"
 . misc/_common.sh
 
-CKIT_GIT_BRANCH=main  # latest
+[ "$1" != "-quiet" ] || OPT_QUIET=true
 
 
-_in_PATH() {
-  case "$PATH" in
-    "$1:"*|*":$1:"*|*":$1") return 0 ;;
-  esac
-  return 1
+_init_githooks() {
+  _log "---- git hooks ----"
+  if [ -d .git ] && [ -d misc/git-hooks ]; then
+    mkdir -p .git/hooks
+    _pushd .git/hooks
+    for f in ../../misc/git-hooks/*.sh; do
+      HOOKFILE=$(basename "$f" .sh)
+      if ! [ -f "$HOOKFILE" ]; then
+        ln -vfs "$f" "$HOOKFILE"
+      fi
+    done
+    _popd
+  fi
 }
 
+
 _init_ckit() {
+  local CKIT_GIT_BRANCH=main
   local CKIT_DIR=$DEPS_DIR/ckit
   _log "---- ckit ----"
 
@@ -23,8 +33,9 @@ _init_ckit() {
 
   # check PATH
   local inpath=false
-  if ! _in_PATH "$CKIT_DIR/bin" || [ "$(command -v ckit 2>/dev/null)" != "$CKIT_DIR/bin/ckit" ]; then
-    echo "$(command -v ckit 2>/dev/null) <> $CKIT_DIR/bin/ckit"
+  if ! _in_PATH "$CKIT_DIR/bin" ||
+     [ "$(command -v ckit 2>/dev/null)" != "$CKIT_DIR/bin/ckit" ]
+  then
     local CKIT_DIR_NICE=$CKIT_DIR
     case "$CKIT_DIR_NICE" in
       "$HOME"/*) CKIT_DIR_NICE="\$HOME${CKIT_DIR_NICE:${#HOME}}"
@@ -37,9 +48,14 @@ _init_ckit() {
 
 _init_llvm() {
   _log "---- LLVM ----"
-  $SHELL misc/build-llvm.sh
+  local args=()
+  if $OPT_QUIET; then
+    args+=(-quiet)
+  fi
+  $SHELL misc/build-llvm.sh "${args[@]}"
 }
 
 
+_init_githooks
 _init_ckit
 _init_llvm
