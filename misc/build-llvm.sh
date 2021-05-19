@@ -4,7 +4,14 @@ USERWD=$PWD
 cd "$(dirname "$0")/.."
 . misc/_common.sh
 
-# where to install the result
+# what git ref to build (commit, tag or branch)
+# LLVM_GIT_BRANCH=llvmorg-12.0.0
+LLVM_GIT_BRANCH=5f2b27666797c6462641434fee7ee010c77d22c0  # master at early pre-tag v13
+ZLIB_VERSION=1.2.11
+ZLIB_CHECKSUM=e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
+
+# DESTDIR: where to install stuff
+# This is a prefix; each project is installed in a subdirectory, e.g. DESTDIR/zlib.
 DESTDIR="$DEPS_DIR"
 mkdir -p "$DESTDIR"
 
@@ -19,7 +26,7 @@ fi
 
 export CC="$HOST_LLVM_PREFIX"/bin/clang
 if [ ! -x "$CC" ]; then
-  echo "clang not found at HOST_LLVM_PREFIX/bin/clang (HOST_LLVM_PREFIX=$HOST_LLVM_PREFIX)" >&2
+  echo "clang not found at ${CC} (not an executable file)" >&2
   exit 1
 fi
 
@@ -42,12 +49,14 @@ fi
 # -------------------------------------------------------------------------
 # zlib
 
-if [ ! -f "$DESTDIR"/zlib/lib/libz.a ]; then
-  _download_pushsrc https://zlib.net/zlib-1.2.11.tar.xz e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
+ZLIB_VERSION_INSTALLED=$(grep -E ' version ([0-9\.]+)' "$DESTDIR"/zlib/include/zlib.h 2>/dev/null \
+  | sed -E -e 's/^.* version ([0-9\\.]+).*$/\1/')
+if [ ! -f "$DESTDIR"/zlib/lib/libz.a ] || [ "$ZLIB_VERSION_INSTALLED" != "$ZLIB_VERSION" ]; then
+  _download_pushsrc https://zlib.net/zlib-${ZLIB_VERSION}.tar.xz "$ZLIB_CHECKSUM"
   ./configure --static --prefix=
   make -j$(nproc)
   make check
-  rm -rf "$DESTDIR/zlib"
+  rm -rf "$DESTDIR"/zlib
   mkdir -p "$DESTDIR/zlib"
   make DESTDIR="$DESTDIR/zlib" install
   _popsrc
@@ -56,27 +65,14 @@ fi
 # -------------------------------------------------------------------------
 # llvm & clang
 
-# LLVM_GIT_BRANCH=llvmorg-11.0.1
-LLVM_GIT_BRANCH=llvmorg-12.0.0
+LLVM_DESTDIR=$DESTDIR/llvm
+LLVM_GIT_URL=https://github.com/llvm/llvm-project.git
 
 # fetch or update llvm sources
-SOURCE_CHANGED=true
-_pushd "$DEPS_DIR"
-if [ -d llvm-src ]; then
-  if [ "$(git -C llvm-src describe --tags)" != "$LLVM_GIT_BRANCH" ]; then
-    _pushd llvm-src
-    git fetch origin
-    echo git checkout "$LLVM_GIT_BRANCH"
-         git checkout "$LLVM_GIT_BRANCH"
-    _popd
-  else
-    SOURCE_CHANGED=false
-  fi
-else
-  echo git clone --branch $LLVM_GIT_BRANCH https://github.com/llvm/llvm-project.git llvm-src
-       git clone --branch $LLVM_GIT_BRANCH https://github.com/llvm/llvm-project.git llvm-src
+SOURCE_CHANGED=false
+if _git_pull_if_needed "$LLVM_GIT_URL" "$DEPS_DIR/llvm-src" "$LLVM_GIT_BRANCH"; then
+  SOURCE_CHANGED=true
 fi
-_popd
 
 # _llvm_build <build-type> [args to cmake ...]
 _llvm_build() {
@@ -115,8 +111,8 @@ _llvm_build() {
   for _retry in 1 2; do
     if cmake -G Ninja \
       -DCMAKE_BUILD_TYPE=$build_type \
-      -DCMAKE_INSTALL_PREFIX="$DESTDIR/llvm" \
-      -DCMAKE_PREFIX_PATH="$DESTDIR/llvm" \
+      -DCMAKE_INSTALL_PREFIX="$LLVM_DESTDIR" \
+      -DCMAKE_PREFIX_PATH="$LLVM_DESTDIR" \
       -DCMAKE_C_COMPILER="$HOST_LLVM_PREFIX"/bin/clang \
       -DCMAKE_CXX_COMPILER="$HOST_LLVM_PREFIX"/bin/clang++ \
       -DCMAKE_ASM_COMPILER="$HOST_LLVM_PREFIX"/bin/clang \
@@ -149,60 +145,66 @@ _llvm_build() {
   ninja
 
   # install
-  echo "installing llvm at $DESTDIR/llvm"
-  rm -rf "$DESTDIR/llvm"
-  mkdir -p "$DESTDIR/llvm"
+  echo "installing llvm at $LLVM_DESTDIR"
+  rm -rf "$LLVM_DESTDIR"
+  mkdir -p "$LLVM_DESTDIR"
   # cmake -DCMAKE_INSTALL_PREFIX="$DESTDIR/llvm" -P cmake_install.cmake
   cmake --build . --target install
 }
 
-# _llvm_build Debug -DLLVM_ENABLE_ASSERTIONS=On
-# _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
-# _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
-# _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=Off
-_llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
+if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
+  # _llvm_build Debug -DLLVM_ENABLE_ASSERTIONS=On
+  # _llvm_build Release -DLLVM_ENABLE_ASSERTIONS=On
+  # _llvm_build RelWithDebInfo -DLLVM_ENABLE_ASSERTIONS=On
+  # _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=Off
+  time _llvm_build MinSizeRel -DLLVM_ENABLE_ASSERTIONS=On
 
-# copy "driver" code (main program code) and patch it
-_pushd "$PROJECT"
-cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/driver.cpp     src/clang/driver.cc
-cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1_main.cpp   src/clang/driver_cc1_main.cc
-cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1as_main.cpp src/clang/driver_cc1as_main.cc
-patch -p0 < misc/clang_driver.diff
-#
-# to make a new patch:
-#   cp deps/llvm-src/clang/tools/driver/driver.cpp src/clang/driver.cc
-#   cp src/clang/driver.cc src/clang/driver.cc.orig
-#   edit src/clang/driver.cc
-#   diff -u src/clang/driver.cc.orig src/clang/driver.cc > misc/clang_driver.diff
-#
+  # misc/myclang: copy "driver" code (main program code) and patch it
+  _pushd "$PROJECT"
+  cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/driver.cpp     misc/myclang/driver.cc
+  cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1_main.cpp   misc/myclang/driver_cc1_main.cc
+  cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1as_main.cpp misc/myclang/driver_cc1as_main.cc
+  patch -p0 < misc/clang_driver.diff
+  #
+  # to make a new patch:
+  #   cp deps/llvm-src/clang/tools/driver/driver.cpp misc/myclang/driver.cc
+  #   cp misc/myclang/driver.cc misc/myclang/driver.cc.orig
+  #   edit misc/myclang/driver.cc
+  #   diff -u misc/myclang/driver.cc.orig misc/myclang/driver.cc > misc/clang_driver.diff
+  #
 
-# copy clang C headers to lib/clang
-echo "copy lib sources: llvm/lib/clang/*/include -> lib/clang"
-rm -rf "$PROJECT"/lib/clang
-mkdir -p "$PROJECT"/lib
-cp -a "$DESTDIR"/llvm/lib/clang/*/include "$PROJECT"/lib/clang
+  # # copy clang C headers to lib/clang
+  # echo "copy lib sources: llvm/lib/clang/*/include -> lib/clang"
+  # rm -rf "$PROJECT"/lib/clang
+  # mkdir -p "$PROJECT"/lib
+  # cp -a "$DESTDIR"/llvm/lib/clang/*/include "$PROJECT"/lib/clang
 
-# Copy headers & sources for lib/libcxx, lib/libcxxabi, lib/libunwind
-for dir in libcxx libcxxabi libunwind; do
-  echo "copy lib sources: llvm-src/$dir -> lib/$dir"
-  dstdir="$PROJECT"/lib/$dir
-  rm -rf "$dstdir"
-  mkdir -p "$dstdir"
-  cd "$DEPS_DIR"/llvm-src/$dir
-  cp LICENSE.txt "$dstdir"/LICENSE.txt
-  for f in \
-    $(find include -not -name CMakeLists.txt) \
-    $(find src -not -name CMakeLists.txt -and -not -path 'src/support/win32*')
-  do
-    if [ -d "$f" ]; then
-      mkdir "$dstdir"/$f
-    else
-      cp -a $f "$dstdir"/$f
-    fi
-  done
-done
+  # # Copy headers & sources for lib/libcxx, lib/libcxxabi, lib/libunwind
+  # for dir in libcxx libcxxabi libunwind; do
+  #   echo "copy lib sources: llvm-src/$dir -> lib/$dir"
+  #   dstdir="$PROJECT"/lib/$dir
+  #   rm -rf "$dstdir"
+  #   mkdir -p "$dstdir"
+  #   cd "$DEPS_DIR"/llvm-src/$dir
+  #   cp LICENSE.txt "$dstdir"/LICENSE.txt
+  #   for f in \
+  #     $(find include -not -name CMakeLists.txt) \
+  #     $(find src -not -name CMakeLists.txt -and -not -path 'src/support/win32*')
+  #   do
+  #     if [ -d "$f" ]; then
+  #       mkdir "$dstdir"/$f
+  #     else
+  #       cp -a $f "$dstdir"/$f
+  #     fi
+  #   done
+  # done
+else
+  echo "$LLVM_DESTDIR is up to date. To rebuild, remove that dir and try again."
+fi
 
+#-- END ------------------------------------------------------------------------------------
 
+# notes & etc follows
 
 
 # LLVM_ENABLE_PROJECTS full list:

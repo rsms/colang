@@ -1,5 +1,5 @@
---- src/clang/driver.cc.orig	2021-02-08 11:13:07.000000000 -0800
-+++ src/clang/driver.cc	2021-02-08 11:13:57.000000000 -0800
+--- misc/myclang/driver.cc.orig	2021-05-18 17:45:09.000000000 -0700
++++ misc/myclang/driver.cc	2021-05-18 17:46:22.000000000 -0700
 @@ -207,8 +207,6 @@
                      void *MainAddr);
  extern int cc1as_main(ArrayRef<const char *> Argv, const char *Argv0,
@@ -9,7 +9,7 @@
  
  static void insertTargetAndModeArgs(const ParsedClangName &NameParts,
                                      SmallVectorImpl<const char *> &ArgVector,
-@@ -331,16 +329,14 @@
+@@ -339,16 +337,13 @@
    if (Tool == "-cc1as")
      return cc1as_main(makeArrayRef(ArgV).slice(2), ArgV[0],
                        GetExecutablePathVP);
@@ -22,9 +22,8 @@
    return 1;
  }
  
--int main(int argc_, const char **argv_) {
-+extern "C" int clang_main(int c, const char** v);
-+int clang_main(int argc_, const char **argv_) {
+-int main(int Argc, const char **Argv) {
++extern "C" int clang_main(int Argc, const char **Argv) {
    noteBottomOfStack();
-   llvm::InitLLVM X(argc_, argv_);
+   llvm::InitLLVM X(Argc, Argv);
    llvm::setBugReportMsg("PLEASE submit a bug report to " BUG_REPORT_URL

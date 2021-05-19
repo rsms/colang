@@ -1,6 +1,8 @@
 set -e
 
-[ -n "$PROJECT" ] || PROJECT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+SCRIPT_FILE=${BASH_SOURCE[0]}
+[ -n "$SCRIPT_FILE" ] || SCRIPT_FILE=${(%):-%N}  # zsh
+[ -n "$PROJECT" ] || PROJECT=$(cd "$(dirname "$SCRIPT_FILE")/.." && pwd)
 ARGV0="$0"
 DEPS_DIR="$PROJECT/deps"
 WORK_DIR="$PROJECT/work"
@@ -37,6 +39,10 @@ _onsigint() {
 }
 trap __atexit EXIT
 trap _onsigint SIGINT
+
+
+_log() { echo "$@" >&2; }
+
 
 _err() {
   echo "$ARGV0:" "$@" >&2
@@ -124,6 +130,7 @@ _download() {
   local url="$1"
   local checksum="$2"
   local filename="$DOWNLOAD_DIR/$(basename "${3:-"$url"}")"
+  echo "filename $filename"
   while [ ! -e "$filename" ] || ! _verify_checksum -silent "$filename" "$checksum"; do
     if [ -n "$did_download" ]; then
       echo "Checksum for $filename failed" >&2
@@ -169,8 +176,8 @@ _pushsrc() {
 
 # _download_pushsrc url sha1sum [filename]
 _download_pushsrc() {
-  local url="$1"
-  local checksum="$2"
+  local url=$1
+  local checksum=$2
   local filename="$DOWNLOAD_DIR/$(basename "${3:-"$url"}")"
   _download "$url" "$checksum" "$filename"
   _pushsrc "$filename"
@@ -197,4 +204,66 @@ _pidfile_kill() {
     [ -z "$pid" ] || kill $pid 2>/dev/null || true
     rm -f "$pidfile"
   fi
+}
+
+# _git_HEAD_is <hash|name>
+_git_HEAD_is() {
+  local want_hash=$(git rev-parse "$1")
+  local head_hash=$(git rev-parse HEAD)
+  [ "$want_hash" = "$head_hash" ] || return 1
+}
+
+# _git_hash_is_symbolic <hash|name>
+_git_hash_is_symbolic() {
+  if (echo "$1" | grep -q -E '^[a-fA-F0-9]+$'); then
+    return 1
+  fi
+}
+
+# _git_is_dirty [<gitdir>]
+_git_is_dirty() {
+  local gitargs0=()
+  local gitargs1=(--untracked-files=no --ignore-submodules=dirty --porcelain)
+  [ -z "$1" ] || gitargs0+=( -C "$1" )
+  [ -n "$(git "${gitargs0[@]}" status "${gitargs1[@]}" 2> /dev/null)" ] || return 1
+}
+
+# _git_pull_if_needed <repourl> <gitdir> <hash|name>
+_git_pull_if_needed() {
+  local repourl=$1 ; shift
+  local gitdir=$1  ; shift
+  local githash=$1 ; shift
+  if [ -d "$gitdir" ]; then
+    _pushd "$gitdir"
+
+    local githash_is_symbolic=false
+    if _git_hash_is_symbolic "$githash"; then
+      githash_is_symbolic=true
+      echo git fetch origin
+           git fetch origin
+    fi
+
+    if _git_HEAD_is "$githash"; then
+      _popd
+      return 1  # up to date
+    fi
+
+    if _git_is_dirty; then
+      _log "git pull aborted: there are local uncommitted changes in $PWD"
+      git status -s --untracked-files=no --ignore-submodules=dirty
+      exit 1
+    fi
+
+    if ! $githash_is_symbolic; then
+      echo git fetch origin
+           git fetch origin
+    fi
+
+    echo git checkout "$githash"
+         git checkout "$githash"
+  else
+    echo git clone --branch "$githash" "$repourl" "$gitdir"
+         git clone --branch "$githash" "$repourl" "$gitdir"
+  fi
+  _popd
 }

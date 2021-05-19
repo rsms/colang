@@ -8,27 +8,26 @@ set(CC ${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm/bin/clang)
 include($ENV{CKIT_DIR}/ckit.cmake)
 ckit_configure_project(C)
 
-# enable tests in the regular executable for debug builds
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+  # enable tests in the regular executable for debug builds
   add_definitions(-DR_TESTING_ENABLED=1)
 
-  # enable address sanitizer
+  # enable address and undefined-behavior sanitizer
+  # https://clang.llvm.org/docs/AddressSanitizer.html
+  # https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
   add_compile_options(
-    -DASAN_ENABLED=1
-    -fsanitize=address
+    -fsanitize=address,undefined
     -fsanitize-address-use-after-scope
     -fno-omit-frame-pointer
     -fno-optimize-sibling-calls
   )
-  add_link_options(
-    -fsanitize=address
-  )
+  add_link_options(-fsanitize=address,undefined)
+else()
+  # optimize for native/host arch
+  add_compile_options(-march=native)
 endif()
 
 ckit_require_package(rbase)
-
-# optimize for native/host arch
-add_compile_options(-march=native)
 
 # TODO
 # add_library(co-llvm

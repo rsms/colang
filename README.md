@@ -20,9 +20,10 @@ Development:
 - Live testing of a specific test: `ckit watch test scan`
 
 Note: debug builds have the following checks and features enabled:
-- assertions (both "safe" and "debug" assertions)
-- Clang address sanitizer
-- R_TEST unit tests (main co binary runs all tests on start)
+- All assertions (both "safe" and "debug")
+- [Clang address sanitizer](https://clang.llvm.org/docs/AddressSanitizer.html)
+- [Clang undefined-behavior sanitizer](https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html)
+- `R_TEST` unit tests (main executable runs all tests on start)
 
 
 ## Old makefile-based build (defunct)
