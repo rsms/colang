@@ -9,15 +9,15 @@ Initial setup: `./init.sh` will install the following into `deps/`:
 - [llvm+clang](https://llvm.org) tools and static libraries
 
 Build:
-- Optimized with assertions: `ckit build -safe`
-- Optimized without assertions: `ckit build -fast`
 - Unoptimized with all checks enabled: `ckit build`
-- RT test program: _Not yet supported with the new cmake setup_
-- Verbose build: `ckit build -v`
+- Optimized with assertions:           `ckit build -safe`
+- Optimized without assertions:        `ckit build -fast`
+- RT test program:                     `ckit watch -r co-rt-test`
+- Verbose build:                       `ckit build -v`
 
 Development:
-- Live main program: `ckit watch -rsh="{BUILD}/co build example/hello.w" co`
-- Live testing: `ckit watch test`
+- Live main program:               `ckit watch -rsh="{BUILD}/co build example/hello.w" co`
+- Live testing:                    `ckit watch test`
 - Live testing of a specific test: `ckit watch test scan`
 
 Note: debug builds have the following checks and features enabled:
