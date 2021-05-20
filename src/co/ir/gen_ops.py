@@ -14,12 +14,15 @@ import re, sys, os, os.path
 from functools import reduce
 import pprint
 
-SRCFILE_IR_OP_C   = "op.c"
-SRCFILE_IR_OP_H   = "op.h"
-SRCFILE_AST_IR_C  = "ir-ast.c"
+# inputs
 SRCFILE_ARCH_BASE = "arch_base.lisp"
 SRCFILE_PARSE_H   = "../parse/parse.h"
 SRCFILE_TYPES_H   = "../types.h"
+
+# outputs
+SRCFILE_IR_OP_H  = "op.h"
+SRCFILE_IR_OP_C  = "op.c"
+SRCFILE_AST_IR_C = "ir-ast.c"
 
 pp = pprint.PrettyPrinter(indent=2)
 def rep(any): return pp.pformat(any)
