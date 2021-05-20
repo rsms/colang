@@ -6,6 +6,7 @@ set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
 # CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
 set(CO_WITH_LLVM yes)
+set(CO_ENABLE_RT yes)
 
 # CO_LLVM_LINK_TYPE = SHARED | STATIC
 #   llvm libraries can either be statically linked into the co executable
@@ -21,9 +22,14 @@ if (NOT CO_LLVM_LINK_TYPE)
 endif()
 
 set(PROJECT_LANGUAGES C)
-if (CO_WITH_LLVM)
+if (CO_WITH_LLVM AND CO_ENABLE_RT)
+  set(PROJECT_LANGUAGES C CXX ASM)
+elseif(CO_WITH_LLVM)
   set(PROJECT_LANGUAGES C CXX)
+elseif (CO_ENABLE_RT)
+  set(PROJECT_LANGUAGES C ASM)
 endif()
+
 
 project(co
   LANGUAGES ${PROJECT_LANGUAGES})
@@ -214,3 +220,45 @@ if (CO_WITH_LLVM)
 endif()
 
 ckit_define_test(co src/co/co.c)
+
+
+#————————————————————————————————————————————————————————————————————————————————————————————————
+# rt
+if (CO_ENABLE_RT)
+
+  add_library(co-rt STATIC
+    src/rt/sched.c
+    src/rt/stack.c
+  )
+  target_link_libraries(co-rt PRIVATE rbase)
+
+  # co-rt: platform and architecture specific source
+  macro(co_rt_unsupported_system_error)
+    message(FATAL_ERROR
+      "co-rt: Unsupported target ${CMAKE_SYSTEM_NAME}/${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  endmacro()
+  # CMAKE_SYSTEM_NAME = Linux | Darwin | Windows | ...
+  if (CMAKE_SYSTEM_NAME MATCHES "Darwin")
+    if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
+      target_sources(co-rt PRIVATE src/rt/exectx/exectx_x86_64_sysv.S)
+    else()
+      co_rt_unsupported_system_error()
+    endif()
+  elseif (CMAKE_SYSTEM_NAME MATCHES "Linux")
+    if (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "x86_64")
+      target_sources(co-rt PRIVATE src/rt/exectx/exectx_x86_64_sysv.S)
+    elseif (CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "aarch64")
+      target_sources(co-rt PRIVATE src/rt/exectx/exectx_arm64_aapcs_elf.S)
+    else()
+      co_rt_unsupported_system_error()
+    endif()
+  else()
+    co_rt_unsupported_system_error()
+  endif()
+
+
+  add_executable(co-rt-test src/rt-test/rt-test.c)
+  target_include_directories(co-rt-test PRIVATE src)
+  target_link_libraries(co-rt-test PRIVATE co-rt)
+
+endif()

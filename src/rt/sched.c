@@ -81,10 +81,10 @@ static struct {
   u32          cap; // capacity of ptr array
 } allt;
 
-static inline ALWAYS_INLINE T* t_get();
+static T* t_get();
 
-static inline M* m_acquire();
-static inline void m_release(M* m);
+static M* m_acquire();
+static void m_release(M* m);
 static void NORETURN m_call(T* _t_, void(*fn)(T*));
 static void NORETURN m_exit(bool osStack);
 static void NORETURN schedule();
@@ -145,13 +145,13 @@ static void m_semawakeup(M* mp);
 static void vbm_resize(VarBitmap* bm, u32 nbits) {
   if (nbits > bm->len) {
     bm->len = nbits;
-    bm->ptr = (_Atomic(size_t)*)memrealloc(NULL, bm->ptr, bm->len);
+    bm->ptr = (_Atomic(size_t)*)memrealloc(MemLibC(), bm->ptr, bm->len);
   }
 }
 
 static void vbm_free(VarBitmap* bm) {
   if (bm->ptr) {
-    memfree(NULL, bm->ptr);
+    memfree(MemLibC(), bm->ptr);
     bm->ptr = NULL;
   }
 }
@@ -182,12 +182,12 @@ static void vbm_clear(VarBitmap* bm, i32 bit) {
 // array_grow increases a->cap by nelem
 static void array_grow(Array* a, u32 nelem) {
   a->cap += nelem;
-  a->ptr = (u8*)memrealloc(NULL, a->ptr, a->cap * a->elemsize);
+  a->ptr = (u8*)memrealloc(MemLibC(), a->ptr, a->cap * a->elemsize);
 }
 
 static void array_free(Array* a) {
   if (a->ptr) {
-    memfree(NULL, a->ptr);
+    memfree(MemLibC(), a->ptr);
     a->ptr = NULL;
   }
 }
@@ -563,7 +563,7 @@ bool stackfree(void* lo, size_t size); // implemented in stack_*.c
 
 
 // t_get returns the current task
-static inline ALWAYS_INLINE T* t_get() {
+static ALWAYS_INLINE T* t_get() {
   // Force inline to allow call-site TLS load optimizations.
   // Example:
   //   void foo() {
@@ -934,7 +934,7 @@ static void allt_add(T* t) {
   if (allt.len == allt.cap) {
     trace("grow array");
     allt.cap = allt.cap + 64;
-    allt.ptr = memrealloc(NULL, allt.ptr, allt.cap);
+    allt.ptr = memrealloc(MemLibC(), allt.ptr, allt.cap);
     AtomicStore(&allt.ptr, allt.ptr);
   }
   trace("add");
@@ -1847,7 +1847,7 @@ static M* s_allocm(P* _p_, void(*mstartfn)(void), i64 id) {
   //   mtx_unlock(&S.lock);
   // }
 
-  M* mp = memalloct(NULL, M);
+  M* mp = memalloct(MemLibC(), M);
   mp->mstartfn = mstartfn;
   m_init(mp, id);
   mp->t0.m = mp;
@@ -1958,7 +1958,7 @@ static P* s_procresize(u32 nprocs) {
   for (u32 i = old; i < nprocs; i++) {
     P* p = S.allp[i];
     if (p == NULL) {
-      p = memalloct(NULL, P);
+      p = memalloct(MemLibC(), P);
       p_init(p, i);
       AtomicStore( (_Atomic(P*)*)&S.allp[i], p );
     }
