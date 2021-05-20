@@ -4,6 +4,7 @@
 
 Initial setup: `./init.sh` will install the following into `deps/`:
 - [ckit](https://github.com/rsms/ckit) build tool and rbase library
+- [ckit-jemalloc](https://github.com/rsms/ckit-jemalloc) memory allocator
 - [zlib](https://zlib.net) static library
 - [llvm+clang](https://llvm.org) tools and static libraries
 
