@@ -9,11 +9,12 @@ Initial setup: `./init.sh` will install the following into `deps/`:
 - [llvm+clang](https://llvm.org) tools and static libraries
 
 Build:
-- Unoptimized with all checks enabled: `ckit build`
-- Optimized with assertions:           `ckit build -safe`
-- Optimized without assertions:        `ckit build -fast`
+- Unoptimized with all checks enabled: `ckit build co`
+- Optimized with assertions:           `ckit build -safe co`
+- Optimized without assertions:        `ckit build -fast co`
 - RT test program:                     `ckit watch -r co-rt-test`
 - Verbose build:                       `ckit build -v`
+- Build everything:                    `ckit build`
 
 Development:
 - Live main program:               `ckit watch -rsh="{BUILD}/co build example/hello.w" co`
