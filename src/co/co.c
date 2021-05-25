@@ -222,6 +222,13 @@ int cmd_build(int argc, const char** argv) {
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
   Node* pkgnode = CreatePkgAST(&build, pkgscope);
 
+  #ifdef DEBUG
+  #define PRINT_BANNER \
+    printf("————————————————————————————————————————————————————————————————\n");
+  #else
+    #define PRINT_BANNER
+  #endif
+
   // parse source files
   Source* src = pkg.srclist;
   while (src) {
@@ -232,7 +239,7 @@ int cmd_build(int argc, const char** argv) {
     src = src->next;
   }
   dump_ast("", pkgnode);
-  printf("————————————————————————————————————————————————————————————————\n");
+  PRINT_BANNER
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
@@ -247,7 +254,7 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
   dump_ast("", pkgnode);
-  printf("————————————————————————————————————————————————————————————————\n");
+  PRINT_BANNER
   pkgnode = ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
   if (build.errcount) {
@@ -255,9 +262,16 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
+  {
+    auto timeend = nanotime();
+    char abuf[40];
+    auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
+    printf("parse, resolve & typecheck %.*s\n", buflen, abuf);
+  }
+
   // build IR
   #if 0
-  printf("————————————————————————————————————————————————————————————————\n");
+  PRINT_BANNER
   IRBuilder irbuilder = {};
   IRBuilderInit(&irbuilder, &build, IRBuilderComments);
   IRBuilderAddAST(&irbuilder, pkgnode);
@@ -267,7 +281,7 @@ int cmd_build(int argc, const char** argv) {
 
   // emit target code
   #ifdef CO_WITH_LLVM
-  printf("————————————————————————————————————————————————————————————————\n");
+  PRINT_BANNER
   if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }
