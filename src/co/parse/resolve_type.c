@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-#define DEBUG_MODULE ""
+//#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -242,9 +242,13 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NFun
         !TypeEquals(ctx->build, ft->t.fun.result, bodyType) ))
       {
         // function prototype claims to return type A while the body yields type B
-        build_errf(ctx->build, NodePosSpan(ArrayNodeLast(n->fun.body)),
-          "cannot use type %s as return type %s",
-          fmtnode(bodyType), fmtnode(ft->t.fun.result));
+        Node* lastexpr = n->fun.body;
+        if (lastexpr->kind == NBlock)
+          lastexpr = ArrayNodeLast(lastexpr);
+        if (lastexpr->kind != NReturn) {
+          // note: explicit "return" expressions already check and report type errors
+          err_ret_type(ctx, n, lastexpr);
+        }
       }
     }
   }
