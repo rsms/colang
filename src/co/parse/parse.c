@@ -629,8 +629,6 @@ static Node* params(Parser* p) { // => NTuple
   want(p, TLParen);
   auto n = mknode(p, NTuple);
   bool hasTypedParam = false; // true when at least one param has type; e.g. "x T"
-  // Node* typeq_storage[32];
-  // NodeArray typeq = Array_INIT_WITH_STORAGE((void**)typeq_storage, countof(typeq_storage));
   NodeArray typeq = Array_INIT_ON_STACK(32);
   PFlag fl = PFlagRValue;
 

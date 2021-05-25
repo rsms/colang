@@ -1,4 +1,5 @@
 #pragma once
+#include <alloca.h>
 ASSUME_NONNULL_BEGIN
 
 // Array is a dynamic linear container. Valid when zero-initialized.
@@ -11,9 +12,14 @@ typedef struct Array {
 
 // TODO: move onstack flag into a single bit of len or cap
 
+#define CONCAT_(x,y) x##y
+#define CONCAT(x,y)  CONCAT_(x,y)
+
 #define Array_INIT { NULL, 0, 0, false }
 #define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, true }
-#define Array_INIT_ON_STACK(initcap) ({ void* st[initcap]; (Array){ st, initcap, 0, true }; })
+
+#define Array_INIT_ON_STACK(initcap) \
+  ((Array){ alloca(initcap * sizeof(void*)), initcap, 0, true })
 
 static void  ArrayInit(Array* a);
 static void  ArrayInitWithStorage(Array* a, void* storage, u32 storagecap);
