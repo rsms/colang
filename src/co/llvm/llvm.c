@@ -499,7 +499,9 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   if (b->FPM)
     LLVMFinalizeFunctionPassManager(b->FPM);
 
+  #ifdef DEBUG
   LLVMDumpModule(b->mod);
+  #endif
 
 finish:
   SymMapDispose(&b->typemap);
