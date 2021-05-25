@@ -256,12 +256,14 @@ int cmd_build(int argc, const char** argv) {
   }
 
   // build IR
+  #if 0
   printf("————————————————————————————————————————————————————————————————\n");
   IRBuilder irbuilder = {};
   IRBuilderInit(&irbuilder, &build, IRBuilderComments);
   IRBuilderAddAST(&irbuilder, pkgnode);
   dump_ir(&build.posmap, irbuilder.pkg);
   IRBuilderDispose(&irbuilder);
+  #endif
 
   // emit target code
   #ifdef CO_WITH_LLVM

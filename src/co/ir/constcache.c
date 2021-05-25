@@ -190,7 +190,7 @@ IRConstCache* IRConstCacheAdd(
 
 R_TEST(constcache) {
   // printf("--------------------------------------------------\n");
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
 
   IRConstCache* c = NULL;
   u64 testValueGen = 1; // IRValue pointer simulator (generator)
@@ -231,6 +231,6 @@ R_TEST(constcache) {
   assert((u64)v4 == expect4);
 
 
-  MemArenaFree(mem);
+  MemLinearFree(mem);
   // printf("--------------------------------------------------\n");
 }

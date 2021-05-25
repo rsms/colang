@@ -43,7 +43,7 @@ static void testMapIterator(const void* key, void* value, bool* stop, void* user
 
 
 R_TEST(ptrmap) {
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
   auto m = PtrMapNew(8, mem);
 
   assert(m->len == 0);
@@ -113,7 +113,7 @@ R_TEST(ptrmap) {
   assert(PtrMapGet(m, "hello") == (void*)2);
 
   PtrMapFree(m);
-  MemArenaFree(mem);
+  MemLinearFree(mem);
 }
 
 #endif

@@ -96,7 +96,7 @@ Str diag_fmt(Str s, const Diagnostic* d) {
 #if R_TESTING_ENABLED
 
 Build* test_build_new() {
-  Mem mem = MemArenaAlloc();
+  Mem mem = MemLinearAlloc();
 
   auto syms = memalloct(mem, SymPool);
   sympool_init(syms, universe_syms(), mem, NULL);
@@ -114,7 +114,7 @@ void test_build_free(Build* b) {
   auto mem = b->mem;
   // sympool_dispose(b->syms); // not needed because of MemFree
   build_dispose(b);
-  MemArenaFree(mem);
+  MemLinearFree(mem);
 }
 
 #endif /* R_TESTING_ENABLED */

@@ -14,11 +14,12 @@ typedef const char* Sym;
 #define SYM_LEN_MAX 0x7ffffff /* 134 217 727 (27 bits) */
 
 // SymRBNode is a red-black tree node
+typedef struct SymRBNode SymRBNode;
 typedef struct SymRBNode {
-  Sym               key;
-  bool              isred;
-  struct SymRBNode* left;
-  struct SymRBNode* right;
+  Sym                 key;
+  bool                isred;
+  SymRBNode* nullable left;
+  SymRBNode* nullable right;
 } SymRBNode;
 
 // SymPool holds a set of syms unique to the pool
@@ -26,7 +27,7 @@ typedef struct SymPool SymPool;
 typedef struct SymPool {
   SymRBNode*              root;
   const SymPool* nullable base;
-  Mem            mem;
+  Mem                     mem;
   rwmtx_t                 mu;
 } SymPool;
 

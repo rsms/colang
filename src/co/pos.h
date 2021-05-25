@@ -1,5 +1,6 @@
 #pragma once
 #include "util/array.h"
+ASSUME_NONNULL_BEGIN
 
 // Pos is a compact representation of a source position: source file, line and column.
 // Limits: 1048575 number of sources, 1048575 max line, 4095 max column, 4095 max width.
@@ -130,3 +131,5 @@ inline static bool pos_isknown(Pos p) {
 ALWAYS_INLINE static void* pos_source(const PosMap* pm, Pos p) {
   return pm->a.v[pos_origin(p)];
 }
+
+ASSUME_NONNULL_END

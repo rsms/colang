@@ -143,7 +143,7 @@ Str pos_str(const PosMap* pm, Pos p, Str s) {
 
 R_TEST(pos) {
   PosMap pm;
-  posmap_init(&pm, NULL);
+  posmap_init(&pm, MemHeap);
   uintptr_t source1 = 1;
   uintptr_t source2 = 2;
 

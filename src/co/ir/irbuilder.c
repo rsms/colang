@@ -34,7 +34,7 @@ static const char* debug_fmtval(u32 bufid, const IRValue* v) {
 void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
   memset(u, 0, sizeof(IRBuilder));
   u->build = build;
-  u->mem = MemArenaAlloc();
+  u->mem = MemLinearAlloc();
   u->pkg = IRPkgNew(u->mem, build->pkg->id);
   u->vars = SymMapNew(8, u->mem);
   u->flags = flags;
@@ -43,7 +43,7 @@ void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
 }
 
 void IRBuilderDispose(IRBuilder* u) {
-  MemArenaFree(u->mem);
+  MemLinearFree(u->mem);
 }
 
 

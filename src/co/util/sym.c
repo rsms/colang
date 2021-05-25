@@ -15,21 +15,20 @@
 // red-black tree implementation used for interning
 #define RBKEY      Sym
 #define RBUSERDATA Mem
+#define RBNODETYPE SymRBNode
 #include "rbtree.c.h"
-
-static_assert(sizeof(SymRBNode) == sizeof(RBNode), "");
 
 // sym_xxhash32_seed is the xxHash seed used for hashing sym data
 static const u32 sym_xxhash32_seed = 578;
 
 #define HASH_SYM_DATA(data, len) XXH32((const void*)(data), (len), sym_xxhash32_seed)
 
-inline static RBNode* RBAllocNode(Mem mem) {
-  return (RBNode*)memalloct(mem, RBNode);
+inline static SymRBNode* RBAllocNode(Mem mem) {
+  return memalloct(mem, SymRBNode);
 }
 
 // syms are never removed from the interning tree
-inline static void RBFreeNode(RBNode* node, Mem mem) {
+inline static void RBFreeNode(SymRBNode* node, Mem mem) {
   memfree(mem, (void*)_SYM_HEADER(node->key));
   memfree(mem, node);
 }
@@ -57,13 +56,30 @@ void sympool_init(SymPool* p, const SymPool* base, Mem mem, SymRBNode* root) {
 
 void sympool_dispose(SymPool* p) {
   if (p->root)
-    RBClear((RBNode*)p->root, p->mem);
+    RBClear(p->root, p->mem);
   rwmtx_destroy(&p->mu);
 }
 
 
+// static bool debug_0x11_iter(const SymRBNode* n, void* userdata) {
+//   dlog("  node key %p (%s)", n->key, (uintptr_t)n->key > 0xff ? n->key : "");
+//   return true; // keep going
+// }
+
+// static void debug_0x11_dump(const SymPool* p) {
+//   dlog("sympool:");
+//   if (p->root) {
+//     RBIter(p->root, debug_0x11_iter, NULL);
+//   } else {
+//     dlog("null root");
+//   }
+// }
+
+
 // Caller must hold read lock on rp->mu
-inline static Sym symlookup(const RBNode* node, const char* data, size_t len, u32 hash) {
+inline static Sym nullable symlookup(
+  const SymRBNode* node, const char* data, size_t len, u32 hash)
+{
   while (node) {
     // IMPORTANT: The comparison here MUST match the comparison used for other
     // operations on the tree. I.e. it must match RBCmp.
@@ -108,9 +124,9 @@ static Sym symaddh(SymPool* p, const char* data, size_t len, u32 hash) {
 
   // attempt to insert into tree
   rwmtx_lock(&p->mu);
-  p->root = (SymRBNode*)RBInsert((RBNode*)p->root, s, &added, p->mem);
+  p->root = RBInsert(p->root, s, &added, p->mem);
   if (!added)
-    s2 = symlookup((RBNode*)p->root, data, len, hash);
+    s2 = symlookup(p->root, data, len, hash);
   rwmtx_unlock(&p->mu);
 
   if (!added) {
@@ -131,7 +147,7 @@ Sym nullable symfind(SymPool* p, const char* data, size_t len) {
   const SymPool* rp = p;
   while (rp) {
     rwmtx_rlock((rwmtx_t*)&rp->mu);
-    auto s = symlookup((RBNode*)rp->root, data, len, hash);
+    auto s = symlookup(rp->root, data, len, hash);
     rwmtx_runlock((rwmtx_t*)&rp->mu);
     if (s)
       return s;
@@ -148,7 +164,7 @@ Sym symget(SymPool* p, const char* data, size_t len) {
   const SymPool* rp = p;
   while (rp) {
     rwmtx_rlock((rwmtx_t*)&rp->mu);
-    auto s = symlookup((RBNode*)rp->root, data, len, hash);
+    auto s = symlookup(rp->root, data, len, hash);
     rwmtx_runlock((rwmtx_t*)&rp->mu);
     if (s)
       return s;
@@ -164,7 +180,7 @@ Sym symadd(SymPool* p, const char* data, size_t len) {
   return symaddh(p, data, len, h);
 }
 
-static bool sym_rb_iter1(const RBNode* n, void* userdata) {
+static bool sym_rb_iter1(const SymRBNode* n, void* userdata) {
   auto sp = (Str*)userdata;
   *sp = str_append(*sp, n->key, symlen(n->key));
   *sp = str_appendcstr(*sp, ", ");
@@ -173,7 +189,7 @@ static bool sym_rb_iter1(const RBNode* n, void* userdata) {
 
 Str sympool_repr_unsorted(const SymPool* p, Str s) {
   u32 len1 = str_len(s);
-  RBIter((const RBNode*)p->root, sym_rb_iter1, &s);
+  RBIter(p->root, sym_rb_iter1, &s);
   if (str_len(s) != len1)
     str_setlen(s, str_len(s) - 2); // undo last ", "
   return s;
@@ -185,7 +201,7 @@ typedef struct ReprCtx {
   void* astorage[64];
 } ReprCtx;
 
-static bool sym_rb_iter(const RBNode* n, void* userdata) {
+static bool sym_rb_iter(const SymRBNode* n, void* userdata) {
   auto rctx = (ReprCtx*)userdata;
   ArrayPush(&rctx->a, (void*)n->key, rctx->mem);
   return true; // keep going
@@ -199,7 +215,7 @@ Str sympool_repr(const SymPool* p, Str s) {
   ReprCtx rctx;
   rctx.mem = p->mem;
   ArrayInitWithStorage(&rctx.a, rctx.astorage, countof(rctx.astorage));
-  RBIter((const RBNode*)p->root, sym_rb_iter, &rctx);
+  RBIter(p->root, sym_rb_iter, &rctx);
   ArraySort(&rctx.a, (ArraySortFun)str_sortf, NULL);
   bool first = true;
   s = str_appendc(s, '{');
@@ -215,6 +231,10 @@ Str sympool_repr(const SymPool* p, Str s) {
     // s = str_append(s, sym, symlen(sym));
     s = str_appendc(s, '"');
   }
+  if (p->base) {
+    s = str_appendcstr(s, ", [base]: ");
+    s = sympool_repr(p->base, s);
+  }
   s = str_appendc(s, '}');
   ArrayFree(&rctx.a, rctx.mem);
   return s;
@@ -225,7 +245,7 @@ Str sympool_repr(const SymPool* p, Str s) {
 // unit tests
 
 R_TEST(sym) {
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
 
@@ -259,12 +279,12 @@ R_TEST(sym) {
   str_free(s);
 
   sympool_dispose(&syms);
-  MemArenaFree(mem);
+  MemLinearFree(mem);
 }
 
 
 R_TEST(symflags) {
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
   auto s = symgetcstr(&syms, "hello");
@@ -275,7 +295,7 @@ R_TEST(symflags) {
     asserteq(symlen(s), msglen); // len should still be accurate
   }
   sympool_dispose(&syms);
-  MemArenaFree(mem);
+  MemLinearFree(mem);
 }
 
 
@@ -307,7 +327,7 @@ inline static Str rbkeyfmt(Str s, RBKEY k) {
 }
 
 R_TEST(sympool) {
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;
@@ -325,11 +345,11 @@ R_TEST(sympool) {
   auto C3 = symadd(&syms3, "C", 1);
 
   // auto s = str_new(0);
-  // s = RBRepr((const RBNode*)syms1.root, s, 0, rbkeyfmt);
+  // s = RBRepr(syms1.root, s, 0, rbkeyfmt);
   // dlog("syms1: %s", s);
-  // s = RBRepr((const RBNode*)syms2.root, str_setlen(s, 0), 0, rbkeyfmt);
+  // s = RBRepr(syms2.root, str_setlen(s, 0), 0, rbkeyfmt);
   // dlog("syms2: %s", s);
-  // s = RBRepr((const RBNode*)syms3.root, str_setlen(s, 0), 0, rbkeyfmt);
+  // s = RBRepr(syms3.root, str_setlen(s, 0), 0, rbkeyfmt);
   // dlog("syms3: %s", s);
   // str_free(s);
 
@@ -340,5 +360,5 @@ R_TEST(sympool) {
   sympool_dispose(&syms1);
   sympool_dispose(&syms2);
   sympool_dispose(&syms3);
-  MemArenaFree(mem);
+  MemLinearFree(mem);
 }

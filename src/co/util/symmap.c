@@ -22,7 +22,10 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
 }
 
 R_TEST(symmap) {
-  auto mem = MemArenaAlloc();
+  // auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
+  if (!mem)
+    panic("out of memory");
   auto m = SymMapNew(64, mem);
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
@@ -229,7 +232,8 @@ R_TEST(symmap) {
   assert(SymMapGet(m, SYM("int"))         == 0);
 
   SymMapFree(m);
-  MemArenaFree(mem);
+  // MemArenaFree(mem);
+  MemLinearFree(mem);
 }
 
 #endif /* R_TESTING_ENABLED */

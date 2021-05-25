@@ -387,15 +387,14 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     );
 
     s = nodeRepr(recv, s, ctx, depth + 1);
-
-    if (funTarget) {
-      //
-    } else if (recv->kind == NId && recv->ref.target == NULL) {
-      // when the receiver is an ident without a resolved target, print its name
-      s = str_append(s, recv->ref.name, symlen(recv->ref.name));
-    } else {
-      s = nodeRepr(recv, s, ctx, depth + 1);
-    }
+    // if (funTarget) {
+    //   //
+    // } else if (recv->kind == NId && recv->ref.target == NULL) {
+    //   // when the receiver is an ident without a resolved target, print its name
+    //   s = str_append(s, recv->ref.name, symlen(recv->ref.name));
+    // } else {
+    //   s = nodeRepr(recv, s, ctx, depth + 1);
+    // }
 
     s = nodeRepr(n->call.args, s, ctx, depth + 1);
     break;

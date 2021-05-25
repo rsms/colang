@@ -195,7 +195,8 @@ static void sname(Scanner* s) {
   }
 
   s->tokend = s->inp;
-  s->name = symget(s->build->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  size_t len = (size_t)(uintptr_t)(s->tokend - s->tokstart);
+  s->name = symget(s->build->syms, (const char*)s->tokstart, len);
   s->tok = sym_langtok(s->name); // TId or a T* keyword
 }
 

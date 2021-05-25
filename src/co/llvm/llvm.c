@@ -212,7 +212,9 @@ static Value build_funproto(B* b, Node* n, const char* name) {
 
 
 static Value get_funproto(B* b, Node* n) { // n->kind==NFun
+  asserteq(n->kind, NFun);
   LLVMValueRef fn = NULL;
+  dlog("n %s", fmtnode(n));
   auto f = &n->fun;
 
   // name
@@ -283,7 +285,7 @@ static Value build_block(B* b, Node* n) { // n->kind==NBlock
 static Value build_call(B* b, Node* n) { // n->kind==NCall
   if (NodeIsType(n->call.receiver)) {
     // type call, e.g. str(1)
-    dlog("TODO: type call");
+    panic("TODO: type call");
     return NULL;
   }
   // n->call.receiver->kind==NFun
@@ -338,6 +340,13 @@ static Value build_typecast(B* b, Node* n, const char* debugname) { // n->kind==
 }
 
 
+static Value build_return(B* b, Node* n, const char* debugname) { // n->kind==NReturn
+  // TODO: check current function and if type is nil, use LLVMBuildRetVoid
+  LLVMValueRef v = build_expr(b, n->op.left, debugname);
+  return LLVMBuildRet(b->builder, v);
+}
+
+
 static Value build_expr(B* b, Node* n, const char* debugname) {
 retry:
   switch (n->kind) {
@@ -371,6 +380,8 @@ retry:
       return build_call(b, n);
     case NTypeCast:
       return build_typecast(b, n, debugname);
+    case NReturn:
+      return build_return(b, n, debugname);
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;

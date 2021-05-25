@@ -723,7 +723,7 @@ R_TEST(ir_op) {
   return;
   //
   // printf("--------------------------------------------------\n");
-  auto mem = MemArenaAlloc();
+  auto mem = MemLinearAlloc();
   #define mknode(t) NewNode(mem, (t))
 
   // i16 -> uint32 (extension with signed change)
@@ -798,6 +798,6 @@ R_TEST(ir_op) {
 
   // IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2)
 
-  MemArenaFree(mem);
+  MemLinearFree(mem);
   // printf("--------------------------------------------------\n");
 }

@@ -16,7 +16,7 @@
 #ifdef CO_MEM_USE_JEMALLOC
   #include <jemalloc-mem.h>
   #define MemHeap MemJEMalloc()
-  #if 1 /* use jemalloc arenas instead of rbase/MemArenaShim */
+  #if 0 /* use jemalloc arenas instead of rbase/MemArenaShim */
     typedef Mem MemArena;
     inline static Mem MemArenaAlloc() {
       return MemJEMallocArenaAlloc(MemJEMallocArenaDummyFree);
@@ -25,27 +25,27 @@
       MemJEMallocArenaFree(m);
     }
   #else
-    typedef MemArenaShim MemArena;
-    inline static Mem MemArenaAlloc() {
-      auto a = memalloct(MemHeap, MemArena);
-      return MemArenaShimInit(a, MemHeap);
-    }
-    inline static void MemArenaFree(Mem m) {
-      auto a = (MemArenaShim*)m;
-      MemArenaShimFree(a);
-      memfree(MemHeap, a);
-    }
+    // typedef MemArenaShim MemArena;
+    // inline static Mem MemArenaAlloc() {
+    //   auto a = memalloct(MemHeap, MemArena);
+    //   return MemArenaShimInit(a, MemHeap);
+    // }
+    // inline static void MemArenaFree(Mem m) {
+    //   auto a = (MemArenaShim*)m;
+    //   MemArenaShimFree(a);
+    //   memfree(MemHeap, a);
+    // }
   #endif
 #else
   #define MemHeap MemLibC()
-  typedef MemArenaShim MemArena;
-  inline static Mem MemArenaAlloc() {
-    auto a = memalloct(MemHeap, MemArena);
-    return MemArenaShimInit(a, MemHeap);
-  }
-  inline static void MemArenaFree(Mem m) {
-    auto a = (MemArenaShim*)m;
-    MemArenaShimFree(a);
-    memfree(MemHeap, a);
-  }
+  // typedef MemArenaShim MemArena;
+  // inline static Mem MemArenaAlloc() {
+  //   auto a = memalloct(MemHeap, MemArena);
+  //   return MemArenaShimInit(a, MemHeap);
+  // }
+  // inline static void MemArenaFree(Mem m) {
+  //   auto a = (MemArenaShim*)m;
+  //   MemArenaShimFree(a);
+  //   memfree(MemHeap, a);
+  // }
 #endif
