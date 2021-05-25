@@ -1,5 +1,5 @@
 fun main() {
-  a = 2
+  a = 12
   b = a
   addfn1 = add
   addfn2 = addfn1

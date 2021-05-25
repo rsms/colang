@@ -1,0 +1,10 @@
+fun foo() {
+  a = 129
+
+  b = 5 as uint32
+  b = a + b
+
+  c = 6 as int8
+  c = c + a
+}
+
