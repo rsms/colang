@@ -211,7 +211,7 @@ static Value build_funproto(B* b, Node* n, const char* name) {
 }
 
 
-static Value get_funproto(B* b, Node* n) { // n->kind==NFun
+static Value get_fun(B* b, Node* n) { // n->kind==NFun
   asserteq(n->kind, NFun);
   LLVMValueRef fn = NULL;
   dlog("n %s", fmtnode(n));
@@ -226,9 +226,31 @@ static Value get_funproto(B* b, Node* n) { // n->kind==NFun
 
   // llvm maintains a map of all named functions in the module; query it
   fn = LLVMGetNamedFunction(b->mod, name);
-  if (!fn)
+  if (!fn) {
     fn = build_funproto(b, n, name);
+    // // also build body if we have it
+    // if (n->fun.body) {
+    //   // Create a new basic block to start insertion into.
+    //   // Note: entry BB is required, but its name can be empty.
+    //   LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
+    //   LLVMPositionBuilderAtEnd(b->builder, bb);
+    //
+    //   Value retval = build_expr(b, n->fun.body, "");
+    //   if (!retval || n->type->t.fun.result == Type_nil) {
+    //     LLVMBuildRetVoid(b->builder);
+    //     // retval = LLVMConstInt(b->t_int, 0, /*signext*/false); // XXX TMP
+    //   } else {
+    //     LLVMBuildRet(b->builder, retval);
+    //   }
+    // }
+  }
   return fn;
+}
+
+
+static bool value_is_ret(LLVMValueRef v) {
+  return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
+         LLVMGetInstructionOpcode(v) == LLVMRet;
 }
 
 
@@ -244,24 +266,27 @@ static Value build_fun(B* b, Node* n) {
     dlog("anonymous fun: %p", n);
   }
 
-  Value fn = get_funproto(b, n);
-
+  Value fn = get_fun(b, n);
+  // also build body if we have it
   if (n->fun.body) {
     // Create a new basic block to start insertion into.
     // Note: entry BB is required, but its name can be empty.
     LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
     LLVMPositionBuilderAtEnd(b->builder, bb);
+    Value bodyval = build_expr(b, n->fun.body, "");
 
-    Value retval = build_expr(b, n->fun.body, "");
+    // LLVMOpcode LLVMRet
+    LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst);
 
-    if (!retval || n->type->t.fun.result == Type_nil) {
-      LLVMBuildRetVoid(b->builder);
-      // retval = LLVMConstInt(b->t_int, 0, /*signext*/false); // XXX TMP
-    } else {
-      LLVMBuildRet(b->builder, retval);
+    if (!bodyval || !value_is_ret(bodyval)) {
+      // implicit return at end of body
+      if (!bodyval || n->type->t.fun.result == Type_nil) {
+        LLVMBuildRetVoid(b->builder);
+      } else {
+        LLVMBuildRet(b->builder, bodyval);
+      }
     }
   }
-
   return fn;
 }
 
@@ -289,7 +314,7 @@ static Value build_call(B* b, Node* n) { // n->kind==NCall
     return NULL;
   }
   // n->call.receiver->kind==NFun
-  Value callee = get_funproto(b, n->call.receiver);
+  Value callee = build_expr(b, n->call.receiver, "callee");
   if (!callee) {
     errlog("unknown function");
     return NULL;
@@ -347,6 +372,11 @@ static Value build_return(B* b, Node* n, const char* debugname) { // n->kind==NR
 }
 
 
+static Value build_funexpr(B* b, Node* n) { // n->kind==NFun
+  return get_fun(b, n);
+}
+
+
 static Value build_expr(B* b, Node* n, const char* debugname) {
 retry:
   switch (n->kind) {
@@ -382,6 +412,8 @@ retry:
       return build_typecast(b, n, debugname);
     case NReturn:
       return build_return(b, n, debugname);
+    case NFun:
+      return get_fun(b, n);
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;
