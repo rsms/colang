@@ -29,12 +29,65 @@ typedef struct B {
   // AST types, keyed by typeid
   SymMap typemap;
 
-  // constants
-  LLVMTypeRef t_int;
-  LLVMTypeRef t_i32;
+  // type constants
   LLVMTypeRef t_void;
+  LLVMTypeRef t_bool;
+  LLVMTypeRef t_i8;
+  LLVMTypeRef t_i16;
+  LLVMTypeRef t_i32;
+  LLVMTypeRef t_i64;
+  LLVMTypeRef t_f32;
+  LLVMTypeRef t_f64;
+
+  LLVMTypeRef t_int;
 
 } B;
+
+
+static LLVMTypeRef get_type(B* b, Type* nullable n) {
+  if (!n)
+    return b->t_void;
+  switch (n->kind) {
+    case NBasicType: {
+      switch (n->t.basic.typeCode) {
+        case TypeCode_bool:
+          return b->t_bool;
+        case TypeCode_int8:
+        case TypeCode_uint8:
+          return b->t_i8;
+        case TypeCode_int16:
+        case TypeCode_uint16:
+          return b->t_i16;
+        case TypeCode_int32:
+        case TypeCode_uint32:
+          return b->t_i32;
+        case TypeCode_int64:
+        case TypeCode_uint64:
+          return b->t_i64;
+        case TypeCode_float32:
+          return b->t_f32;
+        case TypeCode_float64:
+          return b->t_f64;
+        case TypeCode_ideal:
+        case TypeCode_int:
+        case TypeCode_uint:
+          return b->t_int;
+        case TypeCode_nil:
+          return b->t_void;
+        default: {
+          panic("TODO basic type %s", n->t.basic.name);
+          break;
+        }
+      }
+      break;
+    }
+    default:
+      panic("TODO node kind %s", NodeKindName(n->kind));
+      break;
+  }
+  panic("invalid node kind %s", NodeKindName(n->kind));
+  return NULL;
+}
 
 
 static void print_duration(const char* message, u64 timestart) {
@@ -45,81 +98,23 @@ static void print_duration(const char* message, u64 timestart) {
   fflush(stderr);
 }
 
-static Value build_call1(B* b, const char* calleeName) {
-  // look up the name in the module table
-  Value callee = LLVMGetNamedFunction(b->mod, calleeName);
-  if (!callee) {
-    errlog("unknown function %s", calleeName);
-    return NULL;
-  }
-  // check argument count
-  Value args[] = {
-    LLVMConstInt(b->t_i32, 3, /*signext*/false),
-    LLVMConstInt(b->t_i32, 4, /*signext*/false),
-  };
-  u32 nargs = (u32)countof(args);
-  if (LLVMCountParams(callee) != nargs) {
-    errlog("wrong number of arguments: %u (expected %u)", nargs, LLVMCountParams(callee));
-    return NULL;
-  }
-  return LLVMBuildCall(b->builder, callee, args, nargs, "");
+
+static bool value_is_ret(LLVMValueRef v) {
+  return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
+         LLVMGetInstructionOpcode(v) == LLVMRet;
 }
 
-static LLVMTypeRef build_funtype1(B* b) {
-  LLVMTypeRef returnType = b->t_i32;
-  LLVMTypeRef paramTypes[] = {b->t_i32, b->t_i32};
-  LLVMBool isVarArg = false;
-  return LLVMFunctionType(returnType, paramTypes, countof(paramTypes), isVarArg);
+static bool value_is_call(LLVMValueRef v) {
+  return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
+         LLVMGetInstructionOpcode(v) == LLVMCall;
 }
 
-static Value build_funproto1(B* b, const char* name) {
-  LLVMTypeRef fnt = build_funtype1(b);
-  Value fn = LLVMAddFunction(b->mod, name, fnt);
-  // set argument names (for debugging)
-  Value arg1 = LLVMGetParam(fn, 0);
-  Value arg2 = LLVMGetParam(fn, 1);
-  LLVMSetValueName2(arg1, "x", 1);
-  LLVMSetValueName2(arg2, "y", 1);
-  return fn;
-}
-
-static Value build_fun1(B* b, const char* name) {
-  // function prototype
-  Value fn = build_funproto1(b, name);
-
-  // Create a new basic block to start insertion into.
-  // Note: entry BB is required, but its name can be empty.
-  LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
-  LLVMPositionBuilderAtEnd(b->builder, bb);
-  // gs.Builder->SetInsertPoint(bb);
-
-  // hard-coded bodies
-  if (strcmp(name, "main") == 0) {
-    Value v = build_call1(b, "foo");
-    LLVMBuildRet(b->builder, v);
-  } else {
-    LLVMSetLinkage(fn, LLVMInternalLinkage);
-    // (return (+ (+ arg1 arg2) (+ arg1 arg2)))
-    Value add1 = LLVMBuildAdd(b->builder, LLVMGetParam(fn, 0), LLVMGetParam(fn, 1), "");
-    Value add2 = LLVMBuildAdd(b->builder, LLVMGetParam(fn, 0), LLVMGetParam(fn, 1), "");
-    Value v = LLVMBuildAdd(b->builder, add1, add2, "");
-    LLVMBuildRet(b->builder, v);
-  }
-
-  // optimize
-  if (b->FPM)
-    LLVMRunFunctionPassManager(b->FPM, fn);
-
-  // Note: On error, erase the function and return NULL:
-  // LLVMEraseGlobalIFunc(fn);
-  // return NULL;
-
-  // LLVMDumpValue(fn);
-  return fn;
+static Value get_current_fun(B* b) {
+  LLVMBasicBlockRef BB = LLVMGetInsertBlock(b->builder);
+  return LLVMGetBasicBlockParent(BB);
 }
 
 
-static LLVMTypeRef get_type(B* b, Node* nullable n);
 static Value build_expr(B* b, Node* n, const char* debugname);
 
 
@@ -154,49 +149,12 @@ static LLVMTypeRef get_funtype(B* b, Node* funTypeNode) {
 }
 
 
-static LLVMTypeRef get_type(B* b, Node* nullable n) {
-  if (!n)
-    return b->t_void;
-  switch (n->kind) {
-    case NBasicType: {
-      switch (n->t.basic.typeCode) {
-        // case TypeCode_bool:    break;
-        // case TypeCode_int8:    break;
-        // case TypeCode_uint8:   break;
-        // case TypeCode_int16:   break;
-        // case TypeCode_uint16:  break;
-        case TypeCode_int32:
-        case TypeCode_uint32:
-          return b->t_i32;
-        // case TypeCode_int64:   break;
-        // case TypeCode_uint64:  break;
-        // case TypeCode_float32: break;
-        // case TypeCode_float64: break;
-        case TypeCode_int:
-        case TypeCode_uint:
-          return b->t_int;
-        case TypeCode_nil:
-          return b->t_void;
-        default: {
-          panic("TODO basic type %s", n->t.basic.name);
-          break;
-        }
-      }
-      break;
-    }
-    default:
-      panic("TODO node kind %s", NodeKindName(n->kind));
-      break;
-  }
-  panic("invalid node kind %s", NodeKindName(n->kind));
-  return NULL;
-}
-
-
 static Value build_funproto(B* b, Node* n, const char* name) {
+  asserteq(n->kind, NFun);
   LLVMTypeRef ft = get_funtype(b, n->type);
   // auto f = &n->fun;
   Value fn = LLVMAddFunction(b->mod, name, ft);
+
   // set argument names (for debugging)
   if (b->prettyIR && n->fun.params) {
     auto a = n->fun.params->array.a;
@@ -207,6 +165,16 @@ static Value build_funproto(B* b, Node* n, const char* name) {
       LLVMSetValueName2(p, param->field.name, symlen(param->field.name));
     }
   }
+
+  // linkage & visibility
+  if (n->fun.name && strcmp(name, "main") != 0) {
+    // TODO: only set for globals
+    // Note on LLVMSetVisibility: visibility is different.
+    // See https://llvm.org/docs/LangRef.html#visibility-styles
+    LLVMSetLinkage(fn, LLVMPrivateLinkage); // like "static" in C but omit from symbol table
+    // LLVMSetLinkage(fn, LLVMInternalLinkage); // like "static" in C
+  }
+
   return fn;
 }
 
@@ -248,12 +216,6 @@ static Value get_fun(B* b, Node* n) { // n->kind==NFun
 }
 
 
-static bool value_is_ret(LLVMValueRef v) {
-  return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
-         LLVMGetInstructionOpcode(v) == LLVMRet;
-}
-
-
 static Value build_fun(B* b, Node* n) {
   assert(n->kind == NFun);
   assert(n->type);
@@ -267,33 +229,29 @@ static Value build_fun(B* b, Node* n) {
   }
 
   Value fn = get_fun(b, n);
-  // also build body if we have it
-  if (n->fun.body) {
-    // Create a new basic block to start insertion into.
-    // Note: entry BB is required, but its name can be empty.
-    LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
-    LLVMPositionBuilderAtEnd(b->builder, bb);
-    Value bodyval = build_expr(b, n->fun.body, "");
 
-    // LLVMOpcode LLVMRet
-    LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst);
+  assertnotnull(n->fun.body);
+  // Create a new basic block to start insertion into.
+  // Note: entry BB is required, but its name can be empty.
+  LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
+  LLVMPositionBuilderAtEnd(b->builder, bb);
+  Value bodyval = build_expr(b, n->fun.body, "");
 
-    if (!bodyval || !value_is_ret(bodyval)) {
-      // implicit return at end of body
-      if (!bodyval || n->type->t.fun.result == Type_nil) {
-        LLVMBuildRetVoid(b->builder);
-      } else {
-        LLVMBuildRet(b->builder, bodyval);
-      }
+  // LLVMOpcode LLVMRet
+  LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst);
+
+  if (!bodyval || !value_is_ret(bodyval)) {
+    // implicit return at end of body
+    if (!bodyval || n->type->t.fun.result == Type_nil) {
+      LLVMBuildRetVoid(b->builder);
+    } else {
+      if (value_is_call(bodyval))
+        LLVMSetTailCall(bodyval, true);
+      LLVMBuildRet(b->builder, bodyval);
     }
   }
+
   return fn;
-}
-
-
-static Value get_current_fun(B* b) {
-  LLVMBasicBlockRef BB = LLVMGetInsertBlock(b->builder);
-  return LLVMGetBasicBlockParent(BB);
 }
 
 
@@ -342,6 +300,7 @@ static Value build_call(B* b, Node* n) { // n->kind==NCall
   #endif
 
   Value v = LLVMBuildCall(b->builder, callee, argv, argc, "");
+  // LLVMSetTailCall(v, true); // set tail call when we know it for sure
   if (argv)
     memfree(b->build->mem, argv);
   return v;
@@ -368,23 +327,30 @@ static Value build_typecast(B* b, Node* n, const char* debugname) { // n->kind==
 static Value build_return(B* b, Node* n, const char* debugname) { // n->kind==NReturn
   // TODO: check current function and if type is nil, use LLVMBuildRetVoid
   LLVMValueRef v = build_expr(b, n->op.left, debugname);
+  if (value_is_call(v))
+    LLVMSetTailCall(v, true);
   return LLVMBuildRet(b->builder, v);
-}
-
-
-static Value build_funexpr(B* b, Node* n) { // n->kind==NFun
-  return get_fun(b, n);
 }
 
 
 static Value build_expr(B* b, Node* n, const char* debugname) {
 retry:
+  if (debugname && debugname[0]) {
+    dlog("build_expr %s %s <%s> (\"%s\")",
+      NodeKindName(n->kind), fmtnode(n), fmtnode(n->type), debugname);
+  } else {
+    dlog("build_expr %s %s <%s>", NodeKindName(n->kind), fmtnode(n), fmtnode(n->type));
+  }
   switch (n->kind) {
     case NBinOp: {
       Value x = build_expr(b, n->op.left, "");
       Value y = build_expr(b, n->op.right, "");
-      return LLVMBuildAdd(b->builder, x, y, debugname);
-      break;
+      // TODO FIXME: op (currently hard coded to "add")
+      if (n->type == Type_float64 || n->type == Type_float32) {
+        return LLVMBuildFAdd(b->builder, x, y, debugname);
+      } else {
+        return LLVMBuildAdd(b->builder, x, y, debugname);
+      }
     }
     case NId: {
       assert(n->ref.target); // should be resolved
@@ -393,6 +359,12 @@ retry:
       goto retry;
     }
     case NLet: {
+      // FIXME don't use name lookup here; pointers POINTERS! (or Sym or PtrMap or something.)
+      Value v = LLVMGetNamedGlobal(b->mod, n->field.name);
+      if (v) {
+        dlog("found named global");
+        return v;
+      }
       // TODO FIXME generate a location instead of just assuming init is the value
       assert(n->field.init); // should be resolved
       debugname = n->field.name;
@@ -400,8 +372,9 @@ retry:
       goto retry;
     }
     case NIntLit:
-      // TODO FIXME int type (assume "int" for now)
-      return LLVMConstInt(b->t_int, n->val.i, /*signext*/false);
+      return LLVMConstInt(get_type(b, n->type), n->val.i, /*signext*/false);
+    case NFloatLit:
+      return LLVMConstReal(get_type(b, n->type), n->val.f);
     case NArg:
       return LLVMGetParam(get_current_fun(b), n->field.index);
     case NBlock:
@@ -423,6 +396,26 @@ retry:
 }
 
 
+static Value build_global_let(B* b, Node* n) {
+  assert(n->kind == NLet);
+  assert(n->type);
+  Value gv;
+  if (n->field.init) {
+    Value v = build_expr(b, n->field.init, n->field.name);
+    if (!LLVMIsConstant(v)) {
+      panic("not a constant expression %s", fmtnode(n));
+    }
+    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->field.name);
+    LLVMSetInitializer(gv, v);
+  } else {
+    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->field.name);
+  }
+  // TODO: conditionally make linkage private
+  LLVMSetLinkage(gv, LLVMPrivateLinkage);
+  return gv;
+}
+
+
 static void build_pkgpart(B* b, Node* n) {
   assert(n->kind == NFile);
   for (u32 i = 0; i < n->array.a.len; i++) {
@@ -430,6 +423,10 @@ static void build_pkgpart(B* b, Node* n) {
     switch (cn->kind) {
       case NFun:
         build_fun(b, cn);
+        break;
+      case NLet:
+        // package-level constant
+        build_global_let(b, cn);
         break;
       default:
         dlog("TODO: %s", NodeKindName(cn->kind));
@@ -455,8 +452,14 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
 
     // constants
     // note: no disposal needed of built-in types
-    .t_i32 = LLVMInt32TypeInContext(ctx),
     .t_void = LLVMVoidTypeInContext(ctx),
+    .t_bool = LLVMInt1TypeInContext(ctx),
+    .t_i8 = LLVMInt8TypeInContext(ctx),
+    .t_i16 = LLVMInt16TypeInContext(ctx),
+    .t_i32 = LLVMInt32TypeInContext(ctx),
+    .t_i64 = LLVMInt64TypeInContext(ctx),
+    .t_f32 = LLVMFloatTypeInContext(ctx),
+    .t_f64 = LLVMDoubleTypeInContext(ctx),
   };
   _b.t_int = _b.t_i32; // alias int = i32
   B* b = &_b;
@@ -500,6 +503,7 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
     LLVMFinalizeFunctionPassManager(b->FPM);
 
   #ifdef DEBUG
+  dlog("LLVM IR module as built:");
   LLVMDumpModule(b->mod);
   #endif
 
@@ -589,11 +593,11 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     triple = hostTriple; // default to host
   LLVMTargetRef target = select_target(triple);
   LLVMCodeGenOptLevel optLevel =
-    (build->opt == CoOptNone ? LLVMCodeGenLevelNone : LLVMCodeGenLevelAggressive);
+    (build->opt == CoOptNone ? LLVMCodeGenLevelNone : LLVMCodeGenLevelDefault);
   LLVMCodeModel codeModel =
     (build->opt == CoOptSmall ? LLVMCodeModelSmall : LLVMCodeModelDefault);
 
-  // LLVMCodeGenOptLevel optLevel = LLVMCodeGenLevelAggressive;
+  // optLevel = LLVMCodeGenLevelAggressive;
   LLVMTargetMachineRef targetm = select_target_machine(target, triple, optLevel, codeModel);
   if (!targetm)
     goto end;
@@ -607,7 +611,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
 
   // optimize module
   bool enable_tsan = false;
-  bool enable_lto = false; // if enabled, write LLVM bitcode to bin_outfile, else object MC
+  bool enable_lto = false;
   auto opt_timestart = nanotime();
   if (!llvm_optmod(mod, targetm, build->opt, enable_tsan, enable_lto, &errmsg)) {
     errlog("llvm_optmod: %s", errmsg);
@@ -615,6 +619,10 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     goto end;
   }
   print_duration("llvm_optmod", opt_timestart);
+  #ifdef DEBUG
+  dlog("LLVM IR module after optimizations:");
+  LLVMDumpModule(mod);
+  #endif
 
   // emit
   const char* obj_file = "out1.o";

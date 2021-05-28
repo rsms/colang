@@ -4,7 +4,7 @@
 // #include "ir/op.h"
 
 // DEBUG_MODULE: define to enable debug logging
-// #define DEBUG_MODULE "convlit"
+//#define DEBUG_MODULE "convlit"
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) dlog("[" DEBUG_MODULE "] " format, ##__VA_ARGS__)
@@ -76,7 +76,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
     case CType_str:
     case CType_bool:
     case CType_nil:
-      dlog_mod("TODO convert %s -> %s", CTypeName(v->ct), TypeCodeName(tc));
+      dlog("TODO convert %s -> %s", CTypeName(v->ct), TypeCodeName(tc));
       break;
 
     case CType_INVALID:
@@ -89,7 +89,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
 
 // convert an intrinsic numeric value v to a floating point number of type tc
 static bool convval_to_float(Build* b, Node* srcnode, NVal* v, TypeCode t) {
-  dlog_mod("TODO");
+  dlog("convlit TODO float");
   return false;
 }
 
@@ -99,7 +99,7 @@ static bool convval_to_float(Build* b, Node* srcnode, NVal* v, TypeCode t) {
 static bool convval(Build* b, Node* srcnode, NVal* v, Node* targetType, bool explicit) {
   // TODO use 'explicit' to allow "greater" conversions like for example int -> str.
   if (targetType->kind != NBasicType) {
-    dlog_mod("TODO targetType->kind %s", NodeKindName(targetType->kind));
+    dlog("convlit TODO targetType->kind %s", NodeKindName(targetType->kind));
     return false;
   }
 
@@ -116,7 +116,7 @@ static bool convval(Build* b, Node* srcnode, NVal* v, Node* targetType, bool exp
     return convval_to_float(b, srcnode, v, tc);
   }
 
-  dlog_mod("TODO * -> BasicType(%s)", TypeCodeName(tc));
+  dlog("convlit TODO * -> BasicType(%s)", TypeCodeName(tc));
   return false;
 }
 
@@ -183,17 +183,36 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
       }
       n->type = n->op.left->type;
     } else {
-      dlog_mod("TODO NBinOp %s as %s", fmtnode(n), fmtnode(t));
+      dlog("TODO NBinOp %s as %s", fmtnode(n), fmtnode(t));
     }
     break;
 
   default:
-    dlog_mod("TODO n->kind %s", NodeKindName(n->kind));
+    dlog("TODO n->kind %s", NodeKindName(n->kind));
     break;
   }
 
-  if (n->type == Type_ideal)
+  if (n->type == Type_ideal) {
+    dlog_mod("assign type %s to ideal %s %s", fmtnode(t), NodeKindName(n->kind), fmtnode(n));
     n->type = t;
+  }
+
+  switch (n->kind) {
+  case NIntLit:
+    if (t == Type_float32 || t == Type_float64) {
+      // IntLit -> FloatLit, e.g. "x = 123 as float64"
+      n->val.f = (double)n->val.i;
+      n->kind = NFloatLit;
+    }
+    break;
+  case NFloatLit:
+    if (t != Type_float32 && t != Type_float64) {
+      // FloatLit -> IntLit, e.g. "x = 1.0 as u32"
+      n->val.i = (u64)n->val.f;
+      n->kind = NIntLit;
+    }
+    break;
+  }
 
   return n;
 }

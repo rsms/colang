@@ -9,12 +9,12 @@ void build_init(Build* b,
   DiagHandler* nullable  diagh,
   void*                  userdata)
 {
+  memset(b, 0, sizeof(Build));
   b->mem       = mem;
   b->syms      = syms;
   b->pkg       = pkg;
   b->diagh     = diagh;
   b->userdata  = userdata;
-  b->errcount  = 0;
   b->diaglevel = DiagMAX;
   ArrayInit(&b->diagarray);
   posmap_init(&b->posmap, mem);

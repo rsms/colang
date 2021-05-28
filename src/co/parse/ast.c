@@ -172,7 +172,8 @@ Node* nullable ArrayNodeLast(Node* n) {
 
 PosSpan NodePosSpan(Node* n) {
   PosSpan span = { n->pos, n->endpos };
-  dlog("-- NodePosSpan %s %u:%u", NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
+  // dlog("-- NodePosSpan %s %u:%u",
+  //   NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
   if (!pos_isknown(span.end))
     span.end = span.start;
 

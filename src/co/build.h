@@ -11,9 +11,9 @@ typedef struct Source Source;
 
 // CoOptType identifies an optimization type/strategy
 typedef enum CoOptType {
-  CoOptNone,       // -O0
-  CoOptSmall,      // -Oz
-  CoOptAggressive, // -O3
+  CoOptNone,  // -O0
+  CoOptSmall, // -Oz
+  CoOptFast,  // -O2
 } CoOptType;
 
 // DiagLevel is the level of severity of a diagnostic message

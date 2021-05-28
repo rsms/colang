@@ -217,6 +217,7 @@ int cmd_build(int argc, const char** argv) {
   Mem astmem = MemHeap; // allocate AST in global memory pool
   Build build;
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
+  // build.opt = CoOptFast;
 
   // setup package namespace and create package AST node
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
