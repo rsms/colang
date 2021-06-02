@@ -215,8 +215,12 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   // uses u.fun
   case NFun: {
+    if (n->fun.tparams)
+      n->fun.tparams = resolve_sym(ctx, n->fun.tparams);
     if (n->fun.params)
       n->fun.params = resolve_sym(ctx, n->fun.params);
+    if (n->fun.result)
+      n->fun.result = resolve_sym(ctx, n->fun.result);
     if (n->type)
       n->type = resolve_sym(ctx, n->type);
     // Note: Don't update lookupscope as a function's parameters should always be resolved

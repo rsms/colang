@@ -149,10 +149,11 @@ typedef struct Node {
       Node*           a_storage[4]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
-      Node* nullable params; // input params (NTuple)
-      Node* nullable result; // output results (NTuple | NExpr)
-      Sym   nullable name;   // NULL for lambda
-      Node* nullable body;   // NULL for fun-declaration
+      Node* nullable tparams; // template params (NTuple)
+      Node* nullable params;  // input params (NTuple)
+      Node* nullable result;  // output results (NTuple | NExpr)
+      Sym   nullable name;    // NULL for lambda
+      Node* nullable body;    // NULL for fun-declaration
     } fun;
     /* call */ struct { // Call, TypeCast
       Node* receiver;      // Fun, Id or type
@@ -285,15 +286,19 @@ void node_diag_trail(Build* b, DiagLevel dlevel, Node* n);
 
 // NodeList is a linked list of nodes
 typedef struct NodeList NodeList;
-struct NodeList { NodeList* parent; Node* n; };
+struct NodeList { NodeList* nullable parent; Node* n; };
 
 // NodeVisitor is used with NodeVisit to traverse an AST.
+// To visit the node's children, call NodeVisitChildren(n,data).
 // Return false to stop iteration.
 typedef bool(*NodeVisitor)(NodeList* n, void* nullable data);
 
 // NodeVisit calls f for each child of n, passing along data to f.
 // Returns true if all calls to f returns true.
-bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
+static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
+
+// NodeVisitChildren calls for each child of n, passing along n and data to f.
+bool NodeVisitChildren(NodeList* parent, NodeVisitor f, void* nullable data);
 
 
 
@@ -301,7 +306,8 @@ bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
 // implementations
 
 extern const NodeClassFlags _NodeClassTable[_NodeKindMax];
-ALWAYS_INLINE static NodeClassFlags NodeKindClass(NodeKind kind) {
+
+inline static NodeClassFlags NodeKindClass(NodeKind kind) {
   return _NodeClassTable[kind];
 }
 
@@ -312,12 +318,17 @@ inline static Node* NodeCopy(Mem mem, const Node* n) {
   return n2;
 }
 
-ALWAYS_INLINE static void NodeArrayAppend(Mem mem, Array* a, Node* n) {
+inline static void NodeArrayAppend(Mem mem, Array* a, Node* n) {
   ArrayPush(a, n, mem);
 }
 
-ALWAYS_INLINE static void NodeArrayClear(Array* a) {
+inline static void NodeArrayClear(Array* a) {
   ArrayClear(a);
+}
+
+inline static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data) {
+  NodeList parent = { .n = n };
+  return NodeVisitChildren(&parent, f, data);
 }
 
 ASSUME_NONNULL_END

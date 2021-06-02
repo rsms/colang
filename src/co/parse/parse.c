@@ -19,7 +19,7 @@
 // which builds the "parselets" table (see end of file.)
 
 // panic() on parse errors
-// #define DEBUG_PANIC_ON_PARSE_ERROR
+#define DEBUG_PANIC_ON_PARSE_ERROR
 //
 // enable debug messages for pushScope() and popScope()
 //#define DEBUG_SCOPE_PUSH_POP
@@ -229,6 +229,7 @@ ALWAYS_INLINE static Node* set_endpos(Parser* p, Node* n) {
 
 // precedence should match the calling parselet's own precedence
 static Node* expr(Parser* p, int precedence, PFlag fl);
+static Node* prefixExpr(Parser* p, PFlag fl);
 
 // exprOrTuple = Expr | Tuple
 static Node* exprOrTuple(Parser* p, int precedence, PFlag fl);
@@ -690,7 +691,7 @@ static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 
 
 // Type (always rvalue)
-static Node* pType(Parser* p, PFlag fl) {
+static Type* pType(Parser* p, PFlag fl) {
   assert(fl & PFlagRValue);
   return exprOrTuple(p, PREC_LOWEST, fl | PFlagType);
 }
@@ -873,19 +874,21 @@ static Node* params(Parser* p) { // => NTuple
   // (T1, T2, T3)
   // (T1, T2, ... T3)
   //
-  want(p, TLParen);
+  assert_debug(p->s.tok == TLParen);
+  nexttok(p);
+  const Tok endtok = TRParen;
   auto n = mknode(p, NTuple);
   bool hasTypedParam = false; // true when at least one param has type; e.g. "x T"
   NodeArray typeq = Array_INIT_ON_STACK(32);
   PFlag fl = PFlagRValue;
 
-  while (p->s.tok != TRParen && p->s.tok != TNone) {
+  while (p->s.tok != endtok && p->s.tok != TNone) {
     auto field = mknode(p, NArg);
     if (p->s.tok == TId) {
       field->field.name = p->s.name;
       nexttok(p);
       // TODO: check if "<" follows. If so, this is a type.
-      if (p->s.tok != TRParen && p->s.tok != TComma && p->s.tok != TSemi) {
+      if (p->s.tok != endtok && p->s.tok != TComma && p->s.tok != TSemi) {
         field->type = expr(p, PREC_LOWEST, fl);
         hasTypedParam = true;
         // spread type to predecessors
@@ -900,11 +903,11 @@ static Node* params(Parser* p) { // => NTuple
       }
     } else {
       // definitely just type, e.g. "fun(int)int"
-      field->type = expr(p, PREC_LOWEST, fl);
+      field->type = pType(p, fl);
     }
     NodeArrayAppend(p->build->mem, &n->array.a, field);
     if (!got(p, TComma)) {
-      if (p->s.tok != TRParen) {
+      if (p->s.tok != endtok) {
         syntaxerr(p, "expecting comma or )");
         nexttok(p);
       }
@@ -924,11 +927,15 @@ static Node* params(Parser* p) { // => NTuple
       Node* field = (Node*)n->array.a.v[i];
       field->field.index = index++;
       defsym(p, field->field.name, field);
+      NodeTransferUnresolved(field, field->type);
       NodeTransferUnresolved(n, field->type);
     }
   } else {
-    // type-only form; e.g. "(T, T, Y)"
+    // type-only form, e.g. "(T, T, Y)"
     // make ident of each field->field.name where field->type == NULL
+    //
+    // TODO: for template parameters, this case means "name only without type constraints"
+    //
     u32 index = 0;
     for (u32 i = 0; i < n->array.a.len; i++) {
       Node* field = (Node*)n->array.a.v[i];
@@ -939,13 +946,40 @@ static Node* params(Parser* p) { // => NTuple
         field->field.name = sym__;
         field->field.index = index++;
       }
+      NodeTransferUnresolved(field, field->type);
       NodeTransferUnresolved(n, field->type);
     }
   }
 
   ArrayFree(&typeq, p->build->mem);
-  want(p, TRParen);
+  want(p, endtok);
   return n;
+}
+
+// template parameters, e.g. "<T, R=T>"
+static Node* templateParams(Parser* p) {
+  assert(p->s.tok == TLt);
+  nexttok(p);
+  PFlag fl = PFlagNone; // lvalue semantics
+  auto tuple = mknode(p, NTuple);
+  do {
+    if (R_UNLIKELY(p->s.tok != TId)) {
+      syntaxerr(p, "expecting %s", TokName(TId));
+      break;
+    }
+    auto name = mknode(p, NId);
+    name->ref.name = p->s.name;
+    nexttok(p);
+    Node* init = NULL;
+    if (got(p, TAssign)) // T=something
+      init = prefixExpr(p, fl | PFlagRValue);
+    Node* letn = makeLet(p, name, init);
+    letn->type = Type_nil;
+    NodeArrayAppend(p->build->mem, &tuple->array.a, letn);
+  } while (got(p, TComma) && p->s.tok != TGt);
+  want(p, TGt);
+  set_endpos(p, tuple);
+  return tuple;
 }
 
 
@@ -978,11 +1012,17 @@ static Node* PFun(Parser* p, PFlag fl) {
     nexttok(p);
   }
 
-  // parameters
+  // template parameters, e.g. "fun foo<T, R>(...)"
+  if (p->s.tok == TLt) {
+    pushScope(p);
+    n->fun.tparams = templateParams(p);
+    dlog("tparams: %s", fmtnode(n->fun.tparams));
+  }
+
+  // function parameters
   pushScope(p);
   if (p->s.tok == TLParen) {
     auto pa = params(p);
-    assert(pa->kind == NTuple);
 
     // Note: the type of fun.params should structually match the type of call.args.
     // This reduces the work needed by the type resolver.
@@ -1021,9 +1061,12 @@ static Node* PFun(Parser* p, PFlag fl) {
   }
   p->fnest--;
 
-  NodeTransferUnresolved(n, n->fun.body);
+  if (n->fun.body)
+    NodeTransferUnresolved(n, n->fun.body);
 
-  popScope(p); // note: contains parameters
+  popScope(p); // function parameter scope
+  if (n->fun.tparams)
+    popScope(p); // template parameter scope
 
   return n;
 }

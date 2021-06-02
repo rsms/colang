@@ -190,21 +190,6 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   if (n == NULL)
     return str_append(s, "(null)", 6);
 
-  // dlog("nodeRepr %s", NodeKindName(n->kind));
-  // if (n->kind == NId) {
-  //   dlog("  addr:   %p", n);
-  //   dlog("  name:   %s", n->ref.name);
-  //   if (n->ref.target == NULL) {
-  //     dlog("  target: <null>");
-  //   } else {
-  //     dlog("  target:");
-  //     dlog("    addr:   %p", n->ref.target);
-  //     dlog("    kind:   %s", NodeKindName(n->ref.target->kind));
-  //   }
-  // }
-
-  // s = str_appendfmt(s, "[%p] ", n);
-
   if (depth > ctx->maxdepth) {
     s = style_push(ctx, s, ctx->unimportant_color);
     s = str_appendcstr(s, "...");
@@ -220,7 +205,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes && ctx->typenest == 0) {
       s = style_push(ctx, s, ctx->type_color);
       if (n->type) {
+        ctx->typenest++;
         s = nodeRepr(n->type, s, ctx, depth + 1);
+        ctx->typenest--;
         s = str_appendcstr(s, ":");
       } else {
         s = str_appendcstr(s, "?:");
@@ -369,11 +356,17 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_append(s, f->name, symlen(f->name));
       s = style_pop(ctx, s);
     } else {
-      s = str_append(s, "_", 1);
+      s = str_appendc(s, '_');
     }
 
     // include address
     s = str_appendfmt(s, " %s%p%s", ctx->ptr_color, n, ctx->nofg_color);
+
+    if (f->tparams) {
+      s = nodeRepr(f->tparams, s, ctx, depth + 1);
+    } else {
+      s = reprEmpty(s, ctx);
+    }
 
     if (f->params) {
       s = nodeRepr(f->params, s, ctx, depth + 1);
@@ -386,7 +379,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     if (f->result) {
       s = nodeRepr(f->result, s, ctx, depth + 1);
     } else {
-      s = reprEmpty(s, ctx);
+      s = style_push(ctx, s, ctx->unresolved_color);
+      s = str_appendcstr(s, "?");
+      s = style_pop(ctx, s);
     }
 
     if (f->body) {

@@ -59,7 +59,7 @@ typedef Node Type;
   _( TAndAnd        , "&&")  \
   _( TPipePipe      , "||")  \
   _( TRArr          , "->")  \
-  _( TId            , "id")  \
+  _( TId            , "identifier")  \
   _( TIntLit        , "int") \
   _( TFloatLit      , "float") \
   _( TIndent        , "indent") /* only produced when using flag ParseIndent */ \
