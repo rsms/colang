@@ -243,7 +243,7 @@ int cmd_build(int argc, const char** argv) {
     NodeTransferUnresolved(pkgnode, filenode);
     src = src->next;
   }
-  //dump_ast("", pkgnode);
+  dump_ast("", pkgnode);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
@@ -256,9 +256,10 @@ int cmd_build(int argc, const char** argv) {
       errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
       return 1;
     }
-    //dump_ast("", pkgnode);
+    dump_ast("", pkgnode);
     assert( ! NodeIsUnresolved(pkgnode)); // no errors should mean all resolved
   }
+  return 0; // XXX
 
   // resolve types
   pkgnode = ResolveType(&build, pkgnode);
@@ -274,8 +275,6 @@ int cmd_build(int argc, const char** argv) {
     auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
     printf("parse, resolve & typecheck %.*s\n", buflen, abuf);
   }
-
-  return 0; // XXX
 
   // build IR
   #if 0

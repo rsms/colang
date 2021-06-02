@@ -45,7 +45,6 @@ typedef enum {
   _(Return,      NodeClassExpr) \
   _(Tuple,       NodeClassExpr|NodeClassArray) \
   _(TypeCast,    NodeClassExpr) \
-  _(ZeroInit,    NodeClassExpr) \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
   _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
@@ -280,6 +279,23 @@ static Node* NodeCopy(Mem mem, const Node* n);
 // function that is called along with any identifier indirections.
 // Note: The output does NOT include n itself.
 void node_diag_trail(Build* b, DiagLevel dlevel, Node* n);
+
+// -----------------------
+// AST visitor
+
+// NodeList is a linked list of nodes
+typedef struct NodeList NodeList;
+struct NodeList { NodeList* parent; Node* n; };
+
+// NodeVisitor is used with NodeVisit to traverse an AST.
+// Return false to stop iteration.
+typedef bool(*NodeVisitor)(NodeList* n, void* nullable data);
+
+// NodeVisit calls f for each child of n, passing along data to f.
+// Returns true if all calls to f returns true.
+bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
+
+
 
 // -----------------------------------------------------------------------------------------------
 // implementations

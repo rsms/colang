@@ -5,7 +5,7 @@
 
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE "[resolvesym] "
+#define DEBUG_MODULE "[resolvesym] "
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -307,7 +307,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   case NIntLit:
   case NFloatLit:
   case NStrLit:
-  case NZeroInit:
   case _NodeKindMax:
     break;
 

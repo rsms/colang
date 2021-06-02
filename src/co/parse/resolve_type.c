@@ -729,7 +729,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NNone:
   case NBasicType:
   case NTupleType:
-  case NZeroInit:
   case _NodeKindMax:
     dlog("unexpected %s", fmtast(n));
     assert(!"expected to be typed");

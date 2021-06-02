@@ -251,7 +251,6 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NBad:
   case NNone:
   case NNil:
-  case NZeroInit:
     str_setlen(s, str_len(s) - 1); // trim away trailing " " from s
     break;
 
@@ -546,9 +545,6 @@ Str str_append_astnode(Str s, const Node* n) {
   // uses no extra data
   case NNil: // nil
     return str_appendcstr(s, "nil");
-
-  case NZeroInit: // init
-    return str_appendcstr(s, "init");
 
   case NBoolLit: // true | false
     return str_appendcstr(s, n->val.i == 0 ? "false" : "true");

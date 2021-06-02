@@ -723,7 +723,6 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NPostfixOp:
     case NTuple:
     case NTupleType:
-    case NZeroInit:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 
@@ -844,7 +843,6 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
     case NTuple:
     case NTupleType:
     case NTypeCast:
-    case NZeroInit:
     case _NodeKindMax:
       build_errf(u->build, NodePosSpan(n), "invalid top-level AST node %s", NodeKindName(n->kind));
       break;
