@@ -189,18 +189,6 @@ PosSpan NodePosSpan(Node* n) {
 }
 
 
-// void NodeListAppend(Mem mem, NodeList* a, Node* n) {
-//   auto l = (NodeListLink*)memalloc(mem, sizeof(NodeListLink));
-//   l->node = n;
-//   if (a->tail == NULL) {
-//     a->head = l;
-//   } else {
-//     a->tail->next = l;
-//   }
-//   a->tail = l;
-//   a->len++;
-// }
-
 Node* ast_opt_ifcond(Node* n) {
   assert(n->kind == NIf);
   if (n->cond.cond == Const_true) {
