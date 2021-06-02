@@ -1,0 +1,15 @@
+# array of literal size
+array [4]int  # == (0,0,0,0)
+
+# # array of size defined by constant expression
+# array [acap]int # == (0,0,0,0)
+# acap = acap1
+# acap1 = 4 * acap2
+# acap2 = 2 as int8
+
+# array = [4]int()  # == (0,0,0,0)
+
+# slice = []int(1, 2, 3)
+
+fun foo(color [4]byte) {
+}

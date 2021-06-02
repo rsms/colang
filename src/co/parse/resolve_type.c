@@ -32,7 +32,7 @@ typedef struct {
   Array          typecontext_stack; // stack of Type* which are all of NodeClassType
   Type*          typecontextstack_storage[32];
 
-  Array funstack; // stack of Node*[kind==NFun] of current function scope
+  Array funstack; // stack of Node*[kind==NFun] -- current function scope
   Node* funstack_storage[8];
 
   bool explicitTypeCast;
@@ -85,7 +85,7 @@ static void typecontext_pop(ResCtx* ctx) {
     dlog_mod("typecontext_pop %s (now nil)", fmtnode(ctx->typecontext));
     ctx->typecontext = NULL;
   } else {
-    auto was = ctx->typecontext;
+    UNUSED auto was = ctx->typecontext;
     ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
     dlog_mod("typecontext_pop %s (now %s)", fmtnode(was), fmtnode(ctx->typecontext));
   }
@@ -99,7 +99,7 @@ inline static void funstack_push(ResCtx* ctx, Node* n) {
 
 inline static void funstack_pop(ResCtx* ctx) {
   assert(ctx->funstack.len > 1); // must never remove the bottom of the stack (NULL value)
-  auto n = ArrayPop(&ctx->funstack);
+  UNUSED auto n = ArrayPop(&ctx->funstack);
   dlog_mod("funstack_pop %s", fmtnode(n));
 }
 
@@ -143,8 +143,8 @@ static Node* resolve_ideal_type(
     case NIntLit:
     case NFloatLit: {
       if (typecontext) {
-        bool explicit_cast = fl & RFlagExplicitTypeCast;
-        return convlit(ctx->build, n, typecontext, explicit_cast);
+        ConvlitFlags clfl = fl & RFlagExplicitTypeCast ? ConvlitExplicit : ConvlitImplicit;
+        return convlit(ctx->build, n, typecontext, clfl | ConvlitRelaxedType);
       }
       // no type context; resolve to best effort based on value
       Node* n2 = NodeCopy(ctx->build->mem, n);
@@ -191,7 +191,7 @@ static void err_ret_type(ResCtx* ctx, Node* fun, Node* retval) {
   }
   build_errf(ctx->build, NodePosSpan(focusnode), msgfmt,
     fmtnode(focusnode), fmtnode(rettype), fmtnode(expect));
-  node_diag_trail(ctx->build, DiagInfo, focusnode);
+  node_diag_trail(ctx->build, DiagNote, focusnode);
 }
 
 
@@ -315,7 +315,7 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
       cn->type = (Node*)NodeBad;
       build_errf(ctx->build, NodePosSpan(cn), "unknown type");
     }
-    NodeArrayAppend(ctx->build->mem, &tt->t.array.a, cn->type);
+    NodeArrayAppend(ctx->build->mem, &tt->t.list.a, cn->type);
     if (ct)
       ctx->typecontext = ct->array.a.v[ctindex++];
   }
@@ -375,13 +375,13 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
       // note: continue to statement outside these if blocks
     } else {
       dlog_mod("[binop] 2  left is untyped, right is typed (%s)", fmtnode(rt));
-      n->op.left = ConvlitImplicit(ctx->build, n->op.left, rt);
+      n->op.left = convlit(ctx->build, n->op.left, rt, ConvlitImplicit | ConvlitRelaxedType);
       n->type = rt;
       return n;
     }
   } else if (rt == Type_ideal) {
     dlog_mod("[binop] 3  left is typed (%s), right is untyped", fmtnode(lt));
-    n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
+    n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
     n->type = lt;
     return n;
   } else {
@@ -392,14 +392,14 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   // - left & right are both untyped (lhs has been resolved, above)
   // - left & right are both typed
   if (!TypeEquals(ctx->build, lt, rt)) {
-    n->op.right = ConvlitImplicit(ctx->build, n->op.right, lt);
+    n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
 
     if (R_UNLIKELY(!TypeEquals(ctx->build, lt, rt))) {
       build_errf(ctx->build, NodePosSpan(n), "invalid operation: %s (mismatched types %s and %s)",
         fmtnode(n), fmtnode(lt), fmtnode(rt));
       if (lt->kind == NBasicType) {
         // suggest type cast: x + (y as int)
-        build_infof(ctx->build, NodePosSpan(n->op.right),
+        build_notef(ctx->build, NodePosSpan(n->op.right),
           "try a type cast: %s %s (%s as %s)",
           fmtnode(n->op.left), TokName(n->op.op), fmtnode(n->op.right), fmtnode(lt));
       }
@@ -435,7 +435,8 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
     n = n->call.args;
   } else {
     // attempt conversion to eliminate type cast
-    n->call.args = ConvlitExplicit(ctx->build, n->call.args, n->call.receiver);
+    n->call.args = convlit(
+      ctx->build, n->call.args, n->call.receiver, ConvlitExplicit | ConvlitRelaxedType);
     if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
       // source type == target type -- eliminate type cast
       n = n->call.args;
@@ -517,7 +518,8 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
       //                              ^      ^
       //                            int16   int
       //
-      n->cond.elseb = ConvlitImplicit(ctx->build, n->cond.elseb, thentype);
+      n->cond.elseb = convlit(
+        ctx->build, n->cond.elseb, thentype, ConvlitImplicit | ConvlitRelaxedType);
       if (R_UNLIKELY(!TypeEquals(ctx->build, thentype, n->cond.elseb->type))) {
         build_errf(ctx->build, NodePosSpan(n),
           "if..else branches of mixed incompatible types %s %s",
@@ -543,6 +545,56 @@ static Type* resolve_id_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
+  asserteq_debug(n->kind, NArrayType);
+  asserteq_debug(n->t.array.size, 0); // must not be resolved already
+  assertnotnull_debug(n->t.array.sizeExpr); // must be array and not slice
+
+  // set temporary size so that we don't cause an infinite loop
+  n->t.array.size = 0xFFFFFFFFFFFFFFFF;
+  auto zn = NodeEval(ctx->build, n->t.array.sizeExpr, Type_usize);
+
+  if (R_UNLIKELY(zn == NULL)) {
+    // TODO: improve these error message to be more specific
+    n->t.array.size = 0;
+    zn = n->t.array.sizeExpr;
+    build_errf(ctx->build, NodePosSpan(zn), "invalid expression %s for array size", fmtnode(zn));
+    node_diag_trail(ctx->build, DiagNote, zn);
+  } else {
+    n->t.array.sizeExpr = zn;
+    asserteq_debug(zn->kind, NIntLit);
+    asserteq_debug(zn->val.ct, CType_int);
+    n->t.array.size = zn->val.i;
+  }
+}
+
+
+static bool is_type_complete(Type* n) {
+  if (n->kind == NArrayType &&
+      ( (n->t.array.sizeExpr && n->t.array.size == 0) ||
+        !is_type_complete(n->t.array.subtype) ) )
+  {
+    return false;
+  }
+  return true;
+}
+
+
+static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
+  asserteq_debug(n->kind, NArrayType);
+
+  if (n->t.array.sizeExpr && n->t.array.size == 0) {
+    n->t.array.sizeExpr = resolve_type(ctx, n->t.array.sizeExpr, fl);
+    resolve_arraytype_size(ctx, n);
+  }
+
+  if (!is_type_complete(n->t.array.subtype))
+    n->t.array.subtype = resolve_type(ctx, n->t.array.subtype, fl);
+
+  return n;
+}
+
+
 #ifdef DEBUG_MODULE
 // wrap resolve_type to print return value
 static Node* _resolve_type(ResCtx* ctx, Node* n, RFlag fl);
@@ -561,7 +613,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl) {
   ctx->debug_depth--;
 
   if (NodeKindIsType(n->kind)) {
-    dlog_mod("● %s == %s", fmtnode(n), fmtnode(n));
+    dlog_mod("● %s => %s", fmtnode(n), fmtnode(n));
   } else {
     dlog_mod("● %s => %s", fmtnode(n), fmtnode(n2->type));
   }
@@ -574,18 +626,22 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 {
   assert(n != NULL);
 
-  if (NodeKindIsType(n->kind))
-    return n;
-
-  if (n->type) {
+  if (NodeKindIsType(n->kind)) {
+    if (is_type_complete(n))
+      return n;
+  } else if (n->type) {
     // Has type already. Constant literals might have ideal type.
     if (n->type == Type_ideal) {
       // if (fl & RFlagResolveIdeal)
       if (ctx->typecontext)
         R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
       // else: leave as ideal, for now
+      return n;
+    } else {
+      if (!is_type_complete(n->type))
+        n->type = resolve_type(ctx, n->type, fl);
+      return n;
     }
-    return n;
   }
 
   // branch on node kind
@@ -647,11 +703,16 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NId:
     R_MUSTTAIL return resolve_id_type(ctx, n, fl);
 
+  case NArrayType:
+    R_MUSTTAIL return resolve_arraytype_type(ctx, n, fl);
+
   case NIntLit:
   case NFloatLit:
     if (fl & RFlagResolveIdeal) {
-      if (ctx->typecontext)
-        R_MUSTTAIL return convlit(ctx->build, n, ctx->typecontext, (fl & RFlagExplicitTypeCast));
+      if (ctx->typecontext) {
+        ConvlitFlags clfl = fl & RFlagExplicitTypeCast ? ConvlitExplicit : ConvlitImplicit;
+        R_MUSTTAIL return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
+      }
       // fallback
       n = NodeCopy(ctx->build->mem, n);
       n->type = IdealType(n->val.ct);
@@ -660,6 +721,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     // else: not ideal type; should be typed already!
     FALLTHROUGH;
   case NBoolLit:
+  case NStrLit:
   case NBad:
   case NNil:
   case NComment:

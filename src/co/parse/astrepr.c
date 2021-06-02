@@ -3,10 +3,14 @@
 #include "../util/array.h"
 #include "parse.h"
 
+// DEBUG_INCLUDE_SCOPE: define to include "[scope ADDR]" in output
+#define DEBUG_INCLUDE_SCOPE
+
 
 typedef struct ReprCtx {
   int         ind;  // indentation level
   int         maxdepth;
+  int         typenest; // >0 when formatting a type
   TStyleTable style;
   bool        pretty;
   bool        includeTypes;
@@ -22,6 +26,7 @@ typedef struct ReprCtx {
   Str   ptr_color;
   Str   type_color;
   Str   unimportant_color;
+  Str   unresolved_color;
 } ReprCtx;
 
 static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth);
@@ -48,6 +53,7 @@ Str NodeRepr(const Node* n, Str s) {
     ctx.type_color = str_cpycstr(style[TStyle_blue]);
     // ctx.type_color = str_cpycstr("\x1b[44m");
     ctx.unimportant_color = str_cpycstr(style[TStyle_grey]);
+    ctx.unresolved_color = str_cpycstr(style[TStyle_green]);
     ArrayPush(&ctx.stylestack, (void*)bold_style, mem);
   }
 
@@ -62,6 +68,7 @@ Str NodeRepr(const Node* n, Str s) {
   str_free(ctx.ptr_color);
   str_free(ctx.type_color);
   str_free(ctx.unimportant_color);
+  str_free(ctx.unresolved_color);
   return s;
 }
 
@@ -117,7 +124,7 @@ static void funscope_pop(ReprCtx* ctx) {
 
 
 static Str indent(Str s, const ReprCtx* ctx) {
-  if (ctx->ind > 0) {
+  if (ctx->ind > 0 && ctx->typenest == 0) {
     if (ctx->pretty) {
       s = str_append(s, "\n", 1);
       s = str_appendfill(s, ctx->ind, ' ');
@@ -135,28 +142,27 @@ static Str reprEmpty(Str s, const ReprCtx* ctx) {
 }
 
 
-// static Scope* getScope(const Node* n) {
-//   switch (n->kind) {
-//     case NBlock:
-//     case NTuple:
-//     case NFile:
-//       return n->array.scope;
-//     case NFun:
-//       return n->fun.scope;
-//     default:
-//       return NULL;
-//   }
-// }
+#ifdef DEBUG_INCLUDE_SCOPE
+static Scope* getScope(const Node* n) {
+  switch (n->kind) {
+    case NFile:
+    case NPkg:
+      return n->array.scope;
+    default:
+      return NULL;
+  }
+}
+#endif /*DEBUG_INCLUDE_SCOPE*/
 
 
-Str NValFmt(Str s, const NVal* v) {
-  switch (v->ct) {
+Str NValFmt(Str s, const NVal v) {
+  switch (v.ct) {
 
   case CType_int:
-    if (v->i > 0x7fffffffffffffff) {
-      return str_appendfmt(s, "%llu", v->i);
+    if (v.i > 0x7fffffffffffffff) {
+      return str_appendfmt(s, FMT_U64, v.i);
     } else {
-      return str_appendfmt(s, "%lld", (i64)v->i);
+      return str_appendfmt(s, FMT_S64, (i64)v.i);
     }
 
   case CType_rune:
@@ -166,7 +172,7 @@ Str NValFmt(Str s, const NVal* v) {
     break;
 
   case CType_bool:
-    return str_appendcstr(s, v->i == 0 ? "false" : "true");
+    return str_appendcstr(s, v.i == 0 ? "false" : "true");
 
   case CType_nil:
     str_appendcstr(s, "nil");
@@ -206,29 +212,38 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     return s;
   }
 
-  auto isType = NodeKindIsType(n->kind);
+  bool isType = NodeKindIsType(n->kind);
   if (!isType) {
     s = indent(s, ctx);
 
-    if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes) {
+    // add type prefix
+    if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes && ctx->typenest == 0) {
       s = style_push(ctx, s, ctx->type_color);
       if (n->type) {
         s = nodeRepr(n->type, s, ctx, depth + 1);
-        s = str_append(s, ":", 1);
+        s = str_appendcstr(s, ":");
       } else {
-        s = str_append(s, "?:", 2);
+        s = str_appendcstr(s, "?:");
       }
       s = style_pop(ctx, s);
     }
+
     s = str_appendfmt(s, "(%s ", NodeKindName(n->kind));
+  }
+
+  if (NodeIsUnresolved(n)) {
+    s = style_push(ctx, s, ctx->unresolved_color);
+    s = str_appendcstr(s, "\xE2\x8B\xAF "); // "⋯" U+22EF
+    s = style_pop(ctx, s);
   }
 
   ctx->ind += 2;
 
-  // auto scope = getScope(n);
-  // if (scope) {
-  //   s = str_appendfmt(s, "[scope %p] ", scope);
-  // }
+  #ifdef DEBUG_INCLUDE_SCOPE
+  auto scope = getScope(n);
+  if (scope)
+    s = str_appendfmt(s, "[scope %p] ", scope);
+  #endif /*DEBUG_INCLUDE_SCOPE*/
 
   switch (n->kind) {
 
@@ -242,8 +257,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
 
   // uses u.integer
   case NIntLit:
-    s = str_appendfmt(s, "%llu", n->val.i);
+    s = str_appendfmt(s, FMT_U64, n->val.i);
     break;
+
   case NBoolLit:
     if (n->val.i == 0) {
       s = str_appendcstr(s, "false");
@@ -265,6 +281,10 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   // uses u.ref
   case NId:
     assert(n->ref.name != NULL);
+    if (isType && n->ref.target) {
+      s = nodeRepr(n->ref.target, s, ctx, depth);
+      break;
+    }
     s = style_push(ctx, s, ctx->id_color);
     s = str_append(s, n->ref.name, symlen(n->ref.name));
     s = style_pop(ctx, s);
@@ -320,7 +340,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_appendfmt(s, "#%u ", n->field.index);
     }
     if (n->field.name) {
+      s = style_push(ctx, s, ctx->id_color);
       s = str_append(s, n->field.name, symlen(n->field.name));
+      s = style_pop(ctx, s);
     } else {
       s = str_appendc(s, '_');
     }
@@ -344,7 +366,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     auto f = &n->fun;
 
     if (f->name) {
+      s = style_push(ctx, s, ctx->id_color);
       s = str_append(s, f->name, symlen(f->name));
+      s = style_pop(ctx, s);
     } else {
       s = str_append(s, "_", 1);
     }
@@ -379,12 +403,12 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NCall: {
     auto recv = n->call.receiver;
 
-    const Node* funTarget = (
-      recv->kind == NFun ? recv :
-      (recv->kind == NId && recv->ref.target != NULL && recv->ref.target->kind == NFun) ?
-        recv->ref.target :
-      NULL
-    );
+    // const Node* funTarget = (
+    //   recv->kind == NFun ? recv :
+    //   (recv->kind == NId && recv->ref.target != NULL && recv->ref.target->kind == NFun) ?
+    //     recv->ref.target :
+    //   NULL
+    // );
 
     s = nodeRepr(recv, s, ctx, depth + 1);
     // if (funTarget) {
@@ -410,6 +434,7 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     break;
 
   case NBasicType:
+    ctx->typenest++;
     s = style_push(ctx, s, ctx->type_color);
     if (n == Type_ideal) {
       s = str_appendc(s, '*');
@@ -417,9 +442,11 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
       s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
     }
     s = style_pop(ctx, s);
+    ctx->typenest--;
     break;
 
-  case NFunType: // TODO
+  case NFunType:
+    ctx->typenest++;
     if (n->t.fun.params) {
       s = nodeRepr(n->t.fun.params, s, ctx, depth + 1);
     } else {
@@ -431,24 +458,51 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
     } else {
       s = str_appendcstr(s, "()");
     }
+    ctx->typenest--;
     break;
 
-  // uses u.t.tuple
+  // uses u.t.list
   case NTupleType: {
-    s = str_append(s, "(", 1);
+    ctx->typenest++;
+    s = str_appendc(s, '(');
     bool first = true;
-    for (u32 i = 0; i < n->t.array.a.len; i++) {
-      Node* cn = n->t.array.a.v[i];
+    for (u32 i = 0; i < n->t.list.a.len; i++) {
+      Node* cn = n->t.list.a.v[i];
       if (first) {
         first = false;
       } else {
-        s = str_append(s, " ", 1);
+        s = str_appendc(s, ' ');
       }
       s = nodeRepr(cn, s, ctx, depth + 1);
     }
-    s = str_append(s, ")", 1);
+    s = str_appendc(s, ')');
+    ctx->typenest--;
     break;
   }
+
+  // uses u.t.array
+  case NArrayType: {
+    ctx->typenest++;
+    if (n->t.array.sizeExpr == NULL) {
+      s = str_appendcstr(s, "[]");
+    } else {
+      if (n->t.array.size != 0) {
+        // size is known
+        s = str_appendfmt(s, "[" FMT_U64 "]", n->t.array.size);
+      } else {
+        s = str_appendc(s, '[');
+        s = nodeRepr(n->t.array.sizeExpr, s, ctx, depth + 1);
+        s = str_appendc(s, ']');
+      }
+    }
+    s = nodeRepr(n->t.array.subtype, s, ctx, depth + 1);
+    ctx->typenest--;
+    break;
+  }
+
+  // TODO
+  case NStrLit:
+    panic("TODO %s", NodeKindName(n->kind));
 
   case _NodeKindMax: break;
   // Note: No default case, so that the compiler warns us about missing cases.
@@ -500,7 +554,7 @@ Str str_append_astnode(Str s, const Node* n) {
     return str_appendcstr(s, n->val.i == 0 ? "false" : "true");
 
   case NIntLit: // 123
-    return str_appendfmt(s, "%llu", n->val.i);
+    return str_appendfmt(s, FMT_U64, n->val.i);
 
   case NFloatLit: // 12.3
     return str_appendfmt(s, "%f", n->val.f);
@@ -537,15 +591,12 @@ Str str_append_astnode(Str s, const Node* n) {
     return str_append_astnode(s, n->op.left);
 
   case NBlock: // {int}
-    s = str_appendc(s, '{');
-    s = str_append_astnode(s, n->type);
-    return str_appendc(s, '}');
+    return str_appendcstr(s, "block");
 
-  case NTuple: { // (one two 3)
+  case NTuple: // (one two 3)
     s = str_appendc(s, '(');
     s = str_append_NodeArray(s, &n->array.a);
     return str_appendc(s, ')');
-  }
 
   case NPkg: // pkg
     return str_appendcstr(s, "pkg");
@@ -560,9 +611,12 @@ Str str_append_astnode(Str s, const Node* n) {
     return str_append(s, n->field.name, symlen(n->field.name));
 
   case NFun: // fun foo
-    if (n->fun.name == NULL)
-      return str_appendcstr(s, "fun _");
-    return str_appendfmt(s, "fun %s", n->fun.name);
+    s = str_appendcstr(s, "function");
+    if (n->fun.name) {
+      s = str_appendc(s, ' ');
+      s = str_appendcstr(s, n->fun.name);
+    }
+    return s;
 
   case NTypeCast: // typecast<int16>
     s = str_appendcstr(s, "typecast<");
@@ -591,14 +645,21 @@ Str str_append_astnode(Str s, const Node* n) {
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
-    s = str_append_NodeArray(s, &n->t.array.a);
+    s = str_append_NodeArray(s, &n->t.list.a);
     return str_appendc(s, ')');
+
+  case NArrayType: // [4]int, []int
+    return str_appendcstr(s, n->t.array.sizeExpr ? "array" : "slice");
 
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
   case NNone:
   case NField: // field is not yet implemented by parser
     return str_appendcstr(s, NodeKindName(n->kind));
+
+  // TODO
+  case NStrLit:
+    panic("TODO %s", NodeKindName(n->kind));
 
   case _NodeKindMax:
     break;

@@ -76,10 +76,31 @@ void build_diagf(Build* b, DiagLevel level, PosSpan pos, const char* fmt, ...) {
   va_end(ap);
 }
 
+void build_errf(Build* b, PosSpan pos, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  build_diagv(b, DiagError, pos, fmt, ap);
+  va_end(ap);
+}
+
+void build_warnf(Build* b, PosSpan pos, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  build_diagv(b, DiagWarn, pos, fmt, ap);
+  va_end(ap);
+}
+
+void build_notef(Build* b, PosSpan pos, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  build_diagv(b, DiagNote, pos, fmt, ap);
+  va_end(ap);
+}
+
 static const char* const _DiagLevelName[DiagMAX + 1] = {
   "error",
   "warn",
-  "info",
+  "note",
 };
 
 const char* DiagLevelName(DiagLevel l) {

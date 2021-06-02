@@ -39,6 +39,8 @@ static const i64 min_intval[TypeCode_NUM_END] = {
   (i64)0,                   // TODO float64
   (i32)-0x80000000,         // int == int32
   (i64)0,                   // uint == uint32
+  (i64)-0x8000000000000000, // isize
+  (i64)0,                   // usize
 };
 
 static const u64 max_intval[TypeCode_NUM_END] = {
@@ -55,6 +57,8 @@ static const u64 max_intval[TypeCode_NUM_END] = {
   0,                   // TODO float64
   0x7fffffff,          // int == int32
   0xffffffff,          // uint == uint32
+  0x7fffffffffffffff,  // isize
+  0xffffffffffffffff,  // usize
 };
 
 // convert an intrinsic numeric value v to an integer of type tc.
@@ -65,7 +69,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
     case CType_int:
       // int -> int; check overflow and simply leave as-is (reinterpret.)
       if (R_UNLIKELY((i64)v->i < min_intval[tc] || max_intval[tc] < v->i)) {
-        auto nval = NValFmt(str_new(16), v);
+        auto nval = NValFmt(str_new(16), *v);
         build_errf(b, NodePosSpan(srcnode), "constant %s overflows %s", nval, TypeCodeName(tc));
         str_free(nval);
       }
@@ -80,7 +84,7 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
       break;
 
     case CType_INVALID:
-      assert(0 && "unexpected CType");
+      assertf(0, "invalid CType (srcnode %s)", fmtnode(srcnode));
       break;
   }
   return false;
@@ -96,44 +100,36 @@ static bool convval_to_float(Build* b, Node* srcnode, NVal* v, TypeCode t) {
 
 // convval converts v into a representation appropriate for targetType.
 // If no such representation exists, return false.
-static bool convval(Build* b, Node* srcnode, NVal* v, Node* targetType, bool explicit) {
-  // TODO use 'explicit' to allow "greater" conversions like for example int -> str.
-  if (targetType->kind != NBasicType) {
-    dlog("convlit TODO targetType->kind %s", NodeKindName(targetType->kind));
-    return false;
-  }
-
-  auto tc = targetType->t.basic.typeCode;
+static bool convval(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
+  // TODO make use of 'explicit' to allow "greater" conversions like for example int -> str.
   auto tcfl = TypeCodeFlags(tc);
 
   // * -> integer
-  if (tcfl & TypeCodeFlagInt) {
+  if (tcfl & TypeCodeFlagInt)
     return convval_to_int(b, srcnode, v, tc);
-  }
 
   // * -> float
-  if (tcfl & TypeCodeFlagFloat) {
+  if (tcfl & TypeCodeFlagFloat)
     return convval_to_float(b, srcnode, v, tc);
-  }
 
-  dlog("convlit TODO * -> BasicType(%s)", TypeCodeName(tc));
+  dlog("convlit TODO TypeCode %s", TypeCodeName(tc));
   return false;
 }
 
 
 // convlit converts an expression n to type t.
 // If n is already of type t, n is simply returned.
-Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
+Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
   assert(t != NULL);
   assert(t != Type_ideal);
   assert(NodeKindIsType(t->kind));
 
   dlog_mod("[%s] %s of type %s as %s",
-    explicit ? "explicit" : "implicit",
+    (fl & ConvlitExplicit) ? "explicit" : "implicit",
     fmtnode(n), fmtnode(n->type), fmtnode(t));
 
-  if (n->type != NULL && n->type != Type_nil && n->type != Type_ideal) {
-    if (!explicit) {
+  if ((fl&ConvlitRelaxedType) && n->type != NULL && n->type != Type_nil && n->type != Type_ideal) {
+    if ((fl & ConvlitExplicit) == 0) {
       // in implicit mode, if something is typed already, we don't try and convert the type.
       dlog_mod("[implicit] no-op -- n is already typed: %s", fmtnode(n->type));
       return n;
@@ -149,7 +145,11 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
 
   case NIntLit:
     n = NodeCopy(b->mem, n); // copy, since literals may be referenced by many
-    if (convval(b, n, &n->val, t, explicit)) {
+    if (t->kind != NBasicType) {
+      dlog("convlit TODO targetType->kind %s", NodeKindName(t->kind));
+      return n;
+    }
+    if (convval(b, n, &n->val, t->t.basic.typeCode)) {
       n->type = t;
       return n;
     }
@@ -157,12 +157,12 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
 
   case NId:
     assert(n->ref.target != NULL);
-    n->ref.target = convlit(b, (Node*)n->ref.target, t, /* explicit */ false);
+    n->ref.target = convlit(b, (Node*)n->ref.target, t, fl);
     break;
 
   case NLet:
     assert(n->field.init != NULL);
-    n->field.init = convlit(b, n->field.init, t, /* explicit */ false);
+    n->field.init = convlit(b, n->field.init, t, fl);
     break;
 
   case NBinOp:
@@ -175,8 +175,8 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
       //   err_invalid_binop(b, n);
       //   break;
       // }
-      n->op.left  = convlit(b, n->op.left, t, /* explicit */ false);
-      n->op.right = convlit(b, n->op.right, t, /* explicit */ false);
+      n->op.left  = convlit(b, n->op.left, t, fl);
+      n->op.right = convlit(b, n->op.right, t, fl);
       if (R_UNLIKELY(!TypeEquals(b, n->op.left->type, n->op.right->type))) {
         err_invalid_binop(b, n);
         break;
@@ -212,6 +212,8 @@ Node* convlit(Build* b, Node* n, Node* t, bool explicit) {
       n->kind = NIntLit;
     }
     break;
+    default:
+  break;
   }
 
   return n;

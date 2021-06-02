@@ -72,6 +72,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI8x32 ;// i8 u32 -> i8
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRS8x64 ;// s8 u64 -> s8
           case TShl : return OpShLI8x64 ;// i8 u64 -> i8
@@ -124,6 +125,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI8x32 ;// i8 u32 -> i8
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRU8x64 ;// u8 u64 -> u8
           case TShl : return OpShLI8x64 ;// i8 u64 -> i8
@@ -176,6 +178,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI16x32 ;// i16 u32 -> i16
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRS16x64 ;// s16 u64 -> s16
           case TShl : return OpShLI16x64 ;// i16 u64 -> i16
@@ -228,6 +231,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI16x32 ;// i16 u32 -> i16
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRU16x64 ;// u16 u64 -> u16
           case TShl : return OpShLI16x64 ;// i16 u64 -> i16
@@ -282,6 +286,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TNEq   : return OpNEqI32    ;// i32 i32 -> bool
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRS32x64 ;// s32 u64 -> s32
           case TShl : return OpShLI32x64 ;// i32 u64 -> i32
@@ -336,6 +341,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TNEq   : return OpNEqI32     ;// i32 i32 -> bool
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr : return OpShRU32x64 ;// u32 u64 -> u32
           case TShl : return OpShLI32x64 ;// i32 u64 -> i32
@@ -343,6 +349,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
         }
         default: return OpNil;
       } // switch (type2)
+    case TypeCode_isize:
     case TypeCode_int64:
       switch (type2) {
         case TypeCode_nil: switch (tok) {
@@ -366,6 +373,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI64x32 ;// i64 u32 -> i64
           default: return OpNil;
         }
+        case TypeCode_isize:
         case TypeCode_int64: switch (tok) {
           case TSlash : return OpDivS64     ;// s64 s64 -> s64
           case TLt    : return OpLessS64    ;// s64 s64 -> bool
@@ -381,6 +389,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TNEq   : return OpNEqI64     ;// i64 i64 -> bool
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TShr   : return OpShRS64x64 ;// s64 u64 -> s64
           case TShl   : return OpShLI64x64 ;// i64 u64 -> i64
@@ -395,6 +404,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
         }
         default: return OpNil;
       } // switch (type2)
+    case TypeCode_usize:
     case TypeCode_uint64:
       switch (type2) {
         case TypeCode_nil: switch (tok) {
@@ -418,6 +428,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TShl : return OpShLI64x32 ;// i64 u32 -> i64
           default: return OpNil;
         }
+        case TypeCode_isize:
         case TypeCode_int64: switch (tok) {
           case TStar  : return OpMulI64 ;// i64 i64 -> i64
           case TAnd   : return OpAnd64  ;// i64 i64 -> i64
@@ -428,6 +439,7 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
           case TNEq   : return OpNEqI64 ;// i64 i64 -> bool
           default: return OpNil;
         }
+        case TypeCode_usize:
         case TypeCode_uint64: switch (tok) {
           case TSlash : return OpDivU64     ;// u64 u64 -> u64
           case TShr   : return OpShRU64x64  ;// u64 u64 -> u64

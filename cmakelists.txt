@@ -37,6 +37,9 @@ project(co
 include($ENV{CKIT_DIR}/ckit.cmake)
 ckit_configure_project(C)
 
+# include debug symbols in all builds
+add_compile_options(-g)
+
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
   # enable tests in the regular executable for debug builds
   add_definitions(-DR_TESTING_ENABLED=1)
@@ -183,6 +186,7 @@ add_executable(co
   src/co/parse/ast.c
   src/co/parse/astrepr.c
   src/co/parse/convlit.c
+  src/co/parse/eval.c
   src/co/parse/parse.c
   src/co/parse/resolve_sym.c
   src/co/parse/resolve_type.c
@@ -218,6 +222,12 @@ if (CO_WITH_LLVM)
     "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/co/llvm/llvm-includes.hh>"
   )
 endif()
+
+# if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+#   target_sources(co PRIVATE
+#     src/backward-cpp/backward.cpp
+#   )
+# endif()
 
 
 # parser parselet map generator (patches src/co/parse/parse.c)

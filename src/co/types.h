@@ -34,10 +34,12 @@ typedef enum TypeCodeFlag {
   _( uint32    , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                    \
   _( int64     , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
   _( uint64    , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                    \
-  _( float32   , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat )                                  \
-  _( float64   , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat )                                  \
+  _( float32   , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
+  _( float64   , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
   _( int       , 'i', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
   _( uint      , 'u', TypeCodeFlagInt )                                                        \
+  _( isize     , 'I', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
+  _( usize     , 'U', TypeCodeFlagInt )                                                        \
   _( NUM_END, 0, 0 ) /* sentinel; not a TypeCode */                                            \
   _( str       , 's', 0 )                                                                      \
   _( nil       , '0', 0 )                                                                      \
@@ -104,6 +106,8 @@ const char* CTypeName(CType ct);
   _( float64 ) \
   _( int     ) \
   _( uint    ) \
+  _( isize   ) \
+  _( usize   ) \
   _( str     ) \
 /*END TYPE_SYMS*/
 
@@ -125,8 +129,9 @@ static const char* TypeCodeName(TypeCode);
 // TypeCodeFlags accesses attributes of type code t.
 // It does an inlined a O(1) branch-less table lookup.
 static TypeCodeFlag TypeCodeFlags(TypeCode t);
-static bool TypeCodeIsInt(TypeCode t);   // check for flag TypeCodeFlagInt
-static bool TypeCodeIsFloat(TypeCode t); // check for flag TypeCodeFlagFloat
+static bool TypeCodeIsInt(TypeCode t);    // check for flag TypeCodeFlagInt
+static bool TypeCodeIsFloat(TypeCode t);  // check for flag TypeCodeFlagFloat
+static bool TypeCodeIsSigned(TypeCode t); // check for flag TypeCodeFlagSigned
 
 // TypeCodeSignNormalized returns intN for both intN and uintN
 static TypeCode TypeCodeSignNormalized(TypeCode t);
@@ -158,6 +163,9 @@ ALWAYS_INLINE static bool TypeCodeIsInt(TypeCode t) {
 }
 ALWAYS_INLINE static bool TypeCodeIsFloat(TypeCode t) {
   return TypeCodeFlags(t) & TypeCodeFlagFloat;
+}
+ALWAYS_INLINE static bool TypeCodeIsSigned(TypeCode t) {
+  return TypeCodeFlags(t) & TypeCodeFlagSigned;
 }
 
 // TypeCodeSignNormalized returns intN for both intN and uintN

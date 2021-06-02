@@ -4,7 +4,7 @@
 # flow control  if...else, for, goto, switch
 
 var names [4]str  # array of strings; cap=4, len=0
-# C equiv: struct { str p[4]; uint len, refs; } names = {{},0,1};
+# C equiv: str names[4];
 
 var days = [byte]('M','T','W','T','F','S','S')  # slice of bytes; cap=7, len=7
 # C equiv:

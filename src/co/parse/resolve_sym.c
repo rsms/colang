@@ -48,7 +48,6 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
   dlog_mod("resolve_id %s (%p)", name, n);
   while (1) {
     auto target = n->ref.target;
-    dlog_mod("  :: %s", n->ref.name);
 
     if (target == NULL) {
       dlog_mod("  LOOKUP %s", n->ref.name);
@@ -59,15 +58,16 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         return n;
       }
       n->ref.target = target;
-      dlog_mod("  UNWIND %s => %s", n->ref.name, NodeKindName(target->kind));
+      NodeClearUnresolved(n);
+      dlog_mod("  SIMPLIFY %s => %s %s", n->ref.name, NodeKindName(target->kind), fmtnode(target));
     }
 
-    dlog_mod("  SWITCH target %s", NodeKindName(target->kind));
     switch (target->kind) {
       case NId:
         // note: all built-ins which are const have targets, meaning the code above will
         // not mutate those nodes.
         n = target;
+        dlog_mod("  RET id target %s %s", NodeKindName(n->kind), fmtnode(n));
         break; // continue unwind loop
 
       case NLet:
@@ -86,6 +86,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
           //
           n = target->field.init;
         }
+        dlog_mod("  RET let %s %s", NodeKindName(n->kind), fmtnode(n));
         return n;
 
       case NBoolLit:
@@ -94,12 +95,13 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       case NFun:
       case NBasicType:
       case NTupleType:
-      case NFunType:
+      case NArrayType:
+      case NFunType: {
         // unwind identifier to constant/immutable value.
         // Example:
         //   (Id true #user) -> (Id true #builtin) -> (Bool true #builtin)
         //
-        dlog_mod("  RET target %s -> %s", NodeKindName(target->kind), fmtnode(target));
+        dlog_mod("  RET target %s %s", NodeKindName(target->kind), fmtnode(target));
         if (ctx->assignNest == 0)
           n = target;
         // assignNest is >0 when resolving the LHS of an assignment.
@@ -107,18 +109,59 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         //   (assign (tuple (ident a) (ident b)) (tuple (int 1) (int 2))) =>
         //   (assign (tuple (int 1) (int 2)) (tuple (int 1) (int 2)))
         return n;
+      }
 
-      default:
+      default: {
         assert(!NodeKindIsConst(target->kind)); // should be covered in case-statements above
         dlog_mod("resolve_id FINAL %s => %s (target %s) type? %d",
           n->ref.name, NodeKindName(n->kind), NodeKindName(target->kind),
           NodeKindIsType(target->kind));
-        dlog_mod("  RET n %s -> %s", NodeKindName(n->kind), fmtnode(n));
+        dlog_mod("  RET n %s %s", NodeKindName(n->kind), fmtnode(n));
         return n;
+      }
     }
   }
   UNREACHABLE;
 }
+
+
+static Node* resolve_arraylike_node(ResCtx* ctx, Node* n) {
+  assert_debug(n->kind == NBlock
+            || n->kind == NTuple
+            || n->kind == NFile
+            || n->kind == NPkg);
+  // n.array = map n.array (cn => resolve_sym(cn))
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    Node* cn = (Node*)n->array.a.v[i];
+    n->array.a.v[i] = resolve_sym(ctx, cn);
+  }
+  // simplify blocks with a single expression; (block expr) => expr
+  if (n->array.a.len == 1 && n->kind == NBlock)
+    n = n->array.a.v[0];
+  NodeClearUnresolved(n);
+  return n;
+}
+
+
+// TODO: improve the efficiency of this whole function.
+// Currently we visit the entire AST unconditionally, doing a lot of unnecessary work
+// when things are already resolved.
+// Idea:
+// 1. update parser to only stick a scope onto something that has unresolved refs.
+// 2. update resolve_sym to only traverse subtrees with a scope.
+
+static Node* _resolve_sym(ResCtx* ctx, Node* n);
+
+// resolve_sym is the prelude to _resolve_sym (the real implementation), acting as a gatekeeper
+// to only traverse AST's with unresolved symbols.
+// In most cases the majority of a file's AST is resolved, so this saves us from a lot of
+// unnecessary work.
+inline static Node* resolve_sym(ResCtx* ctx, Node* n) {
+  if (!NodeIsUnresolved(n))
+    return n;
+  return _resolve_sym(ctx, n);
+}
+
 
 //
 // IMPORTANT: symbol resolution is only run when the parser was unable to resolve all names up-
@@ -128,11 +171,11 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
 //
 #ifdef DEBUG_MODULE
 // wrap resolve_type to print return value
-static Node* _resolve_sym(ResCtx* ctx, Node* n);
-static Node* resolve_sym(ResCtx* ctx, Node* n) {
+static Node* _resolve_sym_dbg(ResCtx* ctx, Node* n);
+static Node* _resolve_sym(ResCtx* ctx, Node* n) {
   dlog_mod("> resolve (N%s %s)", NodeKindName(n->kind), fmtnode(n));
   ctx->debug_depth++;
-  Node* n2 = _resolve_sym(ctx, n);
+  Node* n2 = _resolve_sym_dbg(ctx, n);
   ctx->debug_depth--;
   if (n != n2) {
     dlog_mod("< resolve (N%s %s) => %s", NodeKindName(n->kind), fmtnode(n), fmtnode(n2));
@@ -141,14 +184,14 @@ static Node* resolve_sym(ResCtx* ctx, Node* n) {
   }
   return n2;
 }
-static Node* _resolve_sym(ResCtx* ctx, Node* n)
+static Node* _resolve_sym_dbg(ResCtx* ctx, Node* n)
 #else
-static Node* resolve_sym(ResCtx* ctx, Node* n)
+static Node* _resolve_sym(ResCtx* ctx, Node* n)
 #endif
 {
-  if (n->type != NULL && n->type->kind != NBasicType) {
-    n->type = resolve_sym(ctx, (Node*)n->type);
-  }
+  // resolve type first
+  if (n->type)
+    n->type = resolve_sym(ctx, n->type);
 
   switch (n->kind) {
 
@@ -160,22 +203,13 @@ static Node* resolve_sym(ResCtx* ctx, Node* n)
   case NBlock:
   case NTuple:
   case NFile:
+    return resolve_arraylike_node(ctx, n);
+
   case NPkg: {
     auto lookupscope = ctx->lookupscope;
-    if (n->kind == NFile && n->array.scope)
-      ctx->lookupscope = n->array.scope;
-    Node* lastn = NULL;
-    // n.array = map n.array (cn => resolve_sym(cn))
-    for (u32 i = 0; i < n->array.a.len; i++) {
-      Node* cn = (Node*)n->array.a.v[i];
-      lastn = resolve_sym(ctx, cn);
-      n->array.a.v[i] = lastn;
-    }
+    ctx->lookupscope = n->array.scope;
+    n = resolve_arraylike_node(ctx, n);
     ctx->lookupscope = lookupscope;
-    // simplify blocks with a single expression; (block expr) => expr
-    if (n->kind == NBlock && n->array.a.len == 1) {
-      return lastn;
-    }
     break;
   }
 
@@ -185,6 +219,7 @@ static Node* resolve_sym(ResCtx* ctx, Node* n)
       n->fun.params = resolve_sym(ctx, n->fun.params);
     if (n->type)
       n->type = resolve_sym(ctx, n->type);
+    // Note: Don't update lookupscope as a function's parameters should always be resolved
     auto body = n->fun.body;
     if (body)
       n->fun.body = resolve_sym(ctx, body);
@@ -254,6 +289,13 @@ static Node* resolve_sym(ResCtx* ctx, Node* n)
       n = ast_opt_ifcond(n);
     break;
 
+  case NArrayType: {
+    if (n->t.array.sizeExpr)
+      n->t.array.sizeExpr = resolve_sym(ctx, n->t.array.sizeExpr);
+    n->t.array.subtype = resolve_sym(ctx, n->t.array.subtype);
+    break;
+  }
+
   case NNone:
   case NBad:
   case NBasicType:
@@ -264,12 +306,14 @@ static Node* resolve_sym(ResCtx* ctx, Node* n)
   case NBoolLit:
   case NIntLit:
   case NFloatLit:
+  case NStrLit:
   case NZeroInit:
   case _NodeKindMax:
     break;
 
   } // switch n->kind
 
+  NodeClearUnresolved(n);
   return n;
 }
 

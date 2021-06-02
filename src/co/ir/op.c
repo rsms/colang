@@ -236,6 +236,8 @@ const IROp _IROpConstMap[TypeCode_NUM_END] = {
   /* TypeCode_float64 = */ OpConstF64,
   /* TypeCode_int     = */ OpConstI32,
   /* TypeCode_uint    = */ OpConstI32,
+  /* TypeCode_isize   = */ OpConstI64,
+  /* TypeCode_usize   = */ OpConstI64,
 };
 
 
@@ -474,6 +476,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpNil,
     /* -> uint */ OpNil,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpNil,
   },
   { // int8 -> ...
     /* -> bool */ OpNil,
@@ -489,6 +493,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpConvS8to32,
     /* -> uint */ OpNil,
+    /* -> isize */ OpConvS8to64,
+    /* -> usize */ OpNil,
   },
   { // uint8 -> ...
     /* -> bool */ OpNil,
@@ -504,6 +510,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpNil,
     /* -> uint */ OpConvU8to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpConvU8to64,
   },
   { // int16 -> ...
     /* -> bool */ OpNil,
@@ -519,6 +527,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpConvS16to32,
     /* -> uint */ OpNil,
+    /* -> isize */ OpConvS16to64,
+    /* -> usize */ OpNil,
   },
   { // uint16 -> ...
     /* -> bool */ OpNil,
@@ -534,6 +544,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpNil,
     /* -> uint */ OpConvU16to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpConvU16to64,
   },
   { // int32 -> ...
     /* -> bool */ OpNil,
@@ -549,6 +561,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvS32toF64,
     /* -> int */ OpNil,
     /* -> uint */ OpNil,
+    /* -> isize */ OpConvS32to64,
+    /* -> usize */ OpNil,
   },
   { // uint32 -> ...
     /* -> bool */ OpNil,
@@ -564,6 +578,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvU32toF64,
     /* -> int */ OpNil,
     /* -> uint */ OpNil,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpConvU32to64,
   },
   { // int64 -> ...
     /* -> bool */ OpNil,
@@ -579,6 +595,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvS64toF64,
     /* -> int */ OpConvI64to32,
     /* -> uint */ OpConvI64to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpNil,
   },
   { // uint64 -> ...
     /* -> bool */ OpNil,
@@ -594,6 +612,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvU64toF64,
     /* -> int */ OpConvI64to32,
     /* -> uint */ OpConvI64to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpNil,
   },
   { // float32 -> ...
     /* -> bool */ OpNil,
@@ -609,6 +629,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvF32toF64,
     /* -> int */ OpConvF32toS32,
     /* -> uint */ OpConvF32toU32,
+    /* -> isize */ OpConvF32toS64,
+    /* -> usize */ OpConvF32toU64,
   },
   { // float64 -> ...
     /* -> bool */ OpNil,
@@ -624,6 +646,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpNil,
     /* -> int */ OpConvF64toS32,
     /* -> uint */ OpConvF64toU32,
+    /* -> isize */ OpConvF64toS64,
+    /* -> usize */ OpConvF64toU64,
   },
   { // int -> ...
     /* -> bool */ OpNil,
@@ -639,6 +663,8 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvS32toF64,
     /* -> int */ OpNil,
     /* -> uint */ OpNil,
+    /* -> isize */ OpConvS32to64,
+    /* -> usize */ OpNil,
   },
   { // uint -> ...
     /* -> bool */ OpNil,
@@ -654,6 +680,42 @@ const IROp _IROpConvMap[TypeCode_NUM_END][TypeCode_NUM_END] = {
     /* -> float64 */ OpConvU32toF64,
     /* -> int */ OpNil,
     /* -> uint */ OpNil,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpConvU32to64,
+  },
+  { // isize -> ...
+    /* -> bool */ OpNil,
+    /* -> int8 */ OpConvI64to8,
+    /* -> uint8 */ OpConvI64to8,
+    /* -> int16 */ OpConvI64to16,
+    /* -> uint16 */ OpConvI64to16,
+    /* -> int32 */ OpConvI64to32,
+    /* -> uint32 */ OpConvI64to32,
+    /* -> int64 */ OpNil,
+    /* -> uint64 */ OpNil,
+    /* -> float32 */ OpConvS64toF32,
+    /* -> float64 */ OpConvS64toF64,
+    /* -> int */ OpConvI64to32,
+    /* -> uint */ OpConvI64to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpNil,
+  },
+  { // usize -> ...
+    /* -> bool */ OpNil,
+    /* -> int8 */ OpConvI64to8,
+    /* -> uint8 */ OpConvI64to8,
+    /* -> int16 */ OpConvI64to16,
+    /* -> uint16 */ OpConvI64to16,
+    /* -> int32 */ OpConvI64to32,
+    /* -> uint32 */ OpConvI64to32,
+    /* -> int64 */ OpNil,
+    /* -> uint64 */ OpNil,
+    /* -> float32 */ OpConvU64toF32,
+    /* -> float64 */ OpConvU64toF64,
+    /* -> int */ OpConvI64to32,
+    /* -> uint */ OpConvI64to32,
+    /* -> isize */ OpNil,
+    /* -> usize */ OpNil,
   },
 };
 

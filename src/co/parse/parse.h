@@ -68,6 +68,7 @@ typedef Node Type;
   _( as,          TAs)          \
   _( break,       TBreak)       \
   _( case,        TCase)        \
+  _( const,       TConst)       \
   _( continue,    TContinue)    \
   _( default,     TDefault)     \
   _( defer,       TDefer)       \
@@ -86,8 +87,8 @@ typedef Node Type;
   _( select,      TSelect)      \
   _( struct,      TStruct)      \
   _( switch,      TSwitch)      \
-  _( symbol,      TSymbol)      \
   _( type,        TType)        \
+  _( var,         TVar)         \
   _( while,       TWhile)       \
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
@@ -112,7 +113,7 @@ typedef enum {
 } Tok;
 // We only have 5 bits to encode tokens in Sym. Additionally, the value 0 is reserved
 // for "not a keyword", leaving the max number of values at 31 (i.e. 2^5=32-1).
-static_assert(TKeywordsEnd - TKeywordsStart <= 32, "too many keywords");
+static_assert(TKeywordsEnd - TKeywordsStart < 32, "too many keywords");
 
 // TokName returns a printable name for a token (second part in TOKENS definition)
 const char* TokName(Tok);
@@ -184,16 +185,38 @@ ASSUME_NONNULL_END
 ASSUME_NONNULL_BEGIN
 
 
-// Parser is the state used to parse
+// Parser holds state used during parsing
 typedef struct Parser {
   Scanner s;          // parser is based on a scanner
   Build*  build;      // compilation context
-  Scope*  scope;      // current scope (pkgscope at file level; use filescope for imports etc)
-  Scope*  filescope;  // scope for file; never in the scope stack
+  Scope*  pkgscope;   // package-level scope
   u32     fnest;      // function nesting level (for error handling)
-  u32     unresolved; // number of unresolved identifiers
+
+  // scopestack is used for tracking identifiers during parsing.
+  // This is a simple stack which we do a linear search on when looking up identifiers.
+  // It is faster than using chained hash maps in most cases because of cache locality
+  // and the fact that...
+  // 1. Most identifiers reference an identifier defined nearby. For example:
+  //      x = 3
+  //      A = x + 5
+  //      B = x - 5
+  // 2. Most bindings are short-lived and temporary ("locals") which means we can
+  //    simply change a single index pointer to "unwind" an entire scope of bindings and
+  //    then reuse that memory for the next binding scope.
+  //
+  // base is the offset in ptr to the current scope's base. Loading ptr[base] yields a uintptr
+  // that is the next scope's base index.
+  // keys (Sym) and values (Node) are interleaved in ptr together with saved base pointers.
+  struct {
+    uintptr_t cap;          // capacity of ptr (count, not bytes)
+    uintptr_t len;          // current length (use) of ptr
+    uintptr_t base;         // current scope's base index into ptr
+    void**    ptr;          // entries
+    void*     storage[256]; // initial storage in parser's memory
+  } scopestack;
 } Parser;
 
+// CreatePkgAST creates a new AST node for a package
 Node* CreatePkgAST(Build*, Scope* pkgscope);
 
 // Parse parses a translation unit and returns an AST
@@ -213,35 +236,37 @@ Node* ResolveType(Build* b, Node* n);
 Sym GetTypeID(Build* b, Type* n);
 
 // TypeEquals returns true if x and y are equivalent types (i.e. identical).
-// This function may call GetTypeID which may mutate b->syms, x and y.
+// This function may call GetTypeID which may update b->syms, may mutate x and y.
 bool TypeEquals(Build* b, Type* x, Type* y);
 
-// TypeConv describes the effect of converting one type to another
-typedef enum TypeConv {
-  TypeConvLossless = 0,  // conversion is "perfect". e.g. int32 -> int64
-  TypeConvLossy,         // conversion may be lossy. e.g. int32 -> float32
-  TypeConvImpossible,    // conversion is not possible. e.g. (int,int) -> bool
-} TypeConv;
+// // TypeConv describes the effect of converting one type to another
+// typedef enum TypeConv {
+//   TypeConvLossless = 0,  // conversion is "perfect". e.g. int32 -> int64
+//   TypeConvLossy,         // conversion may be lossy. e.g. int32 -> float32
+//   TypeConvImpossible,    // conversion is not possible. e.g. (int,int) -> bool
+// } TypeConv;
 
 // // TypeConversion returns the effect of converting fromType -> toType.
 // // intsize is the size in bytes of the "int" and "uint" types. E.g. 4 for 32-bit.
 // TypeConv CheckTypeConversion(Node* fromType, Node* toType, u32 intsize);
 
+typedef enum ConvlitFlags {
+  ConvlitImplicit    = 0,
+  ConvlitExplicit    = 1 << 0, // explicit conversion; allows for a greater range of conversions
+  ConvlitRelaxedType = 1 << 1, // if a node is already typed, do nothing and return it.
+} ConvlitFlags;
 
 // convlit converts an expression to type t.
 // If n is already of type t, n is simply returned.
+// n is assumed to have no unresolved refs (expected to have gone through resolve_sym)
 // Build is used for error reporting.
-// This function may call GetTypeID which may mutate b->syms and n.
-Node* convlit(Build*, Node* n, Node* t, bool explicit);
-// inline static Node* convlit(Build* ctx, Node* n, Node* t, bool explicit) {
-//   return n; // FIXME
-// }
+// This function may call GetTypeID which may update b->syms and mutate n.
+Node* convlit(Build*, Node* n, Type* t, ConvlitFlags fl);
 
-// For explicit conversions, which allows a greater range of conversions.
-static Node* ConvlitExplicit(Build*, Node* n, Node* t);
-
-// For implicit conversions (e.g. operands)
-static Node* ConvlitImplicit(Build*, Node* n, Node* t);
+// NodeEval attempts to evaluate expr. Returns NULL on failure or the resulting value on success.
+// If targetType is provided, the result is implicitly converted to that type.
+// In that case it is an error if the result can't be converted to targetType.
+Node* nullable NodeEval(Build* b, Node* expr, Type* nullable targetType);
 
 
 // ---------------------------------------------------------------------------------
@@ -257,13 +282,6 @@ inline static Pos ScannerPos(const Scanner* s) {
   u32 col = 1 + (u32)((uintptr_t)s->tokstart - (uintptr_t)s->linestart);
   u32 span = s->tokend - s->tokstart;
   return pos_make(s->srcposorigin, s->lineno, col, span);
-}
-
-inline static Node* ConvlitExplicit(Build* ctx, Node* n, Node* t) {
-  return convlit(ctx, n, t, /*explicit*/ true);
-}
-inline static Node* ConvlitImplicit(Build* ctx, Node* n, Node* t) {
-  return convlit(ctx, n, t, /*explicit*/ false);
 }
 
 ASSUME_NONNULL_END

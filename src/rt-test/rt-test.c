@@ -63,7 +63,7 @@ static void fn1(uintptr_t arg1) {
   dlog(GREEN "EXIT");
 }
 
-int main(int argc, const char* argv[argc+1]) {
+int main(int argc, const char** argv) {
   sched_main(fn1, 123); // never returns
   return 0;
 }

@@ -1,19 +1,11 @@
 #include "../common.h"
 #include "parse.h"
 
-//#include "../build/source.h"
-//#include "../common/array.h"
-//#include "../common/defs.h"
-//#include "../common/memory.h"
-//#include "../common/ptrmap.h"
-//#include "../common/tstyle.h"
-//#include "../sym.h"
-
-// #define DEBUG_LOOKUP
+//#define DEBUG_LOOKUP
 
 
 // NBad node
-static const Node _NodeBad = {NBad,NoPos,NoPos,NULL,{0}};
+static const Node _NodeBad = {NBad,0,NoPos,NoPos,NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
 
@@ -38,7 +30,7 @@ Node* NewNode(Mem mem, NodeKind kind) {
   auto cfl = NodeKindClass(kind);
   if (R_UNLIKELY((cfl & NodeClassArray) != 0)) {
     if (cfl & NodeClassType) {
-      ArrayInitWithStorage(&n->t.array.a, n->t.array.a_storage, countof(n->t.array.a_storage));
+      ArrayInitWithStorage(&n->t.list.a, n->t.list.a_storage, countof(n->t.list.a_storage));
     } else {
       ArrayInitWithStorage(&n->array.a, n->array.a_storage, countof(n->array.a_storage));
     }
@@ -298,7 +290,6 @@ void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
 Scope* ScopeNew(const Scope* parent, Mem mem) {
   auto s = (Scope*)memalloc(mem, sizeof(Scope));
   s->parent = parent;
-  s->childcount = 0;
   SymMapInit(&s->bindings, 8, mem);
   return s;
 }
@@ -339,15 +330,15 @@ const Node* ScopeAssoc(Scope* s, Sym key, const Node* value) {
 const Node* ScopeLookup(const Scope* scope, Sym s) {
   const Node* n = NULL;
   while (scope && n == NULL) {
-    // dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
+    //dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
     n = SymMapGet(&scope->bindings, s);
     scope = scope->parent;
   }
   #ifdef DEBUG_LOOKUP
   if (n == NULL) {
-    dlog("lookup %s => (null)", s);
+    dlog("ScopeLookup(%p) %s => (null)", scope, s);
   } else {
-    dlog("lookup %s => node of kind %s", s, NodeKindName(n->kind));
+    dlog("ScopeLookup(%p) %s => node of kind %s", scope, s, NodeKindName(n->kind));
   }
   #endif
   return n;

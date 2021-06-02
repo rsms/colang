@@ -25,6 +25,7 @@ typedef enum {
   _(BoolLit,     NodeClassConst) /* boolean literal */ \
   _(IntLit,      NodeClassConst) /* integer literal */ \
   _(FloatLit,    NodeClassConst) /* floating-point literal */ \
+  _(StrLit,      NodeClassConst) /* string literal */ \
   _(Nil,         NodeClassConst) /* the nil atom */ \
   _(Comment,     NodeClassExpr) \
   _(Assign,      NodeClassExpr) \
@@ -47,6 +48,7 @@ typedef enum {
   _(ZeroInit,    NodeClassExpr) \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
   _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
+  _(ArrayType,   NodeClassType) /* [4]int, []int */ \
   _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
 /*END DEF_NODE_KINDS*/
 
@@ -73,10 +75,9 @@ const char* NodeKindName(NodeKind);
 typedef struct Node Node;
 typedef Node Type;
 
-// Scope represents a lexical namespace
+// Scope represents a lexical namespace which may be chained.
 typedef struct Scope Scope;
 typedef struct Scope {
-  u32          childcount; // number of scopes referencing this scope as parent
   const Scope* parent;
   SymMap       bindings;
 } Scope;
@@ -104,7 +105,7 @@ typedef Array NodeArray;
 
 // NVal contains the value of basic types of literal nodes
 typedef struct NVal {
-  CType ct; // CType_bool | CType_int | CType_rune | CType_nil | CType_float | CType_str
+  CType ct;
   union {
     u64    i;  // BoolLit, IntLit
     double f;  // FloatLit
@@ -112,10 +113,18 @@ typedef struct NVal {
   };
 } NVal;
 
-// TODO: add function for computing the end Pos for an AST node. E.g. last item of a tuple.
+// AST_SIZE_UNKNOWN used for Node.t.array.size when the size is unresolved
+#define AST_SIZE_UNKNOWN 0xFFFFFFFFFFFFFFFF
+
+// NodeFlags
+typedef enum {
+  NodeFlagsNone      = 0,
+  NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
+} NodeFlags;
 
 typedef struct Node {
   NodeKind       kind;   // kind of node (e.g. NId)
+  NodeFlags      flags;  // flags describe meta attributes of the node
   Pos            pos;    // source origin & position
   Pos            endpos; // Used by compount types like tuple. NoPos means "only use pos".
   Node* nullable type;   // value type. NULL if unknown.
@@ -130,22 +139,21 @@ typedef struct Node {
       Sym   name;
       Node* target;
     } ref;
-    /* op */ struct { // Op, PrefixOp, Return, Assign
+    /* op */ struct { // BinOp, PrefixOp, PostfixOp, Return, Assign
       Node*          left;
-      Node* nullable right;  // NULL for PrefixOp. NULL for Op when its a postfix op.
+      Node* nullable right;  // NULL for PrefixOp & PostfixOp
       Tok            op;
     } op;
     /* array */ struct { // Tuple, Block, File, Pkg
-      Scope* nullable scope;        // non-NULL if kind==Block|File
+      Scope* nullable scope;        // used for Pkg and File
       NodeArray       a;            // array of nodes
       Node*           a_storage[4]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
-      Scope*          scope;  // parameter scope
-      Node*  nullable params; // input params (NTuple)
-      Node*  nullable result; // output results (NTuple | NExpr)
-      Sym    nullable name;   // NULL for lambda
-      Node*  nullable body;   // NULL for fun-declaration
+      Node* nullable params; // input params (NTuple)
+      Node* nullable result; // output results (NTuple | NExpr)
+      Sym   nullable name;   // NULL for lambda
+      Node* nullable body;   // NULL for fun-declaration
     } fun;
     /* call */ struct { // Call, TypeCast
       Node* receiver;      // Fun, Id or type
@@ -166,9 +174,14 @@ typedef struct Node {
     /* t */ struct {
       Sym nullable id; // lazy; initially NULL. Computed from Node.
       union {
-        /* array */ struct { // TupleType
+        /* list */ struct { // TupleType
           NodeArray a;            // array of nodes
           Node*     a_storage[4]; // in-struct storage for the first few entries of a
+        } list;
+        /* array */ struct { // ArrayType
+          Node* nullable sizeExpr; // NULL==slice (language type: usize)
+          u64            size; // only used for array, not slice. 0 until sizeExpr is resolved.
+          Node*          subtype;
         } array;
         /* basic */ struct { // BasicType
           TypeCode typeCode;
@@ -213,6 +226,14 @@ inline static bool NodeIsType(const Node* n) { return NodeKindIsType(n->kind); }
 inline static bool NodeIsConst(const Node* n) { return NodeKindIsConst(n->kind); }
 inline static bool NodeIsExpr(const Node* n) { return NodeKindIsExpr(n->kind); }
 
+// Node{Is,Set,Clear}Unresolved controls the "unresolved" flag on a node
+inline static bool NodeIsUnresolved(const Node* n) { return (n->flags & NodeFlagUnresolved) != 0; }
+inline static void NodeSetUnresolved(Node* n) { n->flags |= NodeFlagUnresolved; }
+inline static void NodeClearUnresolved(Node* n) { n->flags &= ~NodeFlagUnresolved; }
+inline static void NodeTransferUnresolved(Node* parent, Node* child) {
+  parent->flags |= child->flags & NodeFlagUnresolved;
+}
+
 // Retrieve the effective "printable" type of a node.
 // For nodes which are lazily typed, like IntLit, this returns the default type of the constant.
 const Node* NodeEffectiveType(const Node* n);
@@ -232,7 +253,7 @@ inline static bool NodeIsUntyped(const Node* n) {
 Node* ast_opt_ifcond(Node* n);
 
 // Format an NVal
-Str NValFmt(Str s, const NVal* v);
+Str NValFmt(Str s, const NVal v);
 
 // ArrayNodeLast returns the last element of array node n or NULL if empty
 Node* nullable ArrayNodeLast(Node* n);

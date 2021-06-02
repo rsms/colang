@@ -60,8 +60,10 @@ typeCodeToIRType :{str:[str]} = {
 }
 
 typeCodeAliases = {
-  "int":  "int32",
-  "uint": "uint32",
+  "int":    "int32",  # FIXME
+  "uint":   "uint32", # FIXME
+  "isize":  "int64",  # FIXME
+  "usize":  "uint64", # FIXME
 }
 
 auxTypes = [

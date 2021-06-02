@@ -128,10 +128,19 @@ bool parse_source1(const Pkg* pkg, Source* src) {
 }
 
 
+#ifdef DEBUG
+  #define PRINT_BANNER() \
+    printf("————————————————————————————————————————————————————————————————\n")
+#else
+  #define PRINT_BANNER() do{}while(0)
+#endif
+
+
 static void dump_ast(const char* message, Node* ast) {
   auto s = NodeRepr(ast, str_new(16));
   dlog("%s%s", message, s);
   str_free(s);
+  PRINT_BANNER();
 }
 
 
@@ -145,7 +154,7 @@ static void dump_ir(const PosMap* posmap, const IRPkg* pkg) {
 
 static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
   dlog("parse_source %.*s", (int)str_len(src->filename), src->filename);
-  Parser parser;
+  Parser parser = {0};
   ParseFlags flags = ParseFlagsDefault;
 
   // parse source into AST
@@ -173,8 +182,9 @@ static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
 static void diag_handler(Diagnostic* d, void* userdata) {
   auto s = str_new(strlen(d->message) + 32);
   s = diag_fmt(s, d);
-  s[str_len(s)] = '\n'; // replace nul byte
-  fwrite(s, str_len(s) + 1, 1, stderr);
+  // s[str_len(s)] = '\n'; // replace nul byte
+  // fwrite(s, str_len(s) + 1, 1, stderr);
+  fwrite(s, str_len(s), 1, stderr);
   str_free(s);
 }
 
@@ -212,23 +222,16 @@ int cmd_build(int argc, const char** argv) {
   }
 
   // setup build context
-  SymPool syms;
+  SymPool syms = {0};
   sympool_init(&syms, universe_syms(), MemHeap, NULL);
   Mem astmem = MemHeap; // allocate AST in global memory pool
-  Build build;
+  Build build = {0};
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
   // build.opt = CoOptFast;
 
   // setup package namespace and create package AST node
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
   Node* pkgnode = CreatePkgAST(&build, pkgscope);
-
-  #ifdef DEBUG
-  #define PRINT_BANNER \
-    printf("————————————————————————————————————————————————————————————————\n");
-  #else
-    #define PRINT_BANNER
-  #endif
 
   // parse source files
   Source* src = pkg.srclist;
@@ -237,25 +240,27 @@ int cmd_build(int argc, const char** argv) {
     if (!filenode)
       return 1;
     NodeArrayAppend(build.mem, &pkgnode->array.a, filenode);
+    NodeTransferUnresolved(pkgnode, filenode);
     src = src->next;
   }
-  dump_ast("", pkgnode);
-  PRINT_BANNER
+  //dump_ast("", pkgnode);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
   }
 
-  // package
-  // TODO: call ResolveSym on pkg only if needed
-  // resolve identifiers & types
-  pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
-  if (build.errcount) {
-    errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
-    return 1;
+  // resolve identifiers if needed (note: it often is needed)
+  if (NodeIsUnresolved(pkgnode)) {
+    pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
+    if (build.errcount) {
+      errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
+      return 1;
+    }
+    //dump_ast("", pkgnode);
+    assert( ! NodeIsUnresolved(pkgnode)); // no errors should mean all resolved
   }
-  dump_ast("", pkgnode);
-  PRINT_BANNER
+
+  // resolve types
   pkgnode = ResolveType(&build, pkgnode);
   dump_ast("", pkgnode);
   if (build.errcount) {
@@ -263,16 +268,18 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
-  {
+  { // print timing
     auto timeend = nanotime();
     char abuf[40];
     auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
     printf("parse, resolve & typecheck %.*s\n", buflen, abuf);
   }
 
+  return 0; // XXX
+
   // build IR
   #if 0
-  PRINT_BANNER
+  PRINT_BANNER();
   IRBuilder irbuilder = {};
   IRBuilderInit(&irbuilder, &build, IRBuilderComments);
   IRBuilderAddAST(&irbuilder, pkgnode);
@@ -282,7 +289,7 @@ int cmd_build(int argc, const char** argv) {
 
   // emit target code
   #ifdef CO_WITH_LLVM
-  PRINT_BANNER
+  PRINT_BANNER();
   if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }

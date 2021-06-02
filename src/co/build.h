@@ -20,8 +20,8 @@ typedef enum CoOptType {
 typedef enum DiagLevel {
   DiagError,
   DiagWarn,
-  DiagInfo,
-  DiagMAX = DiagInfo,
+  DiagNote,
+  DiagMAX = DiagNote,
 } DiagLevel;
 
 typedef struct Diagnostic {
@@ -96,18 +96,16 @@ void build_diag(Build*, DiagLevel, PosSpan, const char* message);
 void build_diagv(Build*, DiagLevel, PosSpan, const char* format, va_list);
 
 // build_diagf formats a diagnostic message invokes b->diagh
-void build_diagf(Build*, DiagLevel, PosSpan, const char* format, ...)
-  ATTR_FORMAT(printf, 4, 5);
+void build_diagf(Build*, DiagLevel, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 4, 5);
 
-// convenience macros for build_diagf
-#define build_errf(b, pos, fmt, ...) \
-  build_diagf((b), DiagError, (pos), (fmt), ##__VA_ARGS__)
+// build_errf calls build_diagf with DiagError
+void build_errf(Build*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-#define build_warnf(b, pos, fmt, ...) \
-  build_diagf((b), DiagWarn, (pos), (fmt), ##__VA_ARGS__)
+// build_warnf calls build_diagf with DiagWarn
+void build_warnf(Build*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-#define build_infof(b, pos, fmt, ...) \
-  build_diagf((b), DiagInfo, (pos), (fmt), ##__VA_ARGS__)
+// build_warnf calls build_diagf with DiagNote
+void build_notef(Build*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
 
 // diag_fmt appends to s a ready-to-print representation of a Diagnostic message.
