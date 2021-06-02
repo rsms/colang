@@ -719,7 +719,7 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto n = mknode(p, NCall);
   nexttok(p); // consume "("
-  n->call.receiver = receiver;
+  n->call.receiver = useAsRValue(p, receiver);
   auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
   want(p, TRParen);
   assert(args->kind == NTuple);
@@ -1193,6 +1193,11 @@ Node* CreatePkgAST(Build* build, Scope* pkgscope) {
   n->array.scope = pkgscope;
   // Note: Do not set n->type as it would prevent type resolver from visiting files
   return n;
+}
+
+static bool validateUnresolvedIntegrity(Parser* p, Node* n) {
+  // TODO use NodeVisit
+  return false;
 }
 
 
