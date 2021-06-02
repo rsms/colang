@@ -234,6 +234,9 @@ inline static void NodeTransferUnresolved(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagUnresolved;
 }
 
+// NodeFlagsStr appends a printable description of fl to s
+Str NodeFlagsStr(NodeFlags fl, Str s);
+
 // Retrieve the effective "printable" type of a node.
 // For nodes which are lazily typed, like IntLit, this returns the default type of the constant.
 const Node* NodeEffectiveType(const Node* n);
@@ -291,14 +294,23 @@ struct NodeList { NodeList* nullable parent; Node* n; };
 // NodeVisitor is used with NodeVisit to traverse an AST.
 // To visit the node's children, call NodeVisitChildren(n,data).
 // Return false to stop iteration.
-typedef bool(*NodeVisitor)(NodeList* n, void* nullable data);
+typedef bool(*NodeVisitor)(NodeList* nl, void* nullable data);
 
 // NodeVisit calls f for each child of n, passing along data to f.
 // Returns true if all calls to f returns true.
+// Example:
+//   static bool visit(NodeList* nl, void* data) {
+//     dlog("%s", NodeKindName(nl->n->kind));
+//     return NodeVisitChildren(nl, visit, data);
+//   }
+//   NodeVisit(n, visit, NULL);
 static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
 
 // NodeVisitChildren calls for each child of n, passing along n and data to f.
 bool NodeVisitChildren(NodeList* parent, NodeVisitor f, void* nullable data);
+
+// NodeValidate checks an AST for inconsistencies. Useful for debugging and development.
+bool NodeValidate(Build* b, Node* n);
 
 
 

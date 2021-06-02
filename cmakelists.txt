@@ -196,6 +196,7 @@ add_executable(co
   src/co/parse/token.c
   src/co/parse/typeid.c
   src/co/parse/universe.c
+  src/co/parse/validate.c
   src/co/util/array.c
   src/co/util/array_test.c
   src/co/util/ptrmap.c

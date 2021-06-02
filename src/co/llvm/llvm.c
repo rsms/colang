@@ -635,9 +635,10 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   if (obj_file) {
     auto timestart = nanotime();
     if (!llvm_emit_mc(mod, targetm, LLVMObjectFile, obj_file, &errmsg)) {
-      errlog("llvm_emit_mc: %s", errmsg);
+      errlog("llvm_emit_mc (LLVMObjectFile): %s", errmsg);
       LLVMDisposeMessage(errmsg);
-      obj_file = NULL; // skip linking
+      // obj_file = NULL; // skip linking
+      goto end;
     } else {
       dlog("wrote %s", obj_file);
     }
@@ -648,8 +649,9 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   if (asm_file) {
     double timestart = nanotime();
     if (!llvm_emit_mc(mod, targetm, LLVMAssemblyFile, asm_file, &errmsg)) {
-      errlog("llvm_emit_mc: %s", errmsg);
+      errlog("llvm_emit_mc (LLVMAssemblyFile): %s", errmsg);
       LLVMDisposeMessage(errmsg);
+      goto end;
     } else {
       dlog("wrote %s", asm_file);
     }
@@ -662,6 +664,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     if (!llvm_emit_bc(mod, bc_file, &errmsg)) {
       errlog("llvm_emit_bc: %s", errmsg);
       LLVMDisposeMessage(errmsg);
+      goto end;
     } else {
       dlog("wrote %s", bc_file);
     }
@@ -674,6 +677,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     if (!llvm_emit_ir(mod, ir_file, &errmsg)) {
       errlog("llvm_emit_ir: %s", errmsg);
       LLVMDisposeMessage(errmsg);
+      goto end;
     } else {
       dlog("wrote %s", ir_file);
     }
@@ -693,6 +697,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     };
     if (!lld_link(&lldopt, &errmsg)) {
       errlog("lld_link: %s", errmsg);
+      goto end;
     } else {
       if (strlen(errmsg) > 0)
         fwrite(errmsg, strlen(errmsg), 1, stderr); // print warnings
@@ -702,6 +707,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     print_duration("link", timestart);
   }
 
+  // if we get here, without "goto end", all succeeded
   ok = true;
 
 end:

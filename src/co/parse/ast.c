@@ -271,6 +271,15 @@ void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
 }
 
 
+Str NodeFlagsStr(NodeFlags fl, Str s) {
+  if (fl == NodeFlagsNone)
+    return str_appendcstr(s, "0");
+  if (fl & NodeFlagUnresolved)
+    s = str_appendcstr(s, "unresolved");
+  return s;
+}
+
+
 // -----------------------------------------------------------------------------------------------
 // Scope
 

@@ -187,6 +187,10 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     }
     break;
 
+  case NArg:
+    // keep as TypeCast
+    break;
+
   default:
     dlog("TODO n->kind %s", NodeKindName(n->kind));
     break;

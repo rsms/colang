@@ -1,16 +1,6 @@
 #include "../common.h"
 #include "parse.h"
 
-// NodeVisitor is used with NodeVisit to traverse an AST.
-// Call NodeVisitChildren to visit a nodes children.
-// Return false to stop iteration.
-
-
-// typedef struct NodeList NodeList;
-// struct NodeList { NodeList* parent, Node* n };
-
-// typedef bool(*NodeVisitor)(NodeList* n, void* nullable data);
-
 
 bool NodeVisitChildren(NodeList* parent, NodeVisitor f, void* nullable data) {
   #define CALLBACK(child) ({                               \

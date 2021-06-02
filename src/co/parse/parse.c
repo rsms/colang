@@ -720,20 +720,21 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto n = mknode(p, NCall);
   nexttok(p); // consume "("
+
+  // receiver
   n->call.receiver = useAsRValue(p, receiver);
+  NodeTransferUnresolved(n, n->call.receiver);
+
+  // args
   auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
   want(p, TRParen);
-  assert(args->kind == NTuple);
-
+  assert_debug(args->kind == NTuple);
   // Note: the type of call.args should structually match the type of fun.params.
   // This reduces the work needed by the type resolver.
-  if (args->array.a.len > 0)
+  if (args->array.a.len > 0) {
     n->call.args = args;
-  // switch (args->array.a.len) {
-  //   case 0:  break; // leave as-is, i.e. n->call.args=NULL
-  //   case 1:  n->call.args = args->array.a.head->node; break;
-  //   default: n->call.args = args; break;
-  // }
+    NodeTransferUnresolved(n, args);
+  }
 
   if (NodeKindIsType(receiver->kind))
     n->kind = NTypeCast;
@@ -1016,25 +1017,19 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->s.tok == TLt) {
     pushScope(p);
     n->fun.tparams = templateParams(p);
-    dlog("tparams: %s", fmtnode(n->fun.tparams));
+    NodeTransferUnresolved(n, n->fun.tparams);
   }
 
   // function parameters
   pushScope(p);
   if (p->s.tok == TLParen) {
     auto pa = params(p);
-
     // Note: the type of fun.params should structually match the type of call.args.
     // This reduces the work needed by the type resolver.
     if (pa->array.a.len > 0) {
       n->fun.params = pa;
       NodeTransferUnresolved(n, pa);
     }
-    // switch (pa->array.a.len) {
-    //   case 0:  break; // leave as-is, i.e. n->fun.params=NULL
-    //   case 1:  n->fun.params = pa->array.a.head->node; break;
-    //   default: n->fun.params = pa; break;
-    // }
   }
 
   // result type(s)
@@ -1236,11 +1231,6 @@ Node* CreatePkgAST(Build* build, Scope* pkgscope) {
   n->array.scope = pkgscope;
   // Note: Do not set n->type as it would prevent type resolver from visiting files
   return n;
-}
-
-static bool validateUnresolvedIntegrity(Parser* p, Node* n) {
-  // TODO use NodeVisit
-  return false;
 }
 
 

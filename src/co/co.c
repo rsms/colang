@@ -144,39 +144,14 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
+#if 0
 static void dump_ir(const PosMap* posmap, const IRPkg* pkg) {
   auto s = IRReprPkgStr(pkg, posmap, str_new(512));
   s = str_appendc(s, '\n');
   fwrite(s, str_len(s), 1, stderr);
   str_free(s);
 }
-
-
-static Node* nullable parse_source(Build* build, Scope* pkgscope, Source* src) {
-  dlog("parse_source %.*s", (int)str_len(src->filename), src->filename);
-  Parser parser = {0};
-  ParseFlags flags = ParseFlagsDefault;
-
-  // parse source into AST
-  auto ast = Parse(&parser, build, src, flags, pkgscope);
-  if (ast == NULL)
-    return NULL;
-  // dump_ast("after parse: ", ast);
-
-  // TODO: return parser.unresolved information to caller
-
-  // // resolve identifiers
-  // if (parser.unresolved > 0) {
-  //   ast = ResolveSym(build, flags, ast, pkgscope);
-  //   // dump_ast("after ResolveSym: ", ast);
-  // }
-
-  // // resolve types
-  // ResolveType(build, ast);
-  // dump_ast("after ResolveType: ", ast);
-
-  return ast;
-}
+#endif
 
 
 static void diag_handler(Diagnostic* d, void* userdata) {
@@ -235,8 +210,9 @@ int cmd_build(int argc, const char** argv) {
 
   // parse source files
   Source* src = pkg.srclist;
+  Parser parser = {0};
   while (src) {
-    Node* filenode = parse_source(&build, pkgscope, src);
+    Node* filenode = Parse(&parser, &build, src, ParseFlagsDefault, pkgscope);
     if (!filenode)
       return 1;
     NodeArrayAppend(build.mem, &pkgnode->array.a, filenode);
@@ -249,6 +225,13 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
+  // validate AST produced by parser
+  #ifdef DEBUG
+  if (!NodeValidate(&build, pkgnode))
+    return 1;
+  dlog("AST validated OK");
+  #endif
+
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
     pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
@@ -258,8 +241,14 @@ int cmd_build(int argc, const char** argv) {
     }
     dump_ast("", pkgnode);
     assert( ! NodeIsUnresolved(pkgnode)); // no errors should mean all resolved
+
+    // validate AST after symbol resolution
+    #ifdef DEBUG
+    if (!NodeValidate(&build, pkgnode))
+      return 1;
+    dlog("AST validated OK");
+    #endif
   }
-  return 0; // XXX
 
   // resolve types
   pkgnode = ResolveType(&build, pkgnode);
@@ -275,6 +264,8 @@ int cmd_build(int argc, const char** argv) {
     auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
     printf("parse, resolve & typecheck %.*s\n", buflen, abuf);
   }
+
+  return 0; // XXX
 
   // build IR
   #if 0
