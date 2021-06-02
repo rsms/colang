@@ -227,15 +227,15 @@ Node* ast_opt_ifcond(Node* n) {
 //   }
 //
 // Output:
-//   example/hello.w:3:10: error: cannot use result from call (type int) as return type nil
+//   example/hello.co:3:10: error: cannot use result from call (type int) as return type nil
 //     return addfn(1, 2)
 //            ~~~~~~~~~~~
 //
-//   example/hello.w:2:3: info: addfn defined here
+//   example/hello.co:2:3: info: addfn defined here
 //     addfn = add
 //     ~~~~~
 //
-//   example/hello.w:5:1: info: fun add defined here
+//   example/hello.co:5:1: info: fun add defined here
 //   fun add(x int, y uint) int {
 //   ~~~
 //

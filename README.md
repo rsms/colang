@@ -17,7 +17,7 @@ Build:
 - Build everything:                    `ckit build`
 
 Development:
-- Live main program:               `ckit watch -rsh="{BUILD}/co build example/hello.w" co`
+- Live main program:               `ckit watch -rsh="{BUILD}/co build example/hello.co" co`
 - Live testing:                    `ckit watch test`
 - Live testing of a specific test: `ckit watch test scan`
 
