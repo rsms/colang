@@ -230,6 +230,10 @@ Node* ResolveSym(Build*, ParseFlags, Node*, Scope*);
 // ResolveType resolves unresolved types in an AST. May return a new version of n.
 Node* ResolveType(Build* b, Node* n);
 
+// ResolveConst resolves n to its constant value.
+// This decrements Let refs and the result is expected to replace n.
+Node* ResolveConst(Build* b, Node* n);
+
 // GetTypeID retrieves the TypeID for the type node n.
 // This function may mutate n by computing and storing id to n.t.id.
 // This function may add symbols to b->syms

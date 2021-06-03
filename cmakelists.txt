@@ -185,7 +185,7 @@ add_executable(co
   src/co/ir/op.c
   src/co/parse/ast.c
   src/co/parse/ast_visit.c
-  src/co/parse/astrepr.c
+  src/co/parse/ast_repr.c
   src/co/parse/convlit.c
   src/co/parse/eval.c
   src/co/parse/parse.c

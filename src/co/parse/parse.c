@@ -486,6 +486,10 @@ static Node* resolve_id(Parser* p, Node* id) {
     //
     //NodeFree(id);
     return useAsRValue(p, id->ref.target);
+  } else {
+    if (id->ref.target->kind == NLet)
+      NodeRefLet(id->ref.target);
+    NodeTransferUnresolved(id, id->ref.target);
   }
 
   return id;
@@ -507,15 +511,9 @@ static Node* resolve_id(Parser* p, Node* id) {
 //     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
 //
 static Node* useAsRValue(Parser* p, Node* expr) {
-  switch (expr->kind) {
-    case NId:
-      if (!expr->ref.target)
-        return resolve_id(p, expr);
-      break;
-    default:
-      break;
-  }
-  return expr;
+  if (expr->kind != NId || expr->ref.target)
+    return expr;
+  return resolve_id(p, expr);
 }
 
 

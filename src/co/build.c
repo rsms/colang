@@ -58,15 +58,16 @@ void build_diagv(Build* b, DiagLevel level, PosSpan pos, const char* fmt, va_lis
     return;
   }
   char buf[256];
-  ssize_t n = vsnprintf(buf, sizeof(buf), fmt, ap);
+  va_list ap1;
+  va_copy(ap1, ap);
+  ssize_t n = vsnprintf(buf, sizeof(buf), fmt, ap1);
   if (n < (ssize_t)sizeof(buf))
     return build_diag(b, level, pos, buf);
   // buf too small; heap allocate
-  auto msg = str_new(512);
-  if (strlen(fmt) > 0)
-    msg = str_appendfmtv(msg, fmt, ap);
-  build_diag(b, level, pos, msg);
-  str_free(msg);
+  char* buf2 = (char*)memalloc(b->mem, n + 1);
+  n = vsnprintf(buf2, n + 1, fmt, ap);
+  build_diag(b, level, pos, buf2);
+  memfree(b->mem, buf2);
 }
 
 void build_diagf(Build* b, DiagLevel level, PosSpan pos, const char* fmt, ...) {

@@ -322,7 +322,9 @@ static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
   case NArg:
   case NField:
   {
-    if (n->kind == NArg) {
+    if (n->kind == NLet) {
+      s = str_appendfmt(s, "#%u ", n->field.nrefs);
+    } else if (n->kind == NArg) {
       s = str_appendfmt(s, "#%u ", n->field.index);
     }
     if (n->field.name) {

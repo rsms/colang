@@ -163,6 +163,7 @@ typedef struct Node {
       Sym            name;
       Node* nullable init;  // Field: initial value (may be NULL). Let: final value (never NULL).
       u32            index; // Arg: argument index.
+      u32            nrefs; // Let: reference count
     } field;
     /* cond */ struct { // If
       Node*          cond;
@@ -233,6 +234,13 @@ inline static void NodeClearUnresolved(Node* n) { n->flags &= ~NodeFlagUnresolve
 inline static void NodeTransferUnresolved(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagUnresolved;
 }
+
+// NodeRefLet increments the reference counter of a Let node. Returns n as a convenience.
+static Node* NodeRefLet(Node* n);
+
+// NodeUnrefLet decrements the reference counter of a Let node.
+// Returns the value of n->field.nrefs after the subtraction.
+static u32 NodeUnrefLet(Node* n);
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
@@ -341,6 +349,18 @@ inline static void NodeArrayClear(Array* a) {
 inline static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data) {
   NodeList parent = { .n = n };
   return NodeVisitChildren(&parent, f, data);
+}
+
+inline static Node* NodeRefLet(Node* n) {
+  asserteq_debug(n->kind, NLet);
+  n->field.nrefs++;
+  return n;
+}
+
+inline static u32 NodeUnrefLet(Node* n) {
+  asserteq_debug(n->kind, NLet);
+  assertgt_debug(n->field.nrefs, 0);
+  return --n->field.nrefs;
 }
 
 ASSUME_NONNULL_END

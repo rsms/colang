@@ -1,8 +1,6 @@
 #include "../common.h"
 #include "parse.h"
 
-// #include "ir/op.h"
-
 // DEBUG_MODULE: define to enable debug logging
 //#define DEBUG_MODULE "convlit"
 
@@ -146,23 +144,13 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
   case NIntLit:
     n = NodeCopy(b->mem, n); // copy, since literals may be referenced by many
     if (t->kind != NBasicType) {
-      dlog("convlit TODO targetType->kind %s", NodeKindName(t->kind));
+      dlog("TODO targetType->kind %s", NodeKindName(t->kind));
       return n;
     }
     if (convval(b, n, &n->val, t->t.basic.typeCode)) {
       n->type = t;
       return n;
     }
-    break;
-
-  case NId:
-    assert(n->ref.target != NULL);
-    n->ref.target = convlit(b, (Node*)n->ref.target, t, fl);
-    break;
-
-  case NLet:
-    assert(n->field.init != NULL);
-    n->field.init = convlit(b, n->field.init, t, fl);
     break;
 
   case NBinOp:
@@ -188,12 +176,11 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     break;
 
   case NArg:
-    // keep as TypeCast
+    // keep as is
     break;
 
   default:
-    dlog("TODO n->kind %s", NodeKindName(n->kind));
-    break;
+    n = ResolveConst(b, n);
   }
 
   if (n->type == Type_ideal) {

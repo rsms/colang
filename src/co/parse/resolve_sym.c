@@ -249,6 +249,8 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       // avoid replacing the identifier with its value.
       // This branch is taken in all other cases.
       n->op.left = newleft;
+    } else {
+      NodeClearUnresolved(n->op.left);
     }
     if (n->op.right) {
       n->op.right = resolve_sym(ctx, n->op.right);
