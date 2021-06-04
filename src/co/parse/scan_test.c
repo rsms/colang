@@ -1,6 +1,7 @@
 #include "../common.h"
-#include "parse.h"
 #if R_TESTING_ENABLED
+#include "parse.h"
+#include "../util/tmpstr.h"
 
 typedef struct ScanTestCtx {
   u32         nerrors;
@@ -28,19 +29,19 @@ static const Tok TComment = TMax;
 
 R_TEST(scan_testutil) {
   // make sure our test utilities work so we can rely on them for further testing
-  size_t expectlen = 0;
-  auto expectlist = make_expectlist(MemHeap, &expectlen, "hello = 123\n",
+  size_t len = 0;
+  auto list = make_expectlist(MemHeap, &len, "hello = 123\n",
     TId,     "hello",
     TAssign, "=",
     TIntLit, "123",
     TSemi,   "",
     TNone
   );
-  assert(expectlist != NULL);
-  asserteq(expectlen, 4);
-  asserteq(expectlist[0].tok, TId);
-  assert(strcmp(expectlist[0].value, "hello") == 0);
-  memfree(MemHeap, expectlist);
+  assert(list != NULL);
+  asserteq(len, 5);
+  asserteq(list[0].tok, TId);
+  assert(strcmp(list[0].value, "hello") == 0);
+  memfree(MemHeap, list);
 }
 
 
@@ -57,14 +58,14 @@ R_TEST(scan_basics) {
 
 
 R_TEST(scan_comments) {
-  auto source = "hello // trailing\n// leading1\n// leading2\n123";
+  auto source = "hello # trailing\n# leading1\n# leading2\n123";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
     TSemi,    "",
     TComment, " trailing",
-    TIntLit,  "123",
     TComment, " leading1",
     TComment, " leading2",
+    TIntLit,  "123",
     TSemi,    "",
     TNone);
   asserteq(nerrors, 0);
@@ -77,6 +78,28 @@ R_TEST(scan_comments) {
     // no comment since ParseComments is not set
     // no comment since ParseComments is not set
     TSemi,   "",
+    TNone);
+  asserteq(nerrors, 0);
+}
+
+
+R_TEST(scan_comment_blocks) {
+  auto source = "hello #* line1\n# line2\n*# line3\n#**#\n";
+  u32 nerrors = testscan(ParseComments, source,
+    TId,      "hello",
+    TComment, " line1\n# line2\n",
+    TId,      "line3",
+    TSemi,    "",
+    TComment, "",
+    TNone);
+  asserteq(nerrors, 0);
+
+  nerrors = testscan(ParseFlagsDefault, source,
+    TId,      "hello",
+    // no comment since ParseComments is not set
+    TId,      "line3",
+    TSemi,    "",
+    // no comment since ParseComments is not set
     TNone);
   asserteq(nerrors, 0);
 }
@@ -110,7 +133,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseIndent,
     "A\n"
     "  B\n"
-    "  // comment\n"
+    "  # comment\n"
     "  C\n",
     TId,"A", TSemi,"",
     TIndent,"  ", TId,"B", TSemi,"",
@@ -121,7 +144,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseIndent|ParseComments,
     "A\n"
     "  B\n"
-    "  // comment\n"
+    "  # comment\n"
     "  C\n",
     TId,"A", TSemi,"",
     TIndent,"  ", TId,"B", TSemi,"",
@@ -339,7 +362,7 @@ static TokStringPair* make_expectlistv(
 {
   va_list ap2;
   va_copy(ap2, ap);
-  size_t len = 0;
+  size_t len = 1; // 1 for TNone
   for (size_t i = 0; i < 10000; i++) {
     if ((i % 2) == 0) {
       // even arguments are tokens
@@ -370,6 +393,9 @@ static TokStringPair* make_expectlistv(
   }
   va_end(ap2);
 
+  expectlist[len - 1].tok = TNone;
+  expectlist[len - 1].value = "";
+
   return expectlist;
 }
 
@@ -383,6 +409,48 @@ static TokStringPair* make_expectlist(Mem mem, size_t* len_out, const char* sour
 }
 
 
+static ConstStr reprstr(const char* pch, u32 len) {
+  Str* sp = tmpstr_get();
+  *sp = str_appendrepr(*sp, pch, len);
+  return *sp;
+}
+
+
+static ConstStr scanposstr(Scanner* scanner) {
+  Str* sp = tmpstr_get();
+  Pos pos = ScannerPos(scanner);
+  *sp = str_appendfmt(*sp, "<input>:%u:%u", pos_line(pos), pos_col(pos));
+  return *sp;
+}
+
+
+static const char* tokname(Tok t) {
+  return t == TComment ? "comment" : TokName(t);
+}
+
+
+_Noreturn static void err_unexpected(
+  Scanner* scanner,
+  TokStringPair* expect,
+  Tok gottok, const char* gotval, u32 gotvallen,
+  Str scantrace)
+{
+  assertf(!"err_unexpected",
+    "\nunexpected scan result at %s"
+    "\n  expected token: %s(\"%s\")"
+    "\n  got token:      %s(\"%s\")"
+    "\n"
+    "\nscan trace:"
+    "\n%s"
+    "\n",
+    scanposstr(scanner),
+    tokname(expect->tok), reprstr(expect->value, strlen(expect->value)),
+    tokname(gottok), reprstr(gotval, gotvallen),
+    scantrace
+  );
+}
+
+
 static u32 testscanp(
   ParseFlags     flags,
   const char*    sourcetext,
@@ -390,8 +458,10 @@ static u32 testscanp(
   size_t         nexpect)
 {
   auto scanner = test_scanner_new(flags, sourcetext);
-
+  Str scantrace = str_new(64);
   size_t ntokens = 0;
+  Tok bufTok = TMax; // TMax == no buffered token
+
   while (1) {
     if (ntokens >= nexpect) {
       asserteq(ScannerNext(scanner), TNone);
@@ -403,52 +473,73 @@ static u32 testscanp(
 
     // comments are collected in a list by the scanner, rather than emitted as tokens
     if (expect->tok == TComment) {
+      if (bufTok == TMax)
+        bufTok = ScannerNext(scanner);
       auto c = ScannerCommentPop(scanner);
       if (!c) {
         // err instead of asset to make error message "unexpected token ... (expected comment)"
-        err = true;
+        errlog("expected comment but no comment was returned from ScannerCommentPop");
+        size_t vallen;
+        auto valptr = (const char*)ScannerTokStr(scanner, &vallen);
+        err_unexpected(scanner, expect, bufTok, valptr, vallen, scantrace);
       } else {
-        asserteq(strlen(expect->value), c->len);
-        assert(memcmp(expect->value, c->ptr, c->len) == 0);
+        if (strlen(expect->value) != c->len || memcmp(expect->value, c->ptr, c->len) != 0) {
+          err_unexpected(scanner, expect, TComment, (const char*)c->ptr, c->len, scantrace);
+        }
+        // update "what we've got so far" trace
+        scantrace = str_appendfmt(scantrace, "  comment(\"%s\")\n",
+          reprstr((const char*)c->ptr, c->len));
         memfree(scanner->build->mem, c);
         ntokens++;
         continue;
       }
     } else if ((flags & ParseComments) != 0) {
+      // we don't expect a comment; check if we got one (which would be unexpected)
       auto c = ScannerCommentPop(scanner);
-      if (c) {
-        errlog("unexpected token: %s \"%.*s\" (expected %s \"%s\")",
-          TokName(TComment), (int)c->len, c->ptr, TokName(expect->tok), expect->value);
-        assert(c == NULL);
-      }
+      if (c)
+        err_unexpected(scanner, expect, TComment, (const char*)c->ptr, c->len, scantrace);
     }
 
-    Tok t = ScannerNext(scanner);
-    // assert(t != TNone);
-    // assert(expect->tok != TNone);
+    // use token scanned from past comment scan, or scan the next token
+    Tok t;
+    if (bufTok == TMax) {
+      t = ScannerNext(scanner);
+    } else {
+      t = bufTok;
+      bufTok = TMax;
+    }
+
+    // for the last token, check to make sure there are no queued comments
+    if (t == TNone && (flags & ParseComments) != 0) {
+      auto c = ScannerCommentPop(scanner);
+      assertf(!c, "unexpected comment at end: \"%s\"",
+        reprstr((const char*)c->ptr, c->len));
+    }
 
     size_t vallen;
-    auto valptr = ScannerTokStr(scanner, &vallen);
+    auto valptr = (const char*)ScannerTokStr(scanner, &vallen);
+
+    // we only get here if we did not scan a comment
+
+    // update "what we've got so far" trace
+    scantrace = str_appendfmt(scantrace, "  %s(\"%s\")\n", tokname(t), reprstr(valptr, vallen));
+
+    // size_t vallen;
+    // auto valptr = ScannerTokStr(scanner, &vallen);
     // dlog(">> %-7s \"%.*s\"", TokName(t), (int)vallen, valptr);
 
     err = err || expect->tok != t;
     err = err || (strlen(expect->value) != (u32)vallen);
     err = err || (memcmp(expect->value, valptr, vallen) != 0);
-    if (err) {
-      errlog("unexpected token: %s \"%.*s\" (expected %s \"%s\")",
-        TokName(t), (int)vallen, valptr, TokName(expect->tok), expect->value);
-    }
-
-    asserteq(expect->tok, t);
-    asserteq(strlen(expect->value), (u32)vallen);
-    assert(memcmp(expect->value, valptr, vallen) == 0);
-
+    if (err)
+      err_unexpected(scanner, expect, t, valptr, vallen, scantrace);
     ntokens++;
   }
 
   asserteq(ntokens, nexpect);
   auto nerrors = test_scanner_ctx(scanner)->nerrors;
   test_scanner_free(scanner);
+  str_free(scantrace);
   return nerrors;
 }
 

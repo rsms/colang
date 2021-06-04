@@ -2,7 +2,7 @@
 #include "parse.h"
 
 // Enable to dlog ">> TOKEN VALUE at SOURCELOC" on each call to SNext
-// #define SCANNER_DEBUG_TOKEN_PRODUCTION
+//#define SCANNER_DEBUG_TOKEN_PRODUCTION
 
 
 // character flags. (bit flags)
@@ -147,13 +147,46 @@ static void comments_push_back(Scanner* s) {
 }
 
 
-static void scomment(Scanner* s) {
-  s->tokstart += 2; // exclude "//"
-  // advance s->inp until next <LF> or EOF. Leave s->inp at \n or EOF.
-  while (s->inp < s->inend && *s->inp != '\n') {
+static void scomment_block(Scanner* s) {
+  s->tokstart++; // exclude "*" after "#"
+  s->inp++; // consume '*'
+  u8 prevc = 0;
+  while (s->inp < s->inend) {
+    switch (*s->inp) {
+      case '#':
+        if (prevc == '*') {
+          s->tokend = s->inp - 1; // -1 to skip '*'
+          s->inp++; // consume '*'
+          return;
+        }
+        break;
+      case '\n':
+        // update line state
+        s->lineno++;
+        s->linestart = s->inp + 1;
+        break;
+      default:
+        break;
+    }
+    prevc = *s->inp;
     s->inp++;
   }
-  s->tokend = s->inp;
+}
+
+
+static void scomment(Scanner* s) {
+  s->tokstart++; // exclude "#"
+  if (*s->inp == '*') {
+    // block comment
+    scomment_block(s);
+  } else {
+    // line comment
+    // advance s->inp until next <LF> or EOF. Leave s->inp at \n or EOF.
+    while (s->inp < s->inend && *s->inp != '\n') {
+      s->inp++;
+    }
+    s->tokend = s->inp;
+  }
   if (s->flags & ParseComments)
     comments_push_back(s);
 }
@@ -253,10 +286,7 @@ Tok ScannerNext(Scanner* s) {
   }
 
   // indentation
-  // if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#')
-  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart &&
-      (*s->inp != '/' || ((s->inp+1 < s->inend) ? *s->inp : 0) != '/')) // comment
-  {
+  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#') {
     s->tokstart = s->linestart;
     s->tokend = s->inp;
     s->tok = TIndent;
@@ -323,17 +353,7 @@ Tok ScannerNext(Scanner* s) {
   case '=': s->tok = COND_CHAR('=', TAssign,  TEq);            break; // "=" | "=="
   case '^': s->tok = COND_CHAR('=', THat,     THatAssign);     break; // "^" | "^="
   case '~': s->tok = COND_CHAR('=', TTilde,   TTildeAssign);   break; // "~" | "~="
-  case '/':
-    switch (nextc) {
-      case '/': // "//"
-        CONSUME_CHAR();
-        scomment(s);
-        goto scan_again;
-      // TODO: block comment "/*...*/"
-      default:
-        s->tok = COND_CHAR('=', TSlash, TSlashAssign); // "/" | "/="
-    }
-    break;
+  case '/': s->tok = COND_CHAR('=', TSlash,   TSlashAssign);   break; // "/" | "/="
 
   case '<': // "<" | "<=" | "<<" | "<<="
     switch (nextc) {
@@ -373,6 +393,11 @@ Tok ScannerNext(Scanner* s) {
   case ']': s->tok = TRBrack; insertSemi = true; break;
   case ',': s->tok = TComma;                     break;
   case ';': s->tok = TSemi;                      break;
+
+  case '#': // line comment
+    scomment(s);
+    goto scan_again;
+    break;
 
   case '0'...'9':
     snumber(s);

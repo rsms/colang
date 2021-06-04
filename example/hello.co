@@ -1,8 +1,20 @@
-// thing = 123 + PI
-// PI = 3141592 as float64
+# thing = 123 + PI
+# PI = 3141592 as float64
+#
 
-// array [4]int
-// K int32 = 5
+# array [4]int
+# K int32 = 5
+
+#!name thing foo bar "fgdfg" sf
+#*!name thing *#
+
+#*
+  block
+  comment
+*#
+
+
+some #*comment*# other
 
 fun add(x, y int) int {
   z = x + y + 3
