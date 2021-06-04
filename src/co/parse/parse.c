@@ -432,7 +432,7 @@ static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok
 }
 
 
-static Node* makeLet(Parser* p, Node* name, Node* nullable init) {
+static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
   asserteq_debug(name->kind, NId);
   auto n = NewNode(p->build->mem, NLet);
   n->pos = name->pos; // TODO: expand pos span to include type?
@@ -495,6 +495,27 @@ static Node* resolve_id(Parser* p, Node* id) {
   return id;
 }
 
+
+// unwrapLet unwraps a let into an expression of its value
+static Node* unwrapLet(Node* n) {
+  // when unwrapping a let it must not be referenced
+  assert_debug(n->field.nrefs == 0);
+
+  // unwrap initializer if there's one
+  if (n->field.init)
+    return n->field.init;
+
+  // let with initializer -- convert to type call
+  // "{x int}" -> "{int()}"
+  assert_debug(n->type); // must have type
+  Node* typ = n->type; // tmp
+  n->kind = NCall;
+  n->call.receiver = typ;
+  n->call.args = Const_nil;
+  return n;
+}
+
+
 // useAsRValue is used to lazily resolve identifiers which are used in rvalue position
 // that is unknown ahead of time. Returns expr or its effective value.
 // For example:
@@ -517,9 +538,41 @@ static Node* useAsRValue(Parser* p, Node* expr) {
 }
 
 
+// nodeTransferUnresolved2 is like NodeTransferUnresolved but takes two inputs which flags
+// are combined as a set union.
+inline static void nodeTransferUnresolved2(Node* parent, Node* child1, Node* child2) {
+  parent->flags |= (child1->flags & NodeFlagUnresolved) | (child2->flags & NodeFlagUnresolved);
+}
+
+
 // ============================================================================================
 // ============================================================================================
-// Parselets
+// Parselets (upper case PName = pratt parselet, lower case pName = helper parselet)
+
+
+// Type (always rvalue)
+inline static Type* pType(Parser* p, PFlag fl) {
+  assert(fl & PFlagRValue);
+  return exprOrTuple(p, PREC_LOWEST, fl | PFlagType);
+}
+
+inline static Node* pId(Parser* p) {
+  assert(p->s.tok == TId);
+  auto n = mknode(p, NId);
+  n->ref.name = p->s.name;
+  nexttok(p);
+  return n;
+}
+
+// pLet parses a let definition.
+// If the next token is '=', an rvalue expression is parsed as the Let's initializer.
+static Node* pLet(Parser* p, const Node* name) {
+  Node* init = NULL;
+  if (got(p, TAssign))
+    init = expr(p, PREC_LOWEST, PFlagRValue);
+  return makeLet(p, name, init); // copies left->ref.name and left->pos
+}
+
 
 //!PrefixParselet TNil
 static Node* PNil(Parser* p, PFlag fl) {
@@ -527,26 +580,16 @@ static Node* PNil(Parser* p, PFlag fl) {
   return Const_nil;
 }
 
-// PId -- identifier
+// PId -- identifier (as prefix)
 // When parsing an rvalue identifier, PFlagRValue is set in fl
 //
 //!PrefixParselet TId
 static Node* PId(Parser* p, PFlag fl) {
-  assert(p->s.tok == TId);
-  auto n = mknode(p, NId);
-  n->ref.name = p->s.name;
-  nexttok(p);
-
-  if ((fl & PFlagRValue) == 0)
-    return n;
-
+  auto n = pId(p);
   // eagerly resolve identifiers in rvalue position
-  return resolve_id(p, n);
-}
-
-
-inline static void nodeTransferUnresolved2(Node* parent, Node* child1, Node* child2) {
-  parent->flags |= (child1->flags & NodeFlagUnresolved) | (child2->flags & NodeFlagUnresolved);
+  if (fl & PFlagRValue)
+    return resolve_id(p, n);
+  return n;
 }
 
 
@@ -594,6 +637,7 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 }
 
 
+// Infix assignment e.g. "=" in "left = expr"
 //!Parselet (TAssign ASSIGN)
 static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   fl |= PFlagRValue;
@@ -605,12 +649,7 @@ static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
   // let or var assignment
   // common case: let binding. e.g. "x = 3" -> (let (Id x) (Int 3))
-  // dlog("PLetOrAssign/let %s", left->ref.name);
-  nexttok(p); // consume '='
-
-  auto value = expr(p, PREC_LOWEST, fl);
-  return makeLet(p, left, value);
-  // NodeFree(left);
+  return pLet(p, left);
 }
 
 
@@ -658,11 +697,12 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 // ArrayType = "[" Expr "]" Type
 // SliceType = "[]" Type
 // #note: Expr must be of type usize
+//
 //!Parselet (TLBrack LOWEST)
-static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
-  if (lhs->kind != NId) {
+static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  if (left->kind != NId) {
     syntaxerr(p, "unexpected array or slice type");
-    return lhs;
+    return left;
   }
 
   auto type = pArrayType(p, fl);
@@ -675,11 +715,11 @@ static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 
   // optional initializer expression e.g. "foo []int = [1, 2, 3]"
   Node* init = NULL;
-  if (got(p, TAssign)) {
+  if (got(p, TAssign))
     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
-  }
 
-  auto n = makeLet(p, lhs, init);
+  auto n = makeLet(p, left, init);
+  // NodeFree(left); // makeLet copies left->ref.name and left->pos
   n->type = type;
 
   // TODO: add check to PLetOrAssign and update n->field.init
@@ -688,10 +728,26 @@ static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 }
 
 
-// Type (always rvalue)
-static Type* pType(Parser* p, PFlag fl) {
-  assert(fl & PFlagRValue);
-  return exprOrTuple(p, PREC_LOWEST, fl | PFlagType);
+// PIdTrailing parses a trailing identifier, e.g. "b" in "a b"
+//
+//!Parselet (TId ASSIGN)
+static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  auto id = pId(p);
+
+  if (R_UNLIKELY((fl & PFlagRValue) || left->kind != NId)) {
+    // (fl & PFlagRValue)   Occurs as an expression, e.g. "b" in "x = a b"
+    // (left->kind != NId)  Identifier following some expression e.g. "b" in "3 b"
+    syntaxerrp(p, id->pos, "unexpected identifier");
+    return id;
+  }
+
+  Type* typ = resolve_id(p, id);
+  Node* init = NULL;
+  if (got(p, TAssign))
+    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
+  Node* letn = makeLet(p, left, init);
+  letn->type = typ;
+  return letn;
 }
 
 
@@ -724,14 +780,17 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   NodeTransferUnresolved(n, n->call.receiver);
 
   // args
-  auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
-  want(p, TRParen);
-  assert_debug(args->kind == NTuple);
-  // Note: the type of call.args should structually match the type of fun.params.
-  // This reduces the work needed by the type resolver.
-  if (args->array.a.len > 0) {
-    n->call.args = args;
-    NodeTransferUnresolved(n, args);
+  n->call.args = Const_nil;
+  if (!got(p, TRParen)) {
+    auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
+    want(p, TRParen);
+    assert_debug(args->kind == NTuple);
+    // Note: the type of call.args should structually match the type of fun.params.
+    // This reduces the work needed by the type resolver.
+    if (args->array.a.len > 0) {
+      n->call.args = args;
+      NodeTransferUnresolved(n, args);
+    }
   }
 
   if (NodeKindIsType(receiver->kind))
@@ -751,17 +810,28 @@ static Node* PBlock(Parser* p, PFlag fl) {
   // clear rvalue flag; productions of block are lvalue
   fl &= ~PFlagRValue;
 
+  Node* cn = NULL;
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
-    Node* cn = exprOrTuple(p, PREC_LOWEST, fl);
+    cn = exprOrTuple(p, PREC_LOWEST, fl);
     NodeArrayAppend(p->build->mem, &n->array.a, cn);
     NodeTransferUnresolved(n, cn);
-    if (!got(p, TSemi)) {
+    if (!got(p, TSemi))
       break;
-    }
   }
-  if (!got(p, TRBrace)) {
+
+  if (R_UNLIKELY(!got(p, TRBrace))) {
     syntaxerr(p, "expecting ; or }");
     nexttok(p);
+  } else if (cn && cn->kind == NLet) {
+    // when last expression is a let binding, unwrap it
+    n->array.a.v[n->array.a.len - 1] = unwrapLet(cn);
+    // Alt: insert a referencing identifier:
+    // auto id = mknode(p, NId);
+    // id->ref.name = cn->field.name;
+    // id->ref.target = cn;
+    // id->type = cn->type;
+    // NodeRefLet(cn);
+    // NodeArrayAppend(p->build->mem, &n->array.a, id);
   }
 
   set_endpos(p, n);
@@ -1051,6 +1121,10 @@ static Node* PFun(Parser* p, PFlag fl) {
     n->fun.body = PBlock(p, fl);
   } else if (got(p, TRArr)) {
     n->fun.body = exprOrTuple(p, PREC_LOWEST, fl & ~PFlagRValue /* lvalue semantics */);
+    if (n->fun.body && n->fun.body->kind == NLet) {
+      // when last expression is a let binding, unwrap it
+      n->fun.body = unwrapLet(n->fun.body);
+    }
   }
   p->fnest--;
 
@@ -1073,7 +1147,7 @@ static Node* PFun(Parser* p, PFlag fl) {
 // automatically generated by misc/gen_parselet_map.py; do not edit
 static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
-  [TId] = {PId, NULL, PREC_MEMBER},
+  [TId] = {PId, PIdTrailing, PREC_ASSIGN},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
   [TLBrace] = {PBlock, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},

@@ -1,5 +1,5 @@
 #pragma once
-#include <stdbool.h>
+#include "array.h"
 
 #define TSTYLE_STYLES(_) \
   /* Name               16       RGB */ \
@@ -9,6 +9,7 @@
   _(defaultbg,   "49",    "49") \
   _(bold,        "1",     "1") \
   _(dim,         "2",     "2") \
+  _(nodim,       "22",    "22") \
   _(italic,      "3",     "3") \
   _(underline,   "4",     "4") \
   _(inverse,     "7",     "7") \
@@ -16,10 +17,13 @@
   _(grey,        "90",    "38;5;244") \
   _(black,       "30",    "38;5;16") \
   _(blue,        "94",    "38;5;75") \
+  _(lightblue,   "94",    "38;5;117") \
   _(cyan,        "96",    "38;5;87") \
   _(green,       "92",    "38;5;84") \
+  _(lightgreen,  "92",    "38;5;157") \
   _(magenta,     "95",    "38;5;213") \
   _(purple,      "35",    "38;5;141") \
+  _(lightpurple, "35",    "38;5;183") \
   _(pink,        "35",    "38;5;211") \
   _(red,         "91",    "38;2;255;110;80") \
   _(yellow,      "33",    "38;5;227") \
@@ -42,7 +46,6 @@ typedef enum {
 // // Str str_tstyle_##name(Str s) { return sdscat(s, TStyleTable[TStyle_bold]); }
 
 
-
 extern const char* TStyle16[_TStyle_MAX];
 extern const char* TStyleRGB[_TStyle_MAX];
 extern const char* TStyleNone[_TStyle_MAX];
@@ -51,3 +54,18 @@ typedef const char** TStyleTable;
 
 bool TSTyleStdoutIsTTY();
 bool TSTyleStderrIsTTY();
+TStyleTable TSTyleForTerm();   // best for the current terminal
+TStyleTable TSTyleForStdout(); // best for the current terminal on stdout
+TStyleTable TSTyleForStderr(); // best for the current terminal on stderr
+
+typedef struct StyleStack {
+  TStyleTable styles;
+  Array       stack; // [const char*]
+  const char* stack_storage[4];
+  u32         nbyteswritten;
+} StyleStack;
+
+void StyleStackInit(StyleStack* sstack, TStyleTable styles);
+void StyleStackDispose(StyleStack* sstack);
+Str StyleStackPush(StyleStack* sstack, Str s, TStyle style);
+Str StyleStackPop(StyleStack* sstack, Str s);

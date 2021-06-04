@@ -50,11 +50,11 @@ static bool visit(NodeList* nl, void* ctxp) {
   }
 
   // descend
-  return NodeVisitChildren(nl, visit, ctx);
+  return NodeVisitChildren(nl, ctxp, visit);
 }
 
 bool NodeValidate(Build* b, Node* n) {
   ValidateCtx ctx = { .b = b };
-  NodeVisit(n, visit, &ctx);
+  NodeVisit(n, &ctx, visit);
   return ctx.errcount == 0;
 }

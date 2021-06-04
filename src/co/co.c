@@ -2,6 +2,7 @@
 #include "parse/parse.h"
 #include "ir/ir.h"
 #include "ir/irbuilder.h"
+#include "util/rtimer.h"
 
 #ifdef CO_WITH_LLVM
 #include "llvm/llvm.h"
@@ -13,6 +14,19 @@ ASSUME_NONNULL_BEGIN
 static const char* COROOT = NULL;  // directory of co itself. default: argv[0]/../..
 static const char* COPATH = NULL;  // directory for user files. default: ~/.co
 static const char* COCACHE = NULL; // directory for build cache. default: COPATH/cache
+
+// rtimer helpers
+#define ENABLE_RTIMER_LOGGING
+#ifdef ENABLE_RTIMER_LOGGING
+  #define RTIMER_INIT          RTimer rtimer_ = {0}
+  #define RTIMER_START()       rtimer_start(&rtimer_)
+  #define RTIMER_LOG(fmt, ...) rtimer_log(&rtimer_, fmt, ##__VA_ARGS__)
+#else
+  #define RTIMER_INIT          do{}while(0)
+  #define RTIMER_START()       do{}while(0)
+  #define RTIMER_LOG(fmt, ...) do{}while(0)
+#endif
+
 
 bool SourceTranspile(Source* src, FILE* f) {
   //
@@ -137,7 +151,8 @@ bool parse_source1(const Pkg* pkg, Source* src) {
 
 
 static void dump_ast(const char* message, Node* ast) {
-  auto s = NodeRepr(ast, str_new(16));
+  // auto s = NodeRepr(ast, str_new(16), NodeReprClassic | NodeReprTypes);
+  auto s = NodeRepr(ast, str_new(16), NodeReprTypes);
   dlog("%s%s", message, s);
   str_free(s);
   PRINT_BANNER();
@@ -170,7 +185,9 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
+  RTIMER_INIT;
   auto timestart = nanotime();
+
   Pkg pkg = {
     .mem  = MemHeap,
     .dir  = ".",
@@ -186,6 +203,7 @@ int cmd_build(int argc, const char** argv) {
 
   // guess argument 1 is a directory
   pkg.dir = argv[2];
+  RTIMER_START();
   if (!PkgScanSources(&pkg)) {
     if (errno != ENOTDIR)
       panic("%s (errno %d %s)", pkg.dir, errno, strerror(errno));
@@ -195,20 +213,24 @@ int cmd_build(int argc, const char** argv) {
     if (!PkgAddFileSource(&pkg, argv[2]))
       panic("%s (errno %d %s)", argv[2], errno, strerror(errno));
   }
+  RTIMER_LOG("find source files");
 
   // setup build context
+  RTIMER_START();
   SymPool syms = {0};
   sympool_init(&syms, universe_syms(), MemHeap, NULL);
   Mem astmem = MemHeap; // allocate AST in global memory pool
   Build build = {0};
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
   // build.opt = CoOptFast;
+  RTIMER_LOG("init build state");
 
   // setup package namespace and create package AST node
   Scope* pkgscope = ScopeNew(GetGlobalScope(), build.mem);
   Node* pkgnode = CreatePkgAST(&build, pkgscope);
 
   // parse source files
+  RTIMER_START();
   Source* src = pkg.srclist;
   Parser parser = {0};
   while (src) {
@@ -219,6 +241,7 @@ int cmd_build(int argc, const char** argv) {
     NodeTransferUnresolved(pkgnode, filenode);
     src = src->next;
   }
+  RTIMER_LOG("parse");
   dump_ast("", pkgnode);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
@@ -227,19 +250,24 @@ int cmd_build(int argc, const char** argv) {
 
   // validate AST produced by parser
   #ifdef DEBUG
-  if (!NodeValidate(&build, pkgnode))
+  RTIMER_START();
+  bool valid = NodeValidate(&build, pkgnode);
+  RTIMER_LOG("validate");
+  if (!valid)
     return 1;
   dlog("AST validated OK");
   #endif
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
+    RTIMER_START();
     pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
+    RTIMER_LOG("resolve symbolic references");
+    dump_ast("", pkgnode);
     if (build.errcount) {
       errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
       return 1;
     }
-    dump_ast("", pkgnode);
     assert( ! NodeIsUnresolved(pkgnode)); // no errors should mean all resolved
 
     // validate AST after symbol resolution
@@ -251,21 +279,16 @@ int cmd_build(int argc, const char** argv) {
   }
 
   // resolve types
+  RTIMER_START();
   pkgnode = ResolveType(&build, pkgnode);
+  RTIMER_LOG("semantic analysis & type resolution");
   dump_ast("", pkgnode);
   if (build.errcount) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
   }
 
-  { // print timing
-    auto timeend = nanotime();
-    char abuf[40];
-    auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
-    printf("parse, resolve & typecheck %.*s\n", buflen, abuf);
-  }
-
-  return 0; // XXX
+  goto end; // XXX
 
   // build IR
   #if 0
@@ -285,11 +308,13 @@ int cmd_build(int argc, const char** argv) {
   }
   #endif
 
-  // print how much (real) time we spent
-  auto timeend = nanotime();
-  char abuf[40];
-  auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
-  printf("done in %.*s\n", buflen, abuf);
+  end: {
+    // print how much (real) time we spent
+    auto timeend = nanotime();
+    char abuf[40];
+    auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
+    printf("done in %.*s (real time)\n", buflen, abuf);
+  }
   return 0;
 }
 

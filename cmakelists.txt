@@ -200,8 +200,10 @@ add_executable(co
   src/co/util/array.c
   src/co/util/array_test.c
   src/co/util/ptrmap.c
+  src/co/util/rtimer.c
   src/co/util/sym.c
   src/co/util/symmap.c
+  src/co/util/tmpstr.c
   src/co/util/tstyle.c
 )
 target_include_directories(co PRIVATE src)

@@ -1,158 +1,38 @@
 #include "../common.h"
 #include "../util/tstyle.h"
 #include "../util/array.h"
+#include "../util/tmpstr.h"
+#include "../util/ptrmap.h"
 #include "parse.h"
 
-// DEBUG_INCLUDE_SCOPE: define to include "[scope ADDR]" in output
-#define DEBUG_INCLUDE_SCOPE
+// DEBUG_INCLUDE_POINTERS: define to include node memory addresses in output
+//#define DEBUG_INCLUDE_POINTERS
+
+// INDENT_DEPTH is the number of spaces used for indentation
+#define INDENT_DEPTH 2
 
 
-typedef struct ReprCtx {
-  int         ind;  // indentation level
-  int         maxdepth;
-  int         typenest; // >0 when formatting a type
-  TStyleTable style;
-  bool        pretty;
-  bool        includeTypes;
-  Array       funscope; // cycle guard
-  Node*       funscope_storage[4];
+static TStyle id_color      = TStyle_lightyellow;
+static TStyle type_color    = TStyle_blue;
+static TStyle typeval_color = TStyle_lightblue; // type used as a value
+static TStyle field_color   = TStyle_pink;
+static TStyle ref_color     = TStyle_red;
+static TStyle attr_color    = TStyle_orange;
+static TStyle lit_color     = TStyle_lightpurple;
+static TStyle op_color      = TStyle_lightgreen;
 
-  // style
-  Array stylestack;
-  Str   stylestack_storage[4];
-  Str   nobg_color;
-  Str   nofg_color;
-  Str   id_color;
-  Str   ptr_color;
-  Str   type_color;
-  Str   unimportant_color;
-  Str   unresolved_color;
-} ReprCtx;
 
-static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth);
-
-Str NodeRepr(const Node* n, Str s) {
-  auto mem = MemHeap;
-  TStyleTable style = TStyle16;
-  ReprCtx ctx = {
-    .maxdepth     = 48,
-    .pretty       = true,
-    .includeTypes = true,
-    .style        = style,
-  };
-
-  ArrayInitWithStorage(&ctx.funscope, ctx.funscope_storage, countof(ctx.funscope_storage));
-  ArrayInitWithStorage(&ctx.stylestack, ctx.stylestack_storage, countof(ctx.stylestack_storage));
-
-  auto bold_style = str_cpycstr(style[TStyle_bold]);
-  if (style != TStyleNone) {
-    ctx.nobg_color = str_cpycstr(style[TStyle_defaultbg]);
-    ctx.nofg_color = str_cpycstr(style[TStyle_defaultfg]);
-    ctx.id_color   = str_cpycstr(style[TStyle_orange]);
-    ctx.ptr_color  = str_cpycstr(style[TStyle_red]);
-    ctx.type_color = str_cpycstr(style[TStyle_blue]);
-    // ctx.type_color = str_cpycstr("\x1b[44m");
-    ctx.unimportant_color = str_cpycstr(style[TStyle_grey]);
-    ctx.unresolved_color = str_cpycstr(style[TStyle_green]);
-    ArrayPush(&ctx.stylestack, (void*)bold_style, mem);
-  }
-
-  s = nodeRepr(n, s, &ctx, /*depth*/ 1);
-
-  ArrayFree(&ctx.funscope, mem);
-  ArrayFree(&ctx.stylestack, mem);
-  str_free(bold_style);
-  str_free(ctx.nobg_color);
-  str_free(ctx.nofg_color);
-  str_free(ctx.id_color);
-  str_free(ctx.ptr_color);
-  str_free(ctx.type_color);
-  str_free(ctx.unimportant_color);
-  str_free(ctx.unresolved_color);
-  return s;
+ConstStr fmtnode(const Node* n) {
+  Str* sp = tmpstr_get();
+  *sp = NodeStr(*sp, n);
+  return *sp;
 }
 
-static Str style_apply(ReprCtx* ctx, Str s) {
-  if (ctx->stylestack.len == 0)
-    return str_appendcstr(s, ctx->style[TStyle_none]);
-  bool nofg = true;
-  bool nobg = true;
-  s = str_makeroom(s, ctx->stylestack.len * 8);
-  for (u32 i = 0; i < ctx->stylestack.len; i++) {
-    Str style = ctx->stylestack.v[i];
-    s = str_append(s, style, str_len(style));
-    if (style[2] == '3' || style[2] == '9') {
-      nofg = false;
-    } else if (style[2] == '4') {
-      nobg = false;
-    }
-  }
-  if (nofg)
-    s = str_append(s, ctx->nofg_color, str_len(ctx->nofg_color));
-  if (nobg)
-    s = str_append(s, ctx->nobg_color, str_len(ctx->nobg_color));
-  return s;
+ConstStr fmtast(const Node* n) {
+  Str* sp = tmpstr_get();
+  *sp = NodeRepr(n, *sp, NodeReprDefault);
+  return *sp;
 }
-
-static Str style_push(ReprCtx* ctx, Str s, Str style) {
-  if (ctx->style == TStyleNone)
-    return s;
-  ArrayPush(&ctx->stylestack, (void*)style, MemHeap);
-  return style_apply(ctx, s);
-}
-
-static Str style_pop(ReprCtx* ctx, Str s) {
-  ArrayPop(&ctx->stylestack);
-  return style_apply(ctx, s);
-}
-
-
-// funscope_push adds n to ctx->funscope. Returns true if added.
-static bool funscope_push(ReprCtx* ctx, const Node* n) {
-  assert(n->kind == NFun);
-  //dlog("funscope_push %s", fmtnode(n));
-  if (ArrayIndexOf(&ctx->funscope, (void*)n) > -1)
-    return false;
-  ArrayPush(&ctx->funscope, (void*)n, MemHeap);
-  return true;
-}
-
-// funscope_pop removes n from ctx->funscope
-static void funscope_pop(ReprCtx* ctx) {
-  ArrayPop(&ctx->funscope);
-}
-
-
-static Str indent(Str s, const ReprCtx* ctx) {
-  if (ctx->ind > 0 && ctx->typenest == 0) {
-    if (ctx->pretty) {
-      s = str_append(s, "\n", 1);
-      s = str_appendfill(s, ctx->ind, ' ');
-    } else {
-      s = str_append(s, " ", 1);
-    }
-  }
-  return s;
-}
-
-
-static Str reprEmpty(Str s, const ReprCtx* ctx) {
-  s = indent(s, ctx);
-  return str_append(s, "()", 2);
-}
-
-
-#ifdef DEBUG_INCLUDE_SCOPE
-static Scope* getScope(const Node* n) {
-  switch (n->kind) {
-    case NFile:
-    case NPkg:
-      return n->array.scope;
-    default:
-      return NULL;
-  }
-}
-#endif /*DEBUG_INCLUDE_SCOPE*/
 
 
 Str NValFmt(Str s, const NVal v) {
@@ -168,7 +48,7 @@ Str NValFmt(Str s, const NVal v) {
   case CType_rune:
   case CType_float:
   case CType_str:
-    dlog("TODO NValFmt");
+    panic("TODO NValFmt");
     break;
 
   case CType_bool:
@@ -186,332 +66,34 @@ Str NValFmt(Str s, const NVal v) {
 }
 
 
-static Str nodeRepr(const Node* n, Str s, ReprCtx* ctx, int depth) {
-  if (n == NULL)
-    return str_append(s, "(null)", 6);
+// ==============================================================================================
+// shared helpers
 
-  if (depth > ctx->maxdepth) {
-    s = style_push(ctx, s, ctx->unimportant_color);
-    s = str_appendcstr(s, "...");
-    s = style_pop(ctx, s);
+
+inline static Str style_push(StyleStack* st, Str s, TStyle style) {
+  if (st->styles == TStyleNone)
     return s;
-  }
-
-  bool isType = NodeKindIsType(n->kind);
-  if (!isType) {
-    s = indent(s, ctx);
-
-    // add type prefix
-    if (n->kind != NPkg && n->kind != NFile && ctx->includeTypes && ctx->typenest == 0) {
-      s = style_push(ctx, s, ctx->type_color);
-      if (n->type) {
-        ctx->typenest++;
-        s = nodeRepr(n->type, s, ctx, depth + 1);
-        ctx->typenest--;
-        s = str_appendcstr(s, ":");
-      } else {
-        s = str_appendcstr(s, "?:");
-      }
-      s = style_pop(ctx, s);
-    }
-
-    s = str_appendfmt(s, "(%s ", NodeKindName(n->kind));
-  }
-
-  if (NodeIsUnresolved(n)) {
-    s = style_push(ctx, s, ctx->unresolved_color);
-    s = str_appendcstr(s, "\xE2\x8B\xAF "); // "⋯" U+22EF
-    s = style_pop(ctx, s);
-  }
-
-  ctx->ind += 2;
-
-  #ifdef DEBUG_INCLUDE_SCOPE
-  auto scope = getScope(n);
-  if (scope)
-    s = str_appendfmt(s, "[scope %p] ", scope);
-  #endif /*DEBUG_INCLUDE_SCOPE*/
-
-  switch (n->kind) {
-
-  // does not use u
-  case NBad:
-  case NNone:
-  case NNil:
-    str_setlen(s, str_len(s) - 1); // trim away trailing " " from s
-    break;
-
-  // uses u.integer
-  case NIntLit:
-    s = str_appendfmt(s, FMT_U64, n->val.i);
-    break;
-
-  case NBoolLit:
-    if (n->val.i == 0) {
-      s = str_appendcstr(s, "false");
-    } else {
-      s = str_appendcstr(s, "true");
-    }
-    break;
-
-  // uses u.real
-  case NFloatLit:
-    s = str_appendfmt(s, "%f", n->val.f);
-    break;
-
-  // uses u.str
-  case NComment:
-    s = str_appendrepr(s, (const char*)n->str.ptr, n->str.len);
-    break;
-
-  // uses u.ref
-  case NId:
-    assert(n->ref.name != NULL);
-    if (isType && n->ref.target) {
-      s = nodeRepr(n->ref.target, s, ctx, depth);
-      break;
-    }
-    s = style_push(ctx, s, ctx->id_color);
-    s = str_append(s, n->ref.name, symlen(n->ref.name));
-    s = style_pop(ctx, s);
-    if (n->ref.target) {
-      if (n->ref.target->kind == NFun) {
-        auto f = n->ref.target;
-        s = str_appendfmt(s, " @(Fun %s %s%p%s)",
-          f->fun.name ? f->fun.name : "_", ctx->ptr_color, f, ctx->nofg_color);
-      } else {
-        s = str_appendfmt(s, " @%s", NodeKindName(n->ref.target->kind));
-      }
-      // s = nodeRepr(n->ref.target, s, ctx, depth + 1);
-    }
-    break;
-
-  // uses u.op
-  case NBinOp:
-  case NPostfixOp:
-  case NPrefixOp:
-  case NAssign:
-  case NReturn:
-    if (n->op.op != TNone) {
-      s = str_appendcstr(s, TokName(n->op.op));
-      s = str_append(s, " ", 1);
-    }
-    s = nodeRepr(n->op.left, s, ctx, depth + 1);
-    if (n->op.right) {
-      s = nodeRepr(n->op.right, s, ctx, depth + 1);
-    }
-    break;
-
-  // uses u.array
-  case NBlock:
-  case NTuple:
-  case NFile:
-  case NPkg:
-  {
-    // sdssetlen(s, str_len(s)-1); // trim away trailing " " from s
-    for (u32 i = 0; i < n->array.a.len; i++) {
-      s = nodeRepr(n->array.a.v[i], s, ctx, depth + 1);
-      // TODO: detect if line breaks were added.
-      // I.e. (Tuple int int) is currently printed as "(Tuple intint)" (missing space).
-    }
-    break;
-  }
-
-  // uses u.field
-  case NLet:
-  case NArg:
-  case NField:
-  {
-    if (n->kind == NLet) {
-      s = str_appendfmt(s, "#%u ", n->field.nrefs);
-    } else if (n->kind == NArg) {
-      s = str_appendfmt(s, "#%u ", n->field.index);
-    }
-    if (n->field.name) {
-      s = style_push(ctx, s, ctx->id_color);
-      s = str_append(s, n->field.name, symlen(n->field.name));
-      s = style_pop(ctx, s);
-    } else {
-      s = str_appendc(s, '_');
-    }
-    if (n->field.init) {
-      if (NodeKindIsType(n->field.init->kind))
-        s = str_appendc(s, ' ');
-      s = nodeRepr(n->field.init, s, ctx, depth + 1);
-    }
-    break;
-  }
-
-  // uses u.fun
-  case NFun: {
-    // cycle guard for functions which may refer to themselves.
-    // TODO: include structs and complex types here in the future.
-    if (!funscope_push(ctx, n)) {
-      s = str_appendfmt(s, "[cycle %s %s%p%s]",
-        NodeKindName(n->kind), ctx->ptr_color, n, ctx->nofg_color);
-      return s;
-    }
-    auto f = &n->fun;
-
-    if (f->name) {
-      s = style_push(ctx, s, ctx->id_color);
-      s = str_append(s, f->name, symlen(f->name));
-      s = style_pop(ctx, s);
-    } else {
-      s = str_appendc(s, '_');
-    }
-
-    // include address
-    s = str_appendfmt(s, " %s%p%s", ctx->ptr_color, n, ctx->nofg_color);
-
-    if (f->tparams) {
-      s = nodeRepr(f->tparams, s, ctx, depth + 1);
-    } else {
-      s = reprEmpty(s, ctx);
-    }
-
-    if (f->params) {
-      s = nodeRepr(f->params, s, ctx, depth + 1);
-    } else {
-      s = reprEmpty(s, ctx);
-    }
-
-    s = str_appendcstr(s, " -> ");
-
-    if (f->result) {
-      s = nodeRepr(f->result, s, ctx, depth + 1);
-    } else {
-      s = style_push(ctx, s, ctx->unresolved_color);
-      s = str_appendcstr(s, "?");
-      s = style_pop(ctx, s);
-    }
-
-    if (f->body) {
-      s = nodeRepr(f->body, s, ctx, depth + 1);
-    }
-
-    funscope_pop(ctx);
-    break;
-  }
-
-  // uses u.call
-  case NTypeCast: // TODO
-  case NCall: {
-    auto recv = n->call.receiver;
-
-    // const Node* funTarget = (
-    //   recv->kind == NFun ? recv :
-    //   (recv->kind == NId && recv->ref.target != NULL && recv->ref.target->kind == NFun) ?
-    //     recv->ref.target :
-    //   NULL
-    // );
-
-    s = nodeRepr(recv, s, ctx, depth + 1);
-    // if (funTarget) {
-    //   //
-    // } else if (recv->kind == NId && recv->ref.target == NULL) {
-    //   // when the receiver is an ident without a resolved target, print its name
-    //   s = str_append(s, recv->ref.name, symlen(recv->ref.name));
-    // } else {
-    //   s = nodeRepr(recv, s, ctx, depth + 1);
-    // }
-
-    s = nodeRepr(n->call.args, s, ctx, depth + 1);
-    break;
-  }
-
-  // uses u.cond
-  case NIf:
-    s = nodeRepr(n->cond.cond, s, ctx, depth + 1);
-    s = nodeRepr(n->cond.thenb, s, ctx, depth + 1);
-    if (n->cond.elseb) {
-      s = nodeRepr(n->cond.elseb, s, ctx, depth + 1);
-    }
-    break;
-
-  case NBasicType:
-    ctx->typenest++;
-    s = style_push(ctx, s, ctx->type_color);
-    if (n == Type_ideal) {
-      s = str_appendc(s, '*');
-    } else {
-      s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
-    }
-    s = style_pop(ctx, s);
-    ctx->typenest--;
-    break;
-
-  case NFunType:
-    ctx->typenest++;
-    if (n->t.fun.params) {
-      s = nodeRepr(n->t.fun.params, s, ctx, depth + 1);
-    } else {
-      s = str_appendcstr(s, "()");
-    }
-    s = str_appendcstr(s, "->");
-    if (n->t.fun.result) {
-      s = nodeRepr(n->t.fun.result, s, ctx, depth + 1);
-    } else {
-      s = str_appendcstr(s, "()");
-    }
-    ctx->typenest--;
-    break;
-
-  // uses u.t.list
-  case NTupleType: {
-    ctx->typenest++;
-    s = str_appendc(s, '(');
-    bool first = true;
-    for (u32 i = 0; i < n->t.list.a.len; i++) {
-      Node* cn = n->t.list.a.v[i];
-      if (first) {
-        first = false;
-      } else {
-        s = str_appendc(s, ' ');
-      }
-      s = nodeRepr(cn, s, ctx, depth + 1);
-    }
-    s = str_appendc(s, ')');
-    ctx->typenest--;
-    break;
-  }
-
-  // uses u.t.array
-  case NArrayType: {
-    ctx->typenest++;
-    if (n->t.array.sizeExpr == NULL) {
-      s = str_appendcstr(s, "[]");
-    } else {
-      if (n->t.array.size != 0) {
-        // size is known
-        s = str_appendfmt(s, "[" FMT_U64 "]", n->t.array.size);
-      } else {
-        s = str_appendc(s, '[');
-        s = nodeRepr(n->t.array.sizeExpr, s, ctx, depth + 1);
-        s = str_appendc(s, ']');
-      }
-    }
-    s = nodeRepr(n->t.array.subtype, s, ctx, depth + 1);
-    ctx->typenest--;
-    break;
-  }
-
-  // TODO
-  case NStrLit:
-    panic("TODO %s", NodeKindName(n->kind));
-
-  case _NodeKindMax: break;
-  // Note: No default case, so that the compiler warns us about missing cases.
-
-  }
-
-  ctx->ind -= 2;
-
-  if (!isType) {
-    s = str_append(s, ")", 1);
-  }
-  return s;
+  return StyleStackPush(st, s, style);
 }
+
+inline static Str style_pop(StyleStack* st, Str s) {
+  if (st->styles == TStyleNone)
+    return s;
+  return StyleStackPop(st, s);
+}
+
+static Str styleStackInitRepr(StyleStack* sstack, Str s, NodeReprFlags fl) {
+  TStyleTable styles = TStyleNone;
+  if ((fl&NodeReprNoColor) == 0 && ((fl&NodeReprColor) || TSTyleStderrIsTTY())) {
+    styles = TSTyleForTerm();
+  }
+  StyleStackInit(sstack, styles);
+  return style_push(sstack, s, TStyle_bold);
+}
+
+
+// ==============================================================================================
+// NodeStr
 
 
 static Str str_append_NodeArray(Str s, const NodeArray* na) {
@@ -523,14 +105,14 @@ static Str str_append_NodeArray(Str s, const NodeArray* na) {
     } else {
       s = str_appendc(s, ' ');
     }
-    s = str_append_astnode(s, n);
+    s = NodeStr(s, n);
   }
   return s;
 }
 
 
 // appends a short representation of an AST node to s, suitable for use in error messages.
-Str str_append_astnode(Str s, const Node* n) {
+Str NodeStr(Str s, const Node* n) {
   // Note: Do not include type information.
   // Instead, in use sites, call fmtnode individually for n->type when needed.
 
@@ -552,36 +134,31 @@ Str str_append_astnode(Str s, const Node* n) {
   case NFloatLit: // 12.3
     return str_appendfmt(s, "%f", n->val.f);
 
-  case NComment: // #"comment"
-    s = str_appendcstr(s, "#\"");
-    s = str_appendrepr(s, (const char*)n->str.ptr, n->str.len);
-    return str_appendc(s, '"');
-
   case NId: // foo
     return str_append(s, n->ref.name, symlen(n->ref.name));
 
   case NBinOp: // foo + bar
-    s = str_append_astnode(s, n->op.left);
+    s = NodeStr(s, n->op.left);
     s = str_appendc(s, ' ');
     s = str_appendcstr(s, TokName(n->op.op));
     s = str_appendc(s, ' ');
-    return str_append_astnode(s, n->op.right);
+    return NodeStr(s, n->op.right);
 
   case NPostfixOp: // foo++
-    s = str_append_astnode(s, n->op.left);
+    s = NodeStr(s, n->op.left);
     return str_appendcstr(s, TokName(n->op.op));
 
   case NPrefixOp: // -foo
     s = str_appendcstr(s, TokName(n->op.op));
-    return str_append_astnode(s, n->op.left); // note: prefix op uses left, not right.
+    return NodeStr(s, n->op.left); // note: prefix op uses left, not right.
 
   case NAssign: // thing=
-    s = str_append_astnode(s, n->op.left);
+    s = NodeStr(s, n->op.left);
     return str_appendc(s, '=');
 
   case NReturn: // return thing
     s = str_appendcstr(s, "return ");
-    return str_append_astnode(s, n->op.left);
+    return NodeStr(s, n->op.left);
 
   case NBlock: // {int}
     return str_appendcstr(s, "block");
@@ -613,7 +190,7 @@ Str str_append_astnode(Str s, const Node* n) {
 
   case NTypeCast: // typecast<int16>
     s = str_appendcstr(s, "typecast<");
-    s = str_append_astnode(s, n->call.receiver);
+    s = NodeStr(s, n->call.receiver);
     return str_appendc(s, '>');
 
   case NCall: // call foo
@@ -631,10 +208,10 @@ Str str_append_astnode(Str s, const Node* n) {
     if (n->t.fun.params == NULL) {
       s = str_appendcstr(s, "()");
     } else {
-      s = str_append_astnode(s, n->t.fun.params);
+      s = NodeStr(s, n->t.fun.params);
     }
     s = str_appendcstr(s, "->");
-    return str_append_astnode(s, n->t.fun.result); // ok if NULL
+    return NodeStr(s, n->t.fun.result); // ok if NULL
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
@@ -662,15 +239,378 @@ Str str_append_astnode(Str s, const Node* n) {
 }
 
 
-ConstStr fmtnode(const Node* n) {
-  auto s = str_append_astnode(str_new(16), n);
-  // TODO memgcsds(s)
-  return s; // return memgcsds(s); // GC
+// ==============================================================================================
+// NodeRepr
+
+typedef struct LReprCtx {
+  NodeReprFlags fl;        // flags
+  Str           s;         // output buffer
+  u32           ind;       // indentation depth
+  PtrMap        funmap;    // functions we've already printed
+  StyleStack    style;     // ANSI terminal styling
+  u32           linestart; // offset into s of the current line's start (index of last '\n' byte)
+  u32           styleoffs; // number of bytes of style at the beginning of linestart
+  u32           maxline;   // limits the maximum length of output lines
+  u32           typenest;  // >0 when visiting types
+
+  // pre-styled chunks
+  const char* lparen;   // (
+  const char* rparen;   // )
+  const char* lbrack;   // [
+  const char* rbrack;   // ]
+} LReprCtx;
+
+static bool l_visit(NodeList* nl, void* cp);
+static void l_append_fields(const Node* n, LReprCtx* c);
+
+Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
+  LReprCtx c = {
+    .fl = fl,
+    .s = s,
+    .maxline = 80,
+  };
+  c.s = styleStackInitRepr(&c.style, c.s, fl);
+  PtrMapInit(&c.funmap, 64, MemHeap);
+
+  if (c.style.styles == TStyleNone) {
+    c.lparen = "(";
+    c.rparen = ")";
+    c.lbrack = "[";
+    c.rbrack = "]";
+  } else {
+    c.lparen = "\x1b[2m(\x1b[22;1m";
+    c.rparen = "\x1b[2m)\x1b[22;1m";
+    c.lbrack = "\x1b[2m[\x1b[22;1m";
+    c.rbrack = "\x1b[2m]\x1b[22;1m";
+  }
+
+  NodeVisit(n, &c, l_visit);
+
+  PtrMapDispose(&c.funmap);
+  StyleStackDispose(&c.style);
+  return c.s;
+}
+
+static Str append_indent(Str s, u32 nspaces) {
+  const char spaces[] = "                                ";
+  const u32 maxspaces = (u32)strlen(spaces);
+  char* p = str_reserve(&s, nspaces);
+  while (nspaces) {
+    u32 z = MIN(maxspaces, nspaces);
+    memcpy(p, spaces, z);
+    p += z;
+    nspaces -= z;
+  }
+  return s;
+}
+
+// length of current line
+static u32 l_curr_line_len(LReprCtx* c, Str s) {
+  u32 currcol = str_len(s);
+  // subtract bytes in s used for ANSI styling
+  u32 stylebytes = c->style.nbyteswritten - c->styleoffs;
+  assert_debug(currcol >= c->linestart);
+  assert_debug(stylebytes <= currcol - c->linestart);
+  return currcol - stylebytes - c->linestart;
+}
+
+static Str l_new_line(LReprCtx* c, Str s) {
+  c->linestart = str_len(s);
+  c->styleoffs = c->style.nbyteswritten;
+  return str_appendc(s, '\n');
 }
 
 
-ConstStr fmtast(const Node* n) {
-  auto s = NodeRepr(n, str_new(16));
-  // TODO memgcsds(s)
-  return s; // return memgcsds(s); // GC
+static uintptr_t l_fun_id(LReprCtx* c, const Node* fn, bool* newfound) {
+  // Using stable counter instead of address/pointer makes the output deterministic
+  uintptr_t id = (uintptr_t)PtrMapGet(&c->funmap, fn);
+  if (id == 0) {
+    if (newfound)
+      *newfound = true;
+    id = (uintptr_t)PtrMapLen(&c->funmap) + 1;
+    PtrMapSet(&c->funmap, fn, (void*)id);
+  }
+  return id;
+}
+
+
+static bool l_collapse_field(NodeList* nl) {
+  if (!nl->parent)
+    return false;
+  switch (nl->parent->n->kind) {
+
+  case NId:
+  case NLet:
+  case NArg:
+  case NField:
+  case NTuple:
+    return true;
+
+  default:
+    if (NodeKindIsType(nl->parent->n->kind))
+      return true;
+    return false;
+  }
+}
+
+// only called if l_collapse_field(nl)==false
+static bool l_show_field(NodeList* nl) {
+  if (!nl->parent)
+    return true;
+  switch (nl->parent->n->kind) {
+    case NBinOp:
+    case NPostfixOp:
+    case NPrefixOp:
+    case NCall:
+      return false;
+    case NFun:
+      return !NodeKindIsType(nl->n->kind);
+    default:
+      if (NodeKindIsType(nl->n->kind))
+        return false;
+      return true;
+  }
+}
+
+
+static const char* l_listname(NodeList* nl) {
+  const Node* n = nl->n;
+  switch (n->kind) {
+    case NBasicType:
+      return n->t.basic.name;
+    case NTuple:
+    case NTupleType:
+      return "";
+    default:
+      return NodeKindName(n->kind);
+  }
+}
+
+
+static Str append_delim(LReprCtx* c, Str s, const char* chunk) {
+  s = str_appendcstr(s, chunk);
+  if (c->style.styles != TStyleNone)
+    c->style.nbyteswritten += strlen(chunk) - 1;
+  return s;
+}
+
+
+static bool l_is_first_tuple_item(NodeList* nl) {
+  return (
+    nl->parent &&
+    (nl->parent->n->kind == NTupleType || nl->parent->n->kind == NTuple) &&
+    nl->index == 0 &&
+    nl->fieldname == NULL
+  );
+}
+
+
+static Str l_maybe_append_special(NodeList* nl, Str s) {
+  // basic constants and types are simply shown as names e.g. "int", "nil", "true"
+  auto n = nl->n;
+  if (n == Const_nil || n == Const_true || n == Const_false)
+    n = n->type;
+  if (n->kind == NBasicType)
+    return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
+  return s;
+}
+
+
+static bool l_visit(NodeList* nl, void* cp) {
+  auto c = (LReprCtx*)cp;
+  Str s = c->s;
+  auto n = nl->n;
+  u32 addedIndent = 0;
+  u32 numExtraEndParens = 0;
+
+  // do resizing of the string buffer up front
+  s = str_makeroom(s, 64 + c->ind);
+
+  // type as value?
+  if (c->typenest == 0 && NodeKindIsType(nl->n->kind))
+    s = style_push(&c->style, s, typeval_color);
+
+  // indentation and fieldname
+  if (c->ind > 0) {
+    bool collapseField = l_collapse_field(nl);
+    if (collapseField && l_curr_line_len(c, s) < c->maxline) {
+      // just a space as separator
+      if (!l_is_first_tuple_item(nl))
+        s = str_appendc(s, ' ');
+    } else {
+      // new line
+      s = l_new_line(c, s);
+      s = append_indent(s, c->ind);
+      // maybe include fieldname
+      if (nl->fieldname && !collapseField && l_show_field(nl)) {
+        u32 fieldname_len = (u32)strlen(nl->fieldname);
+        s = append_delim(c, s, c->lparen);
+        numExtraEndParens++;
+        s = style_push(&c->style, s, field_color);
+        s = str_append(s, nl->fieldname, fieldname_len);
+        s = style_pop(&c->style, s);
+        s = str_appendc(s, ' ');
+        addedIndent = fieldname_len + INDENT_DEPTH;
+        if (n->kind == NTuple)
+          addedIndent += 1;
+      }
+      addedIndent += INDENT_DEPTH;
+    }
+  } else {
+    addedIndent = INDENT_DEPTH;
+  }
+
+  // specials
+  if (c->typenest != 1) {
+    // Note: (typenest != 1) ensures that when we begin printing a type it is always
+    // surrounded by '[' and ']', even for e.g. "int", "nil" etc.
+    u32 len1 = str_len(s);
+    s = l_maybe_append_special(nl, s);
+    if (str_len(s) != len1) {
+      addedIndent = 0;
+      goto end;
+    }
+  }
+
+  c->ind += addedIndent;
+  bool descend = true;
+
+  // header, e.g. "(NodeKind" or "[" for types
+  s = append_delim(c, s, c->typenest ? c->lbrack : c->lparen);
+  s = str_appendcstr(s, l_listname(nl));
+
+  // functions can reference themselves
+  if (n->kind == NFun) {
+    if (n->fun.name) {
+      s = str_appendc(s, ' ');
+      s = str_append(s, n->fun.name, symlen(n->fun.name));
+    }
+    // Include a function identifier which we can use to map references in the output.
+    bool newfound = false;
+    auto id = l_fun_id(c, n, &newfound);
+    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
+      // this function has been seen before and we have printed it as it was
+      // not defined in the file scope.
+      descend = false;
+    }
+    s = style_push(&c->style, s, ref_color);
+    s = str_appendfmt(s, " #%zu", (size_t)id);
+    s = style_pop(&c->style, s);
+  } else if (n->kind == NFile) {
+    // allocate function ids up front to avoid expanding a referenced function inside a body
+    // when the definition trails the use, syntactically.
+    for (u32 i = 0; i < n->array.a.len; i++) {
+      const Node* cn = n->array.a.v[i];
+      if (cn->kind == NFun)
+        l_fun_id(c, cn, NULL);
+    }
+  }
+
+  // attributes
+  if (NodeIsUnresolved(n)) {
+    s = style_push(&c->style, s, attr_color);
+    s = str_appendcstr(s, " @unres");
+    s = style_pop(&c->style, s);
+  }
+  #ifdef DEBUG_INCLUDE_POINTERS
+    s = style_push(&c->style, s, attr_color);
+    s = str_appendfmt(s, " @ptr(%p)", n);
+    s = style_pop(&c->style, s);
+  #endif
+
+  // include fields and children
+  if (descend) {
+    c->s = s; // store s
+
+    // fields
+    l_append_fields(n, c);
+
+    // visit children
+    NodeVisitChildren(nl, cp, l_visit);
+
+    s = c->s; // load s
+  }
+
+  // include type
+  const Type* typ = n->type;
+  if (c->typenest == 0 && (c->fl & NodeReprTypes) && typ && typ != n) {
+    s = style_push(&c->style, s, type_color);
+    NodeList tnl = { .n = typ, .parent = nl, .fieldname = "type" };
+    if (nl->parent == NULL || nl->parent->n->type != typ) {
+      // okay, let's print this type as it differs from the parent type
+      c->s = s; // store s
+      c->typenest++;
+      l_visit(&tnl, c);
+      c->typenest--;
+      s = c->s; // load s
+    } else {
+      // Type is same as parent type.
+      // To avoid repeat printing of type trees, print something short and symbolic.
+      // s = str_appendcstr(s, " •");
+      s = str_appendc(s, ' ');
+      s = str_appendcstr(s, l_listname(&tnl));
+    }
+    s = style_pop(&c->style, s);
+  }
+
+  // end list
+  s = append_delim(c, s, c->typenest ? c->rbrack : c->rparen);
+
+end:
+  while (numExtraEndParens) {
+    s = append_delim(c, s, c->rparen);
+    numExtraEndParens--;
+  }
+
+  // end type color
+  if (c->typenest == 0 && NodeKindIsType(nl->n->kind))
+    s = style_pop(&c->style, s);
+
+  c->ind -= addedIndent;
+  c->s = s; // store s
+  return true;
+}
+
+
+static void l_append_fields(const Node* n, LReprCtx* c) {
+  Str s = c->s; // load s
+  s = str_appendc(s, ' ');
+  switch (n->kind) {
+
+  case NId:
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->ref.name, symlen(n->ref.name));
+    s = style_pop(&c->style, s);
+    break;
+
+  case NLet:
+  case NArg:
+  case NField:
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->field.name, symlen(n->field.name));
+    s = style_pop(&c->style, s);
+    break;
+
+  case NBinOp:
+  case NPostfixOp:
+  case NPrefixOp:
+    s = style_push(&c->style, s, op_color);
+    s = str_appendcstr(s, TokName(n->op.op));
+    s = style_pop(&c->style, s);
+    break;
+
+  case NIntLit:
+  case NBoolLit:
+  case NFloatLit:
+    s = style_push(&c->style, s, lit_color);
+    s = NValFmt(s, n->val);
+    s = style_pop(&c->style, s);
+    break;
+
+  default:
+    str_setlen(s, str_len(s) - 1); // undo ' '
+    break;
+  }
+  c->s = s; // store s
+  return;
 }

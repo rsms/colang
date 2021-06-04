@@ -1,6 +1,5 @@
 // Resolve identifiers in an AST. Usuaully run right after parsing.
 #include "../common.h"
-#include "../util/array.h"
 #include "parse.h"
 
 
@@ -260,12 +259,14 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   // uses u.call
   case NTypeCast:
-    n->call.args = resolve_sym(ctx, n->call.args);
+    if (n->call.args)
+      n->call.args = resolve_sym(ctx, n->call.args);
     n->call.receiver = resolve_sym(ctx, n->call.receiver);
     break;
 
   case NCall:
-    n->call.args = resolve_sym(ctx, n->call.args);
+    if (n->call.args)
+      n->call.args = resolve_sym(ctx, n->call.args);
     auto recv = resolve_sym(ctx, n->call.receiver);
     // n->call.receiver = recv; // don't short circuit; messes up diagnostics
     if (recv->kind != NFun) {
@@ -307,7 +308,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   case NBasicType:
   case NFunType:
   case NTupleType:
-  case NComment:
   case NNil:
   case NBoolLit:
   case NIntLit:

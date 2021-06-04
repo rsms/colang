@@ -48,7 +48,7 @@ void build_diag(Build* b, DiagLevel level, PosSpan pos, const char* message) {
   d->level = level;
   d->pos = pos;
   d->message = memstrdup(b->mem, message);
-  build_emit_diag(b, d);
+  b->diagh(d, b->userdata);
 }
 
 void build_diagv(Build* b, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {

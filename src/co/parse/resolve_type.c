@@ -19,7 +19,8 @@ ASSUME_NONNULL_BEGIN
 typedef enum RFlag {
   RFlagNone = 0,
   RFlagExplicitTypeCast = 1 << 0,
-  RFlagResolveIdeal     = 1 << 1,  // set when resolving inside resolve_ideal_type
+  RFlagResolveIdeal     = 1 << 1,  // set when resolving ideal types
+  RFlagEager            = 1 << 2,  // set when resolving eagerly
 } RFlag;
 
 
@@ -109,23 +110,42 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 }
 
 
-// ResolveConst resolves n to its constant value
-Node* ResolveConst(Build* b, Node* n) {
+static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
   switch (n->kind) {
-    case NLet:
+    case NLet: {
+      assert(n->field.nrefs > 0);
       assert(n->field.init != NULL);
-      auto init = ResolveConst(b, n->field.init);
-      if (NodeUnrefLet(n) == 0)
+
+      // reset mayReleaseLet at let boundary
+      bool mayReleaseLet_child = false;
+      if (mayReleaseLet && n->field.nrefs == 1) {
+        // we will release n after we have visited its children, so allow children
+        // to be released as well.
+        mayReleaseLet_child = true;
+      }
+
+      // visit initializer node
+      auto init = resolveConst(b, n->field.init, mayReleaseLet_child);
+
+      if (mayReleaseLet && NodeUnrefLet(n) == 0) {
+        // release now-unused Let node
         n->field.init = NULL;
+      }
       return init;
+    }
 
     case NId:
       assert(n->ref.target != NULL);
-      return ResolveConst(b, n->ref.target);
+      return resolveConst(b, n->ref.target, mayReleaseLet);
 
     default:
       return n;
   }
+}
+
+// ResolveConst resolves n to its constant value
+Node* ResolveConst(Build* b, Node* n) {
+  return resolveConst(b, n, /*mayReleaseLet*/true);
 }
 
 
@@ -483,8 +503,9 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
   n->type = n->call.receiver;
   typecontext_push(ctx, n->type);
 
+  assertnotnull(n->call.args);
   n->call.args = resolve_type(ctx, n->call.args, fl | RFlagExplicitTypeCast);
-  assert(n->call.args->type);
+  assertnotnull(n->call.args->type);
 
   if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
     // source type == target type -- eliminate type cast.
@@ -521,25 +542,48 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 
   dlog_mod("%s ft: %s", __func__, fmtnode(ft));
 
-  // add parameter types to the "requested type" stack
-  typecontext_push(ctx, ft->t.fun.params);
+  bool fail = false;
 
-  // input arguments, in context of receiver parameters
-  n->call.args = resolve_type(ctx, n->call.args, fl);
-  auto argstype = n->call.args->type;
-  dlog_mod("%s argstype: %s", __func__, fmtnode(argstype));
+  if (ft->t.fun.params) {
+    // add parameter types to the "requested type" stack
+    typecontext_push(ctx, ft->t.fun.params);
 
-  // pop parameter types off of the "requested type" stack
-  typecontext_pop(ctx);
+    // input arguments, in context of receiver parameters
+    assertnotnull(n->call.args);
+    n->call.args = resolve_type(ctx, n->call.args, fl);
+    dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
 
-  // Note: Consider arguments with defaults:
-  // fun foo(a, b int, c int = 0)
-  // foo(1, 2) == foo(1, 2, 0)
-  if (R_UNLIKELY(!TypeEquals(ctx->build, ft->t.fun.params, argstype))) {
-    build_errf(ctx->build, NodePosSpan(n->call.args),
-      "incompatible arguments %s in function call; expected %s",
-      fmtnode(argstype), fmtnode(ft->t.fun.params));
+    // pop parameter types off of the "requested type" stack
+    typecontext_pop(ctx);
+
+    // TODO: Consider arguments with defaults:
+    // fun foo(a, b int, c int = 0)
+    // foo(1, 2) == foo(1, 2, 0)
+
+    fail = !TypeEquals(ctx->build, ft->t.fun.params, n->call.args->type);
+  } else {
+    // no parameters
+    fail = (n->call.args && n->call.args != Const_nil);
+    // if (n->call.args && n->call.args != Const_nil) {
+    //   auto poss = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
+    //   build_errf(ctx->build, poss,
+    //     "passing arguments to a function that does not accept any arguments");
+    // }
   }
+
+  if (R_UNLIKELY(fail)) {
+    auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
+    const char* argtypes = "()";
+    if (n->call.args != Const_nil) {
+      if (!n->call.args->type)
+        n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
+      argtypes = (const char*)fmtnode(n->call.args->type);
+    }
+    build_errf(ctx->build, posSpan,
+      "can't call function %s %s with arguments of type %s",
+      fmtnode(n->call.receiver), fmtnode(ft), argtypes);
+  }
+
   n->type = ft->t.fun.result;
   return n;
 }
@@ -689,9 +733,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   } else if (n->type) {
     // Has type already. Constant literals might have ideal type.
     if (n->type == Type_ideal) {
-      // if (ctx->typecontext)
-      if (fl & RFlagResolveIdeal && ctx->typecontext)
-        R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
+      if ((fl & RFlagResolveIdeal) && ((fl & RFlagEager) || ctx->typecontext)) {
+        if (ctx->typecontext)
+          R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
+        n = NodeCopy(ctx->build->mem, n);
+        n->type = IdealType(n->val.ct);
+      }
       // else: leave as ideal, for now
       return n;
     } else {
@@ -704,14 +751,15 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   // branch on node kind
   switch (n->kind) {
 
-  // uses u.array
-
+  // uses Node.array
   case NPkg:
   case NFile:
-    n->type = Type_nil;
+    // File and Pkg are special in that types do not propagate
     for (u32 i = 0; i < n->array.a.len; i++)
       n->array.a.v[i] = resolve_type(ctx, (Node*)n->array.a.v[i], fl);
-    break;
+    // Note: Instead of setting n->type=Type_nil, leave as NULL and return early
+    // to avoid check for null types.
+    return n;
 
   case NBlock:
     R_MUSTTAIL return resolve_block_type(ctx, n, fl);
@@ -722,12 +770,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NFun:
     R_MUSTTAIL return resolve_fun_type(ctx, n, fl);
 
-  // uses u.op
   case NPostfixOp:
   case NPrefixOp:
     n->op.left = resolve_type(ctx, n->op.left, fl);
     n->type = n->op.left->type;
     break;
+
   case NReturn:
     R_MUSTTAIL return resolve_ret_type(ctx, n, fl);
 
@@ -741,7 +789,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NCall:
     R_MUSTTAIL return resolve_call_type(ctx, n, fl);
 
-  // uses u.field
+  // uses Node.field
   case NLet:
   case NArg:
   case NField:
@@ -757,7 +805,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     }
     break;
 
-  // uses u.cond
   case NIf:
     R_MUSTTAIL return resolve_if_type(ctx, n, fl);
 
@@ -785,7 +832,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NStrLit:
   case NBad:
   case NNil:
-  case NComment:
   case NFunType:
   case NNone:
   case NBasicType:
@@ -797,13 +843,8 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   }  // switch (n->kind)
 
-  // when and if we get here the node should be typed.
-
-  #ifdef DEBUG
-  if (!n->type)
-    errlog("untyped node! %s", fmtnode(n));
-  assertnotnull(n->type);
-  #endif
+  // when and if we get here, the node should be typed
+  assertnotnull_debug(n->type);
 
   return n;
 }

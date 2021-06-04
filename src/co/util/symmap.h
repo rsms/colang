@@ -20,6 +20,9 @@ void SymMapFree(SymMap*);
 // SymMapDispose frees heap memory used by a map, but not free the SymMap struct itself.
 void SymMapDispose(SymMap*);
 
+// SymMapLen returns the number of entries currently in the map
+static u32 SymMapLen(const SymMap*);
+
 // SymMapGet searches for key. Returns value, or NULL if not found.
 void* nullable SymMapGet(const SymMap*, Sym key);
 

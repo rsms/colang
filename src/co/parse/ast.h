@@ -27,7 +27,6 @@ typedef enum {
   _(FloatLit,    NodeClassConst) /* floating-point literal */ \
   _(StrLit,      NodeClassConst) /* string literal */ \
   _(Nil,         NodeClassConst) /* the nil atom */ \
-  _(Comment,     NodeClassExpr) \
   _(Assign,      NodeClassExpr) \
   _(Arg,         NodeClassExpr) \
   _(Block,       NodeClassExpr|NodeClassArray) \
@@ -88,18 +87,6 @@ const Node* ScopeLookup(const Scope*, Sym);
 const Scope* GetGlobalScope();
 
 
-// // NodeList is a linked list of nodes
-// typedef struct NodeListLink NodeListLink;
-// typedef struct NodeListLink {
-//   Node*         node;
-//   NodeListLink* next;
-// } NodeListLink;
-// typedef struct {
-//   NodeListLink* head;
-//   NodeListLink* tail;
-//   u32           len;   // number of items
-// } NodeList;
-
 typedef Array NodeArray;
 
 // NVal contains the value of basic types of literal nodes
@@ -150,7 +137,7 @@ typedef struct Node {
     } array;
     /* fun */ struct { // Fun
       Node* nullable tparams; // template params (NTuple)
-      Node* nullable params;  // input params (NTuple)
+      Node* nullable params;  // input params (NTuple or NULL if none)
       Node* nullable result;  // output results (NTuple | NExpr)
       Sym   nullable name;    // NULL for lambda
       Node* nullable body;    // NULL for fun-declaration
@@ -175,6 +162,10 @@ typedef struct Node {
     /* t */ struct {
       Sym nullable id; // lazy; initially NULL. Computed from Node.
       union {
+        /* basic */ struct { // BasicType
+          TypeCode typeCode;
+          Sym      name;
+        } basic;
         /* list */ struct { // TupleType
           NodeArray a;            // array of nodes
           Node*     a_storage[4]; // in-struct storage for the first few entries of a
@@ -184,10 +175,6 @@ typedef struct Node {
           u64            size; // only used for array, not slice. 0 until sizeExpr is resolved.
           Node*          subtype;
         } array;
-        /* basic */ struct { // BasicType
-          TypeCode typeCode;
-          Sym      name;
-        } basic;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType
           Node* nullable result; // tuple or single type
@@ -198,21 +185,27 @@ typedef struct Node {
   }; // union
 } Node;
 
-// Node* NodeAlloc(NodeKind); // one-off allocation using calloc()
-// inline static void NodeFree(Node* _) {}
-Str NodeRepr(const Node* nullable n, Str s); // return printable text representation
+// NodeReprFlags changes behavior of NodeRepr
+typedef enum {
+  NodeReprDefault = 0,
+  NodeReprNoColor = 1 << 0, // disable ANSI terminal styling
+  NodeReprColor   = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
+  NodeReprTypes   = 1 << 2, // include types in the output
+} NodeReprFlags;
 
-// fmtast returns an s-expression representation of an AST.
-// Note: The returned string is garbage collected.
+// NodeRepr formats an AST as a printable text representation
+Str NodeRepr(const Node* nullable n, Str s, NodeReprFlags fl);
+
+// NodeStr appends a short representation of an AST node to s.
+Str NodeStr(Str s, const Node* nullable n);
+
+// fmtast returns an exhaustive representation of n using NodeRepr with NodeReprPretty.
+// This function is not suitable for high-frequency use as it uses temporary buffers in TLS.
 ConstStr fmtast(const Node* nullable n);
 
-// fmtnode returns a short representation of an AST node, suitable for use in error messages.
-// Note: The returned string is garbage collected.
+// fmtnode returns a short representation of n using NodeStr, suitable for error messages.
+// This function is not suitable for high-frequency use as it uses temporary buffers in TLS.
 ConstStr fmtnode(const Node* nullable n);
-
-// str_append_astnode appends a short representation of an AST node to s.
-// It produces the same result as fmtnode.
-Str str_append_astnode(Str s, const Node* nullable n);
 
 // NodeKindClass returns NodeClassFlags for kind. It's a fast inline table lookup.
 static NodeClassFlags NodeKindClass(NodeKind kind);
@@ -272,13 +265,13 @@ Node* nullable ArrayNodeLast(Node* n);
 
 // NodePosSpan returns the Pos span representing the logical span of the node.
 // For example, for a tuple that is the pos of the first to last element, inclusive.
-PosSpan NodePosSpan(Node* n);
+PosSpan NodePosSpan(const Node* n);
 
 static void NodeArrayAppend(Mem mem, Array* a, Node* n);
 static void NodeArrayClear(Array* a);
 
 
-extern const Node* NodeBad;  // kind==NBad
+extern const Node* NodeBad; // kind==NBad
 
 // NewNode allocates a node in mem
 Node* NewNode(Mem mem, NodeKind kind);
@@ -297,10 +290,16 @@ void node_diag_trail(Build* b, DiagLevel dlevel, Node* n);
 
 // NodeList is a linked list of nodes
 typedef struct NodeList NodeList;
-struct NodeList { NodeList* nullable parent; Node* n; };
+struct NodeList {
+  const Node*          n;
+  NodeList* nullable   parent;
+  u32                  index;     // index in parent (valid when parent is a kind of list)
+  const char* nullable fieldname; // name in parent (NULL if it does not apply)
+};
 
 // NodeVisitor is used with NodeVisit to traverse an AST.
 // To visit the node's children, call NodeVisitChildren(n,data).
+// If fieldname is non-null it is the symbolic name of nl->n in nl->parent.
 // Return false to stop iteration.
 typedef bool(*NodeVisitor)(NodeList* nl, void* nullable data);
 
@@ -312,10 +311,10 @@ typedef bool(*NodeVisitor)(NodeList* nl, void* nullable data);
 //     return NodeVisitChildren(nl, visit, data);
 //   }
 //   NodeVisit(n, visit, NULL);
-static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data);
+static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f);
 
 // NodeVisitChildren calls for each child of n, passing along n and data to f.
-bool NodeVisitChildren(NodeList* parent, NodeVisitor f, void* nullable data);
+bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f);
 
 // NodeValidate checks an AST for inconsistencies. Useful for debugging and development.
 bool NodeValidate(Build* b, Node* n);
@@ -346,9 +345,9 @@ inline static void NodeArrayClear(Array* a) {
   ArrayClear(a);
 }
 
-inline static bool NodeVisit(Node* n, NodeVisitor f, void* nullable data) {
+inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) {
   NodeList parent = { .n = n };
-  return NodeVisitChildren(&parent, f, data);
+  return f(&parent, data);
 }
 
 inline static Node* NodeRefLet(Node* n) {

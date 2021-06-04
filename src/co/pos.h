@@ -47,6 +47,10 @@ static Pos pos_with_line(Pos p, u32 line);   // returns copy of p with specific 
 static Pos pos_with_col(Pos p, u32 col);    // returns copy of p with specific col
 static Pos pos_with_width(Pos p, u32 width);  // returns copy of p with specific width
 
+// pos_with_adjusted_start returns a copy of p with its start and width adjusted by deltacol.
+// Can not overflow; the result is clamped.
+Pos pos_with_adjusted_start(Pos p, i32 deltacol);
+
 // pos_isknown reports whether the position is a known position.
 static bool pos_isknown(Pos);
 
@@ -87,7 +91,7 @@ static const u64 _pos_originShift = _pos_originBits + _pos_colBits + _pos_widthB
 static const u64 _pos_lineShift   = _pos_colBits + _pos_widthBits;
 static const u64 _pos_colShift    = _pos_widthBits;
 
-ALWAYS_INLINE static Pos pos_make_unchecked(u32 origin, u32 line, u32 col, u32 width) {
+inline static Pos pos_make_unchecked(u32 origin, u32 line, u32 col, u32 width) {
   return (Pos)( ((u64)origin << _pos_originShift)
               | ((u64)line << _pos_lineShift)
               | ((u64)col << _pos_colShift)
@@ -102,33 +106,33 @@ inline static Pos pos_make(u32 origin, u32 line, u32 col, u32 width) {
     MIN(_pos_widthMax, width));
 }
 
-ALWAYS_INLINE static u32 pos_origin(Pos p) { return p >> _pos_originShift; }
-ALWAYS_INLINE static u32 pos_line(Pos p)   { return (p >> _pos_lineShift) & _pos_lineMax; }
-ALWAYS_INLINE static u32 pos_col(Pos p)    { return (p >> _pos_colShift) & _pos_colMax; }
-ALWAYS_INLINE static u32 pos_width(Pos p)   { return p & _pos_widthMax; }
+inline static u32 pos_origin(Pos p) { return p >> _pos_originShift; }
+inline static u32 pos_line(Pos p)   { return (p >> _pos_lineShift) & _pos_lineMax; }
+inline static u32 pos_col(Pos p)    { return (p >> _pos_colShift) & _pos_colMax; }
+inline static u32 pos_width(Pos p)   { return p & _pos_widthMax; }
 
 // TODO: improve the efficiency of these
-ALWAYS_INLINE static Pos pos_with_origin(Pos p, u32 origin) {
+inline static Pos pos_with_origin(Pos p, u32 origin) {
   return pos_make_unchecked(MIN(_pos_originMax, origin), pos_line(p), pos_col(p), pos_width(p));
 }
-ALWAYS_INLINE static Pos pos_with_line(Pos p, u32 line) {
+inline static Pos pos_with_line(Pos p, u32 line) {
   return pos_make_unchecked(pos_origin(p), MIN(_pos_lineMax, line), pos_col(p), pos_width(p));
 }
-ALWAYS_INLINE static Pos pos_with_col(Pos p, u32 col) {
+inline static Pos pos_with_col(Pos p, u32 col) {
   return pos_make_unchecked(pos_origin(p), pos_line(p), MIN(_pos_colMax, col), pos_width(p));
 }
-ALWAYS_INLINE static Pos pos_with_width(Pos p, u32 width) {
+inline static Pos pos_with_width(Pos p, u32 width) {
   return pos_make_unchecked(pos_origin(p), pos_line(p), pos_col(p), MIN(_pos_widthMax, width));
 }
 
-ALWAYS_INLINE static bool pos_isbefore(Pos p, Pos q) { return p < q; }
-ALWAYS_INLINE static bool pos_isafter(Pos p, Pos q) { return p > q; }
+inline static bool pos_isbefore(Pos p, Pos q) { return p < q; }
+inline static bool pos_isafter(Pos p, Pos q) { return p > q; }
 
 inline static bool pos_isknown(Pos p) {
   return pos_origin(p) != 0 || pos_line(p) != 0;
 }
 
-ALWAYS_INLINE static void* pos_source(const PosMap* pm, Pos p) {
+inline static void* pos_source(const PosMap* pm, Pos p) {
   return pm->a.v[pos_origin(p)];
 }
 

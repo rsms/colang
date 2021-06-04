@@ -4,7 +4,6 @@
 //#define DEBUG_LOOKUP
 
 
-// NBad node
 static const Node _NodeBad = {NBad,0,NoPos,NoPos,NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
@@ -162,7 +161,7 @@ Node* nullable ArrayNodeLast(Node* n) {
 }
 
 
-PosSpan NodePosSpan(Node* n) {
+PosSpan NodePosSpan(const Node* n) {
   PosSpan span = { n->pos, n->endpos };
   // dlog("-- NodePosSpan %s %u:%u",
   //   NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
@@ -179,6 +178,10 @@ PosSpan NodePosSpan(Node* n) {
       span.start = NodePosSpan(n->call.receiver).start;
       if (n->call.args)
         span.end = NodePosSpan(n->call.args).end;
+      break;
+
+    case NTuple:
+      span.start = pos_with_adjusted_start(span.start, -1);
       break;
 
     default:

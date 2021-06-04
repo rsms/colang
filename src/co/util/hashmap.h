@@ -14,9 +14,14 @@ typedef struct {
   u32   cap;     // number of buckets
   u32   len;     // number of key-value entries
   u32   flags;   // internal
-  Mem   mem;     // memory allocator. NULL = use global allocator
+  Mem   mem;     // memory allocator
   void* buckets; // internal
 } HASHMAP_NAME;
+
+
+#define _HM_MAKE_FN_NAME(a, b) a ## b
+#define _HM_FUN(prefix, name) _HM_MAKE_FN_NAME(prefix, name)
+#define HM_FUN(name) _HM_FUN(HASHMAP_NAME, name)
 
 
 #ifdef HASHMAP_INCLUDE_DECLARATIONS
@@ -32,9 +37,6 @@ typedef struct {
   #error "please define HASHMAP_VALUE"
 #endif
 
-#define _HM_MAKE_FN_NAME(a, b) a ## b
-#define _HM_FUN(prefix, name) _HM_MAKE_FN_NAME(prefix, name)
-#define HM_FUN(name) _HM_FUN(HASHMAP_NAME, name)
 
 // New creates a new map with initbuckets intial buckets.
 HASHMAP_NAME* HM_FUN(New)(u32 initbuckets, Mem)
@@ -50,6 +52,9 @@ void HM_FUN(Init)(HASHMAP_NAME*, u32 initbuckets, Mem mem);
 // Dispose frees buckets data (but not the hashmap itself.)
 // The hashmap is invalid after this call. Call Init to reuse.
 void HM_FUN(Dispose)(HASHMAP_NAME*);
+
+// Len returns the number of entries currently in the map
+static u32 HM_FUN(Len)(const HASHMAP_NAME*);
 
 // Get searches for key. Returns value, or NULL if not found.
 HASHMAP_VALUE nullable HM_FUN(Get)(const HASHMAP_NAME*, HASHMAP_KEY key);
@@ -75,6 +80,11 @@ void HM_FUN(Iter)(const HASHMAP_NAME*, HM_FUN(Iterator)*, void* userdata);
 #undef HM_FUN
 
 #endif /* HASHMAP_INCLUDE_DECLARATIONS */
+
+
+inline static u32 HM_FUN(Len)(const HASHMAP_NAME* h) {
+  return h->len;
+}
 
 
 ASSUME_NONNULL_END

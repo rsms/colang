@@ -11,17 +11,17 @@ ASSUME_NONNULL_BEGIN
 // PtrMapInit initializes a map structure. initbuckets is the number of initial buckets.
 void PtrMapInit(PtrMap*, u32 initbuckets, Mem mem);
 
-// bool PtrMapIsInit(PtrMap*)
-#define PtrMapIsInit HASHMAP_IS_INIT
-
-// PtrMapDealloc frees heap memory used by a map, but leaves PtrMap untouched.
-void PtrMapDealloc(PtrMap*);
+// PtrMapDispose frees heap memory used by a map, but leaves PtrMap untouched.
+void PtrMapDispose(PtrMap*);
 
 // Creates and initializes a new PtrMap in mem, or global memory if mem is NULL.
 PtrMap* PtrMapNew(u32 initbuckets, Mem mem);
 
 // PtrMapFree frees PtrMap along with its data.
 void PtrMapFree(PtrMap*);
+
+// PtrMapLen returns the number of entries currently in the map
+static u32 PtrMapLen(const PtrMap*);
 
 // PtrMapGet searches for key. Returns value, or NULL if not found.
 void* nullable PtrMapGet(const PtrMap*, const void* key);

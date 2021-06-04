@@ -25,6 +25,18 @@ u32 posmap_origin(PosMap* pm, void* origin) {
   return i;
 }
 
+Pos pos_with_adjusted_start(Pos p, i32 deltacol) {
+  i32 c = (i32)pos_col(p);
+  i32 w = (i32)pos_width(p);
+  deltacol = (deltacol > 0) ? MIN(deltacol, w) : MAX(deltacol, -c);
+  return pos_make_unchecked(
+    pos_origin(p),
+    pos_line(p),
+    (u32)(c + deltacol),
+    (u32)(w - deltacol)
+  );
+}
+
 static u32* computeLineOffsets(Source* s, u32* nlines_out) {
   if (!s->body)
     SourceOpenBody(s);
@@ -106,7 +118,7 @@ static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* sr
 Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap) {
   TStyleTable style = TStyle16;
 
-  // "file:line:col: message ..."
+  // "file:line:col: message ..." <LF>
   s = str_appendcstr(s, style[TStyle_bold]);
   s = pos_str(pm, span.start, s);
   s = str_appendcstr(s, ": ");
@@ -115,8 +127,11 @@ Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap)
 
   // include line contents
   auto src = (Source*)pos_source(pm, span.start);
-  if (src)
+  if (src) {
     s = pos_add_src_context(pm, span, s, src);
+  } else {
+    s = str_appendc(s, '\n');
+  }
 
   return s;
 }

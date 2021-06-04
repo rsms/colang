@@ -716,7 +716,6 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NNil:
     case NAssign:
     case NBasicType:
-    case NComment:
     case NField:
     case NFunType:
     case NPrefixOp:
@@ -830,7 +829,6 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
     case NBasicType:
     case NBlock:
     case NCall:
-    case NComment:
     case NField:
     case NArg:
     case NFunType:
