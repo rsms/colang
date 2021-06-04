@@ -57,7 +57,7 @@ R_TEST(scan_basics) {
 
 
 R_TEST(scan_comments) {
-  auto source = "hello # trailing\n# leading1\n# leading2\n123";
+  auto source = "hello // trailing\n// leading1\n// leading2\n123";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
     TSemi,    "",
@@ -110,7 +110,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseIndent,
     "A\n"
     "  B\n"
-    "  # comment\n"
+    "  // comment\n"
     "  C\n",
     TId,"A", TSemi,"",
     TIndent,"  ", TId,"B", TSemi,"",
@@ -121,7 +121,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseIndent|ParseComments,
     "A\n"
     "  B\n"
-    "  # comment\n"
+    "  // comment\n"
     "  C\n",
     TId,"A", TSemi,"",
     TIndent,"  ", TId,"B", TSemi,"",

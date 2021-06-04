@@ -1,38 +1,21 @@
-# thing = 123 + PI
-# PI = 3141592 as float64
+// thing = 123 + PI
+// PI = 3141592 as float64
 
-# fun main() {
-#   k = j
-#   return k
-# }
-# j = 9
+// array [4]int
+// K int32 = 5
 
-
-
-fun add(x int, y uint) int
-
-fun main() {
-  x = 123
-  y = x
-  z = y
-  g = x
-  z + 3 + g
-  # a = 12
-  # b = a
-  # return add(b, b)
+fun add(x, y int) int {
+  z = x + y + 3
+  g = true
+  add2(z + y, x)
 }
 
+fun add2(x, y int) {
+  x + y
+}
 
-# fun main() {
-#   a = 12
-#   b = a
-#   return add1(b, b)
-# }
-
-# fun add1(x int, y uint) int {
-#   add(x + 1, y)
-# }
-
-# fun add(x int, y uint) int {
-#   x + (y as int)
-# }
+fun main() {
+  a = 12
+  b = a
+  return add(b, b)
+}

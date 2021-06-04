@@ -148,7 +148,7 @@ static void comments_push_back(Scanner* s) {
 
 
 static void scomment(Scanner* s) {
-  s->tokstart++; // exclude '#'
+  s->tokstart += 2; // exclude "//"
   // advance s->inp until next <LF> or EOF. Leave s->inp at \n or EOF.
   while (s->inp < s->inend && *s->inp != '\n') {
     s->inp++;
@@ -253,7 +253,10 @@ Tok ScannerNext(Scanner* s) {
   }
 
   // indentation
-  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#') {
+  // if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#')
+  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart &&
+      (*s->inp != '/' || ((s->inp+1 < s->inend) ? *s->inp : 0) != '/')) // comment
+  {
     s->tokstart = s->linestart;
     s->tokend = s->inp;
     s->tok = TIndent;
@@ -286,7 +289,7 @@ Tok ScannerNext(Scanner* s) {
       case '>': s->tok = TRArr;        CONSUME_CHAR();                    break;
       case '-': s->tok = TMinusMinus;  CONSUME_CHAR(); insertSemi = true; break;
       case '=': s->tok = TMinusAssign; CONSUME_CHAR();                    break;
-      default:  s->tok = TMinus;                                          break;
+      default:  s->tok = TMinus;
     }
     break;
 
@@ -294,7 +297,7 @@ Tok ScannerNext(Scanner* s) {
     switch (nextc) {
       case '+': s->tok = TPlusPlus;   CONSUME_CHAR(); insertSemi = true; break;
       case '=': s->tok = TPlusAssign; CONSUME_CHAR();                    break;
-      default:  s->tok = TPlus;                                          break;
+      default:  s->tok = TPlus;
     }
     break;
 
@@ -302,7 +305,7 @@ Tok ScannerNext(Scanner* s) {
     switch (nextc) {
       case '&': s->tok = TAndAnd;    CONSUME_CHAR(); break;
       case '=': s->tok = TAndAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TAnd;                       break;
+      default:  s->tok = TAnd;
     }
     break;
 
@@ -310,17 +313,27 @@ Tok ScannerNext(Scanner* s) {
     switch (nextc) {
       case '|': s->tok = TPipePipe;   CONSUME_CHAR(); break;
       case '=': s->tok = TPipeAssign; CONSUME_CHAR(); break;
-      default:  s->tok = TPipe;                       break;
+      default:  s->tok = TPipe;
     }
     break;
 
   case '!': s->tok = COND_CHAR('=', TExcalm,  TNEq);           break; // "!" | "!="
   case '%': s->tok = COND_CHAR('=', TPercent, TPercentAssign); break; // "%" | "%="
   case '*': s->tok = COND_CHAR('=', TStar,    TStarAssign);    break; // "*" | "*="
-  case '/': s->tok = COND_CHAR('=', TSlash,   TSlashAssign);   break; // "/" | "/="
   case '=': s->tok = COND_CHAR('=', TAssign,  TEq);            break; // "=" | "=="
   case '^': s->tok = COND_CHAR('=', THat,     THatAssign);     break; // "^" | "^="
   case '~': s->tok = COND_CHAR('=', TTilde,   TTildeAssign);   break; // "~" | "~="
+  case '/':
+    switch (nextc) {
+      case '/': // "//"
+        CONSUME_CHAR();
+        scomment(s);
+        goto scan_again;
+      // TODO: block comment "/*...*/"
+      default:
+        s->tok = COND_CHAR('=', TSlash, TSlashAssign); // "/" | "/="
+    }
+    break;
 
   case '<': // "<" | "<=" | "<<" | "<<="
     switch (nextc) {
@@ -333,7 +346,7 @@ Tok ScannerNext(Scanner* s) {
           s->tok = TShl;
         }
         break;
-      default: s->tok = TLt; break; // <
+      default: s->tok = TLt; // <
     }
     break;
 
@@ -348,7 +361,7 @@ Tok ScannerNext(Scanner* s) {
           s->tok = TShr;
         }
         break;
-      default: s->tok = TGt; break; // >
+      default: s->tok = TGt; // >
     }
     break;
 
@@ -360,12 +373,6 @@ Tok ScannerNext(Scanner* s) {
   case ']': s->tok = TRBrack; insertSemi = true; break;
   case ',': s->tok = TComma;                     break;
   case ';': s->tok = TSemi;                      break;
-
-  case '#': // line comment
-    // TODO: consider multiline/inline comment '#* ... *#' ?
-    scomment(s);
-    goto scan_again;
-    break;
 
   case '0'...'9':
     snumber(s);
@@ -405,7 +412,6 @@ Tok ScannerNext(Scanner* s) {
     } else {
       serr(s, "invalid input character 0x%x", c);
     }
-    break;
 
   } // switch
 
