@@ -3,14 +3,25 @@
 Wish list. Things that could be improved or added.
 
 
-## Parsing
+## Parsing, analysis and compilation
 
-- [ ] string scanning.
+- [ ] String literals.
       [See co1](https://github.com/rsms/co/blob/master/src/scanner.ts#L894).
-- [ ] floating point literal number scanning.
+  - [ ] Scan & parse string literals
+  - [ ] Scan & parse multiline string literals
+- [ ] Scan & parse floating point literals.
       [See co1](https://github.com/rsms/co/blob/master/src/scanner.ts#L1205)
-- [ ] character literal scanning.
+- [ ] Scan & parse character literals (what type is a char? u8? "rune"?).
       [See co1](https://github.com/rsms/co/blob/master/src/scanner.ts#L823)
+- [ ] Arrays and slices
+  - [x] Parsing array and slice types e.g. `[3][4]type`, `[]type`
+  - [ ] Parsing array and slice reads e.g. `a[3]`, `a[:3]`
+  - [ ] Anaysis (to consider: are array types inferred? Is there literal syntax?)
+  - [ ] Codegen
+- [ ] Consider using Co IR in between AST and LLVM IR.
+      This would make it much easier to generate code with alternative backends like JS.
+      Could keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
+- [ ] Rename basic primitive types like `int32` to LLVM/Rust/Zig style `i32`, `u16` etc.
 
 
 ## Testing & QA
@@ -25,7 +36,8 @@ Wish list. Things that could be improved or added.
         Maybe just `text_diff(print(parse(actual)), print(parse(expected)))`.
         [See co1](https://github.com/rsms/co/blob/master/src/ast/test/ast_test.ts#L274)
         which may not be worth porting. Its ergonimics are not great.
-- [ ]
+- [ ] Codegen tests.
+      I.e. build & run programs and verify their output, like Go examples.
 
 
 ## Misc
