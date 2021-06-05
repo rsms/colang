@@ -489,7 +489,10 @@ static Node* resolve_id(Parser* p, Node* id) {
   } else {
     if (id->ref.target->kind == NLet)
       NodeRefLet(id->ref.target);
-    NodeTransferUnresolved(id, id->ref.target);
+    if (id->ref.target->kind != NFun) {
+      // Note: Don't transfer "unresolved" attribute of functions
+      NodeTransferUnresolved(id, id->ref.target);
+    }
   }
 
   return id;
