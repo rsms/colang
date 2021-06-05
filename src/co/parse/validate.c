@@ -1,4 +1,5 @@
 #include "../common.h"
+#include "../util/ptrmap.h"
 #include "parse.h"
 
 
@@ -28,6 +29,7 @@ static Str nodepath(NodeList* nl, Str s) {
 typedef struct ValidateCtx {
   Build* b;
   u32    errcount;
+  PtrMap funmap;    // functions we've already verified
 } ValidateCtx;
 
 
@@ -35,12 +37,27 @@ static bool visit(NodeList* nl, void* ctxp) {
   auto ctx = (ValidateCtx*)ctxp;
   auto n = nl->n;
 
-  // ignore unused Let
-  if (nl->n->kind == NLet && nl->n->field.nrefs == 0)
-    return true;
+  switch (n->kind) {
+    // ignore unused Let
+    case NLet:
+      if (n->field.nrefs == 0)
+        return true;
+      break;
 
+    case NFun:
+      if (PtrMapSet(&ctx->funmap, n, n)) {
+        // already visited (replaced value in map)
+        return true;
+      }
+      break;
+
+    default:
+      break;
+  }
+
+  // check "unresolved" integrity
   if (nl->parent && NodeIsUnresolved(n) && !NodeIsUnresolved(nl->parent->n)) {
-    // error: node is marked as unresolved but its parent is not
+    // node is marked as unresolved but its parent is not
     Str npath = nodepath(nl, str_new(64));
     build_errf(ctx->b, NodePosSpan(n),
       "inconsitent \"unresolved\" flags at:%s\nsource location:", npath);
@@ -55,6 +72,8 @@ static bool visit(NodeList* nl, void* ctxp) {
 
 bool NodeValidate(Build* b, Node* n) {
   ValidateCtx ctx = { .b = b };
+  PtrMapInit(&ctx.funmap, 64, MemHeap);
   NodeVisit(n, &ctx, visit);
+  PtrMapDispose(&ctx.funmap);
   return ctx.errcount == 0;
 }
