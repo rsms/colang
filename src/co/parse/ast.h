@@ -191,6 +191,7 @@ typedef enum {
   NodeReprNoColor = 1 << 0, // disable ANSI terminal styling
   NodeReprColor   = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
   NodeReprTypes   = 1 << 2, // include types in the output
+  NodeReprLetRefs = 1 << 3, // include information about Let references / uses
 } NodeReprFlags;
 
 // NodeRepr formats an AST as a printable text representation

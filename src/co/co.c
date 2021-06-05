@@ -151,8 +151,7 @@ bool parse_source1(const Pkg* pkg, Source* src) {
 
 
 static void dump_ast(const char* message, Node* ast) {
-  // auto s = NodeRepr(ast, str_new(16), NodeReprClassic | NodeReprTypes);
-  auto s = NodeRepr(ast, str_new(16), NodeReprTypes);
+  auto s = NodeRepr(ast, str_new(512), NodeReprTypes | NodeReprLetRefs);
   dlog("%s%s", message, s);
   str_free(s);
   PRINT_BANNER();
@@ -258,6 +257,8 @@ int cmd_build(int argc, const char** argv) {
   dlog("AST validated OK");
   #endif
 
+  // goto end; // XXX
+
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
     RTIMER_START();
@@ -288,7 +289,7 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
-  goto end; // XXX
+  //goto end; // XXX
 
   // build IR
   #if 0
@@ -303,12 +304,15 @@ int cmd_build(int argc, const char** argv) {
   // emit target code
   #ifdef CO_WITH_LLVM
   PRINT_BANNER();
+  RTIMER_START();
   if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
     return 1;
   }
+  RTIMER_LOG("llvm total");
   #endif
 
-  end: {
+  UNUSED /* label */ end:
+  {
     // print how much (real) time we spent
     auto timeend = nanotime();
     char abuf[40];
