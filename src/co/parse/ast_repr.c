@@ -344,6 +344,7 @@ static bool l_collapse_field(NodeList* nl) {
   case NArg:
   case NField:
   case NTuple:
+  case NReturn:
     return true;
 
   default:
