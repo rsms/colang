@@ -1,9 +1,23 @@
 #include "../common.h"
 #include "../parse/parse.h"
+#include "../util/rtimer.h"
 #include "llvm.h"
 
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
 #include <llvm-c/Transforms/Scalar.h>
+
+// rtimer helpers
+#define ENABLE_RTIMER_LOGGING
+#ifdef ENABLE_RTIMER_LOGGING
+  #define RTIMER_INIT          RTimer rtimer_ = {0}
+  #define RTIMER_START()       rtimer_start(&rtimer_)
+  #define RTIMER_LOG(fmt, ...) rtimer_log(&rtimer_, fmt, ##__VA_ARGS__)
+#else
+  #define RTIMER_INIT          do{}while(0)
+  #define RTIMER_START()       do{}while(0)
+  #define RTIMER_LOG(fmt, ...) do{}while(0)
+#endif
+
 
 // make the code more readable by using short name aliases
 typedef LLVMValueRef  Value;
@@ -87,15 +101,6 @@ static LLVMTypeRef get_type(B* b, Type* nullable n) {
   }
   panic("invalid node kind %s", NodeKindName(n->kind));
   return NULL;
-}
-
-
-static void print_duration(const char* message, u64 timestart) {
-  auto timeend = nanotime();
-  char abuf[40];
-  auto buflen = fmtduration(abuf, countof(abuf), timeend - timestart);
-  fprintf(stderr, "%s %.*s\n", message, buflen, abuf);
-  fflush(stderr);
 }
 
 
@@ -359,6 +364,10 @@ retry:
       goto retry;
     }
     case NLet: {
+      if (n->field.nrefs == 0) {
+        // skip unused let
+        return NULL;
+      }
       // FIXME don't use name lookup here; pointers POINTERS! (or Sym or PtrMap or something.)
       Value v = LLVMGetNamedGlobal(b->mod, n->field.name);
       if (v) {
@@ -578,16 +587,19 @@ static LLVMTargetMachineRef select_target_machine(
 bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   dlog("llvm_build_and_emit");
   bool ok = false;
-  auto timestart = nanotime();
+  RTIMER_INIT;
 
   LLVMContextRef ctx = LLVMContextCreate();
   LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(build->pkg->id, ctx);
 
   // build module; Co AST -> LLVM IR
   // TODO: move the IR building code to C++
+  RTIMER_START();
   build_module(build, pkgnode, mod);
+  RTIMER_LOG("build llvm IR");
 
   // select target and emit machine code
+  RTIMER_START();
   const char* hostTriple = llvm_init_targets();
   if (!triple)
     triple = hostTriple; // default to host
@@ -606,19 +618,20 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   LLVMSetTarget(mod, triple);
   LLVMTargetDataRef dataLayout = LLVMCreateTargetDataLayout(targetm);
   LLVMSetModuleDataLayout(mod, dataLayout);
+  RTIMER_LOG("select llvm target");
 
   char* errmsg;
 
   // optimize module
+  RTIMER_START();
   bool enable_tsan = false;
   bool enable_lto = false;
-  auto opt_timestart = nanotime();
   if (!llvm_optmod(mod, targetm, build->opt, enable_tsan, enable_lto, &errmsg)) {
     errlog("llvm_optmod: %s", errmsg);
     LLVMDisposeMessage(errmsg);
     goto end;
   }
-  print_duration("llvm_optmod", opt_timestart);
+  RTIMER_LOG("llvm optimize module");
   #ifdef DEBUG
   dlog("LLVM IR module after optimizations:");
   LLVMDumpModule(mod);
@@ -633,60 +646,52 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
 
   // emit machine code (object)
   if (obj_file) {
-    auto timestart = nanotime();
+    RTIMER_START();
     if (!llvm_emit_mc(mod, targetm, LLVMObjectFile, obj_file, &errmsg)) {
       errlog("llvm_emit_mc (LLVMObjectFile): %s", errmsg);
       LLVMDisposeMessage(errmsg);
       // obj_file = NULL; // skip linking
       goto end;
-    } else {
-      dlog("wrote %s", obj_file);
     }
-    print_duration("emit_mc obj", timestart);
+    RTIMER_LOG("llvm codegen MC object %s", obj_file);
   }
 
   // emit machine code (assembly)
   if (asm_file) {
-    double timestart = nanotime();
+    RTIMER_START();
     if (!llvm_emit_mc(mod, targetm, LLVMAssemblyFile, asm_file, &errmsg)) {
       errlog("llvm_emit_mc (LLVMAssemblyFile): %s", errmsg);
       LLVMDisposeMessage(errmsg);
       goto end;
-    } else {
-      dlog("wrote %s", asm_file);
     }
-    print_duration("emit_mc asm", timestart);
+    RTIMER_LOG("llvm codegen MC assembly %s", asm_file);
   }
 
   // emit LLVM bitcode
   if (bc_file) {
-    double timestart = nanotime();
+    RTIMER_START();
     if (!llvm_emit_bc(mod, bc_file, &errmsg)) {
       errlog("llvm_emit_bc: %s", errmsg);
       LLVMDisposeMessage(errmsg);
       goto end;
-    } else {
-      dlog("wrote %s", bc_file);
     }
-    print_duration("llvm_emit_bc", timestart);
+    RTIMER_LOG("llvm codegen LLVM bitcode %s", bc_file);
   }
 
   // emit LLVM IR
   if (ir_file) {
-    double timestart = nanotime();
+    RTIMER_START();
     if (!llvm_emit_ir(mod, ir_file, &errmsg)) {
       errlog("llvm_emit_ir: %s", errmsg);
       LLVMDisposeMessage(errmsg);
       goto end;
-    } else {
-      dlog("wrote %s", ir_file);
     }
-    print_duration("llvm_emit_ir", timestart);
+    RTIMER_LOG("llvm codegen LLVM IR text %s", ir_file);
   }
 
   // link executable
   if (exe_file && obj_file) {
-    double timestart = nanotime();
+    RTIMER_START();
     const char* inputv[] = { obj_file };
     CoLLDOptions lldopt = {
       .targetTriple = triple,
@@ -698,13 +703,13 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
     if (!lld_link(&lldopt, &errmsg)) {
       errlog("lld_link: %s", errmsg);
       goto end;
-    } else {
-      if (strlen(errmsg) > 0)
-        fwrite(errmsg, strlen(errmsg), 1, stderr); // print warnings
-      dlog("wrote %s", exe_file);
     }
+    RTIMER_LOG("lld link executable %s", exe_file);
+
+    // print warnings
+    if (strlen(errmsg) > 0)
+      fwrite(errmsg, strlen(errmsg), 1, stderr);
     LLVMDisposeMessage(errmsg);
-    print_duration("link", timestart);
   }
 
   // if we get here, without "goto end", all succeeded
@@ -713,7 +718,6 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
 end:
   LLVMDisposeModule(mod);
   LLVMContextDispose(ctx);
-  print_duration("llvm_build_and_emit", timestart);
   return ok;
 }
 
