@@ -23,17 +23,31 @@ Str rtimer_duration_str(RTimer* rt, Str s) {
 }
 
 void rtimer_log(RTimer* rt, const char* fmt, ...) {
+  u64 duration = rtimer_duration(rt);
+
   Str* sp = tmpstr_get();
   Str s = *sp;
   auto style = TSTyleForStderr();
   s = str_appendcstr(s, style[TStyle_lightpurple]);
-  s = str_appendcstr(s, "\xE2\x8C\x9A""\xEF\xB8\x8E"); // "⌚︎" WATCH U+231A U+FE0E
-  s = rtimer_duration_str(rt, s);
-  s = str_appendcstr(s, "\t");
+  s = str_appendcstr(s, "◔ ");
+
+  char durbuf[40];
+  auto durbuflen = (u32)fmtduration(durbuf, countof(durbuf), duration);
+  s = str_append(s, durbuf, durbuflen);
+
+  // pad
+  const char* spaces = "      ";
+  const u32 spaceslen = (u32)strlen(spaces);
+  if (durbuflen < spaceslen)
+    s = str_append(s, spaces, spaceslen - durbuflen);
+
+  s = str_appendc(s, ' ');
+
   va_list ap;
   va_start(ap, fmt);
   s = str_appendfmtv(s, fmt, ap);
   va_end(ap);
+
   s = str_appendcstr(s, style[TStyle_none]);
   s = str_appendc(s, '\n');
   fwrite(s, str_len(s), 1, stderr);
