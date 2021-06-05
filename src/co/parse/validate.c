@@ -45,7 +45,7 @@ static bool visit(NodeList* nl, void* ctxp) {
       break;
 
     case NFun:
-      if (PtrMapSet(&ctx->funmap, n, n)) {
+      if (PtrMapSet(&ctx->funmap, n, (void*)n)) {
         // already visited (replaced value in map)
         return true;
       }
