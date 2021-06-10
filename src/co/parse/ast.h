@@ -26,6 +26,7 @@ typedef enum {
   _(IntLit,      NodeClassConst) /* integer literal */ \
   _(FloatLit,    NodeClassConst) /* floating-point literal */ \
   _(StrLit,      NodeClassConst) /* string literal */ \
+  _(ArrayLit,    NodeClassConst|NodeClassArray) /* array literal */ \
   _(Nil,         NodeClassConst) /* the nil atom */ \
   _(Assign,      NodeClassExpr) \
   _(Arg,         NodeClassExpr) \
@@ -130,7 +131,7 @@ typedef struct Node {
       Node* nullable right;  // NULL for PrefixOp & PostfixOp
       Tok            op;
     } op;
-    /* array */ struct { // Tuple, Block, File, Pkg
+    /* array */ struct { // Tuple, Block, File, Pkg, ArrayLit
       Scope* nullable scope;        // used for Pkg and File
       NodeArray       a;            // array of nodes
       Node*           a_storage[4]; // in-struct storage for the first few entries of a
@@ -149,6 +150,7 @@ typedef struct Node {
     /* field */ struct { // Arg, Field
       Sym            name;
       Node* nullable init;  // initial value (may be NULL)
+      u32            nrefs; // reference count
       u32            index; // argument index or struct index/order
     } field;
     /* let */ struct { // Let

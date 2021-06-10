@@ -192,6 +192,9 @@ typedef struct Parser {
   Scope*  pkgscope;   // package-level scope
   u32     fnest;      // function nesting level (for error handling)
 
+  // ctxtype is non-null when the parser is confident about the type context
+  Type* nullable ctxtype;
+
   // scopestack is used for tracking identifiers during parsing.
   // This is a simple stack which we do a linear search on when looking up identifiers.
   // It is faster than using chained hash maps in most cases because of cache locality

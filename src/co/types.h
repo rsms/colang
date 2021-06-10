@@ -26,14 +26,14 @@ typedef enum TypeCodeFlag {
   /*                                                                                         */\
   /* name       encoding  flags                                                              */\
   _( bool      , 'b', 0 )                                                                      \
-  _( int8      , '1', TypeCodeFlagSize1 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( uint8     , '2', TypeCodeFlagSize1 | TypeCodeFlagInt )                                    \
-  _( int16     , '3', TypeCodeFlagSize2 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( uint16    , '4', TypeCodeFlagSize2 | TypeCodeFlagInt )                                    \
-  _( int32     , '5', TypeCodeFlagSize4 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( uint32    , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                    \
-  _( int64     , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( uint64    , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                    \
+  _( i8        , '1', TypeCodeFlagSize1 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
+  _( u8        , '2', TypeCodeFlagSize1 | TypeCodeFlagInt )                                    \
+  _( i16       , '3', TypeCodeFlagSize2 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
+  _( u16       , '4', TypeCodeFlagSize2 | TypeCodeFlagInt )                                    \
+  _( i32       , '5', TypeCodeFlagSize4 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
+  _( u32       , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                    \
+  _( i64       , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
+  _( u64       , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                    \
   _( float32   , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
   _( float64   , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
   _( int       , 'i', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
@@ -67,10 +67,10 @@ typedef enum {
 } TypeCode;
 
 // order of intrinsic integer types must be signed,unsigned,signed,unsigned...
-static_assert(TypeCode_int8+1  == TypeCode_uint8,  "integer order incorrect");
-static_assert(TypeCode_int16+1 == TypeCode_uint16, "integer order incorrect");
-static_assert(TypeCode_int32+1 == TypeCode_uint32, "integer order incorrect");
-static_assert(TypeCode_int64+1 == TypeCode_uint64, "integer order incorrect");
+static_assert(TypeCode_i8+1  == TypeCode_u8,  "integer order incorrect");
+static_assert(TypeCode_i16+1 == TypeCode_u16, "integer order incorrect");
+static_assert(TypeCode_i32+1 == TypeCode_u32, "integer order incorrect");
+static_assert(TypeCode_i64+1 == TypeCode_u64, "integer order incorrect");
 // must be less than 32 numeric types
 static_assert(TypeCode_NUM_END <= 32, "there must be no more than 32 numeric types");
 
@@ -94,14 +94,14 @@ const char* CTypeName(CType ct);
 // Looking for all type defs? universe.h puts it all together.
 #define TYPE_SYMS(_) \
   _( bool    ) \
-  _( int8    ) \
-  _( uint8   ) \
-  _( int16   ) \
-  _( uint16  ) \
-  _( int32   ) \
-  _( uint32  ) \
-  _( int64   ) \
-  _( uint64  ) \
+  _( i8      ) \
+  _( u8      ) \
+  _( i16     ) \
+  _( u16     ) \
+  _( i32     ) \
+  _( u32     ) \
+  _( i64     ) \
+  _( u64     ) \
   _( float32 ) \
   _( float64 ) \
   _( int     ) \

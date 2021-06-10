@@ -47,23 +47,23 @@ Exp    = (Atom, List)     # A Scheme expression is an Atom or List
 typeCodeToIRType :{str:[str]} = {
   # multiple irtypes should be listed from most speecific to most generic
   "bool":    ["bool"],
-  "int8":    ["s8",  "i8"],
-  "uint8":   ["u8",  "i8"],
-  "int16":   ["s16", "i16"],
-  "uint16":  ["u16", "i16"],
-  "int32":   ["s32", "i32"],
-  "uint32":  ["u32", "i32"],
-  "int64":   ["s64", "i64"],
-  "uint64":  ["u64", "i64"],
+  "i8":      ["s8",  "i8"],
+  "u8":      ["u8",  "i8"],
+  "i16":     ["s16", "i16"],
+  "u16":     ["u16", "i16"],
+  "i32":     ["s32", "i32"],
+  "u32":     ["u32", "i32"],
+  "i64":     ["s64", "i64"],
+  "u64":     ["u64", "i64"],
   "float32": ["f32"],
   "float64": ["f64"],
 }
 
 typeCodeAliases = {
-  "int":    "int32",  # FIXME
-  "uint":   "uint32", # FIXME
-  "isize":  "int64",  # FIXME
-  "usize":  "uint64", # FIXME
+  "int":    "i32",  # FIXME
+  "uint":   "u32",  # FIXME
+  "isize":  "i64",  # FIXME
+  "usize":  "u64",  # FIXME
 }
 
 auxTypes = [

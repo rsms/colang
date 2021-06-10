@@ -184,6 +184,11 @@ PosSpan NodePosSpan(const Node* n) {
       span.start = pos_with_adjusted_start(span.start, -1);
       break;
 
+    case NLet:
+      if (n->let.init)
+        span.end = n->let.init->pos;
+      break;
+
     default:
       break;
   }

@@ -66,17 +66,17 @@ static LLVMTypeRef get_type(B* b, Type* nullable n) {
       switch (n->t.basic.typeCode) {
         case TypeCode_bool:
           return b->t_bool;
-        case TypeCode_int8:
-        case TypeCode_uint8:
+        case TypeCode_i8:
+        case TypeCode_u8:
           return b->t_i8;
-        case TypeCode_int16:
-        case TypeCode_uint16:
+        case TypeCode_i16:
+        case TypeCode_u16:
           return b->t_i16;
-        case TypeCode_int32:
-        case TypeCode_uint32:
+        case TypeCode_i32:
+        case TypeCode_u32:
           return b->t_i32;
-        case TypeCode_int64:
-        case TypeCode_uint64:
+        case TypeCode_i64:
+        case TypeCode_u64:
           return b->t_i64;
         case TypeCode_float32:
           return b->t_f32;

@@ -201,6 +201,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   // uses u.array
   case NBlock:
   case NTuple:
+  case NArrayLit:
   case NFile:
     return resolve_arraylike_node(ctx, n);
 

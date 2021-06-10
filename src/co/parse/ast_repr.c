@@ -163,6 +163,11 @@ Str NodeStr(Str s, const Node* n) {
   case NBlock: // {int}
     return str_appendcstr(s, "block");
 
+  case NArrayLit: // [1 2 3]
+    s = str_appendc(s, '[');
+    s = str_append_NodeArray(s, &n->array.a);
+    return str_appendc(s, ']');
+
   case NTuple: // (one two 3)
     s = str_appendc(s, '(');
     s = str_append_NodeArray(s, &n->array.a);
@@ -339,16 +344,20 @@ static bool l_collapse_field(NodeList* nl) {
     return false;
   switch (nl->parent->n->kind) {
 
+  case NTuple:
+    // don't collapse (Let x (Tuple ...))
+    return (!nl->parent->parent || nl->parent->parent->n->kind != NLet);
+
   case NId:
   case NLet:
   case NArg:
   case NField:
-  case NTuple:
   case NReturn:
   case NBoolLit:
   case NFloatLit:
   case NIntLit:
   case NStrLit:
+  case NArrayLit:
     return true;
 
   default:
@@ -367,9 +376,13 @@ static bool l_show_field(NodeList* nl) {
     case NPostfixOp:
     case NPrefixOp:
     case NCall:
+    case NArrayLit:
+    case NLet:
       return false;
+
     case NFun:
       return !NodeKindIsType(nl->n->kind);
+
     default:
       if (NodeKindIsType(nl->n->kind))
         return false;
@@ -384,6 +397,9 @@ static const char* l_listname(NodeList* nl) {
     case NBasicType:
       return n->t.basic.name;
     case NTuple:
+      if (nl->parent && nl->parent->n->kind == NLet)
+        return NodeKindName(n->kind);
+      return "";
     case NTupleType:
       return "";
     default:

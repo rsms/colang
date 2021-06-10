@@ -50,8 +50,8 @@ void IRBuilderDispose(IRBuilder* u) {
 static TypeCode canonical_int_type(IRBuilder* u_unused_reserved, TypeCode t) {
   // aliases. e.g. int, uint
   switch (t) {
-    case TypeCode_int:  t = TypeCode_int32; break;
-    case TypeCode_uint: t = TypeCode_uint32; break;
+    case TypeCode_int:  t = TypeCode_i32; break;
+    case TypeCode_uint: t = TypeCode_u32; break;
     default: break;
   }
   return t;
@@ -718,6 +718,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NFun:      return ast_add_funexpr(u, n);
 
     case NFloatLit:
+    case NArrayLit:
     case NNil:
     case NAssign:
     case NBasicType:
@@ -824,29 +825,7 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
       // Since exporting is not implemented, just ignore top-level let for now.
       return true;
 
-    case NNone:
-    case NBad:
-    case NBoolLit:
-    case NIntLit:
-    case NFloatLit:
-    case NNil:
-    case NAssign:
-    case NBasicType:
-    case NBlock:
-    case NCall:
-    case NField:
-    case NArg:
-    case NFunType:
-    case NId:
-    case NIf:
-    case NBinOp:
-    case NPrefixOp:
-    case NPostfixOp:
-    case NReturn:
-    case NTuple:
-    case NTupleType:
-    case NTypeCast:
-    case _NodeKindMax:
+    default:
       build_errf(u->build, NodePosSpan(n), "invalid top-level AST node %s", NodeKindName(n->kind));
       break;
   }

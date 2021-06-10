@@ -397,6 +397,14 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
 }
 
 
+static Node* resolve_arraylit_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NArrayLit);
+  dlog("TODO: resolve_arraylit_type %s", fmtnode(n));
+  return n;
+}
+
+
+
 static Node* finalize_binop(ResCtx* ctx, Node* n) {
   switch (n->op.op) {
     // comparison operators have boolean value
@@ -781,6 +789,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NBlock:
     R_MUSTTAIL return resolve_block_type(ctx, n, fl);
+
+  case NArrayLit:
+    R_MUSTTAIL return resolve_arraylit_type(ctx, n, fl);
 
   case NTuple:
     R_MUSTTAIL return resolve_tuple_type(ctx, n, fl);

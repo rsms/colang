@@ -197,7 +197,7 @@ R_TEST(constcache) {
 
   // c is null; get => null
   int addHint = 0;
-  auto v1 = IRConstCacheGet(c, mem, TypeCode_int8, 1, &addHint);
+  auto v1 = IRConstCacheGet(c, mem, TypeCode_i8, 1, &addHint);
   assert(v1 == NULL);
 
   auto expect1 = testValueGen++;
@@ -206,28 +206,28 @@ R_TEST(constcache) {
 
   // add values. This data causes all cases of the IRConstCacheAdd function to be used.
   // 1. initial branch creation, when c is null
-  c = IRConstCacheAdd(c, mem, TypeCode_int8,  1, (IRValue*)expect1, 0);
+  c = IRConstCacheAdd(c, mem, TypeCode_i8,  1, (IRValue*)expect1, 0);
   // 2. new branch on existing c
-  c = IRConstCacheAdd(c, mem, TypeCode_int16, 1, (IRValue*)expect2, 0);
+  c = IRConstCacheAdd(c, mem, TypeCode_i16, 1, (IRValue*)expect2, 0);
   // 3. new value on existing branch
-  c = IRConstCacheAdd(c, mem, TypeCode_int16, 2, (IRValue*)expect3, 0);
+  c = IRConstCacheAdd(c, mem, TypeCode_i16, 2, (IRValue*)expect3, 0);
 
   // verify that Get returns the expected values
-  v1 = IRConstCacheGet(c, mem, TypeCode_int8, 1, &addHint);
+  v1 = IRConstCacheGet(c, mem, TypeCode_i8, 1, &addHint);
   assert((u64)v1 == expect1);
-  auto v2 = IRConstCacheGet(c, mem, TypeCode_int16, 1, &addHint);
+  auto v2 = IRConstCacheGet(c, mem, TypeCode_i16, 1, &addHint);
   assert((u64)v2 == expect2);
-  auto v3 = IRConstCacheGet(c, mem, TypeCode_int16, 2, &addHint);
+  auto v3 = IRConstCacheGet(c, mem, TypeCode_i16, 2, &addHint);
   assert((u64)v3 == expect3);
 
   // test the addHint, which is an RBNode of the type branch when it exists.
   addHint = 0;
   auto expect4 = testValueGen++;
-  auto v4 = IRConstCacheGet(c, mem, TypeCode_int16, 3, &addHint);
+  auto v4 = IRConstCacheGet(c, mem, TypeCode_i16, 3, &addHint);
   assert(v4 == NULL);
-  assert(addHint != 0); // since TypeCode_int16 branch should exist
-  c = IRConstCacheAdd(c, mem, TypeCode_int16, 3, (IRValue*)expect4, addHint);
-  v4 = IRConstCacheGet(c, mem, TypeCode_int16, 3, &addHint);
+  assert(addHint != 0); // since TypeCode_i16 branch should exist
+  c = IRConstCacheAdd(c, mem, TypeCode_i16, 3, (IRValue*)expect4, addHint);
+  v4 = IRConstCacheGet(c, mem, TypeCode_i16, 3, &addHint);
   assert((u64)v4 == expect4);
 
 

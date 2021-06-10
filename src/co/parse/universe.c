@@ -9,7 +9,7 @@
 //#define RUN_GENERATOR
 
 
-//-- BEGIN gen_constants() at src/co/parse/universe.c:363
+//-- BEGIN gen_constants() at src/co/parse/universe.c:375
 
 const Sym sym_as = &"\x87\x3D\x7F\xCD\x02\x00\x00\x08""as\0"[8];
 const Sym sym_break = &"\xFF\x55\x83\xD2\x05\x00\x00\x10""break\0"[8];
@@ -38,14 +38,14 @@ const Sym sym_var = &"\x27\xBE\x0A\xFD\x03\x00\x00\xC0""var\0"[8];
 const Sym sym_while = &"\xFF\x98\x03\xFC\x05\x00\x00\xC8""while\0"[8];
 
 const Sym sym_bool = &"\x70\x6D\x7D\x3D\x04\x00\x00\x00""bool\0"[8];
-const Sym sym_int8 = &"\xB5\xD1\x1A\x27\x04\x00\x00\x00""int8\0"[8];
-const Sym sym_uint8 = &"\x32\x17\xD3\x9B\x05\x00\x00\x00""uint8\0"[8];
-const Sym sym_int16 = &"\x7A\x86\x76\x34\x05\x00\x00\x00""int16\0"[8];
-const Sym sym_uint16 = &"\xD0\xC9\x18\x7A\x06\x00\x00\x00""uint16\0"[8];
-const Sym sym_int32 = &"\x4C\x68\x9C\xA4\x05\x00\x00\x00""int32\0"[8];
-const Sym sym_uint32 = &"\x50\xCB\x0E\x1B\x06\x00\x00\x00""uint32\0"[8];
-const Sym sym_int64 = &"\x6C\xF1\xA4\xAC\x05\x00\x00\x00""int64\0"[8];
-const Sym sym_uint64 = &"\xD0\x02\x0E\x39\x06\x00\x00\x00""uint64\0"[8];
+const Sym sym_i8 = &"\x9D\xE2\x63\xDB\x02\x00\x00\x00""i8\0"[8];
+const Sym sym_u8 = &"\xEF\xCA\xBF\x76\x02\x00\x00\x00""u8\0"[8];
+const Sym sym_i16 = &"\xC2\xF3\x4A\x52\x03\x00\x00\x00""i16\0"[8];
+const Sym sym_u16 = &"\xF8\x6B\xDE\x1D\x03\x00\x00\x00""u16\0"[8];
+const Sym sym_i32 = &"\x4A\x53\xEC\xE0\x03\x00\x00\x00""i32\0"[8];
+const Sym sym_u32 = &"\x61\x13\x38\xD1\x03\x00\x00\x00""u32\0"[8];
+const Sym sym_i64 = &"\xA1\x93\xF3\x6C\x03\x00\x00\x00""i64\0"[8];
+const Sym sym_u64 = &"\xBA\x1C\x93\x2D\x03\x00\x00\x00""u64\0"[8];
 const Sym sym_float32 = &"\x39\xFB\x68\x48\x07\x00\x00\x00""float32\0"[8];
 const Sym sym_float64 = &"\x76\x44\x7B\x75\x07\x00\x00\x00""float64\0"[8];
 const Sym sym_int = &"\xCD\x9E\x65\xA5\x03\x00\x00\x00""int\0"[8];
@@ -77,14 +77,14 @@ const Sym sym_$x2a = &"\x9C\x1C\x9F\x3C\x01\x00\x00\x00""*\0"[8];
 const Sym sym_0 = &"\xFE\xED\xFA\xA1\x01\x00\x00\x00""0\0"[8];
 
 static Node _Type_bool = {NBasicType,0,0,0,NULL,{.t={sym_b,.basic={TypeCode_bool,sym_bool}}}};
-static Node _Type_int8 = {NBasicType,0,0,0,NULL,{.t={sym_1,.basic={TypeCode_int8,sym_int8}}}};
-static Node _Type_uint8 = {NBasicType,0,0,0,NULL,{.t={sym_2,.basic={TypeCode_uint8,sym_uint8}}}};
-static Node _Type_int16 = {NBasicType,0,0,0,NULL,{.t={sym_3,.basic={TypeCode_int16,sym_int16}}}};
-static Node _Type_uint16 = {NBasicType,0,0,0,NULL,{.t={sym_4,.basic={TypeCode_uint16,sym_uint16}}}};
-static Node _Type_int32 = {NBasicType,0,0,0,NULL,{.t={sym_5,.basic={TypeCode_int32,sym_int32}}}};
-static Node _Type_uint32 = {NBasicType,0,0,0,NULL,{.t={sym_6,.basic={TypeCode_uint32,sym_uint32}}}};
-static Node _Type_int64 = {NBasicType,0,0,0,NULL,{.t={sym_7,.basic={TypeCode_int64,sym_int64}}}};
-static Node _Type_uint64 = {NBasicType,0,0,0,NULL,{.t={sym_8,.basic={TypeCode_uint64,sym_uint64}}}};
+static Node _Type_i8 = {NBasicType,0,0,0,NULL,{.t={sym_1,.basic={TypeCode_i8,sym_i8}}}};
+static Node _Type_u8 = {NBasicType,0,0,0,NULL,{.t={sym_2,.basic={TypeCode_u8,sym_u8}}}};
+static Node _Type_i16 = {NBasicType,0,0,0,NULL,{.t={sym_3,.basic={TypeCode_i16,sym_i16}}}};
+static Node _Type_u16 = {NBasicType,0,0,0,NULL,{.t={sym_4,.basic={TypeCode_u16,sym_u16}}}};
+static Node _Type_i32 = {NBasicType,0,0,0,NULL,{.t={sym_5,.basic={TypeCode_i32,sym_i32}}}};
+static Node _Type_u32 = {NBasicType,0,0,0,NULL,{.t={sym_6,.basic={TypeCode_u32,sym_u32}}}};
+static Node _Type_i64 = {NBasicType,0,0,0,NULL,{.t={sym_7,.basic={TypeCode_i64,sym_i64}}}};
+static Node _Type_u64 = {NBasicType,0,0,0,NULL,{.t={sym_8,.basic={TypeCode_u64,sym_u64}}}};
 static Node _Type_float32 = {NBasicType,0,0,0,NULL,{.t={sym_f,.basic={TypeCode_float32,sym_float32}}}};
 static Node _Type_float64 = {NBasicType,0,0,0,NULL,{.t={sym_F,.basic={TypeCode_float64,sym_float64}}}};
 static Node _Type_int = {NBasicType,0,0,0,NULL,{.t={sym_i,.basic={TypeCode_int,sym_int}}}};
@@ -100,14 +100,14 @@ static const Node _Const_false = {NBoolLit,0,0,0,(Node*)&_Type_bool,{.val={CType
 static const Node _Const_nil = {NNil,0,0,0,(Node*)&_Type_nil,{.val={CType_nil,.i=0}}};
 
 Node* Type_bool = (Node*)&_Type_bool;
-Node* Type_int8 = (Node*)&_Type_int8;
-Node* Type_uint8 = (Node*)&_Type_uint8;
-Node* Type_int16 = (Node*)&_Type_int16;
-Node* Type_uint16 = (Node*)&_Type_uint16;
-Node* Type_int32 = (Node*)&_Type_int32;
-Node* Type_uint32 = (Node*)&_Type_uint32;
-Node* Type_int64 = (Node*)&_Type_int64;
-Node* Type_uint64 = (Node*)&_Type_uint64;
+Node* Type_i8 = (Node*)&_Type_i8;
+Node* Type_u8 = (Node*)&_Type_u8;
+Node* Type_i16 = (Node*)&_Type_i16;
+Node* Type_u16 = (Node*)&_Type_u16;
+Node* Type_i32 = (Node*)&_Type_i32;
+Node* Type_u32 = (Node*)&_Type_u32;
+Node* Type_i64 = (Node*)&_Type_i64;
+Node* Type_u64 = (Node*)&_Type_u64;
 Node* Type_float32 = (Node*)&_Type_float32;
 Node* Type_float64 = (Node*)&_Type_float64;
 Node* Type_int = (Node*)&_Type_int;
@@ -123,14 +123,14 @@ Node* Const_nil = (Node*)&_Const_nil;
 
 inline static void init_type_nodes() {
   _Type_bool.type = Type_bool;
-  _Type_int8.type = Type_int8;
-  _Type_uint8.type = Type_uint8;
-  _Type_int16.type = Type_int16;
-  _Type_uint16.type = Type_uint16;
-  _Type_int32.type = Type_int32;
-  _Type_uint32.type = Type_uint32;
-  _Type_int64.type = Type_int64;
-  _Type_uint64.type = Type_uint64;
+  _Type_i8.type = Type_i8;
+  _Type_u8.type = Type_u8;
+  _Type_i16.type = Type_i16;
+  _Type_u16.type = Type_u16;
+  _Type_i32.type = Type_i32;
+  _Type_u32.type = Type_u32;
+  _Type_i64.type = Type_i64;
+  _Type_u64.type = Type_u64;
   _Type_float32.type = Type_float32;
   _Type_float64.type = Type_float64;
   _Type_int.type = Type_int;
@@ -142,63 +142,63 @@ inline static void init_type_nodes() {
   _Type_nil.type = Type_nil;
 }
 
-static SymRBNode n_default = { sym_default, true, NULL, NULL };
-static SymRBNode n_uint32 = { sym_uint32, false, &n_default, NULL };
-static SymRBNode n_int16 = { sym_int16, false, NULL, NULL };
-static SymRBNode n_int8 = { sym_int8, true, &n_uint32, &n_int16 };
-static SymRBNode n_bool = { sym_bool, true, NULL, NULL };
-static SymRBNode n_float32 = { sym_float32, false, &n_bool, NULL };
-static SymRBNode n_uint64 = { sym_uint64, false, &n_int8, &n_float32 };
+static SymRBNode n_default = { sym_default, false, NULL, NULL };
+static SymRBNode n_u64 = { sym_u64, true, NULL, NULL };
+static SymRBNode n_float32 = { sym_float32, true, NULL, NULL };
+static SymRBNode n_bool = { sym_bool, false, &n_u64, &n_float32 };
+static SymRBNode n_u16 = { sym_u16, false, &n_default, &n_bool };
 static SymRBNode n_switch = { sym_switch, true, NULL, NULL };
 static SymRBNode n_interface = { sym_interface, false, &n_switch, NULL };
-static SymRBNode n_else = { sym_else, false, NULL, NULL };
+static SymRBNode n_i16 = { sym_i16, true, NULL, NULL };
+static SymRBNode n_else = { sym_else, false, &n_i16, NULL };
 static SymRBNode n_struct = { sym_struct, false, &n_interface, &n_else };
-static SymRBNode n_for = { sym_for, false, &n_uint64, &n_struct };
-static SymRBNode n_defer = { sym_defer, false, NULL, NULL };
-static SymRBNode n_uint16 = { sym_uint16, true, NULL, NULL };
-static SymRBNode n_usize = { sym_usize, false, &n_uint16, NULL };
-static SymRBNode n_float64 = { sym_float64, true, &n_defer, &n_usize };
-static SymRBNode n_uint8 = { sym_uint8, true, NULL, NULL };
-static SymRBNode n_return = { sym_return, false, &n_uint8, NULL };
-static SymRBNode n_fun = { sym_fun, false, &n_float64, &n_return };
-static SymRBNode n_int32 = { sym_int32, true, NULL, NULL };
-static SymRBNode n_int64 = { sym_int64, true, NULL, NULL };
-static SymRBNode n_int = { sym_int, false, &n_int32, &n_int64 };
+static SymRBNode n_for = { sym_for, false, &n_u16, &n_struct };
+static SymRBNode n_i64 = { sym_i64, false, NULL, NULL };
+static SymRBNode n_float64 = { sym_float64, true, NULL, NULL };
+static SymRBNode n_usize = { sym_usize, true, NULL, NULL };
+static SymRBNode n_u8 = { sym_u8, false, &n_float64, &n_usize };
+static SymRBNode n_defer = { sym_defer, false, &n_i64, &n_u8 };
+static SymRBNode n_return = { sym_return, false, NULL, NULL };
+static SymRBNode n_int = { sym_int, false, NULL, NULL };
+static SymRBNode n_is = { sym_is, true, &n_return, &n_int };
 static SymRBNode n_isize = { sym_isize, true, NULL, NULL };
 static SymRBNode n_select = { sym_select, false, &n_isize, NULL };
-static SymRBNode n_const = { sym_const, false, &n_int, &n_select };
-static SymRBNode n_is = { sym_is, false, &n_fun, &n_const };
-static SymRBNode n_case = { sym_case, true, &n_for, &n_is };
-static SymRBNode n_enum = { sym_enum, true, NULL, NULL };
+static SymRBNode n_const = { sym_const, false, &n_is, &n_select };
+static SymRBNode n_fun = { sym_fun, false, &n_defer, &n_const };
+static SymRBNode n_case = { sym_case, true, &n_for, &n_fun };
+static SymRBNode n_enum = { sym_enum, false, NULL, NULL };
 static SymRBNode n__ = { sym__, true, NULL, NULL };
-static SymRBNode n_if = { sym_if, false, &n_enum, &n__ };
+static SymRBNode n_u32 = { sym_u32, false, &n__, NULL };
+static SymRBNode n_if = { sym_if, true, &n_enum, &n_u32 };
 static SymRBNode n_mutable = { sym_mutable, true, NULL, NULL };
 static SymRBNode n_false = { sym_false, false, &n_mutable, NULL };
-static SymRBNode n_break = { sym_break, true, &n_if, &n_false };
-static SymRBNode n_true = { sym_true, false, NULL, NULL };
-static SymRBNode n_type = { sym_type, false, &n_break, &n_true };
-static SymRBNode n_str = { sym_str, true, NULL, NULL };
-static SymRBNode n_nil = { sym_nil, false, &n_str, NULL };
+static SymRBNode n_i8 = { sym_i8, true, NULL, NULL };
+static SymRBNode n_true = { sym_true, false, &n_i8, NULL };
+static SymRBNode n_type = { sym_type, true, &n_false, &n_true };
+static SymRBNode n_break = { sym_break, false, &n_if, &n_type };
+static SymRBNode n_i32 = { sym_i32, false, NULL, NULL };
+static SymRBNode n_nil = { sym_nil, false, NULL, NULL };
+static SymRBNode n_str = { sym_str, true, &n_i32, &n_nil };
 static SymRBNode n_import = { sym_import, true, NULL, NULL };
 static SymRBNode n_uint = { sym_uint, false, &n_import, NULL };
-static SymRBNode n_continue = { sym_continue, true, &n_nil, &n_uint };
 static SymRBNode n_var = { sym_var, false, NULL, NULL };
-static SymRBNode n_while = { sym_while, false, &n_continue, &n_var };
-static SymRBNode n_in = { sym_in, false, &n_type, &n_while };
+static SymRBNode n_while = { sym_while, true, &n_uint, &n_var };
+static SymRBNode n_continue = { sym_continue, false, &n_str, &n_while };
+static SymRBNode n_in = { sym_in, false, &n_break, &n_continue };
 static SymRBNode n_as = { sym_as, false, &n_case, &n_in };
 
 static SymRBNode* _symroot = &n_as;
 
 Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
   (Node*)&_Type_bool,    // TypeCode_bool
-  (Node*)&_Type_int8,    // TypeCode_int8
-  (Node*)&_Type_uint8,   // TypeCode_uint8
-  (Node*)&_Type_int16,   // TypeCode_int16
-  (Node*)&_Type_uint16,  // TypeCode_uint16
-  (Node*)&_Type_int32,   // TypeCode_int32
-  (Node*)&_Type_uint32,  // TypeCode_uint32
-  (Node*)&_Type_int64,   // TypeCode_int64
-  (Node*)&_Type_uint64,  // TypeCode_uint64
+  (Node*)&_Type_i8,      // TypeCode_i8
+  (Node*)&_Type_u8,      // TypeCode_u8
+  (Node*)&_Type_i16,     // TypeCode_i16
+  (Node*)&_Type_u16,     // TypeCode_u16
+  (Node*)&_Type_i32,     // TypeCode_i32
+  (Node*)&_Type_u32,     // TypeCode_u32
+  (Node*)&_Type_i64,     // TypeCode_i64
+  (Node*)&_Type_u64,     // TypeCode_u64
   (Node*)&_Type_float32, // TypeCode_float32
   (Node*)&_Type_float64, // TypeCode_float64
   (Node*)&_Type_int,     // TypeCode_int
@@ -214,12 +214,11 @@ __attribute__((used)) static const char* const debugSymCheck =
   "as#101 break#102 case#103 const#104 continue#105 default#106 defer#107 "
   "else#108 enum#109 for#10a fun#10b if#10c import#10d in#10e interface#10f "
   "is#110 mutable#111 nil#112 return#113 select#114 struct#115 switch#116 "
-  "type#117 var#118 while#119 bool int8 uint8 int16 uint16 int32 uint32 "
-  "int64 uint64 float32 float64 int uint isize usize str true:bool=1 false:bool=0 "
-  "nil:nil=0 _ ";
+  "type#117 var#118 while#119 bool i8 u8 i16 u16 i32 u32 i64 u64 float32 "
+  "float64 int uint isize usize str true:bool=1 false:bool=0 nil:nil=0 _ ";
 #endif
 
-//-- END gen_constants() at src/co/parse/universe.c:564
+//-- END gen_constants() at src/co/parse/universe.c:576
 
 
 
@@ -482,7 +481,7 @@ __attribute__((constructor,used)) static void gen_constants() {
 
 
   // generate function "init_type_nodes" to init type nodes, e.g.
-  //   _Type_int32.type = Type_int32;
+  //   _Type_i32.type = Type_i32;
   printf("\n");
   printf("inline static void init_type_nodes() {\n");
   #define NODE_GEN(name) \
