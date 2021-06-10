@@ -113,23 +113,23 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
   switch (n->kind) {
     case NLet: {
-      assert(n->field.nrefs > 0);
-      assert(n->field.init != NULL);
+      assert(n->let.nrefs > 0);
+      assert(n->let.init != NULL);
 
       // reset mayReleaseLet at let boundary
       bool mayReleaseLet_child = false;
-      if (mayReleaseLet && n->field.nrefs == 1) {
+      if (mayReleaseLet && n->let.nrefs == 1) {
         // we will release n after we have visited its children, so allow children
         // to be released as well.
         mayReleaseLet_child = true;
       }
 
       // visit initializer node
-      auto init = resolveConst(b, n->field.init, mayReleaseLet_child);
+      auto init = resolveConst(b, n->let.init, mayReleaseLet_child);
 
       if (mayReleaseLet && NodeUnrefLet(n) == 0) {
         // release now-unused Let node
-        n->field.init = NULL;
+        n->let.init = NULL;
       }
       return init;
     }
@@ -807,15 +807,21 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NCall:
     R_MUSTTAIL return resolve_call_type(ctx, n, fl);
 
-  // uses Node.field
   case NLet:
+    if (n->let.init) {
+      // leave unused Let untyped
+      if (n->let.nrefs == 0)
+        return n;
+      n->let.init = resolve_type(ctx, n->let.init, fl);
+      n->type = n->let.init->type;
+    } else {
+      n->type = Type_nil;
+    }
+    break;
+
   case NArg:
   case NField:
     if (n->field.init) {
-      if (n->kind == NLet && n->field.nrefs == 0) {
-        // leave unused Let untyped
-        return n;
-      }
       n->field.init = resolve_type(ctx, n->field.init, fl);
       n->type = n->field.init->type;
     } else {

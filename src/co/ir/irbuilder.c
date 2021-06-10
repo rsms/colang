@@ -369,21 +369,21 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 
 
 static IRValue* ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
-  if (n->field.nrefs == 0) {
+  if (n->let.nrefs == 0) {
     // unused, unreferenced; ok to return null
     dlog("skip unused %s", fmtnode(n));
     return NULL;
   }
-  assertnotnull(n->field.init);
+  assertnotnull(n->let.init);
   assertnotnull(n->type);
   assert(n->type != Type_ideal);
   dlog("ast_add_let %s %s = %s",
-    n->field.name ? n->field.name : "_",
+    n->let.name ? n->let.name : "_",
     fmtnode(n->type),
-    n->field.init ? fmtnode(n->field.init) : "nil"
+    n->let.init ? fmtnode(n->let.init) : "nil"
   );
-  auto v = ast_add_expr(u, n->field.init); // right-hand side
-  return ast_add_assign(u, n->field.name, v);
+  auto v = ast_add_expr(u, n->let.init); // right-hand side
+  return ast_add_assign(u, n->let.name, v);
 }
 
 

@@ -40,7 +40,7 @@ static bool visit(NodeList* nl, void* ctxp) {
   switch (n->kind) {
     // ignore unused Let
     case NLet:
-      if (n->field.nrefs == 0)
+      if (n->let.nrefs == 0)
         return true;
       break;
 

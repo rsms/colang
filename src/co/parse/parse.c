@@ -447,9 +447,9 @@ static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
   asserteq_debug(name->kind, NId);
   auto n = NewNode(p->build->mem, NLet);
   n->pos = name->pos; // TODO: expand pos span to include type?
-  n->field.name = name->ref.name;
+  n->let.name = name->ref.name;
   if (init) {
-    n->field.init = init;
+    n->let.init = init;
     n->type = init->type;
     NodeTransferUnresolved(n, init);
   }
@@ -513,11 +513,11 @@ static Node* resolve_id(Parser* p, Node* id) {
 // unwrapLet unwraps a let into an expression of its value
 static Node* unwrapLet(Node* n) {
   // when unwrapping a let it must not be referenced
-  assert_debug(n->field.nrefs == 0);
+  assert_debug(n->let.nrefs == 0);
 
   // unwrap initializer if there's one
-  if (n->field.init)
-    return n->field.init;
+  if (n->let.init)
+    return n->let.init;
 
   // let with initializer -- convert to type call
   // "{x int}" -> "{int()}"
@@ -655,6 +655,7 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 //!PrefixParselet TVar
 static Node* PVar(Parser* p, PFlag fl) {
   auto n = mknode(p, NLet);
+  n->let.ismut = true;
   nexttok(p); // consume "var"
 
   // name
@@ -662,7 +663,7 @@ static Node* PVar(Parser* p, PFlag fl) {
   if (R_UNLIKELY(p->s.tok != TId)) {
     syntaxerr(p, "expecting %s", TokName(TId));
   } else {
-    n->field.name = p->s.name;
+    n->let.name = p->s.name;
     n->pos = pos_union(n->pos, ScannerPos(&p->s));
   }
   nexttok(p);
@@ -674,7 +675,7 @@ static Node* PVar(Parser* p, PFlag fl) {
       Pos epos = syntaxerr(p, "expecting type or assignment with initial value");
       build_notef(p->build, (PosSpan){epos,epos},
         "Fix by adding a type:\n  var %s TYPE\nor assigning a value:\n  var %s = VALUE\nhere:",
-        n->field.name, n->field.name);
+        n->let.name, n->let.name);
     } else {
       n->type = pType(p, fl | PFlagRValue);
     }
@@ -682,12 +683,12 @@ static Node* PVar(Parser* p, PFlag fl) {
   if (got(p, TAssign)) {
     // e.g. "var name = x" or "var name type = x"
     // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
-    n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
+    n->let.init = expr(p, PREC_LOWEST, PFlagRValue);
     if (!n->type)
-      n->type = n->field.init->type;
-    NodeTransferUnresolved(n, n->field.init);
+      n->type = n->let.init->type;
+    NodeTransferUnresolved(n, n->let.init);
   }
-  defsym(p, n->field.name, n);
+  defsym(p, n->let.name, n);
   return n;
 }
 
@@ -776,7 +777,7 @@ static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   // NodeFree(left); // makeLet copies left->ref.name and left->pos
   n->type = type;
 
-  // TODO: add check to PLetOrAssign and update n->field.init
+  // TODO: add check to PLetOrAssign and update n->let.init
 
   return n;
 }
@@ -881,7 +882,7 @@ static Node* PBlock(Parser* p, PFlag fl) {
     n->array.a.v[n->array.a.len - 1] = unwrapLet(cn);
     // Alt: insert a referencing identifier:
     // auto id = mknode(p, NId);
-    // id->ref.name = cn->field.name;
+    // id->ref.name = cn->let.name;
     // id->ref.target = cn;
     // id->type = cn->type;
     // NodeRefLet(cn);

@@ -146,12 +146,17 @@ typedef struct Node {
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;
-    /* field */ struct { // Arg, Field, Let
+    /* field */ struct { // Arg, Field
       Sym            name;
-      Node* nullable init;  // Field: initial value (may be NULL). Let: final value (never NULL).
-      u32            index; // Arg: argument index.
-      u32            nrefs; // Let: reference count
+      Node* nullable init;  // initial value (may be NULL)
+      u32            index; // argument index or struct index/order
     } field;
+    /* let */ struct { // Let
+      Sym            name;
+      Node* nullable init;
+      u32            nrefs; // reference count
+      bool           ismut; // true if this is mutable (variable)
+    } let;
     /* cond */ struct { // If
       Node*          cond;
       Node*          thenb;
@@ -233,7 +238,7 @@ inline static void NodeTransferUnresolved(Node* parent, Node* child) {
 static Node* NodeRefLet(Node* n);
 
 // NodeUnrefLet decrements the reference counter of a Let node.
-// Returns the value of n->field.nrefs after the subtraction.
+// Returns the value of n->let.nrefs after the subtraction.
 static u32 NodeUnrefLet(Node* n);
 
 // NodeFlagsStr appends a printable description of fl to s
@@ -353,14 +358,14 @@ inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) 
 
 inline static Node* NodeRefLet(Node* n) {
   asserteq_debug(n->kind, NLet);
-  n->field.nrefs++;
+  n->let.nrefs++;
   return n;
 }
 
 inline static u32 NodeUnrefLet(Node* n) {
   asserteq_debug(n->kind, NLet);
-  assertgt_debug(n->field.nrefs, 0);
-  return --n->field.nrefs;
+  assertgt_debug(n->let.nrefs, 0);
+  return --n->let.nrefs;
 }
 
 ASSUME_NONNULL_END

@@ -49,8 +49,11 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
-  // uses u.field
   case NLet:
+    if (n->let.init)
+      return CALLBACK(n->let.init, "init");
+    break;
+
   case NArg:
   case NField:
     if (n->field.init)

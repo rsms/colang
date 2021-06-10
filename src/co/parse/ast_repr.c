@@ -175,7 +175,7 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendcstr(s, "file");
 
   case NLet: // let
-    return str_appendfmt(s, "let %s", n->field.name);
+    return str_appendfmt(s, "%s %s", n->let.ismut ? "var" : "let", n->let.name);
 
   case NArg: // foo
     return str_append(s, n->field.name, symlen(n->field.name));
@@ -608,11 +608,16 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
 
   case NLet:
     s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->field.name, symlen(n->field.name));
+    s = str_append(s, n->let.name, symlen(n->let.name));
     s = style_pop(&c->style, s);
+    if (n->let.ismut) {
+      s = style_push(&c->style, s, attr_color);
+      s = str_appendcstr(s, " @mutable");
+      s = style_pop(&c->style, s);
+    }
     if (c->fl & NodeReprLetRefs) {
       s = style_push(&c->style, s, ref_color);
-      s = str_appendfmt(s, " (uses %u)", n->field.nrefs);
+      s = str_appendfmt(s, " (uses %u)", n->let.nrefs);
       s = style_pop(&c->style, s);
     }
     break;

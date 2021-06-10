@@ -245,8 +245,8 @@ static Node* nullable diag_trail_next(Node* n, const char** msg) {
         break;
 
       case NLet:
-        // *msg = n->field.name;
-        n = n->field.init;
+        // *msg = n->let.name;
+        n = n->let.init;
         break;
 
       // TODO: more node kinds

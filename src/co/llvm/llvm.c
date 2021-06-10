@@ -364,20 +364,20 @@ retry:
       goto retry;
     }
     case NLet: {
-      if (n->field.nrefs == 0) {
+      if (n->let.nrefs == 0) {
         // skip unused let
         return NULL;
       }
       // FIXME don't use name lookup here; pointers POINTERS! (or Sym or PtrMap or something.)
-      Value v = LLVMGetNamedGlobal(b->mod, n->field.name);
+      Value v = LLVMGetNamedGlobal(b->mod, n->let.name);
       if (v) {
         dlog("found named global");
         return v;
       }
       // TODO FIXME generate a location instead of just assuming init is the value
-      assert(n->field.init); // should be resolved
-      debugname = n->field.name;
-      n = n->field.init;
+      assert(n->let.init); // should be resolved
+      debugname = n->let.name;
+      n = n->let.init;
       goto retry;
     }
     case NIntLit:
@@ -409,15 +409,15 @@ static Value build_global_let(B* b, Node* n) {
   assert(n->kind == NLet);
   assert(n->type);
   Value gv;
-  if (n->field.init) {
-    Value v = build_expr(b, n->field.init, n->field.name);
+  if (n->let.init) {
+    Value v = build_expr(b, n->let.init, n->let.name);
     if (!LLVMIsConstant(v)) {
       panic("not a constant expression %s", fmtnode(n));
     }
-    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->field.name);
+    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->let.name);
     LLVMSetInitializer(gv, v);
   } else {
-    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->field.name);
+    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->let.name);
   }
   // TODO: conditionally make linkage private
   LLVMSetLinkage(gv, LLVMPrivateLinkage);
