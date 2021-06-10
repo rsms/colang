@@ -51,6 +51,10 @@ static Pos pos_with_width(Pos p, u32 width);  // returns copy of p with specific
 // Can not overflow; the result is clamped.
 Pos pos_with_adjusted_start(Pos p, i32 deltacol);
 
+// pos_union returns a Pos that covers the column extent of both a and b.
+// a and b must be on the same line.
+Pos pos_union(Pos a, Pos b);
+
 // pos_isknown reports whether the position is a known position.
 static bool pos_isknown(Pos);
 

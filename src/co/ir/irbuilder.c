@@ -161,7 +161,7 @@ static IRValue* TODO_Value(IRBuilder* u) {
   fprintf(stderr, "VAR " format "\t(%s:%d)\n", ##__VA_ARGS__, __FILE__, __LINE__)
 
 
-static void writeVariable(IRBuilder* u, Sym name, IRValue* value, IRBlock* b) {
+static void var_write(IRBuilder* u, Sym name, IRValue* value, IRBlock* b) {
   if (b == u->b) {
     dlogvar("write %.*s in current block", (int)symlen(name), name);
     auto oldv = SymMapSet(u->vars, name, value);
@@ -174,16 +174,16 @@ static void writeVariable(IRBuilder* u, Sym name, IRValue* value, IRBlock* b) {
 }
 
 
-static IRValue* readVariable(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/*null*/) {
+static IRValue* var_read(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/*null*/) {
   if (b == u->b) {
     // current block
-    dlogvar("read %.*s in current block", (int)symlen(name), name);
+    dlogvar("var_read %.*s in current block", (int)symlen(name), name);
     auto v = SymMapGet(u->vars, name);
     if (v != NULL) {
       return v;
     }
   } else {
-    dlogvar("TODO read %.*s in defvars", (int)symlen(name), name);
+    dlogvar("TODO var_read %.*s in defvars", (int)symlen(name), name);
   //   let m = u.defvars[b.id]
   //   if (m) {
   //     let v = m.get(name)
@@ -193,10 +193,10 @@ static IRValue* readVariable(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/
   //   }
   }
 
-  dlogvar("read %.*s not found -- falling back to readRecursive", (int)symlen(name), name);
+  dlogvar("var_read %.*s not found -- falling back to readRecursive", (int)symlen(name), name);
 
   // // global value numbering
-  // return u.readVariableRecursive(name, t, b)
+  // return u.var_readRecursive(name, t, b)
 
   dlog("TODO");
   return TODO_Value(u);
@@ -206,7 +206,7 @@ static IRValue* readVariable(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/
 // ———————————————————————————————————————————————————————————————————————————————————————————————
 // add functions. Most atomic at top, least at bottom. I.e. let -> block -> fun -> file.
 
-static IRValue* ast_add_expr(IRBuilder* u, Node* n);
+static IRValue* nullable ast_add_expr(IRBuilder* u, Node* n);
 static bool ast_add_toplevel(IRBuilder* u, Node* n);
 static IRFun* ast_add_fun(IRBuilder* u, Node* n);
 
@@ -231,7 +231,7 @@ static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
   // dlog("ast_add_id \"%s\" target = %s", n->ref.name, fmtnode(n->ref.target));
   if (n->ref.target->kind == NLet) {
     // variable
-    return readVariable(u, n->ref.name, n->type, u->b);
+    return var_read(u, n->ref.name, n->type, u->b);
   }
   // else: type or builtin etc
   return ast_add_expr(u, (Node*)n->ref.target);
@@ -359,7 +359,7 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 
   // instead of issuing an intermediate "copy", simply associate variable
   // name with the value on the right-hand side.
-  writeVariable(u, name, value, u->b);
+  var_write(u, name, value, u->b);
 
   if (u->flags & IRBuilderComments)
     IRValueAddComment(value, u->mem, name, symlen(name));
@@ -369,6 +369,11 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 
 
 static IRValue* ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
+  if (n->field.nrefs == 0) {
+    // unused, unreferenced; ok to return null
+    dlog("skip unused %s", fmtnode(n));
+    return NULL;
+  }
   assertnotnull(n->field.init);
   assertnotnull(n->type);
   assert(n->type != Type_ideal);

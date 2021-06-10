@@ -37,6 +37,24 @@ Pos pos_with_adjusted_start(Pos p, i32 deltacol) {
   );
 }
 
+Pos pos_union(Pos a, Pos b) {
+  asserteq(pos_line(a), pos_line(b));
+  if (b < a) {
+    Pos tmp = a;
+    a = b;
+    b = tmp;
+  }
+  u32 c = pos_col(a);
+  u32 w = pos_width(a);
+  u32 aend = c + w;
+  u32 bstart = pos_col(b);
+  u32 bw = pos_width(b);
+  if (bstart > aend)
+    aend = bstart;
+  w = aend - c + bw;
+  return pos_make_unchecked(pos_origin(a), pos_line(a), c, w);
+}
+
 static u32* computeLineOffsets(Source* s, u32* nlines_out) {
   if (!s->body)
     SourceOpenBody(s);

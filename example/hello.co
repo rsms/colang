@@ -1,33 +1,25 @@
-# thing = 123 + PI
-# PI = 3141592 as float64
-#
-
-# array [4]int
-# K int32 = 5
-
-#!name thing foo bar "fgdfg" sf
-#*!name thing *#
-
-#*
-  block
-  comment
-*#
-
-
-some #*comment*# other
-
 fun add(x, y int) int {
-  z = x + y + 3
-  g = true
-  add2(z + y, x)
-}
-
-fun add2(x, y int) {
   x + y
 }
 
 fun main() {
-  a = 12
-  b = a
-  return add(b, b)
+  a, x, y = 1, 2, 3
+  b int = 2
+  var c int = 3
+  return add(a, b + c)
 }
+
+
+# fun add(x, y int) int {
+#   x + y
+# }
+
+# fun main() {
+#   a = 12 # equivalent to var a = 12
+#   b = a
+#   if a > 5 {
+#     b = 3
+#     var a int # explicitly use var to declare new instead of storing to outer a
+#   }
+#   return add(b, b)
+# }

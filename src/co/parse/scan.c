@@ -58,7 +58,6 @@ bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
   s->src          = src;
   s->srcposorigin = posmap_origin(&build->posmap, src);
   s->inp          = src->body;
-  s->inp0         = src->body;
   s->inend        = src->body + src->len;
   s->flags        = flags;
   s->linestart    = s->inp;
@@ -112,14 +111,6 @@ static void serr(Scanner* s, const char* fmt, ...) {
 #else
   #define debug_token_production(s) do{}while(0)
 #endif
-
-
-// // unreadrune sets the reading position to a previous reading position,
-// // usually the one of the most recently read rune, but possibly earlier
-// // (see unread below).
-// inline static void unreadrune(Scanner* s) {
-//   s->inp = s->inp0;
-// }
 
 
 Comment* ScannerCommentPop(Scanner* s) {
@@ -249,6 +240,7 @@ static void snumber(Scanner* s) {
 
 
 Tok ScannerNext(Scanner* s) {
+  s->prevtokend = s->tokend;
   scan_again: {}  // jumped to when comments are skipped
   // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (size_t)(s->inp - s->src->body));
 

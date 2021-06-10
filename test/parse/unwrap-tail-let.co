@@ -1,0 +1,34 @@
+# unwrapping let at end of block
+fun a() {
+  b()
+  x = 4
+}
+fun b() {
+  x int
+}
+fun c() -> x = 4
+fun d() -> x int
+
+#*!AST
+(Pkg
+  (File
+    (Fun a #1
+      (body (Block
+              (Call
+                (Id b (Fun b #2 FunType) [FunType [int]])
+                nil int)
+              (IntLit 4 int)
+              [int]))
+      [FunType [int]])
+    (Fun b #2
+      (body (Block
+              (Call int nil [int])
+              [int]))
+      [FunType [int]])
+    (Fun c #3
+      (body (IntLit 4 [int]))
+      [FunType [int]])
+    (Fun d #4
+      (body (Call int nil [int]))
+      [FunType [int]])))
+*#

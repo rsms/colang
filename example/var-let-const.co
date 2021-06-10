@@ -1,0 +1,40 @@
+# "const" and implicit var (Python style)  CURRENT FAVORITE
+const A = 3      # ideally-typed constant
+const B i8 = 3   # int8-typed constant
+C = 3            # mutable int-typed var (alt: error: no global vars)
+fun foo(x int) { # x is int-typed var
+  a = 1          # int-typed var
+  b int = 2      # int-typed var
+  c, d u8 = 3, 4 # u8-typed vars
+  e = u32(2)     # u32-typed var
+  f = 6          # int-typed var
+  c = 5          # assign to var c
+}
+#—————————————————————————————————————————————————————
+# "var" to make a binding mutable  SECOND FAVORITE
+# global scope can only hold immutable vars (constants)
+A = 3            # immutable ideally-typed var
+B i8 = 3         # immutable int8-typed var
+var C = 3        # mutable int-typed var
+fun foo(x int) { # x is mutable(?) int-typed var
+  a = 1          # immutable ideally-typed var
+  a = 5          # immtuable ideally-typed var (shadows)
+  var b = 2      # mutable int-typed var
+  c, d u8 = 3, 4 # immutable int-typed vars
+  e int = 2      # immutable int-typed var
+  a++            # error: increment of immutable var
+  b++            # store result of b + 1 to var b
+}
+#—————————————————————————————————————————————————————
+# "const" and "var"
+const A = 3          # ideally-typed constant
+const B i8 = 3       # int8-typed constant
+var c = 3            # int-typed var
+fun foo(x int) {     # x is int-typed var
+  var a = 1          # int-typed var
+  var b int = 2      # int-typed var
+  var c, d u8 = 3, 4 # int-typed vars
+  var e = u32(2)     # u32-typed var
+  f = 6              # error: unknown identifier f
+  c = 5              # assign to var c
+}

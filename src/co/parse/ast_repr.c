@@ -246,7 +246,7 @@ typedef struct LReprCtx {
   NodeReprFlags fl;        // flags
   Str           s;         // output buffer
   u32           ind;       // indentation depth
-  PtrMap        funmap;    // functions we've already printed
+  PtrMap        seenmap;   // nodes we've already printed
   StyleStack    style;     // ANSI terminal styling
   u32           linestart; // offset into s of the current line's start (index of last '\n' byte)
   u32           styleoffs; // number of bytes of style at the beginning of linestart
@@ -270,7 +270,7 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
     .maxline = 80,
   };
   c.s = styleStackInitRepr(&c.style, c.s, fl);
-  PtrMapInit(&c.funmap, 64, MemHeap);
+  PtrMapInit(&c.seenmap, 64, MemHeap);
 
   if (c.style.styles == TStyleNone) {
     c.lparen = "(";
@@ -286,7 +286,7 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
 
   NodeVisit(n, &c, l_visit);
 
-  PtrMapDispose(&c.funmap);
+  PtrMapDispose(&c.seenmap);
   StyleStackDispose(&c.style);
   return c.s;
 }
@@ -321,14 +321,14 @@ static Str l_new_line(LReprCtx* c, Str s) {
 }
 
 
-static uintptr_t l_fun_id(LReprCtx* c, const Node* fn, bool* newfound) {
+static uintptr_t l_seen_id(LReprCtx* c, const Node* n, bool* newfound) {
   // Using stable counter instead of address/pointer makes the output deterministic
-  uintptr_t id = (uintptr_t)PtrMapGet(&c->funmap, fn);
+  uintptr_t id = (uintptr_t)PtrMapGet(&c->seenmap, n);
   if (id == 0) {
     if (newfound)
       *newfound = true;
-    id = (uintptr_t)PtrMapLen(&c->funmap) + 1;
-    PtrMapSet(&c->funmap, fn, (void*)id);
+    id = (uintptr_t)PtrMapLen(&c->seenmap) + 1;
+    PtrMapSet(&c->seenmap, n, (void*)id);
   }
   return id;
 }
@@ -345,6 +345,10 @@ static bool l_collapse_field(NodeList* nl) {
   case NField:
   case NTuple:
   case NReturn:
+  case NBoolLit:
+  case NFloatLit:
+  case NIntLit:
+  case NStrLit:
     return true;
 
   default:
@@ -480,15 +484,17 @@ static bool l_visit(NodeList* nl, void* cp) {
   s = append_delim(c, s, c->typenest ? c->lbrack : c->lparen);
   s = str_appendcstr(s, l_listname(nl));
 
+  switch (n->kind) {
+
   // functions can reference themselves
-  if (n->kind == NFun) {
+  case NFun: {
     if (n->fun.name) {
       s = str_appendc(s, ' ');
       s = str_append(s, n->fun.name, symlen(n->fun.name));
     }
     // Include a function identifier which we can use to map references in the output.
     bool newfound = false;
-    auto id = l_fun_id(c, n, &newfound);
+    auto id = l_seen_id(c, n, &newfound);
     if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
       // this function has been seen before and we have printed it as it was
       // not defined in the file scope.
@@ -497,15 +503,31 @@ static bool l_visit(NodeList* nl, void* cp) {
     s = style_push(&c->style, s, ref_color);
     s = str_appendfmt(s, " #%zu", (size_t)id);
     s = style_pop(&c->style, s);
-  } else if (n->kind == NFile) {
+    break;
+  }
+  case NFile: {
     // allocate function ids up front to avoid expanding a referenced function inside a body
     // when the definition trails the use, syntactically.
     for (u32 i = 0; i < n->array.a.len; i++) {
       const Node* cn = n->array.a.v[i];
       if (cn->kind == NFun)
-        l_fun_id(c, cn, NULL);
+        l_seen_id(c, cn, NULL);
     }
+    break;
   }
+  case NLet: {
+    // Let
+    bool newfound = false;
+    auto id = l_seen_id(c, n, &newfound);
+    s = style_push(&c->style, s, ref_color);
+    s = str_appendfmt(s, " #%zu", (size_t)id);
+    s = style_pop(&c->style, s);
+    descend = newfound;
+    break;
+  }
+  default:
+    break;
+  } // switch(n->kind)
 
   // attributes
   if (NodeIsUnresolved(n)) {

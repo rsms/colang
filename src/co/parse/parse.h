@@ -141,13 +141,13 @@ typedef struct Scanner {
   u32        srcposorigin;
   ParseFlags flags;
   const u8*  inp;          // input buffer current pointer
-  const u8*  inp0;         // input buffer previous pointer
   const u8*  inend;        // input buffer end
-  bool       insertSemi;    // insert a semicolon before next newline
+  bool       insertSemi;   // insert a semicolon before next newline
 
   Tok        tok;           // current token
   const u8*  tokstart;      // start of current token
   const u8*  tokend;        // end of current token
+  const u8*  prevtokend;    // end of previous token
   Sym        name;          // Current name (valid for TId and keywords)
 
   Comment*   comments_head; // linked list head of comments scanned so far

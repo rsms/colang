@@ -22,6 +22,7 @@ Wish list. Things that could be improved or added.
       This would make it much easier to generate code with alternative backends like JS.
       Could keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
 - [ ] Rename basic primitive types like `int32` to LLVM/Rust/Zig style `i32`, `u16` etc.
+- [ ] Multi function dispatch e.g. `foo(int)` vs `foo(float32)`.
 
 
 ## Testing & QA

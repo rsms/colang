@@ -19,7 +19,7 @@
 // which builds the "parselets" table (see end of file.)
 
 // panic() on parse errors
-#define DEBUG_PANIC_ON_PARSE_ERROR
+//#define DEBUG_PANIC_ON_PARSE_ERROR
 //
 // enable debug messages for pushScope() and popScope()
 //#define DEBUG_SCOPE_PUSH_POP
@@ -106,7 +106,7 @@ typedef struct Unresolved {
 // It will point to the source location of the last-scanned token.
 // If n is not NULL, use source location of n instead of current location.
 //
-static void syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
+static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
   if (pos == NoPos)
     pos = ScannerPos(&p->s);
 
@@ -121,7 +121,17 @@ static void syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
   if (p->s.tok == TNone) {
     tokname = "end of input";
   } else if (p->s.tok == TSemi && p->s.inp > p->s.src->body && *(p->s.inp - 1) == '\n') {
-    tokname = "newline";
+    // Implicit semicolon from linebreak.
+    tokname = "line break";
+    // To improve the error message, find the pos of the linebreak
+    const u8* prevlinestart = p->s.prevtokend - 1;
+    while (prevlinestart > p->s.src->body) {
+      if (*prevlinestart == '\n')
+        break;
+      prevlinestart--;
+    }
+    u32 col = (u32)(uintptr_t)(p->s.prevtokend - prevlinestart);
+    pos = pos_make(p->s.srcposorigin, p->s.lineno - 1, col, /*span*/0);
   } else {
     tokname = TokName(p->s.tok);
   }
@@ -151,6 +161,7 @@ static void syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
   #endif
 
   str_free(msg);
+  return pos;
 }
 
 
@@ -401,7 +412,7 @@ static void defsym(Parser* p, Sym s, Node* n) {
 
 // If the current token is t, advances scanner and returns true.
 inline static bool got(Parser* p, Tok t) {
-  if (R_UNLIKELY(p->s.tok != t))
+  if (p->s.tok != t)
     return false;
   nexttok(p);
   return true;
@@ -556,7 +567,7 @@ inline static void nodeTransferUnresolved2(Node* parent, Node* child1, Node* chi
 // Type (always rvalue)
 inline static Type* pType(Parser* p, PFlag fl) {
   assert(fl & PFlagRValue);
-  return exprOrTuple(p, PREC_LOWEST, fl | PFlagType);
+  return exprOrTuple(p, PREC_MEMBER, fl | PFlagType);
 }
 
 inline static Node* pId(Parser* p) {
@@ -639,6 +650,46 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   return n;
 }
 
+// VarDecl = "var" Id (Type | Type? "=" Expr)
+// e.g. "var x int", "var x = 4", "var x int = 4"
+//!PrefixParselet TVar
+static Node* PVar(Parser* p, PFlag fl) {
+  auto n = mknode(p, NLet);
+  nexttok(p); // consume "var"
+
+  // name
+  // TODO: multi-name e.g. "var x, y, z int", "var x, y, z = 1, 2, 3"
+  if (R_UNLIKELY(p->s.tok != TId)) {
+    syntaxerr(p, "expecting %s", TokName(TId));
+  } else {
+    n->field.name = p->s.name;
+    n->pos = pos_union(n->pos, ScannerPos(&p->s));
+  }
+  nexttok(p);
+
+  if (p->s.tok != TAssign) {
+    // e.g. "var name type"
+    if (R_UNLIKELY(p->s.tok == TSemi)) {
+      // improved error message (we'd get a generic one from pType)
+      Pos epos = syntaxerr(p, "expecting type or assignment with initial value");
+      build_notef(p->build, (PosSpan){epos,epos},
+        "Fix by adding a type:\n  var %s TYPE\nor assigning a value:\n  var %s = VALUE\nhere:",
+        n->field.name, n->field.name);
+    } else {
+      n->type = pType(p, fl | PFlagRValue);
+    }
+  }
+  if (got(p, TAssign)) {
+    // e.g. "var name = x" or "var name type = x"
+    // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
+    n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
+    if (!n->type)
+      n->type = n->field.init->type;
+    NodeTransferUnresolved(n, n->field.init);
+  }
+  defsym(p, n->field.name, n);
+  return n;
+}
 
 // Infix assignment e.g. "=" in "left = expr"
 //!Parselet (TAssign ASSIGN)
@@ -1151,6 +1202,7 @@ static Node* PFun(Parser* p, PFlag fl) {
 static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
+  [TVar] = {PVar, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
   [TLBrace] = {PBlock, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},

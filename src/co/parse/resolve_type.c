@@ -397,6 +397,24 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
 }
 
 
+static Node* finalize_binop(ResCtx* ctx, Node* n) {
+  switch (n->op.op) {
+    // comparison operators have boolean value
+    case TEq:  // "=="
+    case TNEq: // "!="
+    case TLt:  // "<"
+    case TLEq: // "<="
+    case TGt:  // ">"
+    case TGEq: // ">="
+      n->type = Type_bool;
+      break;
+    default:
+      break;
+  }
+  return n;
+}
+
+
 static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(n->op.right != NULL);
 
@@ -447,13 +465,13 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
       dlog_mod("[binop] 2  left is untyped, right is typed (%s)", fmtnode(rt));
       n->op.left = convlit(ctx->build, n->op.left, rt, ConvlitImplicit | ConvlitRelaxedType);
       n->type = rt;
-      return n;
+      return finalize_binop(ctx, n);
     }
   } else if (rt == Type_ideal) {
     dlog_mod("[binop] 3  left is typed (%s), right is untyped", fmtnode(lt));
     n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
     n->type = lt;
-    return n;
+    return finalize_binop(ctx, n);
   } else {
     dlog_mod("[binop] 4  left & right are typed (%s, %s)", fmtnode(lt) , fmtnode(rt));
   }
@@ -484,7 +502,7 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   n->type = lt;
-  return n;
+  return finalize_binop(ctx, n);
 }
 
 

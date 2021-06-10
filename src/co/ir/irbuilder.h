@@ -27,7 +27,7 @@ typedef struct IRBuilder {
     // variable assignments in the current block (map from variable symbol to ssa value)
     // this PtrMap is moved into defvars when a block ends (internal call to endBlock.)
 
-  Array defvars; void* defvarsStorage[512]; // PtrMap*[]  (from vars)
+  Array defvars; void* defvarsStorage[512]; // list of SymMap*  (from vars)
     // all defined variables at the end of each block. Indexed by block id.
     // null indicates there are no variables in that block.
 

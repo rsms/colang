@@ -158,7 +158,7 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
-#if 0
+#if 1
 static void dump_ir(const PosMap* posmap, const IRPkg* pkg) {
   auto s = IRReprPkgStr(pkg, posmap, str_new(512));
   s = str_appendc(s, '\n');
@@ -257,14 +257,14 @@ int cmd_build(int argc, const char** argv) {
   dlog("AST validated OK");
   #endif
 
-  // goto end; // XXX
+  goto end; // XXX
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
     RTIMER_START();
     pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
     RTIMER_LOG("resolve symbolic references");
-    dump_ast("", pkgnode);
+    //dump_ast("", pkgnode);
     if (build.errcount) {
       errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
       return 1;
@@ -289,17 +289,19 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
-  //goto end; // XXX
-
   // build IR
-  #if 0
-  PRINT_BANNER();
+  #if 1
+  RTIMER_START();
   IRBuilder irbuilder = {};
   IRBuilderInit(&irbuilder, &build, IRBuilderComments);
   IRBuilderAddAST(&irbuilder, pkgnode);
+  RTIMER_LOG("build Co IR");
+  PRINT_BANNER();
   dump_ir(&build.posmap, irbuilder.pkg);
   IRBuilderDispose(&irbuilder);
   #endif
+
+  goto end; // XXX
 
   // emit target code
   #ifdef CO_WITH_LLVM
