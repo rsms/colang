@@ -257,7 +257,7 @@ int cmd_build(int argc, const char** argv) {
   dlog("AST validated OK");
   #endif
 
-  goto end; // XXX
+  // goto end; // XXX
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
@@ -288,6 +288,8 @@ int cmd_build(int argc, const char** argv) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
   }
+
+  goto end; // XXX
 
   // build IR
   #if 1

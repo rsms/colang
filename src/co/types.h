@@ -50,7 +50,7 @@ typedef enum TypeCodeFlag {
   _( mem       , 'M', 0 ) /* memory location */                                                \
   _( fun       , '^', 0 )                                                                      \
   _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                              \
-  _( list      , '[', 0 ) _( listEnd   , ']', 0 )                                              \
+  _( array     , '[', 0 )                                                                      \
   _( struct    , '{', 0 ) _( structEnd , '}', 0 )                                              \
   /* special type codes used in IR */                                                          \
   _( ideal     , '*' , 0 ) /* untyped numeric constants */                                     \

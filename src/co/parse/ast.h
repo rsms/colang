@@ -179,7 +179,7 @@ typedef struct Node {
         } list;
         /* array */ struct { // ArrayType
           Node* nullable sizeExpr; // NULL==slice (language type: usize)
-          u64            size; // only used for array, not slice. 0 until sizeExpr is resolved.
+          u64            size;     // only used for array, not slice. 0 until sizeExpr is resolved
           Node*          subtype;
         } array;
         /* fun */ struct { // FunType

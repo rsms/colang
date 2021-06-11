@@ -51,7 +51,6 @@ typedef enum Precedence {
   PREC_LOWEST,
   PREC_ASSIGN,
   PREC_COMMA,
-  PREC_NULL_JOIN,
   PREC_LOGICAL_OR,
   PREC_LOGICAL_AND,
   PREC_BITWISE_OR,
@@ -767,7 +766,7 @@ static Node* pArrayType(Parser* p, PFlag fl) {
     want(p, TRBrack);
   } // else: slice, e.g. "[]int"
 
-  n->t.array.subtype = expr(p, PREC_COMMA, fl | PFlagRValue);
+  n->t.array.subtype = expr(p, PREC_MEMBER, fl | PFlagRValue);
   NodeTransferUnresolved(n, n->t.array.subtype);
 
   // if we are parsing in rvalue position it must be a parameter, else it's a let
@@ -787,13 +786,9 @@ static Node* PArray(Parser* p, PFlag fl) {
   if (fl & PFlagType)
     return pArrayType(p, fl);
 
-  // TODO: consider ditching ArrayLit because...
-  // - it does not allow us to do things like "at = type([3]int)"
-  // - it introduces special syntax for arrays. Maybe better to use
-  //   type calls as for other types? I.e. "a = [3]int(1, 2, 3)",
-  //   alternatively use "{...}" for type init, including structs, e.g.
-  //   "a = [3]int{1, 2, 3}", "s = Foo{1, len = 3}".
-
+  // TODO: implement branching parser so we can parse both
+  // "[3]int" (ArrayType) and "[3]" (ArrayLit). This is useful when a type is an
+  // rvalue, for example: "MyAlias = [3]int" or "typename([3]int)".
 
   // array literal { x = [1, 2, 3] }
   auto n = mknode(p, NArrayLit);
@@ -867,7 +862,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   if (R_UNLIKELY((fl & PFlagRValue) || left->kind != NId)) {
     // (fl & PFlagRValue)   Occurs as an expression, e.g. "b" in "x = a b"
     // (left->kind != NId)  Identifier following some expression e.g. "b" in "3 b"
-    syntaxerrp(p, id->pos, "unexpected identifier");
+    syntaxerrp(p, id->pos, "unexpected identifier %s", id->ref.name);
     return id;
   }
 
@@ -901,7 +896,7 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
   return n;
 }
 
-//!Parselet (TLParen MEMBER)
+//!Parselet (TLParen COMMA)
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto n = mknode(p, NCall);
   nexttok(p); // consume "("
@@ -924,8 +919,8 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     }
   }
 
-  if (NodeKindIsType(receiver->kind))
-    n->kind = NTypeCast;
+  // if (NodeKindIsType(receiver->kind))
+  //   n->kind = NTypeCast;
 
   return n;
 }
@@ -1272,7 +1267,7 @@ static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
   [TVar] = {PVar, NULL, PREC_MEMBER},
-  [TLParen] = {PGroup, PCall, PREC_MEMBER},
+  [TLParen] = {PGroup, PCall, PREC_COMMA},
   [TLBrack] = {PArray, PListInfix, PREC_LOWEST},
   [TLBrace] = {PBlock, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},

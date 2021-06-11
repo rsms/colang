@@ -71,10 +71,23 @@ Node* ResolveType(Build* build, Node* n) {
   return n;
 }
 
+// returns old type
+static Type* nullable typecontext_set(ResCtx* ctx, Type* nullable newtype) {
+  if (newtype) {
+    assert(NodeIsType(newtype));
+    assertne(newtype, Type_ideal);
+  }
+  dlog_mod("typecontext_set %s", fmtnode(newtype));
+  auto oldtype = ctx->typecontext;
+  ctx->typecontext = newtype;
+  return oldtype;
+}
+
 static void typecontext_push(ResCtx* ctx, Type* t) {
+  assertnotnull(t);
   assert(NodeIsType(t));
   assertne(t, Type_ideal);
-  dlog_mod("typecontext_push %s", fmtnode(t));
+  dlog_mod("typecontext_push %s %s", NodeKindName(t->kind), fmtnode(t));
   if (ctx->typecontext)
     ArrayPush(&ctx->typecontext_stack, ctx->typecontext, ctx->build->mem);
   ctx->typecontext = t;
@@ -375,7 +388,7 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
         n->array.a.len, ct->array.a.len, fmtnode(ct));
     }
     assert(ct->array.a.len > 0); // tuples should never be empty
-    ctx->typecontext = ct->array.a.v[ctindex++];
+    typecontext_set(ctx, ct->array.a.v[ctindex++]);
   }
 
   // for each tuple entry
@@ -387,7 +400,7 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
     }
     NodeArrayAppend(ctx->build->mem, &tt->t.list.a, cn->type);
     if (ct)
-      ctx->typecontext = ct->array.a.v[ctindex++];
+      typecontext_set(ctx, ct->array.a.v[ctindex++]);
   }
 
   // restore typecontext, set type and return type
@@ -399,7 +412,32 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
 
 static Node* resolve_arraylit_type(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NArrayLit);
-  dlog("TODO: resolve_arraylit_type %s", fmtnode(n));
+  Type* t = NewNode(ctx->build->mem, NArrayType);
+  n->type = t;
+
+  if (R_UNLIKELY(n->array.a.len == 0)) {
+    build_errf(ctx->build, NodePosSpan(n), "empty array literal");
+    t->t.array.subtype = Type_nil;
+    return n;
+  }
+
+  auto typecontext = ctx->typecontext;
+  fl |= RFlagResolveIdeal | RFlagEager;
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
+    if (i == 0) {
+      assert_debug(cn->type != Type_ideal);
+      t->t.array.subtype = cn->type;
+      typecontext_set(ctx, cn->type);
+    } else if (R_UNLIKELY(ctx->typecontext != cn->type)) {
+      // mixed value types, e.g. "[123 as i32, 4 as u32]"
+      build_errf(ctx->build, NodePosSpan(cn),
+        "mixed types %s and %s in array literal",
+        fmtnode(ctx->typecontext), fmtnode(cn->type));
+    }
+  }
+  t->t.array.size = n->array.a.len;
+  ctx->typecontext = typecontext;
   return n;
 }
 

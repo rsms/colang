@@ -6,9 +6,10 @@ fun invert(color [3]int) nil {
 }
 
 fun main() nil {
-  # color = [255, 30, 0]
-  x i8 = 4
-  color [3]int = [255, 30, 0]
+  color = [255, 30, 0]
+  # color [3]int = [255, 30, 0]
+  # x i8 = 4
+  # color = [3]int(255, 30, 0)
   invert(color)
 }
 

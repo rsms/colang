@@ -357,7 +357,7 @@ static bool l_collapse_field(NodeList* nl) {
   case NFloatLit:
   case NIntLit:
   case NStrLit:
-  case NArrayLit:
+  // case NArrayLit:
     return true;
 
   default:
@@ -401,7 +401,7 @@ static const char* l_listname(NodeList* nl) {
         return NodeKindName(n->kind);
       return "";
     case NTupleType:
-      return "";
+      return "TupleType ";
     default:
       return NodeKindName(n->kind);
   }
@@ -659,6 +659,14 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     s = style_push(&c->style, s, lit_color);
     s = NValFmt(s, n->val);
     s = style_pop(&c->style, s);
+    break;
+
+  case NArrayType:
+    if (n->t.array.size == 0) {
+      s = str_appendcstr(s, "(size ?)");
+    } else {
+      s = str_appendfmt(s, "(size " FMT_U64 ")", n->t.array.size);
+    }
     break;
 
   default:

@@ -64,34 +64,31 @@ static Str mktypestr(Str s, const Node* n) {
   switch (n->kind) {
 
     case NBasicType:
-      s = str_appendc(s, TypeCodeEncoding(n->t.basic.typeCode));
-      break;
+      return str_appendc(s, TypeCodeEncoding(n->t.basic.typeCode));
+
+    case NArrayType:
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_array));
+      return mktypestr(s, n->t.array.subtype);
 
     case NTupleType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_tuple));
       for (u32 i = 0; i < n->t.list.a.len; i++)
         s = mktypestr(s, (Node*)n->t.list.a.v[i]);
-      s = str_appendc(s, TypeCodeEncoding(TypeCode_tupleEnd));
-      break;
+      return str_appendc(s, TypeCodeEncoding(TypeCode_tupleEnd));
 
-    case NFunType: {
+    case NFunType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_fun));
       if (n->t.fun.params) {
         s = mktypestr(s, n->t.fun.params);
       } else {
         s = str_appendc(s, TypeCodeEncoding(TypeCode_nil));
       }
-      if (n->t.fun.result) {
-        s = mktypestr(s, n->t.fun.result);
-      } else {
-        s = str_appendc(s, TypeCodeEncoding(TypeCode_nil));
-      }
-      break;
-    }
+      if (n->t.fun.result)
+        return mktypestr(s, n->t.fun.result);
+      return str_appendc(s, TypeCodeEncoding(TypeCode_nil));
 
     default:
-      dlog("TODO mktypestr handle %s", NodeKindName(n->kind));
-      assert(!NodeKindIsType(n->kind)); // unhandled type
+      panic("TODO mktypestr handle %s", NodeKindName(n->kind));
       break;
   }
   return s;

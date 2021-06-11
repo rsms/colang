@@ -112,6 +112,11 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
 
   // uses t.array
   case NArrayType:
+    if (n->t.array.size == 0 && n->t.array.sizeExpr &&
+        !CALLBACK(n->t.array.sizeExpr, "sizeexpr"))
+    {
+      return false;
+    }
     return CALLBACK(n->t.array.subtype, "subtype");
 
   // Remaining nodes has no children.
