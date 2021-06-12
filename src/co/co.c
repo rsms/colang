@@ -289,7 +289,7 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
-  goto end; // XXX
+  // goto end; // XXX
 
   // build IR
   #if 1

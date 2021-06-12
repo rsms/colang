@@ -163,7 +163,7 @@ Str NodeStr(Str s, const Node* n) {
   case NBlock: // {int}
     return str_appendcstr(s, "block");
 
-  case NArrayLit: // [1 2 3]
+  case NArray: // [one two 3]
     s = str_appendc(s, '[');
     s = str_append_NodeArray(s, &n->array.a);
     return str_appendc(s, ']');
@@ -224,7 +224,12 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendc(s, ')');
 
   case NArrayType: // [4]int, []int
-    return str_appendcstr(s, n->t.array.sizeExpr ? "array" : "slice");
+    if (n->t.array.sizeExpr) {
+      if (n->t.array.size == 0)
+        return str_appendcstr(s, "array<?>");
+      return str_appendfmt(s, "array<" FMT_U64 ">", n->t.array.size);
+    }
+    return str_appendcstr(s, "slice");
 
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
@@ -357,7 +362,6 @@ static bool l_collapse_field(NodeList* nl) {
   case NFloatLit:
   case NIntLit:
   case NStrLit:
-  // case NArrayLit:
     return true;
 
   default:
@@ -376,8 +380,8 @@ static bool l_show_field(NodeList* nl) {
     case NPostfixOp:
     case NPrefixOp:
     case NCall:
-    case NArrayLit:
     case NLet:
+    case NTypeCast:
       return false;
 
     case NFun:
@@ -401,7 +405,10 @@ static const char* l_listname(NodeList* nl) {
         return NodeKindName(n->kind);
       return "";
     case NTupleType:
-      return "TupleType ";
+      return "";
+      // if (nl->parent && NodeIsType(nl->parent->n))
+      //   return "";
+      // return "TupleType ";
     default:
       return NodeKindName(n->kind);
   }
@@ -506,7 +513,9 @@ static bool l_visit(NodeList* nl, void* cp) {
   case NFun: {
     if (n->fun.name) {
       s = str_appendc(s, ' ');
+      s = style_push(&c->style, s, id_color);
       s = str_append(s, n->fun.name, symlen(n->fun.name));
+      s = style_pop(&c->style, s);
     }
     // Include a function identifier which we can use to map references in the output.
     bool newfound = false;
@@ -535,6 +544,12 @@ static bool l_visit(NodeList* nl, void* cp) {
     // Let
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
+
+    s = str_appendc(s, ' ');
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->let.name, symlen(n->let.name));
+    s = style_pop(&c->style, s);
+
     s = style_push(&c->style, s, ref_color);
     s = str_appendfmt(s, " #%zu", (size_t)id);
     s = style_pop(&c->style, s);
@@ -623,17 +638,16 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NLet:
-    s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->let.name, symlen(n->let.name));
-    s = style_pop(&c->style, s);
     if (n->let.ismut) {
       s = style_push(&c->style, s, attr_color);
-      s = str_appendcstr(s, " @mutable");
+      s = str_appendcstr(s, "@mutable");
       s = style_pop(&c->style, s);
     }
     if (c->fl & NodeReprLetRefs) {
+      if (n->let.ismut)
+        s = str_appendc(s, ' ');
       s = style_push(&c->style, s, ref_color);
-      s = str_appendfmt(s, " (uses %u)", n->let.nrefs);
+      s = str_appendfmt(s, "(uses %u)", n->let.nrefs);
       s = style_pop(&c->style, s);
     }
     break;

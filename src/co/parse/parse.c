@@ -28,10 +28,10 @@
 //#define DEBUG_SCOPE_BINDINGS
 //
 // enable debug messages for defsym()
-//#define DEBUG_DEFSYM
+#define DEBUG_DEFSYM
 //
 // enable debug messages for resolve_id()
-//#define DEBUG_LOOKUPSYM
+#define DEBUG_LOOKUPSYM
 //
 #include "../common.h"
 #include "parse.h"
@@ -630,7 +630,7 @@ static Node* PNil(Parser* p, PFlag fl) {
 static Node* PId(Parser* p, PFlag fl) {
   auto n = pId(p);
   // eagerly resolve identifiers in rvalue position
-  if (fl & PFlagRValue)
+  if ((fl & PFlagRValue) || (p->s.tok != NAssign && p->s.tok != NId))
     return resolve_id(p, n);
   return n;
 }
@@ -782,36 +782,8 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 
 //!PrefixParselet TLBrack
 static Node* PArray(Parser* p, PFlag fl) {
-  // array type { x [3]int }
-  if (fl & PFlagType)
-    return pArrayType(p, fl);
-
-  // TODO: implement branching parser so we can parse both
-  // "[3]int" (ArrayType) and "[3]" (ArrayLit). This is useful when a type is an
-  // rvalue, for example: "MyAlias = [3]int" or "typename([3]int)".
-
-  // array literal { x = [1, 2, 3] }
-  auto n = mknode(p, NArrayLit);
-  nexttok(p); // consume "["
-
-  if (!got(p, TRBrack)) {
-    // setup element type
-    Type* elemtype = NULL;
-    if (p->ctxtype && p->ctxtype->kind == NArrayType)
-      elemtype = p->ctxtype->t.array.subtype;
-    auto ctxtype = set_ctxtype(p, elemtype);
-
-    // parse elements
-    do {
-      Node* cn = expr(p, PREC_LOWEST, fl);
-      NodeArrayAppend(p->build->mem, &n->array.a, cn);
-      NodeTransferUnresolved(n, cn);
-    } while (got(p, TComma));
-    p->ctxtype = ctxtype;
-    want(p, TRBrack);
-  }
-
-  return n;
+  // array type "x [3]int", "x = [3]int(1, 2, 3)"
+  return pArrayType(p, fl);
 }
 
 
@@ -900,28 +872,40 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto n = mknode(p, NCall);
   nexttok(p); // consume "("
+  auto ctxtype = p->ctxtype; // save ctxtype
 
   // receiver
   n->call.receiver = useAsRValue(p, receiver);
-  NodeTransferUnresolved(n, n->call.receiver);
+  // if (n->call.receiver->kind == NBasicType) {
+  if (NodeIsType(n->call.receiver)) {
+    n->kind = NTypeCast;
+    p->ctxtype = n->call.receiver;
+  } else {
+    NodeTransferUnresolved(n, n->call.receiver);
+  }
 
   // args
   n->call.args = Const_nil;
   if (!got(p, TRParen)) {
-    auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
-    want(p, TRParen);
-    assert_debug(args->kind == NTuple);
-    // Note: the type of call.args should structually match the type of fun.params.
-    // This reduces the work needed by the type resolver.
-    if (args->array.a.len > 0) {
-      n->call.args = args;
-      NodeTransferUnresolved(n, args);
+    if (n->call.receiver->kind == NBasicType) {
+      // fast path for basic types e.g. "i16(123)"
+      n->call.args = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    } else {
+      auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
+      assert_debug(args->kind == NTuple);
+      if (n->call.receiver->kind == NArrayType)
+        args->kind = NArray;
+      // Note: the type of call.args should structually match the type of fun.params.
+      // This reduces the work needed by the type resolver.
+      if (args->array.a.len > 0) {
+        n->call.args = args;
+        NodeTransferUnresolved(n, args);
+      }
     }
+    want(p, TRParen);
   }
 
-  // if (NodeKindIsType(receiver->kind))
-  //   n->kind = NTypeCast;
-
+  p->ctxtype = ctxtype; // restore ctxtype
   return n;
 }
 

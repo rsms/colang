@@ -250,8 +250,31 @@ inline static bool is_free_typecast(TypeCode srcType, TypeCode dstType) {
 }
 
 
+static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
+  // array is sequential memory of size known at compile time.
+  // arrays are stored either:
+  // - in global constant data (global immutable arrays)
+  // - in global writable data (global mutable arrays)
+  // - on the stack (local arrays)
+  // arrays can only live on the heap when allocated implicitly.
+  // An array is concretely represented by a memory address.
+
+  auto v = IRValueAlloc(u->mem, OpArray, TypeCode_mem, n->pos);
+
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    Node* cn = (Node*)n->array.a.v[i];
+    auto cv = ast_add_expr(u, cn);
+    IRValueAddArg(v, u->mem, cv);
+  }
+
+  IRBlockAddValue(u->b, v);
+  return v;
+}
+
+
 static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   assert(n->call.receiver != NULL);
+  assert(NodeIsType(n->call.receiver));
   assert(n->call.args != NULL);
 
   // generate rvalue
@@ -611,12 +634,38 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
 }
 
 
-static IRValue* ast_add_call(IRBuilder* u, Node* n) { // n->kind==NCall
-  // TODO: resolve Id (can be NId or NFun, NField in future)
-  // asserteq(n->call.receiver->kind, NFun);
+static IRValue* ast_add_type_call(IRBuilder* u, Node* n) {
+  asserteq_debug(n->kind, NCall);
+  assert_debug(NodeIsType(n->call.receiver));
+  Node* recv = n->call.receiver;
+
+  switch (recv->kind) {
+    case NBasicType:
+      // convert to type cast
+      n->kind = NTypeCast;
+      dlog("TYPECAST");
+      return ast_add_typecast(u, n);
+
+    case NArrayType:
+    case NTupleType:
+    case NFunType:
+      panic("TODO type_call %s %s", NodeKindName(recv->kind), fmtnode(recv));
+      break;
+
+    default:
+      UNREACHABLE;
+  }
+}
+
+
+static IRValue* ast_add_call(IRBuilder* u, Node* n) {
+  asserteq_debug(n->kind, NCall);
+  Node* recv = n->call.receiver;
+
+  if (NodeIsType(recv))
+    return ast_add_type_call(u, n);
 
   IRFun* fn;
-  Node* recv = n->call.receiver;
   if (recv->kind == NFun) {
     // target is function directly. e.g. from direct call on function value:
     //   (fun(x int) { ... })(123)
@@ -689,7 +738,9 @@ static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
 
 
 static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
-  assertnotnull(n->type); // AST should be fully typed
+  // AST should be fully typed
+  assertf_debug(NodeIsType(n) || n->type != NULL, "n = %s %s", NodeKindName(n->kind), fmtnode(n));
+
   if (R_UNLIKELY(n->type == Type_ideal)) {
     // This means the expression is unused. It does not necessarily mean its value is unused,
     // so it would not be accurate to issue diagnostic warnings at this point.
@@ -703,6 +754,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     dlog("skip unused %s", fmtnode(n));
     return NULL;
   }
+
   switch (n->kind) {
     case NLet:      return ast_add_let(u, n);
     case NBlock:    return ast_add_block(u, n);
@@ -716,18 +768,20 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NCall:     return ast_add_call(u, n);
     case NReturn:   return ast_add_ret(u, n);
     case NFun:      return ast_add_funexpr(u, n);
+    case NArray:    return ast_add_array(u, n);
 
     case NFloatLit:
-    case NArrayLit:
+    case NStrLit:
     case NNil:
     case NAssign:
-    case NBasicType:
     case NField:
     case NFunType:
     case NPrefixOp:
     case NPostfixOp:
     case NTuple:
+    case NBasicType:
     case NTupleType:
+    case NArrayType:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 

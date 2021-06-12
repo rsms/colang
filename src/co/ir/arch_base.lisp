@@ -57,13 +57,16 @@
   (Call () -> mem Call  (aux sym)) ; auxint=arglen, arg0=mem
   ;
   ; Constant values. Stored in IRValue.aux
-  (ConstBool  () -> bool  Constant  (aux bool))  ; aux is 0=false, 1=true
-  (ConstI8    () -> i8    Constant  (aux i8))  ; aux is sign-extended 8 bits
-  (ConstI16   () -> i16   Constant  (aux i16)) ; aux is sign-extended 16 bits
-  (ConstI32   () -> i32   Constant  (aux i32)) ; aux is sign-extended 32 bits
-  (ConstI64   () -> i64   Constant  (aux i64)) ; aux is Int64
-  (ConstF32   () -> f32   Constant  (aux i32))
-  (ConstF64   () -> f64   Constant  (aux i64))
+  (ConstBool () -> bool  Constant  (aux bool))  ; aux is 0=false, 1=true
+  (ConstI8   () -> i8    Constant  (aux i8))  ; aux is sign-extended 8 bits
+  (ConstI16  () -> i16   Constant  (aux i16)) ; aux is sign-extended 16 bits
+  (ConstI32  () -> i32   Constant  (aux i32)) ; aux is sign-extended 32 bits
+  (ConstI64  () -> i64   Constant  (aux i64)) ; aux is Int64
+  (ConstF32  () -> f32   Constant  (aux i32))
+  (ConstF64  () -> f64   Constant  (aux i64))
+  (ConstPtr  () -> mem   Constant  (aux mem)) ; like a pointer in C
+  ;
+  (Array () -> mem)
   ;
   ; ---------------------------------------------------------------------
   ; 2-input arithmetic. Types must be consistent.

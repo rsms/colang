@@ -144,7 +144,7 @@ OpFlags = [
   ("FaultOnNilArg1"    , 'this op will fault if arg1 is nil (and aux encodes a small offset)'),
   ("UsesScratch"       , 'this op requires scratch memory space'),
   ("HasSideEffects"    , 'for "reasons", not to be eliminated. E.g., atomic store.'),
-  ("Generic"           , 'generic op'),
+  ("Generic"           , 'generic op (not specific to any architecture)'),
   ("Lossy"             , 'operation may be lossy. E.g. converting i32 to i16.'),
 ]
 if len(OpFlags) > 31:

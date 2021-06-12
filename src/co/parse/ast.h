@@ -26,7 +26,6 @@ typedef enum {
   _(IntLit,      NodeClassConst) /* integer literal */ \
   _(FloatLit,    NodeClassConst) /* floating-point literal */ \
   _(StrLit,      NodeClassConst) /* string literal */ \
-  _(ArrayLit,    NodeClassConst|NodeClassArray) /* array literal */ \
   _(Nil,         NodeClassConst) /* the nil atom */ \
   _(Assign,      NodeClassExpr) \
   _(Arg,         NodeClassExpr) \
@@ -43,6 +42,7 @@ typedef enum {
   _(PrefixOp,    NodeClassExpr) \
   _(PostfixOp,   NodeClassExpr) \
   _(Return,      NodeClassExpr) \
+  _(Array,       NodeClassExpr|NodeClassArray) \
   _(Tuple,       NodeClassExpr|NodeClassArray) \
   _(TypeCast,    NodeClassExpr) \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
@@ -100,9 +100,6 @@ typedef struct NVal {
   };
 } NVal;
 
-// AST_SIZE_UNKNOWN used for Node.t.array.size when the size is unresolved
-#define AST_SIZE_UNKNOWN 0xFFFFFFFFFFFFFFFF
-
 // NodeFlags
 typedef enum {
   NodeFlagsNone      = 0,
@@ -131,7 +128,7 @@ typedef struct Node {
       Node* nullable right;  // NULL for PrefixOp & PostfixOp
       Tok            op;
     } op;
-    /* array */ struct { // Tuple, Block, File, Pkg, ArrayLit
+    /* array */ struct { // Tuple, Block, File, Pkg, Array
       Scope* nullable scope;        // used for Pkg and File
       NodeArray       a;            // array of nodes
       Node*           a_storage[4]; // in-struct storage for the first few entries of a

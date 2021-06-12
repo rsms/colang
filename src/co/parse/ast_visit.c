@@ -35,8 +35,8 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
 
   // uses u.array
   case NBlock:
+  case NArray:
   case NTuple:
-  case NArrayLit:
   case NFile:
   case NPkg:
   {

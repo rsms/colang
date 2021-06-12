@@ -32,6 +32,9 @@ typedef enum IROp {
   OpConstI64,	// aux is Int64
   OpConstF32,
   OpConstF64,
+  OpConstPtr,	// like a pointer in C
+  //
+  OpArray,
   //
   // ---------------------------------------------------------------------
   // 2-input arithmetic. Types must be consistent.
@@ -329,7 +332,7 @@ typedef enum IROpFlag {
   IROpFlagFaultOnNilArg1    = 1 << 10,// this op will fault if arg1 is nil (and aux encodes a small offset)
   IROpFlagUsesScratch       = 1 << 11,// this op requires scratch memory space
   IROpFlagHasSideEffects    = 1 << 12,// for "reasons", not to be eliminated. E.g., atomic store.
-  IROpFlagGeneric           = 1 << 13,// generic op
+  IROpFlagGeneric           = 1 << 13,// generic op (not specific to any architecture)
   IROpFlagLossy             = 1 << 14,// operation may be lossy. E.g. converting i32 to i16.
 } IROpFlag;
 

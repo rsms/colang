@@ -29,9 +29,7 @@ typedef struct {
 
   // typecontext is the "expected" type, if any.
   // E.g. the type of a var while resolving its rvalue.
-  Type* nullable typecontext;       // current value; top of typecontext_stack
-  Array          typecontext_stack; // stack of Type* which are all of NodeClassType
-  Type*          typecontextstack_storage[32];
+  Type* nullable typecontext; // current value; top of logical typecontext stack
 
   Array funstack; // stack of Node*[kind==NFun] -- current function scope
   Node* funstack_storage[8];
@@ -52,13 +50,6 @@ Node* ResolveType(Build* build, Node* n) {
     .build = build,
   };
 
-  // typecontext_stack
-  ArrayInitWithStorage(
-    &ctx.typecontext_stack,
-    ctx.typecontextstack_storage,
-    countof(ctx.typecontextstack_storage)
-  );
-
   // funstack
   ArrayInitWithStorage(&ctx.funstack, ctx.funstack_storage, countof(ctx.funstack_storage));
   // always one slot so we can access the top of the stack without checks
@@ -66,7 +57,6 @@ Node* ResolveType(Build* build, Node* n) {
   ctx.funstack.len = 1;
 
   n = resolve_type(&ctx, n, RFlagNone);
-  ArrayFree(&ctx.typecontext_stack, build->mem);
   ArrayFree(&ctx.funstack, build->mem);
   return n;
 }
@@ -81,28 +71,6 @@ static Type* nullable typecontext_set(ResCtx* ctx, Type* nullable newtype) {
   auto oldtype = ctx->typecontext;
   ctx->typecontext = newtype;
   return oldtype;
-}
-
-static void typecontext_push(ResCtx* ctx, Type* t) {
-  assertnotnull(t);
-  assert(NodeIsType(t));
-  assertne(t, Type_ideal);
-  dlog_mod("typecontext_push %s %s", NodeKindName(t->kind), fmtnode(t));
-  if (ctx->typecontext)
-    ArrayPush(&ctx->typecontext_stack, ctx->typecontext, ctx->build->mem);
-  ctx->typecontext = t;
-}
-
-static void typecontext_pop(ResCtx* ctx) {
-  assertnotnull(ctx->typecontext);
-  if (ctx->typecontext_stack.len == 0) {
-    dlog_mod("typecontext_pop %s (now nil)", fmtnode(ctx->typecontext));
-    ctx->typecontext = NULL;
-  } else {
-    UNUSED auto was = ctx->typecontext;
-    ctx->typecontext = (Type*)ArrayPop(&ctx->typecontext_stack);
-    dlog_mod("typecontext_pop %s (now %s)", fmtnode(was), fmtnode(ctx->typecontext));
-  }
 }
 
 inline static void funstack_push(ResCtx* ctx, Node* n) {
@@ -260,7 +228,8 @@ static void err_ret_type(ResCtx* ctx, Node* fun, Node* retval) {
 }
 
 
-static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NReturn
+static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NReturn);
   n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
   n->type = n->op.left->type;
 
@@ -276,7 +245,8 @@ static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NRet
 }
 
 
-static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NFun
+static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NFun);
   funstack_push(ctx, n);
   Type* ft = NewNode(ctx->build->mem, NFunType);
 
@@ -346,7 +316,8 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NFun
 })
 
 
-static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NBlock
+static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NBlock);
   // The type of a block is the type of the last expression.
   // Resolve each entry of the block:
   if (n->array.a.len == 0) {
@@ -374,22 +345,52 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NB
 }
 
 
-static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NTuple
-  Type* tt = NewNode(ctx->build->mem, NTupleType);
+static Node* resolve_array_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NArray);
 
-  // typecontext
-  Type* ct = ctx->typecontext;
-  u32 ctindex = 0;
-  if (ct) {
-    if (R_UNLIKELY(ct->kind != NTupleType)) {
-      build_errf(ctx->build, NodePosSpan(n), "tuple where %s is expected", fmtnode(ct));
-    } else if (R_UNLIKELY(ct->array.a.len != n->array.a.len)) {
-      build_errf(ctx->build, NodePosSpan(n), "%u expressions where %u expressions are expected %s",
-        n->array.a.len, ct->array.a.len, fmtnode(ct));
-    }
-    assert(ct->array.a.len > 0); // tuples should never be empty
-    typecontext_set(ctx, ct->array.a.v[ctindex++]);
+  // Array expression is always in a known type context
+  auto typecontext = ctx->typecontext; // save typecontext
+  assertnotnull_debug(typecontext);
+  asserteq_debug(typecontext->kind, NArrayType);
+  assertnotnull_debug(typecontext->t.array.subtype);
+
+  n->type = typecontext;
+  typecontext_set(ctx, typecontext->t.array.subtype);
+
+  fl |= RFlagResolveIdeal;
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
   }
+
+  ctx->typecontext = typecontext; // restore typecontext
+  return n;
+}
+
+
+static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NTuple);
+
+  auto typecontext = ctx->typecontext; // save typecontext
+
+  Type* tupleType = typecontext;
+  u32 ctindex = 0;
+  if (tupleType) {
+    if (R_UNLIKELY(tupleType->kind != NTupleType)) {
+      build_errf(ctx->build, NodePosSpan(tupleType),
+        "outer type %s where tuple is expected", fmtnode(tupleType));
+      tupleType = NULL;
+    } else if (R_UNLIKELY(tupleType->t.list.a.len != n->t.list.a.len)) {
+      build_errf(ctx->build, NodePosSpan(n),
+        "%u expressions where %u expressions are expected %s",
+        n->array.a.len, tupleType->t.list.a.len, fmtnode(tupleType));
+      tupleType = NULL;
+    } else {
+      assert(tupleType->t.list.a.len > 0); // tuples should never be empty
+      typecontext_set(ctx, tupleType->t.list.a.v[ctindex++]);
+    }
+  }
+
+  Type* tt = NewNode(ctx->build->mem, NTupleType);
 
   // for each tuple entry
   for (u32 i = 0; i < n->array.a.len; i++) {
@@ -399,48 +400,14 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) { // n->kind==NT
       build_errf(ctx->build, NodePosSpan(cn), "unknown type");
     }
     NodeArrayAppend(ctx->build->mem, &tt->t.list.a, cn->type);
-    if (ct)
-      typecontext_set(ctx, ct->array.a.v[ctindex++]);
+    if (tupleType)
+      typecontext_set(ctx, tupleType->t.list.a.v[ctindex++]);
   }
 
-  // restore typecontext, set type and return type
-  ctx->typecontext = ct;
+  ctx->typecontext = typecontext; // restore typecontext
   n->type = tt;
   return n;
 }
-
-
-static Node* resolve_arraylit_type(ResCtx* ctx, Node* n, RFlag fl) {
-  asserteq_debug(n->kind, NArrayLit);
-  Type* t = NewNode(ctx->build->mem, NArrayType);
-  n->type = t;
-
-  if (R_UNLIKELY(n->array.a.len == 0)) {
-    build_errf(ctx->build, NodePosSpan(n), "empty array literal");
-    t->t.array.subtype = Type_nil;
-    return n;
-  }
-
-  auto typecontext = ctx->typecontext;
-  fl |= RFlagResolveIdeal | RFlagEager;
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
-    if (i == 0) {
-      assert_debug(cn->type != Type_ideal);
-      t->t.array.subtype = cn->type;
-      typecontext_set(ctx, cn->type);
-    } else if (R_UNLIKELY(ctx->typecontext != cn->type)) {
-      // mixed value types, e.g. "[123 as i32, 4 as u32]"
-      build_errf(ctx->build, NodePosSpan(cn),
-        "mixed types %s and %s in array literal",
-        fmtnode(ctx->typecontext), fmtnode(cn->type));
-    }
-  }
-  t->t.array.size = n->array.a.len;
-  ctx->typecontext = typecontext;
-  return n;
-}
-
 
 
 static Node* finalize_binop(ResCtx* ctx, Node* n) {
@@ -462,6 +429,7 @@ static Node* finalize_binop(ResCtx* ctx, Node* n) {
 
 
 static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
+  assert_debug(n->kind == NBinOp || n->kind == NAssign);
   assert(n->op.right != NULL);
 
   Type* lt = NULL;
@@ -553,9 +521,11 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
 
 
 static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
-  assert(n->call.receiver != NULL);
+  asserteq_debug(n->kind, NTypeCast);
+  assertnotnull_debug(n->call.receiver);
+  assertnotnull_debug(n->call.args);
 
-  if (R_UNLIKELY(!NodeKindIsType(n->call.receiver->kind))) {
+  if (R_UNLIKELY(!NodeIsType(n->call.receiver))) {
     build_errf(ctx->build, NodePosSpan(n),
       "invalid conversion to non-type %s", fmtnode(n->call.receiver));
     n->type = Type_nil;
@@ -565,11 +535,11 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
   // Note: n->call.receiver is a Type, not a regular Node (see check above)
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
   n->type = n->call.receiver;
-  typecontext_push(ctx, n->type);
+  auto typecontext = typecontext_set(ctx, n->type);
 
-  assertnotnull(n->call.args);
   n->call.args = resolve_type(ctx, n->call.args, fl | RFlagExplicitTypeCast);
-  assertnotnull(n->call.args->type);
+
+  assertnotnull_debug(n->call.args->type);
 
   if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
     // source type == target type -- eliminate type cast.
@@ -585,15 +555,31 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
     }
   }
 
-  typecontext_pop(ctx);
+  ctx->typecontext = typecontext; // restore typecontext
+  return n;
+}
+
+
+// Type call e.g. "int(x)", "[3]u8(1, 2, 3)", "MyStruct(45, 6)"
+static Node* resolve_type_call_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NCall);
+  assert_debug(NodeIsType(n->call.receiver));
+  n->type = n->call.receiver;
   return n;
 }
 
 
 static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NCall);
+
   // Note: resolve_fun_type breaks handles cycles where a function calls itself,
   // making this safe (i.e. will not cause an infinite loop.)
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
+
+  // type call?
+  if (NodeIsType(n->call.receiver))
+    return resolve_type_call_type(ctx, n, fl);
+
   auto ft = n->call.receiver->type;
   assert(ft != NULL);
 
@@ -610,7 +596,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 
   if (ft->t.fun.params) {
     // add parameter types to the "requested type" stack
-    typecontext_push(ctx, ft->t.fun.params);
+    auto typecontext = typecontext_set(ctx, ft->t.fun.params);
 
     // input arguments, in context of receiver parameters
     assertnotnull(n->call.args);
@@ -618,7 +604,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
     dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
 
     // pop parameter types off of the "requested type" stack
-    typecontext_pop(ctx);
+    ctx->typecontext = typecontext;
 
     // TODO: Consider arguments with defaults:
     // fun foo(a, b int, c int = 0)
@@ -654,6 +640,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 
 
 static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NIf);
   n->cond.cond = resolve_type(ctx, n->cond.cond, fl);
 
   if (R_UNLIKELY(n->cond.cond->type != Type_bool)) {
@@ -670,9 +657,9 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
 
   // visit else branch
   if (n->cond.elseb) {
-    typecontext_push(ctx, thentype);
+    auto typecontext = typecontext_set(ctx, thentype);
     n->cond.elseb = resolve_type(ctx, n->cond.elseb, fl);
-    typecontext_pop(ctx);
+    ctx->typecontext = typecontext; // restore typecontext
 
     // branches must be of the same type
     auto elsetype = n->cond.elseb->type;
@@ -699,6 +686,7 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
 
 
 static Type* resolve_id_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NId);
   if (R_UNLIKELY(n->ref.target == NULL)) {
     // identifier failed to resolve
     n->type = Type_nil;
@@ -759,6 +747,8 @@ static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
   return n;
 }
 
+// ————————————————————————————————————————————————————————————————————————————
+// resolve_type
 
 #ifdef DEBUG_MODULE
 // wrap resolve_type to print return value
@@ -828,8 +818,8 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NBlock:
     R_MUSTTAIL return resolve_block_type(ctx, n, fl);
 
-  case NArrayLit:
-    R_MUSTTAIL return resolve_arraylit_type(ctx, n, fl);
+  case NArray:
+    R_MUSTTAIL return resolve_array_type(ctx, n, fl);
 
   case NTuple:
     R_MUSTTAIL return resolve_tuple_type(ctx, n, fl);
