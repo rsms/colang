@@ -62,9 +62,9 @@ const char* _DebugNodeClassStr(NodeClassFlags fl, u32 lineno) {
   })
 
   // category
-  if (fl & NodeClassConst) APPEND("const");
-  if (fl & NodeClassExpr)  APPEND("expr");
-  if (fl & NodeClassType)  APPEND("type");
+  if (fl & NodeClassLit)  APPEND("lit");
+  if (fl & NodeClassExpr) APPEND("expr");
+  if (fl & NodeClassType) APPEND("type");
 
   // data attributes
   if (fl & NodeClassArray) APPEND("array");

@@ -111,7 +111,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       }
 
       default: {
-        assert(!NodeKindIsConst(target->kind)); // should be covered in case-statements above
+        assert_debug(!NodeIsConst(target)); // should be covered in case-statements above
         dlog_mod("resolve_id FINAL %s => %s (target %s) type? %d",
           n->ref.name, NodeKindName(n->kind), NodeKindName(target->kind),
           NodeKindIsType(target->kind));

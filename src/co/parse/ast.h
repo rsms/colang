@@ -9,12 +9,12 @@ typedef enum {
   NodeClassInvalid = 0,
 
   // category
-  NodeClassConst   = 1 << 0, // literals like 123, true, nil.
-  NodeClassExpr    = 1 << 1, // e.g. (+ x y)
-  NodeClassType    = 1 << 2, // e.g. i32
+  NodeClassLit  = 1 << 0, // literals like 123, true, nil.
+  NodeClassExpr = 1 << 1, // e.g. (+ x y)
+  NodeClassType = 1 << 2, // e.g. i32
 
   // data attributes
-  NodeClassArray   = 1 << 3, // uses Node.array, or Node.t.array if NodeClassType
+  NodeClassArray = 1 << 3, // uses Node.array, or Node.t.array if NodeClassType
 } NodeClassFlags;
 
 // DEF_NODE_KINDS defines primary node kinds which are either expressions or start of expressions
@@ -22,11 +22,11 @@ typedef enum {
   /* N<kind>     classification */ \
   _(None,        NodeClassInvalid) \
   _(Bad,         NodeClassInvalid) /* substitute "filler node" for invalid syntax */ \
-  _(BoolLit,     NodeClassConst) /* boolean literal */ \
-  _(IntLit,      NodeClassConst) /* integer literal */ \
-  _(FloatLit,    NodeClassConst) /* floating-point literal */ \
-  _(StrLit,      NodeClassConst) /* string literal */ \
-  _(Nil,         NodeClassConst) /* the nil atom */ \
+  _(BoolLit,     NodeClassLit) /* boolean literal */ \
+  _(IntLit,      NodeClassLit) /* integer literal */ \
+  _(FloatLit,    NodeClassLit) /* floating-point literal */ \
+  _(StrLit,      NodeClassLit) /* string literal */ \
+  _(Nil,         NodeClassLit) /* the nil atom */ \
   _(Assign,      NodeClassExpr) \
   _(Arg,         NodeClassExpr) \
   _(Block,       NodeClassExpr|NodeClassArray) \
@@ -107,6 +107,7 @@ typedef struct NVal {
 typedef enum {
   NodeFlagsNone      = 0,
   NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
+  NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
 } NodeFlags;
 
 typedef struct Node {
@@ -231,22 +232,40 @@ ConstStr fmtnode(const Node* nullable n);
 // NodeKindClass returns NodeClassFlags for kind. It's a fast inline table lookup.
 static NodeClassFlags NodeKindClass(NodeKind kind);
 
-// NodeKindIs{Type|Const|Expr} returns true if kind is of class Type, Const or Expr.
+// NodeKindIs{Type|Expr} returns true if kind is of class Type or Expr.
 inline static bool NodeKindIsType(NodeKind kind) { return NodeKindClass(kind) & NodeClassType; }
-inline static bool NodeKindIsConst(NodeKind kind) { return NodeKindClass(kind) & NodeClassConst;}
 inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & NodeClassExpr; }
 
-// NodeIs{Type|Const|Expr} calls NodeKindIs{Type|Const|Expr}(n->kind)
+// NodeIs{Type|Expr} calls NodeKindIs{Type|Expr}(n->kind)
 inline static bool NodeIsType(const Node* n) { return NodeKindIsType(n->kind); }
-inline static bool NodeIsConst(const Node* n) { return NodeKindIsConst(n->kind); }
 inline static bool NodeIsExpr(const Node* n) { return NodeKindIsExpr(n->kind); }
 
-// Node{Is,Set,Clear}Unresolved controls the "unresolved" flag on a node
+// Node{Is,Set,Clear}Unresolved controls the "unresolved" flag of a node
 inline static bool NodeIsUnresolved(const Node* n) { return (n->flags & NodeFlagUnresolved) != 0; }
 inline static void NodeSetUnresolved(Node* n) { n->flags |= NodeFlagUnresolved; }
 inline static void NodeClearUnresolved(Node* n) { n->flags &= ~NodeFlagUnresolved; }
 inline static void NodeTransferUnresolved(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagUnresolved;
+}
+
+// Node{Is,Set,Clear}Const controls the "constant value" flag of a node
+inline static bool NodeIsConst(const Node* n) { return (n->flags & NodeFlagConst) != 0; }
+inline static void NodeSetConst(Node* n) { n->flags |= NodeFlagConst; }
+inline static void NodeClearConst(Node* n) { n->flags &= ~NodeFlagConst; }
+inline static void NodeTransferConst(Node* parent, Node* child) {
+  // parent is const if n AND child is const
+  parent->flags = (parent->flags & ~NodeFlagConst) | (
+    (parent->flags & NodeFlagConst) &
+    (child->flags & NodeFlagConst)
+  );
+}
+inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) {
+  // parent is const if n AND child1 AND child2 is const
+  parent->flags = (parent->flags & ~NodeFlagConst) | (
+    (parent->flags & NodeFlagConst) &
+    (child1->flags & NodeFlagConst) &
+    (child2->flags & NodeFlagConst)
+  );
 }
 
 // NodeRefLet increments the reference counter of a Let node. Returns n as a convenience.

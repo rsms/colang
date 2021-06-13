@@ -326,14 +326,7 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) {
     // resolve all but the last expression without requiring ideal-type resolution
     u32 lasti = n->array.a.len - 1;
     for (u32 i = 0; i < lasti; i++) {
-      Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
-      if (R_UNLIKELY(cn->type == Type_ideal && NodeIsConst(cn))) {
-        // an unused constant expression, e.g.
-        //   { 1  # <- warning: unused expression 1
-        //     2
-        //   }
-        build_warnf(ctx->build, NodePosSpan(cn), "unused expression: %s", fmtnode(cn));
-      }
+      RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
     }
     // Last node, in which case we set the flag to resolve literals
     // so that implicit return values gets properly typed.
@@ -424,6 +417,7 @@ static Node* finalize_binop(ResCtx* ctx, Node* n) {
     default:
       break;
   }
+  NodeTransferConst2(n, n->op.left, n->op.right);
   return n;
 }
 
@@ -763,13 +757,13 @@ static Type* resolve_index_type(ResCtx* ctx, Type* n, RFlag fl) {
   n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
   Type* rtype = n->index.operand->type;
   switch (rtype->kind) {
-    case NArray:
+    case NArrayType:
       assertnotnull_debug(rtype->t.array.subtype);
       n->type = rtype->t.array.subtype;
       break;
     default:
       build_errf(ctx->build, NodePosSpan(n),
-        "cannot access %s (type %s) by index",
+        "cannot access %s of type %s by index",
         fmtnode(n->index.operand), fmtnode(rtype));
   }
   return n;

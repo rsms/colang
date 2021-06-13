@@ -774,10 +774,13 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NNil:
     case NAssign:
     case NField:
-    case NFunType:
     case NPrefixOp:
     case NPostfixOp:
     case NTuple:
+    case NSelector:
+    case NIndex:
+    case NSlice:
+    case NFunType:
     case NBasicType:
     case NTupleType:
     case NArrayType:

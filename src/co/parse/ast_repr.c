@@ -587,11 +587,15 @@ static bool l_visit(NodeList* nl, void* cp) {
   } // switch(n->kind)
 
   // attributes
-  if (NodeIsUnresolved(n)) {
+  if (NodeIsUnresolved(n) || NodeIsConst(n)) {
     s = style_push(&c->style, s, attr_color);
-    s = str_appendcstr(s, " @unres");
+    if (NodeIsUnresolved(n))
+      s = str_appendcstr(s, " @unres");
+    if (!NodeIsType(n) && NodeIsConst(n))
+      s = str_appendcstr(s, " @const");
     s = style_pop(&c->style, s);
   }
+  // pointer attr
   #ifdef DEBUG_INCLUDE_POINTERS
     s = style_push(&c->style, s, attr_color);
     s = str_appendfmt(s, " @ptr(%p)", n);
