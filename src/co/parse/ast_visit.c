@@ -90,6 +90,19 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->cond.elseb, "else");
     break;
 
+  case NSelector:
+    return CALLBACK(n->sel.operand, "operand") && CALLBACK(n->sel.member, "member");
+
+  case NIndex:
+    return CALLBACK(n->index.operand, "operand") && CALLBACK(n->index.index, "index");
+
+  case NSlice:
+    return (
+      CALLBACK(n->slice.operand, "operand") &&
+      (!n->slice.start || CALLBACK(n->slice.start, "start")) &&
+      (!n->slice.end || CALLBACK(n->slice.end, "end"))
+    );
+
   // uses t.fun
   case NFunType:
     if (n->t.fun.params && !CALLBACK(n->t.fun.params, "params"))

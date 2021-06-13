@@ -762,7 +762,7 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 
   // array or slice?
   if (!got(p, TRBrack)) {
-    n->t.array.sizeExpr = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    n->t.array.sizeExpr = expr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
     want(p, TRBrack);
   } // else: slice, e.g. "[]int"
 
@@ -781,9 +781,26 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 
 
 //!PrefixParselet TLBrack
-static Node* PArray(Parser* p, PFlag fl) {
+static Node* PArrayPrefix(Parser* p, PFlag fl) {
   // array type "x [3]int", "x = [3]int(1, 2, 3)"
   return pArrayType(p, fl);
+}
+
+
+// Index = expr "[" expr "]"
+static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  assert_debug((fl & PFlagType) == 0); // indexing is not valid in type context
+  nexttok(p); // consume "["
+  auto n = mknode(p, NIndex);
+  n->index.operand = left;
+  if (R_UNLIKELY(p->s.tok == TRBrack)) {
+    syntaxerr(p, "missing index");
+    nexttok(p); // consume unexpected "]"
+  } else {
+    n->index.index = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    want(p, TRBrack);
+  }
+  return n;
 }
 
 
@@ -793,7 +810,16 @@ static Node* PArray(Parser* p, PFlag fl) {
 // #note: Expr must be of type usize
 //
 //!Parselet (TLBrack LOWEST)
-static Node* PListInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  // Two possibilities:
+  // x [3]int  -- array type
+  // x[3]      -- index (subscript) access
+
+  // if there's no space in between "left" and "[", treat it as index access
+  if (p->s.prevtokend == p->s.tokstart)
+    return pIndex(p, e, fl, left);
+
+  // else, treat it as an array type following an identifier e.g. "x [3]int"
   if (left->kind != NId) {
     syntaxerr(p, "unexpected array or slice type");
     return left;
@@ -876,12 +902,16 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
 
   // receiver
   n->call.receiver = useAsRValue(p, receiver);
+  NodeTransferUnresolved(n, n->call.receiver);
+
   // if (n->call.receiver->kind == NBasicType) {
   if (NodeIsType(n->call.receiver)) {
     n->kind = NTypeCast;
-    p->ctxtype = n->call.receiver;
-  } else {
-    NodeTransferUnresolved(n, n->call.receiver);
+    if (n->call.receiver->kind == NArrayType) {
+      p->ctxtype = n->call.receiver->t.array.subtype;
+    } else {
+      p->ctxtype = n->call.receiver;
+    }
   }
 
   // args
@@ -893,8 +923,15 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     } else {
       auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
       assert_debug(args->kind == NTuple);
-      if (n->call.receiver->kind == NArrayType)
+      if (n->call.receiver->kind == NArrayType) {
         args->kind = NArray;
+        if (!NodeIsUnresolved(args)) {
+          want(p, TRParen);
+          p->ctxtype = ctxtype; // restore ctxtype
+          args->type = n->call.receiver;
+          return args;
+        }
+      }
       // Note: the type of call.args should structually match the type of fun.params.
       // This reduces the work needed by the type resolver.
       if (args->array.a.len > 0) {
@@ -1252,7 +1289,7 @@ static const Parselet parselets[TMax] = {
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
   [TVar] = {PVar, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_COMMA},
-  [TLBrack] = {PArray, PListInfix, PREC_LOWEST},
+  [TLBrack] = {PArrayPrefix, PArrayInfix, PREC_LOWEST},
   [TLBrace] = {PBlock, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TMinus] = {PPrefixOp, PInfixOp, PREC_ADD},

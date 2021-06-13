@@ -747,6 +747,48 @@ static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
   return n;
 }
 
+
+static Type* resolve_selector_type(ResCtx* ctx, Type* n, RFlag fl) {
+  asserteq_debug(n->kind, NSelector);
+  n->sel.operand = resolve_type(ctx, n->sel.operand, fl);
+  n->sel.member = resolve_type(ctx, n->sel.member, fl | RFlagResolveIdeal | RFlagEager);
+  panic("TODO");
+  return n;
+}
+
+
+static Type* resolve_index_type(ResCtx* ctx, Type* n, RFlag fl) {
+  asserteq_debug(n->kind, NIndex);
+  n->index.operand = resolve_type(ctx, n->index.operand, fl);
+  n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
+  Type* rtype = n->index.operand->type;
+  switch (rtype->kind) {
+    case NArray:
+      assertnotnull_debug(rtype->t.array.subtype);
+      n->type = rtype->t.array.subtype;
+      break;
+    default:
+      build_errf(ctx->build, NodePosSpan(n),
+        "cannot access %s (type %s) by index",
+        fmtnode(n->index.operand), fmtnode(rtype));
+  }
+  return n;
+}
+
+
+static Type* resolve_slice_type(ResCtx* ctx, Type* n, RFlag fl) {
+  asserteq_debug(n->kind, NSlice);
+  n->slice.operand = resolve_type(ctx, n->slice.operand, fl);
+  fl |= RFlagResolveIdeal | RFlagEager;
+  if (n->slice.start)
+    n->slice.start = resolve_type(ctx, n->slice.start, fl);
+  if (n->slice.end)
+    n->slice.end = resolve_type(ctx, n->slice.end, fl);
+  panic("TODO");
+  return n;
+}
+
+
 // ————————————————————————————————————————————————————————————————————————————
 // resolve_type
 
@@ -876,6 +918,15 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NArrayType:
     R_MUSTTAIL return resolve_arraytype_type(ctx, n, fl);
+
+  case NSelector:
+    R_MUSTTAIL return resolve_selector_type(ctx, n, fl);
+
+  case NIndex:
+    R_MUSTTAIL return resolve_index_type(ctx, n, fl);
+
+  case NSlice:
+    R_MUSTTAIL return resolve_slice_type(ctx, n, fl);
 
   case NIntLit:
   case NFloatLit:

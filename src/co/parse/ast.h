@@ -32,6 +32,9 @@ typedef enum {
   _(Block,       NodeClassExpr|NodeClassArray) \
   _(Call,        NodeClassExpr) \
   _(Field,       NodeClassExpr) \
+  _(Selector,    NodeClassExpr) \
+  _(Index,       NodeClassExpr) \
+  _(Slice,       NodeClassExpr) \
   _(Pkg,         NodeClassExpr|NodeClassArray) \
   _(File,        NodeClassExpr|NodeClassArray) \
   _(Fun,         NodeClassExpr) \
@@ -148,7 +151,7 @@ typedef struct Node {
       Sym            name;
       Node* nullable init;  // initial value (may be NULL)
       u32            nrefs; // reference count
-      u32            index; // argument index or struct index/order
+      u32            index; // argument index or struct index
     } field;
     /* let */ struct { // Let
       Sym            name;
@@ -156,6 +159,19 @@ typedef struct Node {
       u32            nrefs; // reference count
       bool           ismut; // true if this is mutable (variable)
     } let;
+    /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
+      Node* operand;
+      Node* member; // NId or NSelector
+    } sel;
+    /* index */ struct { // Index = Expr "[" Expr "]"
+      Node* operand;
+      Node* index;
+    } index;
+    /* slice */ struct { // Slice = Expr "[" Expr? ":" Expr? "]"
+      Node*          operand;
+      Node* nullable start;
+      Node* nullable end;
+    } slice;
     /* cond */ struct { // If
       Node*          cond;
       Node*          thenb;

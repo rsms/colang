@@ -291,6 +291,24 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n->field.init = resolve_sym(ctx, n->field.init);
     break;
 
+  case NSelector:
+    n->sel.operand = resolve_sym(ctx, n->sel.operand);
+    n->sel.member = resolve_sym(ctx, n->sel.member);
+    break;
+
+  case NIndex:
+    n->index.operand = resolve_sym(ctx, n->index.operand);
+    n->index.index = resolve_sym(ctx, n->index.index);
+    break;
+
+  case NSlice:
+    n->slice.operand = resolve_sym(ctx, n->slice.operand);
+    if (n->slice.start)
+      n->slice.start = resolve_sym(ctx, n->slice.start);
+    if (n->slice.end)
+      n->slice.end = resolve_sym(ctx, n->slice.end);
+    break;
+
   // uses u.cond
   case NIf:
     n->cond.cond = resolve_sym(ctx, n->cond.cond);

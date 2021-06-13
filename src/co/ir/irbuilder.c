@@ -157,19 +157,18 @@ static IRValue* TODO_Value(IRBuilder* u) {
 // ———————————————————————————————————————————————————————————————————————————————————————————————
 // Phi & variables
 
-#define dlogvar(format, ...) \
-  fprintf(stderr, "VAR " format "\t(%s:%d)\n", ##__VA_ARGS__, __FILE__, __LINE__)
+#define dlogvar(format, ...) dlog("VAR " format, ##__VA_ARGS__)
 
 
 static void var_write(IRBuilder* u, Sym name, IRValue* value, IRBlock* b) {
   if (b == u->b) {
-    dlogvar("write %.*s in current block", (int)symlen(name), name);
+    dlogvar("write %s in current block", name);
     auto oldv = SymMapSet(u->vars, name, value);
     if (oldv != NULL) {
       dlogvar("new value replaced old value: %p", oldv);
     }
   } else {
-    dlogvar("TODO write %.*s in defvars", (int)symlen(name), name);
+    dlogvar("TODO write %s in defvars", name);
   }
 }
 
@@ -177,13 +176,13 @@ static void var_write(IRBuilder* u, Sym name, IRValue* value, IRBlock* b) {
 static IRValue* var_read(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/*null*/) {
   if (b == u->b) {
     // current block
-    dlogvar("var_read %.*s in current block", (int)symlen(name), name);
+    dlogvar("var_read %s in current block", name);
     auto v = SymMapGet(u->vars, name);
     if (v != NULL) {
       return v;
     }
   } else {
-    dlogvar("TODO var_read %.*s in defvars", (int)symlen(name), name);
+    dlogvar("TODO var_read %s in defvars", name);
   //   let m = u.defvars[b.id]
   //   if (m) {
   //     let v = m.get(name)
