@@ -15,14 +15,25 @@ Wish list. Things that could be improved or added.
       [See co1](https://github.com/rsms/co/blob/master/src/scanner.ts#L823)
 - [ ] Arrays and slices
   - [x] Parsing array and slice types e.g. `[3][4]type`, `[]type`
-  - [ ] Parsing array and slice reads e.g. `a[3]`, `a[:3]`
-  - [ ] Anaysis (to consider: are array types inferred? Is there literal syntax?)
-  - [ ] Codegen
-- [ ] Consider using Co IR in between AST and LLVM IR.
-      This would make it much easier to generate code with alternative backends like JS.
-      Could keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
-- [ ] Rename basic primitive types like `int32` to LLVM/Rust/Zig style `i32`, `u16` etc.
+  - [x] Parsing & analysis of array indexing e.g. `a[3]`
+  - [x] IR gen of array indexing e.g. `a[3]`
+  - [ ] Parsing & analysis of array slicing e.g. `a[:3]`
+  - [ ] IR gen of array slicing e.g. `a[:3]`
+- [x] Rename basic primitive types like `int32` to LLVM/Rust/Zig style `i32`, `u16` etc.
 - [ ] Multi function dispatch e.g. `foo(int)` vs `foo(float32)`.
+
+
+### IR
+
+Use Co IR in between AST and LLVM IR.
+This makes it easier to generate code with alternative backends like JS, makes the
+LLVM backend simpler and removes language-specifics from most of the gnarly codegen stuff.
+
+Keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
+
+- [x] Dedicated type system that does not rely on AST nodes (IRType)
+- [ ] New LLVM backend that uses IR instead of AST as the source
+- [ ] Interpreter for testing and comptime evaluation
 
 
 ## Testing & QA
