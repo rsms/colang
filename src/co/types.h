@@ -133,9 +133,6 @@ static bool TypeCodeIsInt(TypeCode t);    // check for flag TypeCodeFlagInt
 static bool TypeCodeIsFloat(TypeCode t);  // check for flag TypeCodeFlagFloat
 static bool TypeCodeIsSigned(TypeCode t); // check for flag TypeCodeFlagSigned
 
-// TypeCodeSignNormalized returns intN for both intN and uintN
-static TypeCode TypeCodeSignNormalized(TypeCode t);
-
 
 // -----------------------------------------------------------------------------------------------
 // implementations
@@ -168,26 +165,26 @@ ALWAYS_INLINE static bool TypeCodeIsSigned(TypeCode t) {
   return TypeCodeFlags(t) & TypeCodeFlagSigned;
 }
 
-// TypeCodeSignNormalized returns intN for both intN and uintN
-ALWAYS_INLINE static TypeCode TypeCodeSignNormalized(TypeCode t) {
-  // subtract 1 if int and signed, 0 if not.
-  // This relies on type constants of the same width having even and odd enum values.
-  // E.g.
-  //   int16  = 3
-  //   uint16 = 4
-  //   int32  = 5
-  //   uint32 = 6
-  //   ...
-  auto fl = TypeCodeFlags(t);
-  return t - (
-    ( 1 -
-      !MIN(
-        (fl & TypeCodeFlagInt), // 0 if not int
-        !(fl & TypeCodeFlagSigned) // 0 if signed
-      ) // => 0 if int and signed, 1 if not
-    ) // => 1 if int and signed, 0 if not
-  );
-  // it was fun to make this branch less, that's the only reason it's so strange :-)
-}
+// // TypeCodeSignNormalized returns intN for both intN and uintN
+// ALWAYS_INLINE static TypeCode TypeCodeSignNormalized(TypeCode t) {
+//   // subtract 1 if int and signed, 0 if not.
+//   // This relies on type constants of the same width having even and odd enum values.
+//   // E.g.
+//   //   int16  = 3
+//   //   uint16 = 4
+//   //   int32  = 5
+//   //   uint32 = 6
+//   //   ...
+//   auto fl = TypeCodeFlags(t);
+//   return t - (
+//     ( 1 -
+//       !MIN(
+//         (fl & TypeCodeFlagInt), // 0 if not int
+//         !(fl & TypeCodeFlagSigned) // 0 if signed
+//       ) // => 0 if int and signed, 1 if not
+//     ) // => 1 if int and signed, 0 if not
+//   );
+//   // it was fun to make this branch less, that's the only reason it's so strange :-)
+// }
 
 ASSUME_NONNULL_END

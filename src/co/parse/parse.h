@@ -242,6 +242,11 @@ Node* ResolveConst(Build* b, Node* n);
 // This function may add symbols to b->syms
 Sym GetTypeID(Build* b, Type* n);
 
+// InternASTType uses GetTypeID(t) to intern the type.
+// It returns t if newfound, or an existing type node equivalent to t.
+// The returned type is valid until the next call to build_dispose(b).
+Type* InternASTType(Build* b, Type* t);
+
 // TypeEquals returns true if x and y are equivalent types (i.e. identical).
 // This function may call GetTypeID which may update b->syms, may mutate x and y.
 bool TypeEquals(Build* b, Type* x, Type* y);

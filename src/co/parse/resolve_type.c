@@ -754,7 +754,11 @@ static Type* resolve_selector_type(ResCtx* ctx, Type* n, RFlag fl) {
 static Type* resolve_index_type(ResCtx* ctx, Type* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
   n->index.operand = resolve_type(ctx, n->index.operand, fl);
+
+  auto typecontext = typecontext_set(ctx, Type_usize);
   n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
+  ctx->typecontext = typecontext; // restore
+
   Type* rtype = n->index.operand->type;
   switch (rtype->kind) {
     case NArrayType:

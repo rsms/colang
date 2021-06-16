@@ -344,13 +344,15 @@ static Scanner* test_scanner_new(ParseFlags flags, const char* sourcetext) {
 }
 
 static void test_scanner_free(Scanner* s) {
+  assertnotnull(s);
   Build* build = s->build;
+  assertnotnull(build);
+  assertnotnull(build->mem);
 
   // Note: No need to call SourceClose since its in memory and not file-backed.
   // Note: No need to call memfree as test_build_free drops the entire memory space.
   SourceDispose(s->src);
   ScannerDispose(s);
-
   test_build_free(build);
 }
 

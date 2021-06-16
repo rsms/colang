@@ -49,8 +49,9 @@ typedef enum {
   _(Tuple,       NodeClassExpr|NodeClassArray) \
   _(TypeCast,    NodeClassExpr) \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
-  _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
+  _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
+  /*_(StructType,  NodeClassType|NodeClassArray)*/ /* struct{foo float; y bool} */ \
   _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
 /*END DEF_NODE_KINDS*/
 
@@ -187,15 +188,19 @@ typedef struct Node {
           TypeCode typeCode;
           Sym      name;
         } basic;
-        /* list */ struct { // TupleType
-          NodeArray a;            // array of nodes
-          Node*     a_storage[4]; // in-struct storage for the first few entries of a
-        } list;
         /* array */ struct { // ArrayType
           Node* nullable sizeExpr; // NULL==slice (language type: usize)
           u64            size;     // only used for array, not slice. 0 until sizeExpr is resolved
           Node*          subtype;
         } array;
+        /* list */ struct { // TupleType
+          NodeArray a;            // Node[]
+          Node*     a_storage[4]; // in-struct storage for the first few entries of a
+        } list;
+        /* struct */ struct { // StructType
+          NodeArray a;            // NField[]
+          Node*     a_storage[4]; // in-struct storage for the first few entries of a
+        } struc;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType
           Node* nullable result; // tuple or single type

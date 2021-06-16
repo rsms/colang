@@ -2,13 +2,14 @@
 #include "build.h"
 #include "parse/parse.h" // universe_syms
 
-void build_init(Build* b,
+void build_init(Build*   b,
   Mem                    mem,
   SymPool*               syms,
   Pkg*                   pkg,
   DiagHandler* nullable  diagh,
   void*                  userdata)
 {
+  assertnotnull(mem);
   memset(b, 0, sizeof(Build));
   b->mem       = mem;
   b->syms      = syms;
@@ -16,11 +17,15 @@ void build_init(Build* b,
   b->diagh     = diagh;
   b->userdata  = userdata;
   b->diaglevel = DiagMAX;
+  SymMapInit(&b->types, 32, mem);
   ArrayInit(&b->diagarray);
   posmap_init(&b->posmap, mem);
 }
 
 void build_dispose(Build* b) {
+  ArrayFree(&b->diagarray, b->mem);
+  SymMapDispose(&b->types);
+  posmap_dispose(&b->posmap);
   #if DEBUG
   memset(b, 0, sizeof(*b));
   #endif

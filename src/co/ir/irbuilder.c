@@ -1,11 +1,16 @@
 #include "../common.h"
+#include "../util/tmpstr.h"
 #include "ir.h"
 #include "irbuilder.h"
+
+ASSUME_NONNULL_BEGIN
 
 #if DEBUG
 __attribute__((used))
 static Str debug_fmtval1(Str s, const IRValue* v, int indent) {
-  s = str_appendfmt(s, "v%u(op=%s type=%s args=[", v->id, IROpName(v->op), TypeCodeName(v->type));
+  s = str_appendfmt(s, "v%u(op=%s type=", v->id, IROpName(v->op));
+  s = IRTypeStr(v->type, s);
+  s = str_appendcstr(s, " args=[");
   if (v->args.len > 0) {
     for (u32 i = 0; i < v->args.len; i++) {
       IRValue* arg = (IRValue*)v->args.v[i];
@@ -40,21 +45,12 @@ void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
   u->flags = flags;
   ArrayInitWithStorage(&u->defvars, u->defvarsStorage, countof(u->defvarsStorage));
   ArrayInitWithStorage(&u->funstack, u->funstackStorage, countof(u->funstackStorage));
+  PtrMapInit(&u->typecache, 32, u->mem);
 }
 
 void IRBuilderDispose(IRBuilder* u) {
+  // Note: No need to call PtrMapDispose(&u->typecache) since we use a linear allocator
   MemLinearFree(u->mem);
-}
-
-
-static TypeCode canonical_int_type(IRBuilder* u_unused_reserved, TypeCode t) {
-  // aliases. e.g. int, uint
-  switch (t) {
-    case TypeCode_int:  t = TypeCode_i32; break;
-    case TypeCode_uint: t = TypeCode_u32; break;
-    default: break;
-  }
-  return t;
 }
 
 
@@ -150,7 +146,7 @@ static void endFun(IRBuilder* u) {
 
 
 static IRValue* TODO_Value(IRBuilder* u) {
-  return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, NoPos);
+  return IRValueNew(u->f, u->b, OpNil, IRType_void, NoPos);
 }
 
 
@@ -203,7 +199,87 @@ static IRValue* var_read(IRBuilder* u, Sym name, Node* typeNode, IRBlock* b/*nul
 
 
 // ———————————————————————————————————————————————————————————————————————————————————————————————
-// add functions. Most atomic at top, least at bottom. I.e. let -> block -> fun -> file.
+// types
+
+
+inline static const IRType* nullable typecache_get(IRBuilder* u, Type* ast_type) {
+  return (const IRType*)PtrMapGet(&u->typecache, ast_type);
+}
+
+inline static void typecache_add(IRBuilder* u, Type* ast_type, const IRType* t) {
+  PtrMapSet(&u->typecache, ast_type, (void*)t);
+}
+
+
+static const IRType* get_type(IRBuilder* u, Type* ast_type);
+
+
+static const IRType* get_basic_type(IRBuilder* u, Type* ast_type) {
+  asserteq_debug(ast_type->kind, NBasicType);
+  switch (ast_type->t.basic.typeCode) {
+    // primitive types
+    //
+    #define I_ENUM(NAME, TYPECODE) case TypeCode_##TYPECODE: return IRType_##NAME;
+    IR_PRIMITIVE_TYPES(I_ENUM)
+    #undef  I_ENUM
+    // integers are sign agnostic
+    case TypeCode_u8:  return IRType_i8;
+    case TypeCode_u16: return IRType_i16;
+    case TypeCode_u32: return IRType_i32;
+    case TypeCode_u64: return IRType_i64;
+
+    // aliases
+    // TODO: make this configurable
+    case TypeCode_int:
+    case TypeCode_uint:  return IRType_i32;
+    case TypeCode_isize:
+    case TypeCode_usize: return IRType_i64;
+
+    default:
+      assertf(0, "invalid TypeCode %s", TypeCodeName(ast_type->t.basic.typeCode));
+      UNREACHABLE;
+  }
+}
+
+
+static const IRType* get_array_type(IRBuilder* u, Type* ast_type) {
+  asserteq_debug(ast_type->kind, NArrayType);
+  auto t = typecache_get(u, ast_type);
+  if (t)
+    return t;
+  auto newt = (IRType*)memalloc(u->mem, sizeof(IRType) + sizeof(void*));
+  newt->code = TypeCode_array;
+  newt->count = ast_type->t.array.size;
+  newt->elemv = (const IRType**)(((u8*)newt) + sizeof(IRType));
+  newt->elemv[0] = get_type(u, ast_type->t.array.subtype);
+  typecache_add(u, ast_type, newt);
+  return newt;
+}
+
+
+// get_type returns the IR type corresponding to the ast_type
+static const IRType* get_type(IRBuilder* u, Type* ast_type) {
+  switch (ast_type->kind) {
+    case NBasicType:
+      return get_basic_type(u, ast_type);
+
+    case NArrayType:
+      return get_array_type(u, ast_type);
+
+    // case NStructType:
+    case NTupleType:
+    case NFunType:
+      panic("TODO %s", NodeKindName(ast_type->kind));
+
+    default:
+      assertf(0, "unexpected type %s", fmtnode(ast_type));
+      UNREACHABLE;
+  }
+}
+
+
+// ———————————————————————————————————————————————————————————————————————————————————————————————
+// values (AST nodes)
 
 static IRValue* nullable ast_add_expr(IRBuilder* u, Node* n);
 static bool ast_add_toplevel(IRBuilder* u, Node* n);
@@ -212,7 +288,7 @@ static IRFun* ast_add_fun(IRBuilder* u, Node* n);
 
 static IRValue* ast_add_intconst(IRBuilder* u, Node* n) { // n->kind==NIntLit
   assert(n->type->kind == NBasicType);
-  auto t = canonical_int_type(u, n->type->t.basic.typeCode);
+  auto t = get_type(u, n->type);
   auto v = IRFunGetConstInt(u->f, t, n->val.i);
   return v;
 }
@@ -237,10 +313,10 @@ static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
 }
 
 
-inline static bool is_zerocost_typecast(TypeCode srcType, TypeCode dstType) {
-  auto fl = TypeCodeFlags(srcType);
+inline static bool is_zerocost_typecast(const IRType* srcType, const IRType* dstType) {
+  auto fl = TypeCodeFlags(srcType->code);
   if ((fl & TypeCodeFlagInt) &&
-      (fl & ~TypeCodeFlagSigned) == (TypeCodeFlags(dstType) & ~TypeCodeFlagSigned))
+      (fl & ~TypeCodeFlagSigned) == (TypeCodeFlags(dstType->code) & ~TypeCodeFlagSigned))
   {
     // integers which differ only by sign
     return true;
@@ -258,10 +334,8 @@ static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
   // arrays can only live on the heap when allocated implicitly.
   // An array is concretely represented by a pointer.
 
-  // auto t = IRTypeNew(u, TypeCode_type, n->pos);
-  // auto t = IRTypeI32;
-
-  auto v = IRValueAlloc(u->mem, OpArray, IROpInfo(OpArray)->outputType, n->pos);
+  auto t = get_type(u, n->type);
+  auto v = IRValueAlloc(u->mem, OpArray, t, n->pos);
 
   for (u32 i = 0; i < n->array.a.len; i++) {
     Node* cn = (Node*)n->array.a.v[i];
@@ -279,9 +353,21 @@ static IRValue* ast_add_index(IRBuilder* u, Node* n) { // n->kind==NIndex
   auto index = ast_add_expr(u, n->index.index);
   // See https://llvm.org/docs/LangRef.html#getelementptr-instruction
   // See https://llvm.org/docs/GetElementPtr.html
-  auto v = IRValueNew(u->f, u->b, OpGEP, IROpInfo(OpGEP)->outputType, n->pos);
+
+  auto v = IRValueNew(u->f, u->b, OpGEP, IRType_void, n->pos);
   IRValueAddArg(v, u->mem, recv);
   IRValueAddArg(v, u->mem, index);
+
+  // set result type
+  switch (recv->type->code) {
+    case TypeCode_array:
+      assertnotnull_debug(recv->type->elemv); // must have subtype
+      v->type = recv->type->elemv[0];
+      break;
+    default:
+      panic("TODO index of type %s", fmtirtype(recv->type));
+  }
+
   return v;
 }
 
@@ -294,9 +380,10 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   // generate rvalue
   auto srcValue = ast_add_expr(u, n->call.args);
 
-  // load type codes
+  // source and destination types
   auto srcType = srcValue->type;
-  auto dstType = canonical_int_type(u, n->call.receiver->t.basic.typeCode);
+  auto dstType = get_type(u, n->call.receiver);
+
   if (R_UNLIKELY(n->call.receiver->kind != NBasicType)) {
     build_errf(u->build, NodePosSpan(n),
       "invalid type %s in type cast", fmtnode(n->call.receiver));
@@ -316,10 +403,11 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   // }
 
   // select conversion operation
-  IROp convop = IROpConvertType(srcType, dstType);
+  IROp convop = IROpConvertType(srcType->code, dstType->code);
   if (R_UNLIKELY(convop == OpNil)) {
     build_errf(u->build, NodePosSpan(n),
-      "invalid type conversion %s to %s", TypeCodeName(srcType), TypeCodeName(dstType));
+      "invalid type conversion %s to %s",
+      TypeCodeName(srcType->code), TypeCodeName(dstType->code));
     return TODO_Value(u);
   }
 
@@ -336,7 +424,7 @@ static IRValue* ast_add_arg(IRBuilder* u, Node* n) { // n->kind==NArg
     build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
     return TODO_Value(u);
   }
-  auto t = canonical_int_type(u, n->type->t.basic.typeCode);
+  auto t = get_type(u, n->type);
   auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
   v->auxInt = n->field.index;
   if (u->flags & IRBuilderComments)
@@ -359,15 +447,13 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
   dlog("[BinOp] left:  %s", debug_fmtval(0, left));
   dlog("[BinOp] right: %s", debug_fmtval(0, right));
 
-  // auto t = canonical_int_type(u, n->type->t.basic.typeCode);
-
   // lookup IROp
-  IROp op = IROpFromAST(n->op.op, left->type, right->type);
+  IROp op = IROpFromAST(n->op.op, left->type->code, right->type->code);
   assert(op != OpNil);
 
   // read result type
   asserteq(n->type, n->op.left->type); // we assume binop type == op1 type.
-  TypeCode restype = left->type;
+  auto restype = left->type;
 
   // [debug] check that the type we think n will have is actually the type of the resulting value
   #if DEBUG
@@ -375,9 +461,9 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
   if (optype > TypeCode_NUM_END) {
     // result type is parametric; is the same as an input type.
     assert(optype == TypeCode_param1 || optype == TypeCode_param2);
-    optype = (optype == TypeCode_param1) ? left->type : right->type;
+    optype = (optype == TypeCode_param1) ? left->type->code : right->type->code;
   }
-  asserteq(optype, restype);
+  asserteq(optype, restype->code);
   #endif
 
   auto v = IRValueNew(u->f, u->b, op, restype, n->pos);
@@ -405,9 +491,9 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 }
 
 
-static IRValue* ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
+static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
   if (n->let.nrefs == 0) {
-    // unused, unreferenced; ok to return null
+    // unused, unreferenced; ok to return bad value
     dlog("skip unused %s", fmtnode(n));
     return NULL;
   }
@@ -473,8 +559,8 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
     }
     // else branch always taken
     if (n->cond.elseb == NULL) {
-      dlog("TODO ir/builder produce nil value");
-      return IRValueNew(u->f, u->b, OpNil, TypeCode_nil, n->pos);
+      dlog("TODO ir/builder produce nil value of the approprite type of the pointer");
+      return IRValueNew(u->f, u->b, OpNil, IRType_void, n->pos);
     }
     return ast_add_expr(u, n->cond.elseb);
   }
@@ -523,7 +609,7 @@ static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
     IRFunMoveBlockToEnd(u->f, contbIndex);
 
     assertf(thenv->type == elsev->type,
-      "branch type mismatch %s, %s", TypeCodeName(thenv->type), TypeCodeName(elsev->type));
+      "branch type mismatch %s, %s", fmtirtype(thenv->type), fmtirtype(elsev->type));
 
     if (elseb->values.len == 0) {
       // "else" body may be empty in case it refers to an existing value. For example:
@@ -697,7 +783,7 @@ static IRValue* ast_add_call(IRBuilder* u, Node* n) {
   }
 
   Node* argstuple = n->call.args;
-  auto v = IRValueAlloc(u->mem, OpCall, TypeCode_fun, n->pos); // preallocate
+  auto v = IRValueAlloc(u->mem, OpCall, fn->type, n->pos); // preallocate
   v->auxInt = (i64)fn->name;
   if (argstuple) {
     for (u32 i = 0; i < argstuple->array.a.len; i++) {
@@ -745,7 +831,7 @@ static IRValue* ast_add_ret(IRBuilder* u, Node* n) { //
 
 static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
   IRFun* fn = ast_add_fun(u, n);
-  auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_ptr, n->pos);
+  auto v = IRValueNew(u->f, u->b, OpFun, fn->type, n->pos);
   v->auxInt = (i64)fn;
   return v;
 }
@@ -908,3 +994,5 @@ bool IRBuilderAddAST(IRBuilder* u, Node* n) {
   return ast_add_toplevel(u, n);
 }
 
+
+ASSUME_NONNULL_END

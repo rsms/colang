@@ -1,5 +1,6 @@
 #pragma once
 #include "util/sym.h"
+#include "util/symmap.h"
 #include "util/array.h"
 #include "pos.h"
 
@@ -36,30 +37,31 @@ typedef struct Diagnostic {
 typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
 // Build holds information for one "build" of one top-level package
-typedef struct Build {
+struct Build {
   Mem                   mem;       // memory space for AST nodes, diagnostics etc.
   Pkg*                  pkg;       // top-level package for which we are building
   CoOptType             opt;       // optimization type
   SymPool*              syms;      // symbol pool
+  SymMap                types;     // interned types
   DiagHandler* nullable diagh;     // diagnostics handler
   void* nullable        userdata;  // custom user data passed to error handler
   u32                   errcount;  // total number of errors since last call to build_init
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   Array                 diagarray; // all diagnostic messages produced. Stored in mem.
   PosMap                posmap;    // maps Source <-> Pos
-} Build;
+};
 
 // Pkg represents a package; a directory of source files
-typedef struct Pkg {
+struct Pkg {
   Mem         mem;     // memory for resources only needed by this package
   const char* dir;     // directory filename
   Str         id;      // fully qualified name (e.g. "bar/cat/foo") (TODO: consider using a Sym)
   Str         name;    // relative name (e.g. "foo")
   Source*     srclist; // linked list of sources
-} Pkg;
+};
 
 // Source represents an input source file
-typedef struct Source {
+struct Source {
   Source*    next;     // next source in list
   const Pkg* pkg;      // package this source belongs to
   Str        filename; // copy of filename given to SourceOpen
@@ -68,7 +70,7 @@ typedef struct Source {
   u8         sha1[20]; // SHA-1 checksum of body, set with SourceChecksum
   int        fd;       // file descriptor
   bool       ismmap;   // true if the file is memory-mapped
-} Source;
+};
 
 // build_init initializes a Build structure
 void build_init(Build*,

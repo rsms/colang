@@ -95,9 +95,22 @@ static Str mktypestr(Str s, const Node* n) {
 }
 
 
+Type* InternASTType(Build* b, Type* t) {
+  if (t->kind == NBasicType)
+    return t;
+  auto tid = GetTypeID(b, t);
+  auto t2 = SymMapGet(&b->types, tid);
+  if (t2)
+    return t2;
+  SymMapSet(&b->types, tid, t);
+  return t;
+}
+
+
 // GetTypeID returns the type Sym identifying n
 Sym GetTypeID(Build* b, Type* n) {
-  if (n->t.id) // Note: All built-in non-generic types have predefined type ids
+  // Note: All built-in non-generic types have predefined type ids
+  if (n->t.id)
     return n->t.id;
   auto tmpstr = mktypestr(str_new(128), n);
   n->t.id = symget(b->syms, tmpstr, str_len(tmpstr));

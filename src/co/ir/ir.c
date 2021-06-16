@@ -1,5 +1,64 @@
 #include "../common.h"
+#include "../util/tmpstr.h"
 #include "ir.h"
+
+ASSUME_NONNULL_BEGIN
+
+// ===============================================================================================
+// types
+
+#define I_ENUM(NAME, TYPECODE) \
+  static const IRType _IRType_##NAME = { .code = TypeCode_##TYPECODE }; \
+  const IRType* IRType_##NAME = &_IRType_##NAME;
+IR_PRIMITIVE_TYPES(I_ENUM)
+#undef  I_ENUM
+
+
+Str IRTypeStr(const IRType* t, Str s) {
+  switch (t->code) {
+    case TypeCode_array:
+      assertnotnull_debug(t->elemv);
+      s = str_appendc(s, '[');
+      s = IRTypeStr(t->elemv[0], s);
+      s = str_appendfmt(s, " x " FMT_U64 "]", t->count);
+      break;
+    // TODO: struct
+    default:
+      return str_appendcstr(s, TypeCodeName(t->code));
+  }
+  return s;
+}
+
+
+ConstStr fmtirtype(const IRType* t) {
+  Str* sp = tmpstr_get();
+  *sp = IRTypeStr(t, *sp);
+  return *sp;
+}
+
+
+// const IRType* IRTypeFromTypeCode(TypeCode tc) {
+//   switch (tc) {
+//     #define I_ENUM(NAME, TYPECODE) case TypeCode_##TYPECODE: return IRType_##NAME;
+//     IR_PRIMITIVE_TYPES(I_ENUM)
+//     #undef  I_ENUM
+//     default:
+//       assertf(0, "invalid TypeCode %s", TypeCodeName(tc));
+//       UNREACHABLE;
+//   }
+// }
+
+// const IRType* IRTypeSignNormalized(const IRType* t) {
+//   switch (t->code) {
+//     case TypeCode_u8: return IRType_i8;
+//     case TypeCode_u16: return IRType_i16;
+//     case TypeCode_u32: return IRType_i32;
+//     case TypeCode_u64: return IRType_i64;
+//     default: return t;
+//   }
+// }
+
+
 
 // ===============================================================================================
 // pkg
@@ -47,20 +106,20 @@ IRFun* IRFunNew(Mem mem, Sym typeid, Sym name, Pos pos, u32 nparams) {
 }
 
 
-static IRValue* getConst64(IRFun* f, TypeCode t, u64 value) {
+static IRValue* getConst64(IRFun* f, const IRType* t, u64 value) {
   // sign-normalize types; i.e. uint32 => int32
-  t = TypeCodeSignNormalized(t);
+  TypeCode tc = t->code;
 
   // dlog("getConst64 t=%s value=%llX", TypeCodeName(t), value);
   int addHint = 0;
-  auto v = IRConstCacheGet(f->consts, f->mem, t, value, &addHint);
+  auto v = IRConstCacheGet(f->consts, f->mem, tc, value, &addHint);
   if (v == NULL) {
-    auto op = IROpConstFromAST(t);
+    auto op = IROpConstFromAST(tc);
     assert(IROpInfo(op)->aux != IRAuxNone);
     // Create const operation and add it to the entry block of function f
     v = IRValueNew(f, f->blocks.v[0], op, t, NoPos);
     v->auxInt = value;
-    f->consts = IRConstCacheAdd(f->consts, f->mem, t, value, v, addHint);
+    f->consts = IRConstCacheAdd(f->consts, f->mem, tc, value, v, addHint);
     // dlog("getConst64 add new const op=%s value=%llX => v%u", IROpNames[op], value, v->id);
   } else {
     // dlog("getConst64 use cached const op=%s value=%llX => v%u", IROpNames[v->op], value, v->id);
@@ -71,17 +130,17 @@ static IRValue* getConst64(IRFun* f, TypeCode t, u64 value) {
 // returns a constant IRValue representing n for type t
 IRValue* IRFunGetConstBool(IRFun* f, bool value) {
   // TODO: as there are just two values; avoid using the const cache.
-  return getConst64(f, TypeCode_bool, value ? 1 : 0);
+  return getConst64(f, IRType_i1, value ? 1 : 0);
 }
 
 // returns a constant IRValue representing n for type t
-IRValue* IRFunGetConstInt(IRFun* f, TypeCode t, u64 value) {
-  assert(TypeCodeIsInt(t));
+IRValue* IRFunGetConstInt(IRFun* f, const IRType* t, u64 value) {
+  assert(TypeCodeIsInt(t->code));
   return getConst64(f, t, value);
 }
 
-IRValue* IRFunGetConstFloat(IRFun* f, TypeCode t, double value) {
-  assert(TypeCodeIsFloat(t));
+IRValue* IRFunGetConstFloat(IRFun* f, const IRType* t, double value) {
+  assert(TypeCodeIsFloat(t->code));
   // reintrepret bits (double is IEEE 754 in C11)
   u64 ivalue = *(u64*)(&value);
   return getConst64(f, t, ivalue);
@@ -243,7 +302,7 @@ void IRBlockDelSucc(IRBlock* b, u32 index) {
 // ===============================================================================================
 // value
 
-IRValue* IRValueAlloc(Mem mem, IROp op, TypeCode type, Pos pos) {
+IRValue* IRValueAlloc(Mem mem, IROp op, const IRType* type, Pos pos) {
   auto v = (IRValue*)memalloc(mem, sizeof(IRValue));
   v->id = IRValueNoID;
   v->op = op;
@@ -253,7 +312,7 @@ IRValue* IRValueAlloc(Mem mem, IROp op, TypeCode type, Pos pos) {
   return v;
 }
 
-IRValue* IRValueNew(IRFun* f, IRBlock* b, IROp op, TypeCode type, Pos pos) {
+IRValue* IRValueNew(IRFun* f, IRBlock* nullable b, IROp op, const IRType* type, Pos pos) {
   auto v = IRValueAlloc(f->mem, op, type, pos);
   if (b)
     IRBlockAddValue(b, v);
@@ -288,3 +347,5 @@ void IRValueAddArg(IRValue* v, Mem mem, IRValue* arg) {
   ArrayPush(&v->args, arg, mem);
 }
 
+
+ASSUME_NONNULL_END

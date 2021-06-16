@@ -773,7 +773,7 @@ static Node* pArrayType(Parser* p, PFlag fl) {
     // TODO: is there anything we'd like to do here, like default value?
   }
 
-  return n;
+  return InternASTType(p->build, n);
 }
 
 
@@ -809,7 +809,7 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 // SliceType = "[]" Type
 // #note: Expr must be of type usize
 //
-//!Parselet (TLBrack LOWEST)
+//!Parselet (TLBrack MEMBER)
 static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   // Two possibilities:
   // x [3]int  -- array type
@@ -1312,7 +1312,7 @@ static const Parselet parselets[TMax] = {
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
   [TVar] = {PVar, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_COMMA},
-  [TLBrack] = {PArrayPrefix, PArrayInfix, PREC_LOWEST},
+  [TLBrack] = {PArrayPrefix, PArrayInfix, PREC_MEMBER},
   [TLBrace] = {PBlock, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TMinus] = {PPrefixOp, PInfixOp, PREC_ADD},

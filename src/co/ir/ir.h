@@ -27,6 +27,7 @@ typedef struct IRPkg   IRPkg;
 typedef struct IRFun   IRFun;
 typedef struct IRBlock IRBlock;
 typedef struct IRValue IRValue;
+typedef struct IRType  IRType;
 
 
 // Edge represents a CFG edge
@@ -40,31 +41,49 @@ typedef struct IRConstCache {
 } IRConstCache;
 
 
-typedef struct IRType {
-  TypeCode code;
-} IRType;
+// IRType describes the type of an IRValue
+struct IRType {
+  TypeCode       code;
+  const IRType** elemv; // elements of aggregate types (array)
+  u64            count; // struct: number of elements at elemv, array: width
+};
 
-extern const IRType* IRTypeI32;
+#define IR_PRIMITIVE_TYPES(_) \
+  /* name,   TypeCode_% */ \
+  _( void,    nil     ) \
+  _( i1,      bool    ) \
+  _( i8,      i8      ) \
+  _( i16,     i16     ) \
+  _( i32,     i32     ) \
+  _( i64,     i64     ) \
+  _( float32, float32 ) \
+  _( float64, float64 ) \
+/*END IR_PRIMITIVE_TYPES*/
+
+#define I_ENUM(NAME, TYPECODE) extern const IRType* IRType_##NAME;
+IR_PRIMITIVE_TYPES(I_ENUM)
+#undef  I_ENUM
 
 
-typedef struct IRValue {
-  u32      id;   // unique identifier
-  IROp     op;   // operation that computes this value
-  TypeCode type;
-  Pos      pos;  // source position
-  Array    args; void* argsStorage[3]; // arguments; IRValue*[]
-  // IRValue* args[3]; u8 argslen; // arguments
+// IRValue is an SSA value
+struct IRValue {
+  u32           id;   // unique identifier
+  IROp          op;   // operation that computes this value
+  const IRType* type; // type of the value
+  Pos           pos;  // source position
+  Array         args; // arguments
+  void*         argsStorage[3]; // IRValue*[]
   union {
     i64 auxInt; // floats are stored as reinterpreted bits
     Sym auxSym;
   };
-  u32 uses; // use count. Each appearance in args or IRBlock.control counts once.
+  u32          uses; // use count. Each appearance in args or IRBlock.control counts once.
   Str nullable comment; // short comment for IR formatting. Likely NULL.
-} IRValue;
+};
 
 
 // Block represents a basic block
-typedef struct IRBlock {
+struct IRBlock {
   IRFun*       f;        // owning function
   u32          id;       // block ID
   IRBlockKind  kind;     // kind of block
@@ -81,18 +100,18 @@ typedef struct IRBlock {
   // Its value depends on the kind of the block. For instance, a IRBlockIf has a boolean
   // control value and IRBlockExit has a memory control value.
   IRValue* control;
-
-} IRBlock;
+};
 
 
 // Fun represents a function
-typedef struct IRFun {
-  Mem mem; // owning allocator
-  Array        blocks; void* blocksStorage[4]; // IRBlock*[]
-  Sym          typeid; // TypeCode encoding
-  Sym          name;
-  Pos          pos;     // source position
-  u32          nparams; // number of parameters
+struct IRFun {
+  Mem           mem; // owning allocator
+  Array         blocks; void* blocksStorage[4]; // IRBlock*[]
+  const IRType* type;   // prototype
+  Sym           typeid; // TypeCode encoding
+  Sym           name;
+  Pos           pos;     // source position
+  u32           nparams; // number of parameters
 
   // implementation statistics
   u32 ncalls;     // number of function calls that this function makes (total)
@@ -104,16 +123,16 @@ typedef struct IRFun {
   u32           bid;    // block ID allocator
   u32           vid;    // value ID allocator
   IRConstCache* consts; // constants cache maps type+value => IRValue
-} IRFun;
+};
 
 
 // Pkg represents a package with functions and data
-typedef struct IRPkg {
+struct IRPkg {
   Mem mem;  // owning allocator
   const char*  id;   // c-string. "_" if NULL is passed for name to IRPkgNew. (TODO use Sym?)
   SymMap       funs; // functions in this package
   // TODO: ordered function array or list in addition to funs lookup map
-} IRPkg;
+};
 
 
 IRPkg*          IRPkgNew(Mem, const char* name/*null*/);
@@ -122,8 +141,8 @@ IRFun* nullable IRPkgGetFun(IRPkg* pkg, Sym name);
 
 IRFun*      IRFunNew(Mem mem, Sym typeid, Sym name, Pos pos, u32 nparams);
 IRValue*    IRFunGetConstBool(IRFun* f, bool value);
-IRValue*    IRFunGetConstInt(IRFun* f, TypeCode t, u64 n);
-IRValue*    IRFunGetConstFloat(IRFun* f, TypeCode t, double n);
+IRValue*    IRFunGetConstInt(IRFun* f, const IRType* t, u64 n);
+IRValue*    IRFunGetConstFloat(IRFun* f, const IRType* t, double n);
 void        IRFunInvalidateCFG(IRFun*);
 void        IRFunMoveBlockToEnd(IRFun*, u32 blockIndex); // moves block at index to end of f->blocks
 static bool IRFunIsPure(const IRFun*); // true if guaranteed not to have side effects
@@ -138,13 +157,16 @@ void        IRBlockDelPred(IRBlock* b, u32 index);
 void        IRBlockSetSucc(IRBlock* b, u32 index, IRBlock* succ);
 void        IRBlockDelSucc(IRBlock* b, u32 index);
 
-IRValue*    IRValueNew(IRFun*, IRBlock* nullable b, IROp, TypeCode, Pos pos);
-IRValue*    IRValueAlloc(Mem mem, IROp op, TypeCode type, Pos pos);
+IRValue*    IRValueNew(IRFun*, IRBlock* nullable b, IROp, const IRType* t, Pos pos);
+IRValue*    IRValueAlloc(Mem mem, IROp op, const IRType* t, Pos pos);
 IRValue*    IRValueClone(Mem mem, IRValue*);
 void        IRValueAddComment(IRValue*, Mem, const char* comment, u32 len);
 void        IRValueAddArg(IRValue*, Mem, IRValue* arg);
 static void IRValueSetArg(IRValue*, Mem, u32 index, IRValue* arg);
 static void IRValueClearArg(IRValue*, u32 index);
+
+Str      IRTypeStr(const IRType* t, Str s);
+ConstStr fmtirtype(const IRType* t); // returns a tmpstr
 
 
 // IRReprPkgStr appends to append_to_str a human-readable representation of a package's IR.

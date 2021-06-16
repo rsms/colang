@@ -18,6 +18,7 @@ typedef struct IRBuilder {
   Mem            mem;   // memory for all IR data constructed by this builder
   IRBuilderFlags flags;
   IRPkg*         pkg;
+  PtrMap         typecache; // IRType* interning keyed on AST Type* which is interned
 
   // state used during building
   IRBlock* b;     // current block
@@ -25,7 +26,7 @@ typedef struct IRBuilder {
 
   SymMap* vars; // Sym => IRValue*
     // variable assignments in the current block (map from variable symbol to ssa value)
-    // this PtrMap is moved into defvars when a block ends (internal call to endBlock.)
+    // this map is moved into defvars when a block ends (internal call to endBlock.)
 
   Array defvars; void* defvarsStorage[512]; // list of SymMap*  (from vars)
     // all defined variables at the end of each block. Indexed by block id.

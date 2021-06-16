@@ -7,17 +7,30 @@ typedef struct {
   bool          includeTypes;
 } IRRepr;
 
+
+static void ir_repr_type(IRRepr* r, const IRType* t) {
+  r->buf = IRTypeStr(t, r->buf);
+}
+
+
 static void ir_repr_value(IRRepr* r, const IRValue* v) {
   assert(v->op < Op_MAX);
 
   // vN type = Op
-  r->buf = str_appendfmt(r->buf,
-    "    v%-2u %-7s = %-*s",
-    v->id,
-    TypeCodeName(v->type),
-    IROpNamesMaxLen,
-    IROpNames[v->op]
-  );
+
+  // add name
+  r->buf = str_appendfmt(r->buf, "    v%-2u ", v->id);
+
+  // add type with padding
+  static const u32 typepad = 12;
+  auto len1 = str_len(r->buf);
+  ir_repr_type(r, v->type);
+  len1 = str_len(r->buf) - len1;
+  if (len1 < typepad)
+    r->buf = str_appendfill(r->buf, typepad - len1, ' ');
+
+  // add value
+  r->buf = str_appendfmt(r->buf, " = %-*s", IROpNamesMaxLen, IROpNames[v->op]);
 
   // arg arg
   for (u8 i = 0; i < v->args.len; i++) {

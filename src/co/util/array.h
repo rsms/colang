@@ -51,7 +51,7 @@ void ArraySort(Array* a, ArraySortFun comparator, void* nullable userdata);
 // inline implementations
 
 inline static void ArrayInit(Array* a) {
-  a->v = 0;
+  a->v = NULL;
   a->cap = 0;
   a->len = 0;
   a->onstack = false;
@@ -65,12 +65,11 @@ inline static void ArrayInitWithStorage(Array* a, void* ptr, u32 cap) {
 }
 
 inline static void ArrayFree(Array* a, Mem mem) {
-  if (!a->onstack) {
+  if (!a->onstack && a->v != NULL)
     memfree(mem, a->v);
-    #if DEBUG
-    memset(a, 0, sizeof(*a));
-    #endif
-  }
+  #if DEBUG
+  memset(a, 0, sizeof(*a));
+  #endif
 }
 
 ALWAYS_INLINE static void ArrayClear(Array* a) {
