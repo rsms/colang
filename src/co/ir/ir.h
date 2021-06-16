@@ -40,6 +40,13 @@ typedef struct IRConstCache {
 } IRConstCache;
 
 
+typedef struct IRType {
+  TypeCode code;
+} IRType;
+
+extern const IRType* IRTypeI32;
+
+
 typedef struct IRValue {
   u32      id;   // unique identifier
   IROp     op;   // operation that computes this value

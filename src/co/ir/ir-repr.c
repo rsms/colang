@@ -45,7 +45,7 @@ static void ir_repr_value(IRRepr* r, const IRValue* v) {
     case IRAuxF64:
       r->buf = str_appendfmt(r->buf, " [%f]", *(f64*)(&v->auxInt));
       break;
-    case IRAuxMem:
+    case IRAuxPtr:
       r->buf = str_appendfmt(r->buf, " [%p]", (void*)v->auxInt);
       break;
     case IRAuxSym:

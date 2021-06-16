@@ -237,7 +237,7 @@ static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
 }
 
 
-inline static bool is_free_typecast(TypeCode srcType, TypeCode dstType) {
+inline static bool is_zerocost_typecast(TypeCode srcType, TypeCode dstType) {
   auto fl = TypeCodeFlags(srcType);
   if ((fl & TypeCodeFlagInt) &&
       (fl & ~TypeCodeFlagSigned) == (TypeCodeFlags(dstType) & ~TypeCodeFlagSigned))
@@ -256,9 +256,12 @@ static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
   // - in global writable data (global mutable arrays)
   // - on the stack (local arrays)
   // arrays can only live on the heap when allocated implicitly.
-  // An array is concretely represented by a memory address.
+  // An array is concretely represented by a pointer.
 
-  auto v = IRValueAlloc(u->mem, OpArray, TypeCode_mem, n->pos);
+  // auto t = IRTypeNew(u, TypeCode_type, n->pos);
+  // auto t = IRTypeI32;
+
+  auto v = IRValueAlloc(u->mem, OpArray, IROpInfo(OpArray)->outputType, n->pos);
 
   for (u32 i = 0; i < n->array.a.len; i++) {
     Node* cn = (Node*)n->array.a.v[i];
@@ -267,6 +270,18 @@ static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
   }
 
   IRBlockAddValue(u->b, v);
+  return v;
+}
+
+
+static IRValue* ast_add_index(IRBuilder* u, Node* n) { // n->kind==NIndex
+  auto recv = ast_add_expr(u, n->index.operand);
+  auto index = ast_add_expr(u, n->index.index);
+  // See https://llvm.org/docs/LangRef.html#getelementptr-instruction
+  // See https://llvm.org/docs/GetElementPtr.html
+  auto v = IRValueNew(u->f, u->b, OpGEP, IROpInfo(OpGEP)->outputType, n->pos);
+  IRValueAddArg(v, u->mem, recv);
+  IRValueAddArg(v, u->mem, index);
   return v;
 }
 
@@ -289,12 +304,12 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
   }
 
   // if the conversion if "free" (e.g. int32 -> uint32), short circuit
-  if (dstType == srcType || is_free_typecast(srcType, dstType))
+  if (dstType == srcType || is_zerocost_typecast(srcType, dstType))
     return srcValue;
   //
   // Variant with a Copy op in between:
   // // if the conversion if "free" (e.g. int32 -> uint32), short circuit
-  // if (is_free_typecast(srcType, dstType)) {
+  // if (is_zerocost_typecast(srcType, dstType)) {
   //   auto v = IRValueNew(u->f, u->b, OpCopy, dstType, n->pos);
   //   IRValueAddArg(v, u->mem, srcValue);
   //   return v;
@@ -396,7 +411,7 @@ static IRValue* ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
     dlog("skip unused %s", fmtnode(n));
     return NULL;
   }
-  assertnotnull(n->let.init);
+  assertnotnull(n->let.init); // TODO: support default-initializer (NULL)
   assertnotnull(n->type);
   assert(n->type != Type_ideal);
   dlog("ast_add_let %s %s = %s",
@@ -730,7 +745,7 @@ static IRValue* ast_add_ret(IRBuilder* u, Node* n) { //
 
 static IRValue* ast_add_funexpr(IRBuilder* u, Node* n) {
   IRFun* fn = ast_add_fun(u, n);
-  auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_mem, n->pos);
+  auto v = IRValueNew(u->f, u->b, OpFun, TypeCode_ptr, n->pos);
   v->auxInt = (i64)fn;
   return v;
 }
@@ -768,6 +783,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NReturn:   return ast_add_ret(u, n);
     case NFun:      return ast_add_funexpr(u, n);
     case NArray:    return ast_add_array(u, n);
+    case NIndex:    return ast_add_index(u, n);
 
     case NFloatLit:
     case NStrLit:
@@ -778,7 +794,6 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NPostfixOp:
     case NTuple:
     case NSelector:
-    case NIndex:
     case NSlice:
     case NFunType:
     case NBasicType:

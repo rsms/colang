@@ -36,11 +36,12 @@ DRY_RUN = False  # don't actually write files
 DEBUG   = False  # log stuff to stdout
 
 # S-expression types
-Symbol = str              # A Scheme Symbol is implemented as a Python str
-Number = (int, float)     # A Scheme Number is implemented as a Python int or float
-Atom   = (Symbol, Number) # A Scheme Atom is a Symbol or Number
-List   = list             # A Scheme List is implemented as a Python list
-Exp    = (Atom, List)     # A Scheme expression is an Atom or List
+Symbol = str                 # A lisp Symbol is implemented as a Python str
+Number = (int, float)        # A lisp Number is implemented as a Python int or float
+Atom   = (Symbol, Number)    # A lisp Atom is a Symbol or Number
+List   = list                # A lisp List is implemented as a Python list
+Array  = tuple               # A lisp Array is implemented as a Python tuple
+Exp    = (Atom, List, Array) # A lisp expression is an Atom or List
 
 # TypeCode => [irtype ...]
 # Note: loadTypeCodes verifies that this list exactly matches the list in types.h
@@ -57,6 +58,16 @@ typeCodeToIRType :{str:[str]} = {
   "u64":     ["u64", "i64"],
   "float32": ["f32"],
   "float64": ["f64"],
+  "str":     ["str"],
+  "nil":     ["nil"],
+  "ptr":     ["ptr", "mem"],
+  "fun":     ["ptr"],
+  "array":   ["array"],
+  "struct":  ["struct"],
+  "tuple":   ["struct"],
+  "ideal":   None,
+  "param1":  None,
+  "param2":  None,
 }
 
 typeCodeAliases = {
@@ -66,6 +77,13 @@ typeCodeAliases = {
   "usize":  "u64",  # FIXME
 }
 
+intTypes = set([
+  "i8", "s8", "u8",
+  "i16", "s16", "u16",
+  "i32", "s32", "u32",
+  "i64", "s64", "u64",
+])
+
 auxTypes = [
   "IRAuxBool",
   "IRAuxI8",
@@ -74,7 +92,7 @@ auxTypes = [
   "IRAuxI64",
   "IRAuxF32",
   "IRAuxF64",
-  "IRAuxMem",
+  "IRAuxPtr",
   "IRAuxSym",
 ]
 irtypeToAuxType = {
@@ -85,18 +103,19 @@ irtypeToAuxType = {
   "i64"  : "IRAuxI64",
   "f32"  : "IRAuxF32",
   "f64"  : "IRAuxF64",
-  "mem"  : "IRAuxMem",
+  "ptr"  : "IRAuxPtr",
   "sym"  : "IRAuxSym",
 }
 
 # irtype => [ TypeCode ... ]
-irTypeToTypeCode = {"mem":"mem"}
+irTypeToTypeCode = {}
 for typeCodeName, irtypes in typeCodeToIRType.items():
-  for irtype in irtypes:
-    v = irTypeToTypeCode.get(irtype, [])
-    v.append(typeCodeName)
-    if len(v) == 1:
-      irTypeToTypeCode[irtype] = v
+  if irtypes:
+    for irtype in irtypes:
+      v = irTypeToTypeCode.get(irtype, [])
+      v.append(typeCodeName)
+      if len(v) == 1:
+        irTypeToTypeCode[irtype] = v
 longestTypeCode = reduce(lambda a, v: max(a, len(v)), typeCodeToIRType.keys(), 0)
 
 # Maps AST operators to IR operator prefix
@@ -159,7 +178,7 @@ OpKeyAttributes = set([
 # the IROpDescr struct's fields. (type, name, comment)
 IROpDescr = [
   ("IROpFlag", "flags",      ""),
-  ("TypeCode", "outputType", "invariant: < TypeCode_NUM_END"),
+  ("TypeCode", "outputType", ""),
   ("IRAux",    "aux",        "type of data in IRValue.aux"),
 ]
 
@@ -209,6 +228,9 @@ class Op:
             (key, self.name, "\n  ".join(sorted(OpKeyAttributes))))
         self.attributes[key] = attr[1:]
 
+  def __repr__(self):
+    return 'Op(%s %r -> %r)' % (self.name, self.input, self.output)
+
 class Arch:
   isGeneric = False
   name = "_"
@@ -225,7 +247,7 @@ class Arch:
 
 
 def main():
-  typeCodes = loadTypeCodes(SRCFILE_TYPES_H)
+  typeCodes, numTypeCodes = loadTypeCodes(SRCFILE_TYPES_H)
   astOps = loadASTOpTokens(SRCFILE_PARSE_H)
   baseArch = parse_arch_file(SRCFILE_ARCH_BASE)
   baseArch.isGeneric = True
@@ -234,14 +256,14 @@ def main():
       "addrSize": baseArch.addrSize,
       "regSize":  baseArch.regSize,
       "intSize":  baseArch.intSize,
-      "ops":      len(baseArch.ops)
+      "ops":      baseArch.ops
     })
   archs = [ baseArch ]
   gen_IR_OPS(archs)
   gen_IROpNames(archs)
-  gen_IROpConstMap(baseArch, typeCodes)
-  gen_IROpSwitches(baseArch, typeCodes, astOps) # => SRCFILE_AST_IR_C
-  gen_IROpConvTable(baseArch, typeCodes)
+  gen_IROpConstMap(baseArch, numTypeCodes)
+  gen_IROpSwitches(baseArch, numTypeCodes, astOps) # => SRCFILE_AST_IR_C
+  gen_IROpConvTable(baseArch, numTypeCodes)
   gen_IROpFlag()
   gen_IRAux()
   gen_IROpDescr()
@@ -268,26 +290,29 @@ def gen_IROpInfo(archs :[Arch], typeCodes :[str]):
             typeCodes = irTypeToTypeCode[op.output]
             if len(typeCodes) > 1:
               # multiple output types means that the result depends on the input types
-              # print("TODO: multiple possible TypeCodes %r for ir type %r" % (typeCodes, op.output))
+              # print("[gen_IROpInfo] op %r : multiple possible TypeCodes %r for ir type %r" %
+              #       (op.name, typeCodes, op.output))
+              value = "TypeCode_param1"
+              comment = op.output
+
               if isinstance(op.input, Atom):
-                value = "TypeCode_param1"
-              elif len(op.input) == 0:
-                # special case of ops that "generate" values, like constants.
-                value = "TypeCode_param1"
-              else:
+                if op.input == "...":
+                  # select first/primary TypeCode.
+                  # E.g. IR(struct) => TypeCode(struct,tuple) => struct
+                  value = "TypeCode_" + typeCodes[0]
+                  comment = ""
+              elif len(op.input) > 0:
                 value = ""
                 i = 1
                 for intype in op.input:
-                  if intype == op.output:
-                    value = "TypeCode_param%d" % i
-                    break
-                  i += 1
-                if value == "" or i > 2:
-                  raise Exception(
-                    "variable output type %r of Op%s without matching input %r" % (
-                    op.output, op.name, op.input))
-              value = "TypeCode_param1"
-              comment = op.output
+                  if intype in intTypes:
+                    if intype == op.output:
+                      value = "TypeCode_param%d" % i
+                      break
+                    i += 1
+                if value == "":
+                  value = "TypeCode_" + typeCodes[0]
+                  comment = ""
             else:
               value = "TypeCode_" + typeCodes[0]
           elif len(op.output) == 0:
@@ -727,7 +752,7 @@ def createConstantOpsMap(archs :[Arch]) -> {str:[Op]}:
         if not isinstance(op.output, str):
           raise Exception("constant op %r produces multiple outputs; should produce one" % op.name)
         if op.output in constOps:
-          raise Exception("duplicate constant op %r for type %r" % (op.name, op.output))
+          raise Exception("duplicate output %r from constant op %r" % (op.output, op.name))
         constOps[op.output] = op
   return constOps
 
@@ -781,45 +806,49 @@ def loadASTOpTokens(filename :str) -> [(str,str)]:
   return tokens
 
 
-def loadTypeCodes(filename :str) -> [str]:
+def loadTypeCodes(filename :str) -> ([str], [str]):
   typeCodes = []
   started = False
   ended = False
   startSubstring = b"#define TYPE_CODES"
-  endName = "NUM_END"
+  endSubstring = b"END TYPE_CODES"
   verifiedTypeCodes = set()
   pat = re.compile(r'\s*_\(\s*(\w+)')  # _( name, ... )
+  numTypeCodes = []
 
   with open(filename, "rb") as fp:
     for line in fp:
       if not started:
         if line.find(startSubstring) != -1:
           started = True
+      elif line.find(endSubstring) != -1:
+        ended = True
+        break
       else:
         s = line.decode("utf8")
         m = pat.match(s)
         if m:
           name = m.group(1)
-          if name == endName:
-            ended = True
-            break
-          else:
+          if name == "NUM_END":
+            numTypeCodes = typeCodes[:]
+          elif name.upper() != name:
             typeCodes.append(name)
             if name in typeCodeToIRType or name in typeCodeAliases:
               verifiedTypeCodes.add(name)
             else:
               raise Exception("TypeCode %r missing in typeCodeToIRType map" % name)
             # print(s, m.group(1))
+
   if not started:
     raise Exception("unable to find start substring %r" % startSubstring)
   if not ended:
-    raise Exception("unable to find ending typecode %r" % endName)
+    raise Exception("unable to find end substring %r" % endSubstring)
   if len(typeCodeToIRType) + len(typeCodeAliases) != len(verifiedTypeCodes):
     diff = set(typeCodeToIRType.keys()).difference(verifiedTypeCodes)
     raise Exception(
       "%d TypeCode(s) in typeCodeToIRType missing in %s: %s" %
       (len(diff), filename, ", ".join(diff)))
-  return typeCodes
+  return typeCodes, numTypeCodes
 
 # ------------------------------------------------------------------------------------------------
 # parse input lisp
@@ -842,7 +871,7 @@ def parse_op(xs, commentsPre) -> Op:
   input = xs[1]
   output = xs[3]
   attributes = xs[4:]
-  # print(name, input, output, attributes)
+  # print(">>", name, input, output, attributes)
   return Op(name, input, output, attributes, commentsPre)
 
 
@@ -852,7 +881,7 @@ def parse_arch_file(filename: str) -> Exp:
   doc = None
   with open(filename, "rb") as fp:
     doc = parse_lisp( "(\n" + fp.read().decode("utf8") + "\n)" )
-    # print(doc)
+    # print(doc) ; sys.exit(1)
 
   for e in doc:
     if isinstance(e, list) and (e[0] == ";" or e[0] == ";;"):
@@ -887,6 +916,7 @@ def parse_arch_file(filename: str) -> Exp:
           commentsPost = []
 
         lastop = parse_op(x, commentsPre)
+        # print(str(lastop))
         a.ops.append(lastop)
         commentsPre = []
 
@@ -913,7 +943,7 @@ def parse_lisp(program: str) -> Exp:
 
 
 comment_re = re.compile(r'^([^;\n]*);+([^\n]*)\n', re.M)
-tokenize_re = re.compile(r'([\(\)])')
+tokenize_re = re.compile(r'([\(\)\[\]])')
 
 comment_enc_table = str.maketrans(" ()", "\x01\x02\x03")
 comment_dec_table = str.maketrans("\x01\x02\x03", " ()")
@@ -925,11 +955,39 @@ def decodeComment(s):
   return s.translate(comment_dec_table)
 
 
+def read_from_tokens(tokens: list) -> Exp:
+  "Read an expression from a sequence of tokens."
+  if len(tokens) == 0:
+    raise SyntaxError('unexpected EOF')
+  token = tokens.pop(0)
+  if token == '(':
+    L = []
+    while tokens[0] != ')':
+      L.append(read_from_tokens(tokens))
+    tokens.pop(0) # pop off ')'
+    # if len(L) == 1 and isinstance(L[0], list) and L[0][0] == ';':
+    #   # unwrap comment
+    #   return L[0]
+    return L
+  if token == '[':
+    L = []
+    while tokens[0] != ']':
+      L.append(read_from_tokens(tokens))
+    tokens.pop(0) # pop off ']'
+    return tuple(L)
+  elif token == ')' or token == ']':
+    raise SyntaxError('unexpected ' + token)
+  else:
+    return atom(token)
+
+
 def tokenize(text: str) -> list:
   "Convert a string of characters into a list of tokens."
   includeComments = True
 
   def replaceComment(m):
+    # ';'  = leading comment (entire line)
+    # ';;' = trailing comment
     commentType = ';'
     # print(repr(m.group(1).strip()))
     if len(m.group(1).strip()) > 0:
@@ -947,26 +1005,6 @@ def tokenize(text: str) -> list:
   text = tokenize_re.sub(" \\1 ", text)  # "a(b)c" => "a ( b ) c"
   # print(text)
   return text.split()
-
-
-def read_from_tokens(tokens: list) -> Exp:
-  "Read an expression from a sequence of tokens."
-  if len(tokens) == 0:
-    raise SyntaxError('unexpected EOF')
-  token = tokens.pop(0)
-  if token == '(':
-    L = []
-    while tokens[0] != ')':
-      L.append(read_from_tokens(tokens))
-    tokens.pop(0) # pop off ')'
-    # if len(L) == 1 and isinstance(L[0], list) and L[0][0] == ';':
-    #   # unwrap comment
-    #   return L[0]
-    return L
-  elif token == ')':
-    raise SyntaxError('unexpected )')
-  else:
-    return atom(token)
 
 
 def atom(token: str) -> Atom:

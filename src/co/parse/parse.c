@@ -28,10 +28,10 @@
 //#define DEBUG_SCOPE_BINDINGS
 //
 // enable debug messages for defsym()
-#define DEBUG_DEFSYM
+//#define DEBUG_DEFSYM
 //
 // enable debug messages for resolve_id()
-#define DEBUG_LOOKUPSYM
+//#define DEBUG_LOOKUPSYM
 //
 #include "../common.h"
 #include "parse.h"

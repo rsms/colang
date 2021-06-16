@@ -47,13 +47,13 @@ typedef enum TypeCodeFlag {
   _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                       \
   /*                                                                                         */\
   /* internal types not directly reachable by names in the language */                         \
-  _( mem       , 'M', 0 ) /* memory location */                                                \
+  _( ptr       , 'M', 0 ) /* pointer memory address */                                         \
   _( fun       , '^', 0 )                                                                      \
-  _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                              \
   _( array     , '[', 0 )                                                                      \
   _( struct    , '{', 0 ) _( structEnd , '}', 0 )                                              \
+  _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                              \
   /* special type codes used in IR */                                                          \
-  _( ideal     , '*' , 0 ) /* untyped numeric constants */                                     \
+  _( ideal     , '*', 0 ) /* untyped numeric constants */                                      \
   _( param1    , 'P', 0 ) /* parameteric. For IR, matches other type, e.g. output == input */  \
   _( param2    , 'P', 0 )
 /*END TYPE_CODES*/

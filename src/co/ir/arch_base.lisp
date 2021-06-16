@@ -19,7 +19,7 @@
 ;   FaultOnNilArg1      this op will fault if arg1 is nil (and aux encodes a small offset)
 ;   UsesScratch         this op requires scratch memory space
 ;   HasSideEffects      not to be eliminated. E.g. atomic store. Implied for Call
-;   Generic             generic op
+;   Generic             generic op (not arch specific)
 ;
 ; Types:
 ;   bool     bit or byte sized integer
@@ -35,12 +35,14 @@
 ;   i64      sign-agnostic 64-bit integer
 ;   s64      signed 64-bit integer
 ;   u64      unsigned 64-bit integer
-;   addr     address (address-sized integer)
+;   ptr      pointer (memory address)
 ;   f32      32-bit floating point number
 ;   f64      64-bit floating point number
 ;   mem      memory location
 ;   sym      symbolic name
 ;   nil      void
+;   array    sequence of homogeneously-typed values
+;   struct   sequence of heterogeneously-typed values
 ;
 (ops
   ; Format: (op (inputs) -> (outputs) flags...)
@@ -49,24 +51,28 @@
   (NoOp ()->() ZeroWidth) ; passthrough "no operation"
   (Phi  ()->() ZeroWidth) ; select an argument based on which predecessor block we came from
   (Copy ()->() ZeroWidth) ; alias, usually with a different logical but technically equivalent type
-  (Fun  ()->() ZeroWidth (aux mem))  ; auxint = IRFun* address
+  (Fun  ()->() ZeroWidth (aux ptr))  ; auxint = IRFun* address
   (Arg  ()->() (aux i32))
   ;
   ; Function calls
   ; ["Call", 1, Call, t.mem, {aux: "SymOff"}], ; auxint=arglen, arg0=mem, returns mem
-  (Call () -> mem Call  (aux sym)) ; auxint=arglen, arg0=mem
+  (Call () -> mem  Call  (aux sym)) ; auxint=arglen, arg0=mem
   ;
   ; Constant values. Stored in IRValue.aux
   (ConstBool () -> bool  Constant  (aux bool))  ; aux is 0=false, 1=true
   (ConstI8   () -> i8    Constant  (aux i8))  ; aux is sign-extended 8 bits
   (ConstI16  () -> i16   Constant  (aux i16)) ; aux is sign-extended 16 bits
   (ConstI32  () -> i32   Constant  (aux i32)) ; aux is sign-extended 32 bits
-  (ConstI64  () -> i64   Constant  (aux i64)) ; aux is Int64
+  (ConstI64  () -> i64   Constant  (aux i64))
   (ConstF32  () -> f32   Constant  (aux i32))
   (ConstF64  () -> f64   Constant  (aux i64))
-  (ConstPtr  () -> mem   Constant  (aux mem)) ; like a pointer in C
+  (ConstPtr  () -> ptr   Constant  (aux ptr)) ; like a pointer in C
   ;
-  (Array () -> mem)
+  ; Aggregate values
+  ;(Array ($T ...) -> [$T] (aux i64)) ; defines an array. size in aux
+  (Array ... -> array)  ; defines an array
+  (Struct ... -> struct) ; defines a struct
+  (GEP (ptr usize) -> ptr) ; Get Element Pointer
   ;
   ; ---------------------------------------------------------------------
   ; 2-input arithmetic. Types must be consistent.

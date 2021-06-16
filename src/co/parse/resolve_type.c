@@ -223,7 +223,7 @@ static void err_ret_type(ResCtx* ctx, Node* fun, Node* retval) {
     msgfmt = "cannot use result from %s (type %s) as return type %s";
   }
   build_errf(ctx->build, NodePosSpan(focusnode), msgfmt,
-    fmtnode(focusnode), fmtnode(rettype), fmtnode(expect));
+             fmtnode(focusnode), fmtnode(rettype), fmtnode(expect));
   node_diag_trail(ctx->build, DiagNote, focusnode);
 }
 

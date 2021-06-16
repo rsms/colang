@@ -1,11 +1,13 @@
 fun foo {
-  x [3]int
-  x[3]
-  t = (1, 2, 3)
-  y = 3
-  # y
+  x [3]int = [3]int(0, 0, 0)
+  x[1]
+  # x
+
+  # t = (1, 2, 3)
+  # y = 3
+  # # y
 }
-one = 1
+# one = 1
 
 
 # fun invert(color [3]int) nil {
