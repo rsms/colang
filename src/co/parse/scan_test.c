@@ -381,19 +381,18 @@ static TokStringPair* make_expectlistv(
   TokStringPair* expectlist = memalloc(mem, sizeof(TokStringPair) * len);
   *len_out = len;
 
-  va_copy(ap2, ap);
   size_t x = 0;
   for (size_t i = 0; i < len * 2; i++) {
+    assert_debug(x < len);
     if ((i % 2) == 0) {
       // even arguments are tokens
-      expectlist[x].tok = va_arg(ap2, Tok);
-    } else {
+      expectlist[x].tok = va_arg(ap, Tok);
+    } else if (expectlist[x].tok != TNone) {
       // odd arguments are values
-      expectlist[x].value = va_arg(ap2, const char*);
+      expectlist[x].value = va_arg(ap, const char*);
       x++;
     }
   }
-  va_end(ap2);
 
   expectlist[len - 1].tok = TNone;
   expectlist[len - 1].value = "";
