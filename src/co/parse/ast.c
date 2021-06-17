@@ -1,5 +1,6 @@
 #include "../common.h"
 #include "parse.h"
+#include <ctype.h> // tolower
 
 //#define DEBUG_LOOKUP
 
@@ -40,6 +41,111 @@ Node* NewNode(Mem mem, NodeKind kind) {
 
 const char* NodeKindName(NodeKind t) {
   return NodeKindNameTable[t];
+}
+
+
+static bool _token_eq(char const* ref, char const* input, u32 len) {
+  for (; len--; ref++, input++) {
+    int d = (unsigned char)*ref - tolower((unsigned char)*input);
+    if (d != 0)
+      return false;
+  }
+  return true;
+}
+
+inline static bool token_eq(char const* ref, char const* input, u32 inputlen) {
+  u32 reflen = (size_t)strlen(ref);
+  if (inputlen != reflen)
+    return false;
+  return _token_eq(ref, input, inputlen);
+}
+
+
+static NodeReprFlags parse_repr_flag(const char* str, u32 len) {
+  if (len > 0) {
+    switch (tolower(str[0])) {
+      case 'n':
+        if (token_eq("nocolor", str, len))
+          return NodeReprNoColor;
+        break;
+      case 'c':
+        if (token_eq("color", str, len))
+          return NodeReprColor;
+        break;
+      case 't':
+        if (token_eq("types", str, len))
+          return NodeReprTypes;
+        break;
+      case 'u':
+        if (token_eq("usecount", str, len))
+          return NodeReprUseCount;
+        break;
+      case 'r':
+        if (token_eq("refs", str, len))
+          return NodeReprRefs;
+        break;
+      case 'a':
+        if (token_eq("attrs", str, len))
+          return NodeReprAttrs;
+        break;
+    }
+  }
+  return 0;
+}
+
+
+NodeReprFlags NodeReprFlagsParse(const char* str, u32 len) {
+  NodeReprFlags fl = 0;
+  const char* start = NULL;
+  const char* end = str + len;
+  while (str < end) {
+    u8 b = *(const u8*)str;
+    switch (b) {
+      // ignore whitespace
+      case '0'...'9':
+      case 'A'...'Z':
+      case 'a'...'z':
+        if (!start)
+          start = str;
+        break;
+
+      default:
+        if (start) {
+          fl |= parse_repr_flag(start, (u32)(str - start));
+          start = NULL;
+        }
+        break;
+    }
+    str++;
+  }
+  if (start)
+    fl |= parse_repr_flag(start, (u32)(str - start));
+  return fl;
+}
+
+
+R_TEST(parse_node_repr_flags) {
+  #define PARSE_FLAGS(cstr) NodeReprFlagsParse((cstr), strlen(cstr))
+
+  // no flags
+  auto fl = PARSE_FLAGS(" adsfknsdf slm;dfkm\ngarbage");
+  asserteq(fl, 0);
+
+  // some flags
+  fl = PARSE_FLAGS(" bla types");
+  asserteq(fl, NodeReprTypes);
+
+  // all flags
+  fl = PARSE_FLAGS("nocolor color types usecount refs attrs");
+  asserteq(fl, NodeReprNoColor
+             | NodeReprColor
+             | NodeReprTypes
+             | NodeReprUseCount
+             | NodeReprRefs
+             | NodeReprAttrs
+  );
+
+  #undef PARSE_FLAGS
 }
 
 
@@ -96,8 +202,7 @@ Node* IdealType(CType ct) {
   case CType_rune:
   case CType_INVALID: break;
   }
-  dlog("err: unexpected CType %d", ct);
-  assert(0 && "unexpected CType");
+  assertf(0, "unexpected CType %d", ct);
   return NULL;
 }
 
@@ -107,7 +212,7 @@ CType NodeIdealCType(const Node* n) {
   if (n == NULL || !NodeIsUntyped(n)) {
     return CType_INVALID;
   }
-  dlog("NodeIdealCType n->kind = %s", NodeKindName(n->kind));
+  //dlog("NodeIdealCType n->kind = %s", NodeKindName(n->kind));
 
   switch (n->kind) {
   default:

@@ -320,6 +320,9 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
 
   NodeVisit(n, &c, l_visit);
 
+  c.s = style_pop(&c.style, c.s);
+  asserteq(c.style.stack.len, 0); // style_push/style_pop calls should be balanced
+
   PtrMapDispose(&c.seenmap);
   StyleStackDispose(&c.style);
   return c.s;
@@ -551,9 +554,11 @@ static bool l_visit(NodeList* nl, void* cp) {
       // not defined in the file scope.
       descend = false;
     }
-    s = style_push(&c->style, s, ref_color);
-    s = str_appendfmt(s, " #%zu", (size_t)id);
-    s = style_pop(&c->style, s);
+    if (c->fl & NodeReprRefs) {
+      s = style_push(&c->style, s, ref_color);
+      s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
     break;
   }
   case NFile: {
@@ -576,9 +581,11 @@ static bool l_visit(NodeList* nl, void* cp) {
     s = str_append(s, n->let.name, symlen(n->let.name));
     s = style_pop(&c->style, s);
 
-    s = style_push(&c->style, s, ref_color);
-    s = str_appendfmt(s, " #%zu", (size_t)id);
-    s = style_pop(&c->style, s);
+    if (c->fl & NodeReprRefs) {
+      s = style_push(&c->style, s, ref_color);
+      s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
     descend = newfound;
     break;
   }
@@ -587,20 +594,22 @@ static bool l_visit(NodeList* nl, void* cp) {
   } // switch(n->kind)
 
   // attributes
-  if (NodeIsUnresolved(n) || NodeIsConst(n)) {
-    s = style_push(&c->style, s, attr_color);
-    if (NodeIsUnresolved(n))
-      s = str_appendcstr(s, " @unres");
-    if (!NodeIsType(n) && NodeIsConst(n))
-      s = str_appendcstr(s, " @const");
-    s = style_pop(&c->style, s);
+  if (c->fl & NodeReprAttrs) {
+    if (NodeIsUnresolved(n) || NodeIsConst(n)) {
+      s = style_push(&c->style, s, attr_color);
+      if (NodeIsUnresolved(n))
+        s = str_appendcstr(s, " @unres");
+      if (!NodeIsType(n) && NodeIsConst(n))
+        s = str_appendcstr(s, " @const");
+      s = style_pop(&c->style, s);
+    }
+    // pointer attr
+    #ifdef DEBUG_INCLUDE_POINTERS
+      s = style_push(&c->style, s, attr_color);
+      s = str_appendfmt(s, " @ptr(%p)", n);
+      s = style_pop(&c->style, s);
+    #endif
   }
-  // pointer attr
-  #ifdef DEBUG_INCLUDE_POINTERS
-    s = style_push(&c->style, s, attr_color);
-    s = str_appendfmt(s, " @ptr(%p)", n);
-    s = style_pop(&c->style, s);
-  #endif
 
   // include fields and children
   if (descend) {
@@ -668,12 +677,12 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NLet:
-    if (n->let.ismut) {
+    if (n->let.ismut && (c->fl & NodeReprAttrs)) {
       s = style_push(&c->style, s, attr_color);
       s = str_appendcstr(s, "@mutable");
       s = style_pop(&c->style, s);
     }
-    if (c->fl & NodeReprLetRefs) {
+    if (c->fl & NodeReprUseCount) {
       if (n->let.ismut)
         s = str_appendc(s, ' ');
       s = style_push(&c->style, s, ref_color);

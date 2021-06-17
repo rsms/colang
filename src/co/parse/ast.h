@@ -213,15 +213,24 @@ typedef struct Node {
 
 // NodeReprFlags changes behavior of NodeRepr
 typedef enum {
-  NodeReprDefault = 0,
-  NodeReprNoColor = 1 << 0, // disable ANSI terminal styling
-  NodeReprColor   = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
-  NodeReprTypes   = 1 << 2, // include types in the output
-  NodeReprLetRefs = 1 << 3, // include information about Let references / uses
+  NodeReprDefault  = 0,
+  NodeReprNoColor  = 1 << 0, // disable ANSI terminal styling
+  NodeReprColor    = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
+  NodeReprTypes    = 1 << 2, // include types in the output
+  NodeReprUseCount = 1 << 3, // include information about uses (ie for Let)
+  NodeReprRefs     = 1 << 4, // include "#N" reference indicators
+  NodeReprAttrs    = 1 << 5, // include "@attr" attributes
 } NodeReprFlags;
 
 // NodeRepr formats an AST as a printable text representation
 Str NodeRepr(const Node* nullable n, Str s, NodeReprFlags fl);
+
+// NodeReprFlagsParse parses named flags.
+// All characters except a-zA-Z0-9 are ignored and treated as separators.
+// Names are the tail end of constants, e.g. "UseCount" == NodeReprUseCount.
+// The names of flags are case-insensitive, i.e. "UseCount" == "USECOUNT" == "usecount".
+// Names which are not recognized are ignored.
+NodeReprFlags NodeReprFlagsParse(const char* str, u32 len);
 
 // NodeStr appends a short representation of an AST node to s.
 Str NodeStr(Str s, const Node* nullable n);

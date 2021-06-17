@@ -1,0 +1,27 @@
+fun a() {
+  b()
+  x = 4
+}
+#!EOF
+fun b() {
+  x int
+}
+fun c() -> x = 4
+fun d() -> var x int
+# fun d() -> x int  # error since x is in rvalue position
+
+#*!AST
+(Fun a (body
+  (Block
+    (Call (Id b) nil)
+    (Let x (IntLit 4)))))
+(Fun b (body
+  (Block
+    (Let x))))
+(Fun c (body
+  (Let x
+    (IntLit 4))))
+(Fun d (body
+  (Let x)))
+
+*#

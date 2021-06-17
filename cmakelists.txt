@@ -171,8 +171,7 @@ target_link_libraries(collvm PRIVATE
 
 #————————————————————————————————————————————————————————————————————————————————————————————————
 # co
-add_executable(co
-  src/co/co.c
+add_library(colib
   src/co/build.c
   src/co/pos.c
   src/co/source.c
@@ -206,26 +205,30 @@ add_executable(co
   src/co/util/tmpstr.c
   src/co/util/tstyle.c
 )
-target_include_directories(co PRIVATE src)
-target_link_libraries(co PRIVATE
+target_include_directories(colib PUBLIC src)
+target_link_libraries(colib PUBLIC
   rbase
   jemalloc
   xxhash
 )
 
 if (CO_WITH_LLVM)
-  target_sources(co PRIVATE
+  target_sources(colib PRIVATE
     src/co/llvm/llvm.c
     src/co/llvm/llvm.cc
     src/co/llvm/lld.cc
   )
-  target_compile_definitions(co PRIVATE CO_WITH_LLVM=1)
-  target_link_options(co PRIVATE "-Wl,-no_pie")
-  target_link_libraries(co PRIVATE collvm)
-  target_precompile_headers(co PRIVATE
+  target_compile_definitions(colib PUBLIC CO_WITH_LLVM=1)
+  target_link_options(colib PRIVATE "-Wl,-no_pie")
+  target_link_libraries(colib PUBLIC collvm)
+  target_precompile_headers(colib PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/co/llvm/llvm-includes.hh>"
   )
 endif()
+
+
+add_executable(co src/co/co.c)
+target_link_libraries(co PRIVATE colib)
 
 # if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 #   target_sources(co PRIVATE
@@ -262,7 +265,23 @@ add_custom_command(
 )
 
 
-ckit_define_test(co src/co/co.c)
+# —————————————————————
+# test
+
+# colib unit tests
+add_executable(test_colib src/co/co.c)
+target_link_libraries(test_colib PRIVATE colib)
+ckit_add_test(test-colib test_colib -testonly)
+
+# parser tests
+add_executable(test_parser test/co-parser-test.c test/sexpr.c)
+target_link_libraries(test_parser PRIVATE colib)
+# ckit_add_test(test-parser test_parser -T) # threaded
+ckit_add_test(test-parser test_parser)
+
+# make sure co unit tests run before running the more high-level parser tests
+add_dependencies(test_parser test_colib)
+
 
 
 #————————————————————————————————————————————————————————————————————————————————————————————————

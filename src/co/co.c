@@ -3,6 +3,7 @@
 #include "ir/ir.h"
 #include "ir/irbuilder.h"
 #include "util/rtimer.h"
+#include "util/tmpstr.h"
 
 #ifdef CO_WITH_LLVM
 #include "llvm/llvm.h"
@@ -151,9 +152,14 @@ bool parse_source1(const Pkg* pkg, Source* src) {
 
 
 static void dump_ast(const char* message, Node* ast) {
-  auto s = NodeRepr(ast, str_new(512), NodeReprTypes | NodeReprLetRefs);
-  dlog("%s%s", message, s);
-  str_free(s);
+  Str* sp = tmpstr_get();
+  *sp = NodeRepr(
+    ast, *sp, NodeReprTypes
+            | NodeReprUseCount
+            | NodeReprRefs
+            | NodeReprAttrs
+  );
+  dlog("%s%s", message, *sp);
   PRINT_BANNER();
 }
 
@@ -368,7 +374,7 @@ static bool init(const char* argv0) {
   }
 
   if (!COPATH || strlen(COPATH) == 0)
-    COPATH = path_join(user_home_dir(), ".co");
+    COPATH = path_join(os_user_home_dir(), ".co");
 
   if (!COCACHE || strlen(COCACHE) == 0)
     COCACHE = path_join(COPATH, "cache");
@@ -384,6 +390,8 @@ int main(int argc, const char** argv) {
   #if R_TESTING_ENABLED
   if (testing_main(1, argv) != 0)
     return 1;
+  if (argc > 1 && strcmp(argv[1], "-testonly") == 0)
+    return 0;
   #endif
 
   if (!init(argv[0]))
