@@ -23,7 +23,7 @@ static void testMapIterator(Sym key, void* value, bool* stop, void* userdata) {
 
 R_TEST(symmap) {
   // auto mem = MemArenaAlloc();
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   if (!mem)
     panic("out of memory");
   auto m = SymMapNew(64, mem);

@@ -793,7 +793,7 @@ R_TEST(ir_op) {
   return;
   //
   // printf("--------------------------------------------------\n");
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   #define mknode(t) NewNode(mem, (t))
 
   // i16 -> u32 (extension with signed change)

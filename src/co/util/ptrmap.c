@@ -43,7 +43,7 @@ static void testMapIterator(const void* key, void* value, bool* stop, void* user
 
 
 R_TEST(ptrmap) {
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   auto m = PtrMapNew(8, mem);
 
   assert(m->len == 0);

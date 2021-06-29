@@ -144,7 +144,7 @@ Str sexpr_fmt(const SExpr* n, Str s, SExprFmtFlags fl) {
 
 
 Str sexpr_prettyprint(Str dst, const char* src, u32 srclen) {
-  Mem mem = MemLinearAlloc();
+  Mem mem = MemLinearAlloc(1);
   SExpr* root = sexpr_parse((const u8*)src, srclen, mem);
   dst = str_makeroom(dst, srclen);
   if (root)

@@ -245,7 +245,7 @@ Str sympool_repr(const SymPool* p, Str s) {
 // unit tests
 
 R_TEST(sym) {
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
 
@@ -284,7 +284,7 @@ R_TEST(sym) {
 
 
 R_TEST(symflags) {
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
   auto s = symgetcstr(&syms, "hello");
@@ -327,7 +327,7 @@ inline static Str rbkeyfmt(Str s, RBKEY k) {
 }
 
 R_TEST(sympool) {
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
   SymPool syms1;
   SymPool syms2;
   SymPool syms3;

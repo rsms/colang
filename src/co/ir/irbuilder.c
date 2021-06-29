@@ -36,21 +36,36 @@ static const char* debug_fmtval(u32 bufid, const IRValue* v) {
 #endif
 
 
-void IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
-  memset(u, 0, sizeof(IRBuilder));
+bool IRBuilderInit(IRBuilder* u, Build* build, IRBuilderFlags flags) {
+  if (u->mem) {
+    // recycle
+    // Note: As heap-allocated data is allocated in u->mem we have to be careful here
+    // and avoid reusing certain memory. For example, SymMapClear(&u->vars) would lead to
+    // undefined behavior as its pointer is no longer valid after calling MemLinearReset.
+    MemLinearReset(u->mem);
+  } else {
+    // initialize
+    u->mem = MemLinearAlloc(1024); // map 4MB up front
+    if (!u->mem)
+      return false;
+  }
   u->build = build;
-  u->mem = MemLinearAlloc();
-  u->pkg = IRPkgNew(u->mem, build->pkg->id);
-  u->vars = SymMapNew(8, u->mem);
   u->flags = flags;
+  u->pkg = IRPkgNew(u->mem, build->pkg->id);
+  PtrMapInit(&u->typecache, 32, u->mem);
+  u->b = NULL;
+  u->f = NULL;
+  u->vars = SymMapNew(8, u->mem);
   ArrayInitWithStorage(&u->defvars, u->defvarsStorage, countof(u->defvarsStorage));
   ArrayInitWithStorage(&u->funstack, u->funstackStorage, countof(u->funstackStorage));
-  PtrMapInit(&u->typecache, 32, u->mem);
+  return true;
 }
 
+
 void IRBuilderDispose(IRBuilder* u) {
-  // Note: No need to call PtrMapDispose(&u->typecache) since we use a linear allocator
+  // Note: No need to call PtrMapDispose(&u->typecache) etc since we use a linear allocator
   MemLinearFree(u->mem);
+  u->mem = NULL;
 }
 
 

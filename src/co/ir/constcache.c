@@ -190,7 +190,7 @@ IRConstCache* IRConstCacheAdd(
 
 R_TEST(constcache) {
   // printf("--------------------------------------------------\n");
-  auto mem = MemLinearAlloc();
+  auto mem = MemLinearAlloc(1);
 
   IRConstCache* c = NULL;
   u64 testValueGen = 1; // IRValue pointer simulator (generator)

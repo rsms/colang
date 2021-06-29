@@ -123,7 +123,7 @@ Str diag_fmt(Str s, const Diagnostic* d) {
 #if R_TESTING_ENABLED
 
 Build* test_build_new() {
-  Mem mem = MemLinearAlloc();
+  Mem mem = MemLinearAlloc(1);
 
   auto syms = memalloct(mem, SymPool);
   sympool_init(syms, universe_syms(), mem, NULL);

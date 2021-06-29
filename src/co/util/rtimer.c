@@ -12,13 +12,13 @@ static u64 rtimer_real_time_duration(RTimer* rt) {
   return nanotime() - rt->nstime;
 }
 
-static u64 rtimer_user_cpu_duration(RTimer* rt) {
-  struct rusage ru;
-  getrusage(RUSAGE_SELF, &ru);
-  u64 ns = (u64)(ru.ru_utime.tv_sec - rt->ru.ru_utime.tv_sec) * 1000000000;
-  return ns + (u64)(ru.ru_utime.tv_usec - rt->ru.ru_utime.tv_usec) * 1000; // libc with usec
-  // return ns + (u64)(ru.ru_utime.tv_nsec - rt->ru.ru_utime.tv_nsec); // libc with nsec
-}
+// static u64 rtimer_user_cpu_duration(RTimer* rt) {
+//   struct rusage ru;
+//   getrusage(RUSAGE_SELF, &ru);
+//   u64 ns = (u64)(ru.ru_utime.tv_sec - rt->ru.ru_utime.tv_sec) * 1000000000;
+//   return ns + (u64)(ru.ru_utime.tv_usec - rt->ru.ru_utime.tv_usec) * 1000; // libc with usec
+//   // return ns + (u64)(ru.ru_utime.tv_nsec - rt->ru.ru_utime.tv_nsec); // libc with nsec
+// }
 
 u64 rtimer_duration(RTimer* rt) {
   //return rtimer_user_cpu_duration(rt);

@@ -225,6 +225,7 @@ int cmd_build(int argc, const char** argv) {
   SymPool syms = {0};
   sympool_init(&syms, universe_syms(), MemHeap, NULL);
   Mem astmem = MemHeap; // allocate AST in global memory pool
+  //Mem astmem = MemLinearAlloc(1024/*pages*/); // allocate AST in a linear slab of memory
   Build build = {0};
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
   // build.opt = CoOptFast;

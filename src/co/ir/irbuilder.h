@@ -14,46 +14,46 @@ typedef enum IRBuilderFlags {
 
 
 typedef struct IRBuilder {
-  Build*         build; // current source context (source-file specific)
   Mem            mem;   // memory for all IR data constructed by this builder
+  Build*         build; // current source context (source-file specific)
   IRBuilderFlags flags;
   IRPkg*         pkg;
   PtrMap         typecache; // IRType* interning keyed on AST Type* which is interned
 
   // state used during building
-  IRBlock* b;     // current block
-  IRFun*   f;     // current function
+  IRBlock* b; // current block
+  IRFun*   f; // current function
 
+  // vas holds variable assignments in the current block (map from variable symbol to ssa value).
+  // This map is moved into defvars when a block ends (internal call to endBlock.)
   SymMap* vars; // Sym => IRValue*
-    // variable assignments in the current block (map from variable symbol to ssa value)
-    // this map is moved into defvars when a block ends (internal call to endBlock.)
 
-  Array defvars; void* defvarsStorage[512]; // list of SymMap*  (from vars)
-    // all defined variables at the end of each block. Indexed by block id.
-    // null indicates there are no variables in that block.
+  // defvars maps block id to defined variables at the end of each block.
+  // A NULL entry indicates there are no variables in that block.
+  Array defvars; void* defvarsStorage[512]; // [block_id] => SymMap* from vars field
 
+  // funstack is used for saving current function generation state when stumbling upon
+  // a call op to a not-yet-generated function.
   Array funstack; void* funstackStorage[8];
-    // used for saving current function generation state when stumbling upon a call op
-    // to a not-yet-generated function.
 
-  // incompletePhis :Map<Block,Map<ByteStr,Value>>|null
-    // tracks pending, incomplete phis that are completed by sealBlock for
-    // blocks that are sealed after they have started. This happens when preds
-    // are not known at the time a block starts, but is known and registered
-    // before the block ends.
+  // incompletePhis tracks pending, incomplete phis that are completed by sealBlock for
+  // blocks that are sealed after they have started. This happens when preds are not known
+  // at the time a block starts, but is known and registered before the block ends.
+  //incompletePhis :Map<Block,Map<ByteStr,Value>>|null
 
 } IRBuilder;
 
-// start a new IRPkg.
-// b must be zeroed memory or a reused builder.
-void IRBuilderInit(IRBuilder*, Build*, IRBuilderFlags flags);
-void IRBuilderDispose(IRBuilder*); // frees b->mem
+// IRBuilderInit starts a new IRPkg.
+// Initially b must be zeroed memory. You can pass a previously-used b to recycle it.
+// Returns false if OS memory allocation failed.
+bool IRBuilderInit(IRBuilder* b, Build* build, IRBuilderFlags flags);
 
-// -------------------------
-// Co AST-specific functions
+// IRBuilderDispose frees all memory allocated by b.
+void IRBuilderDispose(IRBuilder* b);
 
 // IRBuilderAddAST adds a top-level AST node to the current IRPkg.
-// Returns false if any errors occured.
+// Returns false if any errors occurred.
+// After AST has been added, the AST's memory may be freed as IR does not reference the AST.
 bool IRBuilderAddAST(IRBuilder*, Node*);
 
 // IROpFromAST performs a lookup of IROp based on one or two inputs (type1 & type2)
