@@ -2,7 +2,6 @@ fun a() {
   b()
   x = 4
 }
-#!EOF
 fun b() {
   x int
 }
