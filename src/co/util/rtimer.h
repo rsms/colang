@@ -3,6 +3,7 @@ ASSUME_NONNULL_BEGIN
 
 typedef struct RTimer {
   struct rusage ru;
+  u64           nstime;
 } RTimer;
 
 void rtimer_start(RTimer* rt);

@@ -1,6 +1,8 @@
 #include <rbase/rbase.h>
 #include "sexpr.h"
 
+ASSUME_NONNULL_BEGIN
+
 typedef struct SExprParser {
   Mem       mem;   // memory allocator for SExpr nodes
   const u8* start; // start of source
@@ -39,6 +41,13 @@ inline static u8 sexpr_endtok(u8 starttok) {
 }
 
 
+static void sexpr_skip_line(SExprParser* p) {
+  // note: expects p->curr to be at some byte that triggered the "skip", like ';'
+  while (p->curr < p->end && *(++p->curr) != '\n') {
+  }
+}
+
+
 static SExpr* sexpr_parse_list(SExprParser* p, u8 endtok, SExpr* list) {
   SExpr* tail = NULL;
   while (p->curr < p->end) {
@@ -48,6 +57,10 @@ static SExpr* sexpr_parse_list(SExprParser* p, u8 endtok, SExpr* list) {
     switch (b) {
       case ' ': case '\t':
       case '\r': case '\n':
+        // skip whitespace
+        break;
+      case ';': // ";" line comment
+        sexpr_skip_line(p);
         break;
       case '(': case '[': case '{':
         n = memalloct(p->mem, SExpr);
@@ -217,3 +230,6 @@ R_TEST(sexpr_prettyprint) {
     "", s);
   str_free(s);
 }
+
+
+ASSUME_NONNULL_END

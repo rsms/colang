@@ -1,11 +1,46 @@
+/*
+
+AST-based parser test program.
+
+Parses all *.co files in FIXTURES_DIR. If parsing fails the test fails.
+
+If a file contains a "#*!AST ... *#" comment block, the contents of that comment is
+compared with the results of the parser. If the results differ the test fails.
+
+The expected AST in a "!AST" is a LISP representation of the parse result as produced
+by NodeRepr. The first line of an "!AST" comment (immediately following "!AST") can
+declare flags for NodeReprFlagsParse to enable additional detail for comparison.
+AST text is pretty-printed so you can format it however you'd like, line breaks or not.
+Common LISP ";" line comments are supported as well, i.e. "; line comment..."
+
+Examples:
+
+  foo.co
+  | x = 4
+  | #*!AST
+  | (Let x (IntLit 4))
+  | *#
+
+  foo.co with types
+  | x = 4
+  | #*!AST types
+  | (Let x (IntLit 4 ideal) [ideal])
+  | *#
+
+  foo.co with types, use count and attributes
+  | x = 4
+  | #*!AST types usecount attrs
+  | (Let x @const (uses 0) (IntLit @const 4 ideal) [ideal])
+  | *#
+
+*/
 #include "co/common.h"
 #include "co/build.h"
 #include "co/util/array.h"
 #include "co/util/rtimer.h"
 #include "co/util/tmpstr.h"
+#include "co/util/sexpr.h"
 #include "co/parse/parse.h"
-
-#include "sexpr.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -34,6 +69,7 @@ static bool diff_ast(
 
 static bool run_parse_test(Str cofile) {
   //dlog("parse %s", cofile);
+
   TestCtx* tx = testctx_new();
   bool ok = false;
 
@@ -49,7 +85,9 @@ static bool run_parse_test(Str cofile) {
   const char* expectstr = extract_src_ast_comment(tx->build->pkg->srclist, &expectlen);
 
   // if there's an expected AST defined, compare that to the actual AST
-  if (expectlen > 0) {
+  if (expectlen == 0) {
+    dlog("warning: skipping verififcation of %s as no #*!AST...*# comment found", cofile);
+  } else {
     // parse any repr flags following "#*!AST ..."
     // find end of first line
     const char* ln = memchr(expectstr, '\n', (size_t)expectlen);
@@ -70,9 +108,6 @@ static bool run_parse_test(Str cofile) {
     // Note: +1 & -2 to exclude "(" ... ")" of actualstr
     if (!diff_ast(cofile, expectstr, expectlen, *actualstr + 1, str_len(*actualstr) - 2)) {
       // the actual AST differs from the expected AST -- this is a test failure
-      //
-      // fprintf(stderr, BANNER "Parse returned:\n");
-      // dump_ast("", ast);
       goto end;
     }
   }
@@ -251,24 +286,6 @@ static void testctx_free(TestCtx* tx) {
 }
 
 
-// static void dump_ast(const char* msg, Node* ast) {
-//   Str* sp = tmpstr_get();
-//   *sp = NodeRepr(ast, *sp, NodeReprTypes | NodeReprUseCount);
-
-//   FILE* fp = stderr;
-//   flockfile(fp);
-//   size_t msglen = msg ? strlen(msg) : 0;
-//   if (msglen) {
-//     fwrite(msg, msglen, 1, fp);
-//     fputc(' ', fp);
-//   }
-//   fwrite(*sp, str_len(*sp), 1, fp);
-//   fputc('\n', fp);
-//   funlockfile(fp);
-//   fflush(fp);
-// }
-
-
 static bool has_suffix(const char* subj, size_t subjlen, const char* suffix, size_t suffixlen) {
   if (subjlen < suffixlen)
     return false;
@@ -306,26 +323,38 @@ static void find_files(Array* files, const char* dir, const char* filter_suffix)
 }
 
 
-static int run_parse_test_thread(void* cofile) {
-  return run_parse_test((Str)cofile) ? 0 : 1;
+static int run_parse_test_thread(void* chp) {
+  Chan* ch = (Chan*)chp;
+  Str cofile = NULL;
+  while (ChanRecv(ch, &cofile)) {
+    if (!run_parse_test(cofile))
+      return 1;
+  }
+  return 0;
 }
 
 
 static bool run_parse_tests_concurrently(Array* cofiles) {
-  // auto ncpu = os_ncpu();
-  thrd_t* threads = memalloc(MemHeap, sizeof(thrd_t) * cofiles->len);
-  for (u32 i = 0; i < cofiles->len; i++) {
-    thrd_t* t = &threads[i];
-    auto tstatus = thrd_create(t, run_parse_test_thread, (void*)cofiles->v[i]);
-    asserteq(tstatus, thrd_success);
+  Mem mem = MemHeap;
+  u32 nthreads = os_ncpu() - 1;
+  Chan* ch = ChanOpen(mem, sizeof(Str), /*buffer_size*/nthreads);
+  thrd_t* threads = memalloc(mem, sizeof(thrd_t) * nthreads);
+  for (u32 i = 0; i < nthreads; i++) {
+    auto tstatus = thrd_create(&threads[i], run_parse_test_thread, (void*)ch);
+    assert(tstatus == thrd_success);
   }
-  bool ok = true;
   for (u32 i = 0; i < cofiles->len; i++) {
+    ChanSend(ch, &cofiles->v[i]);
+  }
+  ChanClose(ch);
+  bool ok = true;
+  for (u32 i = 0; i < nthreads; i++) {
     int retval = 0;
     thrd_join(threads[i], &retval);
     ok = ok && retval == 0;
   }
-  memfree(MemHeap, threads);
+  ChanFree(ch);
+  memfree(mem, threads);
   return ok;
 }
 
@@ -340,10 +369,14 @@ static bool run_parse_tests_serially(Array* cofiles) {
 
 
 int main(int argc, const char** argv) {
-  #if R_TESTING_ENABLED
-  if (testing_main(1, argv) != 0)
-    return 1;
-  #endif
+  // #if R_TESTING_ENABLED
+  // if (testing_main(1, argv) != 0)
+  //   return 1;
+  // #endif
+
+  RTimer rtimer = {0};
+  rtimer_start(&rtimer);
+  auto time_start = nanotime();
 
   progname = path_base(argv[0]);
 
@@ -358,9 +391,9 @@ int main(int argc, const char** argv) {
     return 1;
   }
 
-  // run all tests (CLI flag -T enables running tests on multiple threads)
+  // run all tests (CLI flag -threads enables running tests on multiple threads)
   bool ok = false;
-  if (cofiles.len > 1 && argc > 1 && strcmp(argv[1], "-T") == 0) {
+  if (cofiles.len > 1 && argc > 1 && strcmp(argv[1], "-threads") == 0) {
     ok = run_parse_tests_concurrently(&cofiles);
   } else {
     ok = run_parse_tests_serially(&cofiles);
@@ -369,7 +402,13 @@ int main(int argc, const char** argv) {
   if (!ok)
     return 1;
 
-  dlog("OK");
+  rtimer_log(&rtimer, "%u tests", cofiles.len);
+
+  // report OK with real time duration
+  char buf[64];
+  auto buflen = fmtduration(buf, sizeof(buf), nanotime() - time_start);
+  dlog("OK: %u tests passed in %.*s", cofiles.len, buflen, buf);
+
   return 0;
 }
 

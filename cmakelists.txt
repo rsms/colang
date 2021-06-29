@@ -200,6 +200,7 @@ add_library(colib
   src/co/util/array_test.c
   src/co/util/ptrmap.c
   src/co/util/rtimer.c
+  src/co/util/sexpr.c
   src/co/util/sym.c
   src/co/util/symmap.c
   src/co/util/tmpstr.c
@@ -271,15 +272,18 @@ add_custom_command(
 # colib unit tests
 add_executable(test_colib src/co/co.c)
 target_link_libraries(test_colib PRIVATE colib)
+ckit_force_load_lib(test_colib colib) # make sure all tests in colib are included
 ckit_add_test(test-colib test_colib -testonly)
 
 # parser tests
-add_executable(test_parser test/co-parser-test.c test/sexpr.c)
+add_executable(test_parser
+  test/co-parser-test.c
+)
 target_link_libraries(test_parser PRIVATE colib)
-# ckit_add_test(test-parser test_parser -T) # threaded
-ckit_add_test(test-parser test_parser)
+ckit_add_test(test-parser test_parser -threads) # threaded
+# ckit_add_test(test-parser test_parser) # not threaded; run tests one by one
 
-# make sure co unit tests run before running the more high-level parser tests
+# make sure co unit tests run before parser tests
 add_dependencies(test_parser test_colib)
 
 
