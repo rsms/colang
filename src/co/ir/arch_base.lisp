@@ -69,9 +69,7 @@
   (ConstPtr  () -> ptr   Constant  (aux ptr)) ; like a pointer in C
   ;
   ; Aggregate values
-  ;(Array ($T ...) -> [$T] (aux i64)) ; defines an array. size in aux
-  (Array ... -> array)  ; defines an array
-  (Struct ... -> struct) ; defines a struct
+  (Alloca ... -> mem)  ; defines a stack allocation (may be promoted to registers)
   (GEP (ptr usize) -> ptr) ; Get Element Pointer
   ;
   ; ---------------------------------------------------------------------

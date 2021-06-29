@@ -279,6 +279,9 @@ static const IRType* get_type(IRBuilder* u, Type* ast_type) {
       return get_basic_type(u, ast_type);
 
     case NArrayType:
+      //
+      // TODO: consider adding "user" types to the IRPkg
+      //
       return get_array_type(u, ast_type);
 
     // case NStructType:
@@ -350,7 +353,7 @@ static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
   // An array is concretely represented by a pointer.
 
   auto t = get_type(u, n->type);
-  auto v = IRValueAlloc(u->mem, OpArray, t, n->pos);
+  auto v = IRValueAlloc(u->mem, OpAlloca, t, n->pos);
 
   for (u32 i = 0; i < n->array.a.len; i++) {
     Node* cn = (Node*)n->array.a.v[i];

@@ -35,9 +35,7 @@ typedef enum IROp {
   OpConstPtr,	// like a pointer in C
   //
   // Aggregate values
-  //(Array ($T ...) -> 
-  OpArray,	// defines an array
-  OpStruct,	// defines a struct
+  OpAlloca,	// defines a stack allocation (may be promoted to registers)
   OpGEP,	// Get Element Pointer
   //
   // ---------------------------------------------------------------------
