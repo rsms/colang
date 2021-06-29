@@ -54,6 +54,8 @@ void IRBuilderDispose(IRBuilder* b);
 // IRBuilderAddAST adds a top-level AST node to the current IRPkg.
 // Returns false if any errors occurred.
 // After AST has been added, the AST's memory may be freed as IR does not reference the AST.
+// It does however hold on to references to symbols (Sym) but those are usually allocated
+// separately from the AST.
 bool IRBuilderAddAST(IRBuilder*, Node*);
 
 // IROpFromAST performs a lookup of IROp based on one or two inputs (type1 & type2)

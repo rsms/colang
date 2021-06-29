@@ -93,8 +93,8 @@ struct IRBlock {
   IRBlock*     succs[2]; // Successor/subsequent blocks (CFG)
   IRBlock*     preds[2]; // Predecessors (CFG)
 
-  // three-address code values
-  Array values; void* valuesStorage[8]; // IRValue*[]
+  // SSA values
+  Array values; void* valuesStorage[64]; // IRValue*[]
 
   // control is a value that determines how the block is exited.
   // Its value depends on the kind of the block. For instance, a IRBlockIf has a boolean
@@ -107,14 +107,14 @@ struct IRBlock {
 struct IRFun {
   Mem           mem; // owning allocator
   Array         blocks; void* blocksStorage[4]; // IRBlock*[]
-  const IRType* type;   // prototype
-  Sym           typeid; // TypeCode encoding
-  Sym           name;
+  const IRType* type;    // prototype
+  Sym           typeid;  // TypeCode encoding
+  Sym           name;    // function name
   Pos           pos;     // source position
   u32           nparams; // number of parameters
 
   // implementation statistics
-  u32 ncalls;     // number of function calls that this function makes (total)
+  u32 ncalls;     // number of function calls that this function makes (all blocks)
   u32 npurecalls; // number of function calls to functions marked as "pure"
   u32 nglobalw;   // number of writes to globals
   // u32 stacksize; // size of stack frame in bytes (aligned)
