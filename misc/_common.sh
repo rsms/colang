@@ -288,9 +288,9 @@ _git_pull_if_needed() {
 
     _log git checkout "$githash"
          git checkout "$githash"
+    _popd
   else
     _log git clone --branch "$githash" "$repourl" "$gitdir"
          git clone --branch "$githash" "$repourl" "$gitdir"
   fi
-  _popd
 }
