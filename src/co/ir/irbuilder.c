@@ -280,7 +280,7 @@ static const IRType* get_type(IRBuilder* u, Type* ast_type) {
 
     case NArrayType:
       //
-      // TODO: consider adding "user" types to the IRPkg
+      // TODO: consider adding "user types" to the IRPkg
       //
       return get_array_type(u, ast_type);
 

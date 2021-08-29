@@ -3,11 +3,13 @@ fun add(x, y int) int {
 }
 
 fun main() {
-  a = 12 # equivalent to var a = 12
-  b = a
-  if a > 5 {
-    b = 3
-    var a int # explicitly use var to declare new instead of storing to outer a
-  }
-  return add(b, b)
+  # a = 12 # equivalent to var a = 12
+  # b = a
+  # if a > 5 {
+  #   b = 3
+  #   var a int # explicitly use var to declare new instead of storing to outer a
+  # }
+  a = 3
+  b = 4
+  add(a, b)
 }

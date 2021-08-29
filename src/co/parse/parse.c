@@ -1266,6 +1266,10 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr) {
     n->fun.result = pType(p, fl);
     NodeTransferUnresolved(n, n->fun.result);
+  } else {
+    // no result type specified is the same as "nil" (does not return a value)
+    n->fun.result = Const_nil;
+    // ft->t.fun.result = Type_nil;
   }
 
   // set endpos

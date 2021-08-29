@@ -5,8 +5,9 @@ set(CMAKE_CPP_COMPILER ${LLVM_PREFIX}/bin/clang++)
 set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
 # CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
-set(CO_WITH_LLVM yes)
 set(CO_ENABLE_RT yes)
+set(CO_WITH_LLVM no)
+set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
 
 # CO_LLVM_LINK_TYPE = SHARED | STATIC
 #   llvm libraries can either be statically linked into the co executable
@@ -21,13 +22,32 @@ if (NOT CO_LLVM_LINK_TYPE)
   endif()
 endif()
 
+if (NOT CO_BN_LINK_TYPE)
+  set(CO_BN_LINK_TYPE STATIC)
+  if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+    set(CO_BN_LINK_TYPE SHARED)
+  endif()
+endif()
+
+
 set(PROJECT_LANGUAGES C)
-if (CO_WITH_LLVM AND CO_ENABLE_RT)
+if ((CO_WITH_LLVM OR CO_WITH_BINARYEN) AND CO_ENABLE_RT)
   set(PROJECT_LANGUAGES C CXX ASM)
-elseif(CO_WITH_LLVM)
+elseif(CO_WITH_LLVM OR CO_WITH_BINARYEN)
   set(PROJECT_LANGUAGES C CXX)
 elseif (CO_ENABLE_RT)
   set(PROJECT_LANGUAGES C ASM)
+endif()
+
+
+if (CO_WITH_BINARYEN)
+  set(BUILD_STATIC_LIB ON) # for binaryen
+  include_directories(
+    $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/include>
+  )
+  #link_directories(${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib)
+  add_subdirectory("deps/binaryen" EXCLUDE_FROM_ALL)
+  unset(BUILD_STATIC_LIB)
 endif()
 
 
@@ -67,6 +87,7 @@ add_subdirectory(deps/jemalloc EXCLUDE_FROM_ALL)
 
 #————————————————————————————————————————————————————————————————————————————————————————————————
 # llvm
+if (CO_WITH_LLVM)
 
 set(CO_LLVM_COMPONENTS
   # LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
@@ -119,9 +140,61 @@ message(VERBOSE "LLVM_LD_FLAGS    '${LLVM_LD_FLAGS}'")
 message(VERBOSE "LLVM_SYSTEM_LIBS '${LLVM_SYSTEM_LIBS}'")
 message(VERBOSE "LLVM_LLVM_LIBS   '${LLVM_LLVM_LIBS}'")
 
+endif()
+#————————————————————————————————————————————————————————————————————————————————————————————————
+# libcobn -- binaryen C library
+if (CO_WITH_BINARYEN)
 
+add_library(cobn ${CO_BN_LINK_TYPE} src/co/bn/lib.cc)
+target_include_directories(cobn
+  PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/include
+  PUBLIC
+    ${CMAKE_CURRENT_BINARY_DIR}/binaryen-c-include
+)
+target_compile_options(cobn PUBLIC
+  $<$<COMPILE_LANGUAGE:CXX>:-stdlib=libc++ -nostdinc++>
+  $<$<COMPILE_LANGUAGE:C>:${LLVM_C_FLAGS}>
+  $<$<COMPILE_LANGUAGE:CXX>:${LLVM_CXX_FLAGS}>
+)
+target_link_directories(cobn
+  PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/zlib/lib
+)
+target_link_options(cobn PRIVATE "-Wl,-no_pie" ${LLVM_LD_FLAGS})
+target_link_libraries(cobn PRIVATE
+  binaryen
+  c++abi
+)
+
+if (CO_BN_LINK_TYPE STREQUAL "SHARED")
+  # make sure nothing is stripped from the static libs
+  set(CO_BN_STATIC_LIBS
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib/libc++.a
+    ${CMAKE_CURRENT_BINARY_DIR}/deps/binaryen/lib/libbinaryen.a
+  )
+  foreach(lib IN LISTS CO_BN_STATIC_LIBS)
+    target_link_options(cobn PRIVATE "-Wl,-force_load,${lib}")
+  endforeach()
+else()
+  # set CO_BN_STATICLIB so that we can export a dummy symbol to avoid linker warning
+  target_compile_definitions(cobn PRIVATE CO_BN_STATICLIB=1)
+endif()
+
+# binaryen does not provide a clean include directory, so copy the relevant headers
+file(
+  COPY
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/binaryen/src/binaryen-c.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/binaryen/src/wasm-delegations.def
+  DESTINATION
+    ${CMAKE_CURRENT_BINARY_DIR}/binaryen-c-include/)
+
+
+endif()
 #————————————————————————————————————————————————————————————————————————————————————————————————
 # libcollvm
+if (CO_WITH_LLVM)
 
 execute_process(
   COMMAND ${LLVM_PREFIX}/bin/llvm-config --libfiles --link-static ${CO_LLVM_COMPONENTS}
@@ -157,8 +230,10 @@ target_compile_options(collvm PUBLIC
   $<$<COMPILE_LANGUAGE:C>:${LLVM_C_FLAGS}>
   $<$<COMPILE_LANGUAGE:CXX>:${LLVM_CXX_FLAGS}>
 )
-target_link_directories(collvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/zlib/lib)
-target_link_directories(collvm PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib)
+target_link_directories(collvm PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/deps/zlib/lib
+  ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/lib
+)
 target_link_options(collvm PRIVATE "-Wl,-no_pie" ${LLVM_LD_FLAGS})
 target_link_libraries(collvm PRIVATE
   # c++
@@ -168,7 +243,7 @@ target_link_libraries(collvm PRIVATE
   ${LLD_LIBFILES}
 )
 
-
+endif()
 #————————————————————————————————————————————————————————————————————————————————————————————————
 # co
 add_library(colib
@@ -213,6 +288,10 @@ target_link_libraries(colib PUBLIC
   xxhash
 )
 
+
+if (CO_WITH_LLVM OR CO_WITH_BINARYEN)
+  target_link_options(colib PRIVATE "-Wl,-no_pie")
+endif()
 if (CO_WITH_LLVM)
   target_sources(colib PRIVATE
     src/co/llvm/llvm.c
@@ -220,16 +299,27 @@ if (CO_WITH_LLVM)
     src/co/llvm/lld.cc
   )
   target_compile_definitions(colib PUBLIC CO_WITH_LLVM=1)
-  target_link_options(colib PRIVATE "-Wl,-no_pie")
   target_link_libraries(colib PUBLIC collvm)
   target_precompile_headers(colib PRIVATE
     "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/co/llvm/llvm-includes.hh>"
   )
+elseif (CO_WITH_BINARYEN)
+  target_sources(colib PRIVATE
+    src/co/bn/test.c
+    src/co/bn/bn.c
+  )
+  target_compile_definitions(colib PUBLIC CO_WITH_BINARYEN=1)
+  target_link_libraries(colib PUBLIC cobn)
 endif()
 
 
 add_executable(co src/co/co.c)
 target_link_libraries(co PRIVATE colib)
+
+# make sure all unit tests are included in debug builds
+if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
+  ckit_force_load_lib(co colib)
+endif()
 
 # if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
 #   target_sources(co PRIVATE

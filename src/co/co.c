@@ -9,6 +9,12 @@
 #include "llvm/llvm.h"
 #endif
 
+#ifdef CO_WITH_BINARYEN
+#include "bn/bn.h"
+#endif
+
+//#define ENABLE_CO_IR // enable generating Co's own IR
+
 ASSUME_NONNULL_BEGIN
 
 // co filesystem directories. init() from either env (same names) or default values
@@ -164,7 +170,7 @@ static void dump_ast(const char* message, Node* ast) {
 }
 
 
-#if 1
+#ifdef ENABLE_CO_IR
 static void dump_ir(const PosMap* posmap, const IRPkg* pkg) {
   auto s = IRReprPkgStr(pkg, posmap, str_new(512));
   s = str_appendc(s, '\n');
@@ -228,6 +234,7 @@ int cmd_build(int argc, const char** argv) {
   //Mem astmem = MemLinearAlloc(1024/*pages*/); // allocate AST in a linear slab of memory
   Build build = {0};
   build_init(&build, astmem, &syms, &pkg, diag_handler, NULL);
+  build.debug = true; // include debug info
   // build.opt = CoOptFast;
   RTIMER_LOG("init build state");
 
@@ -256,12 +263,12 @@ int cmd_build(int argc, const char** argv) {
 
   // validate AST produced by parser
   #ifdef DEBUG
-  RTIMER_START();
-  bool valid = NodeValidate(&build, pkgnode);
-  RTIMER_LOG("validate");
-  if (!valid)
-    return 1;
-  dlog("AST validated OK");
+    RTIMER_START();
+    bool valid = NodeValidate(&build, pkgnode);
+    RTIMER_LOG("validate");
+    if (!valid)
+      return 1;
+    dlog("AST validated OK");
   #endif
 
   // goto end; // XXX
@@ -280,9 +287,9 @@ int cmd_build(int argc, const char** argv) {
 
     // validate AST after symbol resolution
     #ifdef DEBUG
-    if (!NodeValidate(&build, pkgnode))
-      return 1;
-    dlog("AST validated OK");
+      if (!NodeValidate(&build, pkgnode))
+        return 1;
+      dlog("AST validated OK");
     #endif
   }
 
@@ -298,30 +305,43 @@ int cmd_build(int argc, const char** argv) {
 
   //goto end; // XXX
 
-  // build IR
-  #if 1
-  RTIMER_START();
-  IRBuilder irbuilder = {};
-  IRBuilderInit(&irbuilder, &build, IRBuilderComments);
-  IRBuilderAddAST(&irbuilder, pkgnode);
-  RTIMER_LOG("build Co IR");
-  PRINT_BANNER();
-  dump_ir(&build.posmap, irbuilder.pkg);
-  IRBuilderDispose(&irbuilder);
+  // build Co IR
+  #ifdef ENABLE_CO_IR
+    RTIMER_START();
+    IRBuilder irbuilder = {};
+    IRBuilderInit(&irbuilder, &build, IRBuilderComments);
+    IRBuilderAddAST(&irbuilder, pkgnode);
+    RTIMER_LOG("build Co IR");
+    PRINT_BANNER();
+    dump_ir(&build.posmap, irbuilder.pkg);
+    IRBuilderDispose(&irbuilder);
   #endif
 
-  goto end; // XXX
+  // goto end; // XXX
 
-  // emit target code
+
+  // emit target code with LLVM
   #ifdef CO_WITH_LLVM
-  PRINT_BANNER();
-  RTIMER_START();
-  if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
-    return 1;
-  }
-  RTIMER_LOG("llvm total");
+    PRINT_BANNER();
+    RTIMER_START();
+    if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
+      return 1;
+    }
+    RTIMER_LOG("llvm total");
   #endif
 
+
+  // generate WASM with binaryen
+  #ifdef CO_WITH_BINARYEN
+    RTIMER_START();
+    if (!bn_codegen(&build, pkgnode))
+      return 1;
+    RTIMER_LOG("binaryen total");
+    PRINT_BANNER();
+  #endif
+
+
+  // ————————————————————————————————
   UNUSED /* label */ end:
   {
     // print how much (real) time we spent

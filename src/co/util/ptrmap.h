@@ -11,6 +11,8 @@ ASSUME_NONNULL_BEGIN
 // PtrMapInit initializes a map structure. initbuckets is the number of initial buckets.
 void PtrMapInit(PtrMap*, u32 initbuckets, Mem mem);
 
+static bool PtrMapIsInit(const PtrMap*);
+
 // PtrMapDispose frees heap memory used by a map, but leaves PtrMap untouched.
 void PtrMapDispose(PtrMap*);
 
@@ -40,5 +42,8 @@ typedef void(PtrMapIterator)(const void* key, void* value, bool* stop, void* use
 
 // PtrMapIter iterates over entries of the map.
 void PtrMapIter(const PtrMap*, PtrMapIterator*, void* userdata);
+
+
+inline static bool PtrMapIsInit(const PtrMap* m) { return m->buckets != NULL; }
 
 ASSUME_NONNULL_END
