@@ -117,7 +117,7 @@ bool llvm_optmod(
   module.setTargetTriple(targetMachine.getTargetTriple().str());
   module.setDataLayout(targetMachine.createDataLayout());
 
-  bool is_debug = opt == CoOptNone;
+  bool optimize = opt != CoOptNone;
 
   // pass performance debugging
   bool enable_time_report = false;
@@ -125,11 +125,11 @@ bool llvm_optmod(
 
   // Pipeline configurations
   PipelineTuningOptions pipelineOpt;
-  pipelineOpt.LoopUnrolling = !is_debug;
-  pipelineOpt.SLPVectorization = !is_debug;
-  pipelineOpt.LoopVectorization = !is_debug;
-  pipelineOpt.LoopInterleaving = !is_debug;
-  pipelineOpt.MergeFunctions = !is_debug;
+  pipelineOpt.LoopUnrolling = optimize;
+  pipelineOpt.SLPVectorization = optimize;
+  pipelineOpt.LoopVectorization = optimize;
+  pipelineOpt.LoopInterleaving = optimize;
+  pipelineOpt.MergeFunctions = optimize;
 
   // Instrumentations
   // https://github.com/ziglang/zig/blob/52d871844c643f396a2bddee0753d24ff7/src/zig_llvm.cpp#L190
@@ -146,7 +146,7 @@ bool llvm_optmod(
   CGSCCAnalysisManager    cgsccAM;
   ModuleAnalysisManager   moduleAM;
 
-  // Register the AA manager first so that our version is the one used
+  // Register the AA (Alias Analysis) manager first so that our version is the one used
   functionAM.registerPass([&] { return passBuilder.buildDefaultAAPipeline(); });
 
   // Register TargetLibraryAnalysis
@@ -177,7 +177,7 @@ bool llvm_optmod(
   #endif
 
   // Passes specific for release build
-  if (!is_debug) {
+  if (optimize) {
     passBuilder.registerPipelineStartEPCallback([](ModulePassManager& mpm, OptimizationLevel OL) {
       mpm.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
     });

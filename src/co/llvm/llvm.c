@@ -5,6 +5,7 @@
 
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
 #include <llvm-c/Transforms/Scalar.h>
+#include <llvm-c/LLJIT.h>
 
 // rtimer helpers
 #define ENABLE_RTIMER_LOGGING
@@ -516,7 +517,9 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   LLVMDumpModule(b->mod);
   #endif
 
+#ifdef DEBUG
 finish:
+#endif
   SymMapDispose(&b->typemap);
   if (b->FPM)
     LLVMDisposePassManager(b->FPM);
@@ -534,12 +537,14 @@ static LLVMTargetRef select_target(const char* triple) {
     LLVMDisposeMessage(errmsg);
     target = NULL;
   } else {
+    #if DEBUG
     const char* name = LLVMGetTargetName(target);
     const char* description = LLVMGetTargetDescription(target);
     const char* jit = LLVMTargetHasJIT(target) ? " jit" : "";
     const char* mc = LLVMTargetHasTargetMachine(target) ? " mc" : "";
     const char* _asm = LLVMTargetHasAsmBackend(target) ? " asm" : "";
     dlog("selected target: %s (%s) [abilities:%s%s%s]", name, description, jit, mc, _asm);
+    #endif
   }
   return target;
 }
@@ -585,6 +590,122 @@ static LLVMTargetMachineRef select_target_machine(
 }
 
 
+static LLVMOrcThreadSafeModuleRef llvm_jit_buildmod(
+  Build* build, Node* pkgnode, const char* triple)
+{
+  RTIMER_INIT;
+
+  LLVMOrcThreadSafeContextRef tsctx = LLVMOrcCreateNewThreadSafeContext();
+  LLVMContextRef ctx = LLVMOrcThreadSafeContextGetContext(tsctx);
+  LLVMModuleRef M = LLVMModuleCreateWithNameInContext(build->pkg->id, ctx);
+
+  // build module; Co AST -> LLVM IR
+  // TODO: move the IR building code to C++
+  RTIMER_START();
+  build_module(build, pkgnode, M);
+  RTIMER_LOG("build llvm IR");
+
+  // Wrap the module and our ThreadSafeContext in a ThreadSafeModule.
+  // Dispose of our local ThreadSafeContext value.
+  // The underlying LLVMContext will be kept alive by our ThreadSafeModule, TSM.
+  LLVMOrcThreadSafeModuleRef TSM = LLVMOrcCreateNewThreadSafeModule(M, tsctx);
+  LLVMOrcDisposeThreadSafeContext(tsctx);
+  return TSM;
+}
+
+
+static int llvm_jit_handle_err(LLVMErrorRef Err) {
+  char* errmsg = LLVMGetErrorMessage(Err);
+  fprintf(stderr, "LLVM JIT error: %s\n", errmsg);
+  LLVMDisposeErrorMessage(errmsg);
+  return 1;
+}
+
+
+int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
+  dlog("llvm_jit");
+  RTIMER_INIT;
+
+  int main_result = 0;
+  LLVMErrorRef err;
+
+  // Initialize native target codegen and asm printer
+  LLVMInitializeNativeTarget();
+  LLVMInitializeNativeAsmPrinter();
+
+  // Create the JIT instance
+  LLVMOrcLLJITRef J;
+  if ((err = LLVMOrcCreateLLJIT(&J, 0))) {
+    main_result = llvm_jit_handle_err(err);
+    goto llvm_shutdown;
+  }
+
+
+  // build module
+  LLVMOrcThreadSafeModuleRef M = llvm_jit_buildmod(build, pkgnode, triple);
+  LLVMOrcResourceTrackerRef RT;
+
+  // Add our demo module to the JIT
+  LLVMOrcJITDylibRef MainJD = LLVMOrcLLJITGetMainJITDylib(J);
+    RT = LLVMOrcJITDylibCreateResourceTracker(MainJD);
+  if ((err = LLVMOrcLLJITAddLLVMIRModuleWithRT(J, RT, M))) {
+    // If adding the ThreadSafeModule fails then we need to clean it up
+    // ourselves. If adding it succeeds the JIT will manage the memory.
+    LLVMOrcDisposeThreadSafeModule(M);
+    main_result = llvm_jit_handle_err(err);
+    goto jit_cleanup;
+  }
+
+  // Look up the address of our demo entry point.
+  LLVMOrcJITTargetAddress entry_addr;
+  if ((err = LLVMOrcLLJITLookup(J, &entry_addr, "main"))) {
+    main_result = llvm_jit_handle_err(err);
+    goto mod_cleanup;
+  }
+
+  // If we made it here then everything succeeded. Execute our JIT'd code.
+  auto entry_fun = (int(*)(void))entry_addr;
+  int result = entry_fun();
+  fprintf(stderr, "main => %i\n", result);
+
+mod_cleanup:
+  // Remove the code
+  if ((err = LLVMOrcResourceTrackerRemove(RT))) {
+    main_result = llvm_jit_handle_err(err);
+    goto jit_cleanup;
+  }
+
+  // Attempt a second lookup — we expect an error as the code & symbols have been removed
+  #if DEBUG
+  LLVMOrcJITTargetAddress tmp;
+  if ((err = LLVMOrcLLJITLookup(J, &tmp, "main")) != 0) {
+    // expect error
+    LLVMDisposeErrorMessage(LLVMGetErrorMessage(err)); // must release error message
+  } else {
+    assert(err != 0); // expected error
+  }
+  #endif
+
+jit_cleanup:
+  // Destroy our JIT instance. This will clean up any memory that the JIT has
+  // taken ownership of. This operation is non-trivial (e.g. it may need to
+  // JIT static destructors) and may also fail. In that case we want to render
+  // the error to stderr, but not overwrite any existing return value.
+  LLVMOrcReleaseResourceTracker(RT);
+  dlog("LLVMOrcDisposeLLJIT");
+  if ((err = LLVMOrcDisposeLLJIT(J))) {
+    int x = llvm_jit_handle_err(err);
+    if (main_result == 0)
+      main_result = x;
+  }
+
+llvm_shutdown:
+  // Shut down LLVM.
+  LLVMShutdown();
+  return main_result;
+}
+
+
 bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   dlog("llvm_build_and_emit");
   bool ok = false;
@@ -593,11 +714,13 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   LLVMContextRef ctx = LLVMContextCreate();
   LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(build->pkg->id, ctx);
 
+
   // build module; Co AST -> LLVM IR
   // TODO: move the IR building code to C++
   RTIMER_START();
   build_module(build, pkgnode, mod);
   RTIMER_LOG("build llvm IR");
+
 
   // select target and emit machine code
   RTIMER_START();
@@ -621,9 +744,10 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   LLVMSetModuleDataLayout(mod, dataLayout);
   RTIMER_LOG("select llvm target");
 
+
   char* errmsg;
 
-  // optimize module
+  // verify, optimize and target-fit module
   RTIMER_START();
   bool enable_tsan = false;
   bool enable_lto = false;
@@ -634,9 +758,10 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
   }
   RTIMER_LOG("llvm optimize module");
   #ifdef DEBUG
-  dlog("LLVM IR module after optimizations:");
+  dlog("LLVM IR module after target-fit and optimizations:");
   LLVMDumpModule(mod);
   #endif
+
 
   // emit
   const char* obj_file = "out1.o";
@@ -712,6 +837,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
       fwrite(errmsg, strlen(errmsg), 1, stderr);
     LLVMDisposeMessage(errmsg);
   }
+
 
   // if we get here, without "goto end", all succeeded
   ok = true;

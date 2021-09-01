@@ -175,6 +175,7 @@ typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMV
 // llvm_build_and_emit
 typedef struct Node Node;
 EXTERN_C bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple);
+EXTERN_C int llvm_jit(Build* build, Node* pkgnode, const char* triple);
 
 // llvm_init_targets initializes target info and returns the default target triplet.
 // Safe to call multiple times. Just returns a cached value on subsequent calls.

@@ -102,6 +102,7 @@ set(CO_LLVM_COMPONENTS
   debuginfopdb
   debuginfodwarf
   windowsmanifest
+  orcjit
 )
 
 execute_process(

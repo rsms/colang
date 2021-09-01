@@ -324,9 +324,14 @@ int cmd_build(int argc, const char** argv) {
   #ifdef CO_WITH_LLVM
     PRINT_BANNER();
     RTIMER_START();
-    if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
-      return 1;
-    }
+
+    // JIT
+    llvm_jit(&build, pkgnode, NULL/*target=host*/);
+
+    // Build native executable
+    // if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
+    //   return 1;
+    // }
     RTIMER_LOG("llvm total");
   #endif
 
