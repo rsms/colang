@@ -184,7 +184,7 @@ typedef struct Node {
     /* t */ struct {
       Sym nullable id; // lazy; initially NULL. Computed from Node.
       union {
-        /* basic */ struct { // BasicType
+        /* basic */ struct { // BasicType (int, bool, auto, etc)
           TypeCode typeCode;
           Sym      name;
         } basic;

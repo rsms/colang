@@ -6,8 +6,8 @@ set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
 # CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
 set(CO_ENABLE_RT yes)
-set(CO_WITH_LLVM no)
-set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
+set(CO_WITH_LLVM yes)
+# set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
 
 # CO_LLVM_LINK_TYPE = SHARED | STATIC
 #   llvm libraries can either be statically linked into the co executable

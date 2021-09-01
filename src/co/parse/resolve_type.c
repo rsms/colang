@@ -259,10 +259,9 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
     ft->t.fun.params = (Type*)n->fun.params->type;
   }
 
-  if (n->fun.result) {
-    n->fun.result = resolve_type(ctx, n->fun.result, fl);
-    ft->t.fun.result = n->fun.result->type;
-  }
+  assertnotnull(n->fun.result);
+  n->fun.result = resolve_type(ctx, n->fun.result, fl);
+  ft->t.fun.result = n->fun.result->type;
 
   if (n->fun.body) {
     n->fun.body = resolve_type(ctx, n->fun.body, fl);
@@ -273,7 +272,7 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
 
     auto bodyType = n->fun.body->type;
 
-    if (ft->t.fun.result == NULL) {
+    if (ft->t.fun.result == Type_auto) {
       // inferred return type, e.g. "fun foo() { 123 } => ()->int"
       ft->t.fun.result = bodyType;
     } else {

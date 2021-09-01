@@ -544,6 +544,7 @@ static LLVMTargetRef select_target(const char* triple) {
   return target;
 }
 
+
 static LLVMTargetMachineRef select_target_machine(
   LLVMTargetRef       target,
   const char*         triple,

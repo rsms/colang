@@ -43,6 +43,7 @@ typedef enum TypeCodeFlag {
   _( NUM_END, 0, 0 ) /* sentinel; not a TypeCode */                                            \
   _( str       , 's', 0 )                                                                      \
   _( nil       , '0', 0 )                                                                      \
+  _( auto      , 'a', 0 ) /* inferred */                                                       \
   /*                                                                                         */\
   _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                       \
   /*                                                                                         */\
@@ -109,6 +110,7 @@ const char* CTypeName(CType ct);
   _( isize   ) \
   _( usize   ) \
   _( str     ) \
+  _( auto    ) \
 /*END TYPE_SYMS*/
 
 // TYPE_SYMS_PRIVATE: named types like TYPE_SYMS but not exported in the global namespace.

@@ -27,7 +27,7 @@ static Node* TypeCodeToTypeNode(TypeCode t);
 // Either returns a keyword token or TId if s is not a keyword.
 static Tok sym_langtok(Sym s);
 
-// symbols for language keywords (defined in token.h)
+// symbols for language keywords (defined in parse.h)
 #define SYM_DEF(str, _) \
   extern const Sym sym_##str;
 TOKEN_KEYWORDS(SYM_DEF)

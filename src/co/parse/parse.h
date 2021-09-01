@@ -66,11 +66,9 @@ typedef Node Type;
 /*END TOKENS*/
 #define TOKEN_KEYWORDS(_) \
   _( as,          TAs)          \
+  _( auto,        TAuto)        \
   _( break,       TBreak)       \
-  _( case,        TCase)        \
-  _( const,       TConst)       \
   _( continue,    TContinue)    \
-  _( default,     TDefault)     \
   _( defer,       TDefer)       \
   _( else,        TElse)        \
   _( enum,        TEnum)        \
@@ -79,9 +77,6 @@ typedef Node Type;
   _( if,          TIf)          \
   _( import,      TImport)      \
   _( in,          TIn)          \
-  _( interface,   TInterface)   \
-  _( is,          TIs)          \
-  _( mutable,     TMutable)     \
   _( nil,         TNil)         \
   _( return,      TReturn)      \
   _( select,      TSelect)      \
@@ -89,7 +84,6 @@ typedef Node Type;
   _( switch,      TSwitch)      \
   _( type,        TType)        \
   _( var,         TVar)         \
-  _( while,       TWhile)       \
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
 

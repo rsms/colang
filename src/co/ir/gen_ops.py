@@ -60,6 +60,7 @@ typeCodeToIRType :{str:[str]} = {
   "float64": ["f64"],
   "str":     ["str"],
   "nil":     ["nil"],
+  "auto":    ["auto"],
   "ptr":     ["ptr", "mem"],
   "fun":     ["ptr"],
   "array":   ["array"],

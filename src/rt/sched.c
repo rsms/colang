@@ -2509,7 +2509,7 @@ static void sched_init() {
   u32 nprocs = 0;
   const char* str = getenv("COMAXPROCS");
   if (!str || !parseu32(str, strlen(str), 10, &nprocs) || nprocs < 1)
-    nprocs = sys_ncpu();
+    nprocs = os_ncpu();
 
   trace("COMAXPROCS=%u", nprocs);
 

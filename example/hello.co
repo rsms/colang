@@ -1,8 +1,8 @@
-fun add(x, y int) int {
+fun add(x, y int) auto {
   x + y
 }
 
-fun main() {
+fun main() int {
   # a = 12 # equivalent to var a = 12
   # b = a
   # if a > 5 {

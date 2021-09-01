@@ -195,8 +195,9 @@ bool llvm_optmod(
   OptimizationLevel optLevel;
   switch (opt) {
     case CoOptNone:  optLevel = OptimizationLevel::O0; break;
+    case CoOptSafe:
+    case CoOptFast:  optLevel = OptimizationLevel::O3; break;
     case CoOptSmall: optLevel = OptimizationLevel::Oz; break;
-    case CoOptFast:  optLevel = OptimizationLevel::O2; break;
   }
   if (optLevel == OptimizationLevel::O0) {
     MPM = passBuilder.buildO0DefaultPipeline(optLevel, enable_lto);
