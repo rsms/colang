@@ -629,6 +629,8 @@ int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
   int main_result = 0;
   LLVMErrorRef err;
 
+  RTIMER_START();
+
   // Initialize native target codegen and asm printer
   LLVMInitializeNativeTarget();
   LLVMInitializeNativeAsmPrinter();
@@ -639,11 +641,14 @@ int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
     main_result = llvm_jit_handle_err(err);
     goto llvm_shutdown;
   }
+  RTIMER_LOG("llvm JIT init");
 
 
   // build module
   LLVMOrcThreadSafeModuleRef M = llvm_jit_buildmod(build, pkgnode, triple);
   LLVMOrcResourceTrackerRef RT;
+
+  RTIMER_START();
 
   // Add our demo module to the JIT
   LLVMOrcJITDylibRef MainJD = LLVMOrcLLJITGetMainJITDylib(J);
@@ -662,11 +667,18 @@ int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
     main_result = llvm_jit_handle_err(err);
     goto mod_cleanup;
   }
+  RTIMER_LOG("llvm JIT add module");
+
+  RTIMER_START();
 
   // If we made it here then everything succeeded. Execute our JIT'd code.
   auto entry_fun = (int(*)(void))entry_addr;
   int result = entry_fun();
+  RTIMER_LOG("llvm JIT execute module main fun");
   fprintf(stderr, "main => %i\n", result);
+
+
+  RTIMER_START();
 
 mod_cleanup:
   // Remove the code
@@ -702,6 +714,7 @@ jit_cleanup:
 llvm_shutdown:
   // Shut down LLVM.
   LLVMShutdown();
+  RTIMER_LOG("llvm JIT cleanup");
   return main_result;
 }
 
