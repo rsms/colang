@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -593,7 +593,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 
     // input arguments, in context of receiver parameters
     assertnotnull(n->call.args);
-    n->call.args = resolve_type(ctx, n->call.args, fl);
+    n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal);
     dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
 
     // pop parameter types off of the "requested type" stack
