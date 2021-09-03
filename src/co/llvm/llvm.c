@@ -704,7 +704,6 @@ jit_cleanup:
   // JIT static destructors) and may also fail. In that case we want to render
   // the error to stderr, but not overwrite any existing return value.
   LLVMOrcReleaseResourceTracker(RT);
-  dlog("LLVMOrcDisposeLLJIT");
   if ((err = LLVMOrcDisposeLLJIT(J))) {
     int x = llvm_jit_handle_err(err);
     if (main_result == 0)

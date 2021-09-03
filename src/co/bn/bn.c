@@ -2,8 +2,7 @@
 #include "../parse/parse.h"
 #include "../util/ptrmap.h"
 #include "bn.h"
-
-#include <binaryen-c.h>
+#include "libbn.h"
 
 typedef struct BNBuilder BNBuilder;
 
@@ -688,6 +687,15 @@ bool bn_codegen(Build* build, Node* pkgnode) {
 
   bn_build_mod(&b, pkgnode);
 
+  // import built-in print function (deps/binaryen/src/shell-interface.h)
+  const char* internalName = "print_i32";
+  const char* externalModuleName = "spectest";
+  const char* externalBaseName = "print_i32";
+  BinaryenType params = BinaryenTypeInt32();
+  BinaryenType results = b.noneType;
+  BinaryenAddFunctionImport(
+    b.module, internalName, externalModuleName, externalBaseName, params, results);
+
   BinaryenModulePrint(b.module);
   if (R_UNLIKELY(!BinaryenModuleValidate(b.module))) {
     dlog("[bn] BinaryenModuleValidate failed");
@@ -729,7 +737,8 @@ bool bn_codegen(Build* build, Node* pkgnode) {
   free(wast);
 
   // interpret
-  // BinaryenModuleInterpret(b.module);
+  // bn_mod_interpret(b.module);
+  BinaryenModuleInterpret(b.module);
 
 end:
   BNBuilderDispose(&b);

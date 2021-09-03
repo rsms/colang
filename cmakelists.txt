@@ -6,8 +6,8 @@ set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
 # CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
 set(CO_ENABLE_RT yes)
-set(CO_WITH_LLVM yes)
-# set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
+# set(CO_WITH_LLVM yes)
+set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
 
 # CO_LLVM_LINK_TYPE = SHARED | STATIC
 #   llvm libraries can either be statically linked into the co executable
@@ -146,10 +146,13 @@ endif()
 # libcobn -- binaryen C library
 if (CO_WITH_BINARYEN)
 
-add_library(cobn ${CO_BN_LINK_TYPE} src/co/bn/lib.cc)
+add_library(cobn ${CO_BN_LINK_TYPE}
+  src/co/bn/libbn.cc
+)
 target_include_directories(cobn
   PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/deps/libcxx/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/deps/binaryen/src
   PUBLIC
     ${CMAKE_CURRENT_BINARY_DIR}/binaryen-c-include
 )
