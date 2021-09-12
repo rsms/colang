@@ -1,6 +1,7 @@
 #pragma once
 #include "../build.h"
 #include "../types.h"
+#include "../util/array.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -62,7 +63,6 @@ typedef Node Type;
   _( TId            , "identifier")  \
   _( TIntLit        , "int") \
   _( TFloatLit      , "float") \
-  _( TIndent        , "indent") /* only produced when using flag ParseIndent */ \
 /*END TOKENS*/
 #define TOKEN_KEYWORDS(_) \
   _( as,          TAs)          \
@@ -117,7 +117,6 @@ typedef enum {
   ParseFlagsDefault = 0,
   ParseComments     = 1 << 1, // parse comments, populating S.comments_{head,tail}
   ParseOpt          = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
-  ParseIndent       = 1 << 3, // parse indentation, producing TIndent tokens
 } ParseFlags;
 
 // Comment is a scanned comment
@@ -127,6 +126,13 @@ typedef struct Comment {
   const u8*       ptr;  // ptr into source
   size_t          len;  // byte length
 } Comment;
+
+// Indent is a scanned comment
+typedef struct Indent {
+  bool isblock; // true if this indent is a block
+  u8   c;       // whitespace char
+  u32  n;       // number of whitespace chars
+} Indent;
 
 // Scanner reads source code and produces tokens
 typedef struct Scanner {
@@ -138,7 +144,19 @@ typedef struct Scanner {
   const u8*  inend;        // input buffer end
   bool       insertSemi;   // insert a semicolon before next newline
 
+  // indentation
+  Indent indent;           // current level
+  Indent indentDst;        // unwind to level
+  struct { // previous indentation levels (Indent elements)
+    Indent* v;
+    u32     len;
+    u32     cap;
+    Indent  storage[16];
+  } indentStack;
+
+  // token
   Tok        tok;           // current token
+  Tok        tokNextSynth;  // next synthetic token
   const u8*  tokstart;      // start of current token
   const u8*  tokend;        // end of current token
   const u8*  prevtokend;    // end of previous token

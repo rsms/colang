@@ -1,0 +1,26 @@
+#
+# if a < b  | = | if a < b {
+#   b = 5   |   |   b = 5 }
+# ——————————————————————————————————————
+# if a < b
+#         ^
+# 1. insert semicolon
+#
+#   b = 5
+# ^^
+# 2. finds indentation — push block
+#
+#   b = 5
+#        ^
+# 3. insert semicolon
+#
+# ^
+# 4. finds dedentation — pop block
+#
+#
+fun main()
+	a, b = 3,
+	       4
+	if a < b
+		b = 5
+	a + b

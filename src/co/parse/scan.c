@@ -49,17 +49,31 @@ static u8 charflags[256] = {
 
 
 bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
-  memset(s, 0, sizeof(Scanner));
-
   if (!SourceOpenBody(src))
     return false;
 
   s->build        = build;
   s->src          = src;
   s->srcposorigin = posmap_origin(&build->posmap, src);
+  s->flags        = flags;
   s->inp          = src->body;
   s->inend        = src->body + src->len;
-  s->flags        = flags;
+  s->insertSemi   = false;
+
+  s->indent = (Indent){0,0};
+  s->indentDst = (Indent){0,0};
+  s->indentStack.len = 0;
+  if (s->indentStack.cap == 0) {
+    s->indentStack.v = s->indentStack.storage;
+    s->indentStack.cap = countof(s->indentStack.storage);
+  }
+
+  s->tok          = TNone;
+  s->tokNextSynth = TNone;
+  s->tokstart     = s->inp;
+  s->tokend       = s->inp;
+  s->prevtokend   = s->inp;
+
   s->linestart    = s->inp;
   s->lineno       = 1;
 
@@ -67,6 +81,10 @@ bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
 }
 
 void ScannerDispose(Scanner* s) {
+  if (s->indentStack.v != s->indentStack.storage) {
+    memfree(s->build->mem, s->indentStack.v);
+  }
+
   // free comments
   while (1) {
     auto c = ScannerCommentPop(s);
@@ -89,7 +107,7 @@ static void serr(Scanner* s, const char* fmt, ...) {
 
 #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
   static bool tok_has_value(Tok t) {
-    return t == TId || t == TIntLit || t == TFloatLit || t == TIndent;
+    return t == TId || t == TIntLit || t == TFloatLit;
   }
   static void debug_token_production(Scanner* s) {
     auto posstr = pos_str(&s->build->posmap, ScannerPos(s), str_new(32));
@@ -239,29 +257,150 @@ static void snumber(Scanner* s) {
 }
 
 
+static void indent_stack_grow(Scanner* s) {
+  u32 cap = s->indentStack.cap * 2;
+  if (s->indentStack.v != s->indentStack.storage) {
+    s->indentStack.v = memrealloc(s->build->mem, s->indentStack.v, sizeof(Indent) * cap);
+  } else {
+    // moving array from stack to heap
+    Indent* v = (Indent*)memalloc(s->build->mem, sizeof(Indent) * cap);
+    memcpy(v, s->indentStack.v, sizeof(Indent) * s->indentStack.len);
+    s->indentStack.v = v;
+  }
+  s->indentStack.cap = cap;
+}
+
+
+static void check_mixed_indent(Scanner* s) {
+  const u8* p = &s->linestart[1];
+  u8 c = *s->linestart;
+  while (p < s->inp) {
+    if (c != *p) {
+      dlog("mixed indent '%C' != '%C'", c, *p);
+      serr(s, "mixed whitespace characters in indentation");
+      return;
+    }
+    p++;
+  }
+}
+
+
+static void indent_push(Scanner* s) {
+  #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
+  dlog(">> INDENT PUSH %u (%s) -> %u (%s)",
+    s->indent.n, s->indent.isblock ? "block" : "space",
+    s->indentDst.n, s->indentDst.isblock ? "block" : "space");
+  #endif
+
+  if (R_UNLIKELY(s->indentStack.len == s->indentStack.cap))
+    indent_stack_grow(s);
+
+  s->indentStack.v[s->indentStack.len++] = s->indent;
+  s->indent = s->indentDst;
+}
+
+
+static bool indent_pop(Scanner* s) {
+  // decrease indentation
+  assert_debug(s->indent.n > s->indentDst.n);
+
+  #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
+  Indent prev_indent = s->indent;
+  #endif
+
+  bool isblock = s->indent.isblock;
+
+  if (s->indentStack.len == 0) {
+    s->indent = s->indentDst;
+  } else {
+    s->indent = s->indentStack.v[--s->indentStack.len];
+  }
+
+  #ifdef SCANNER_DEBUG_TOKEN_PRODUCTION
+  dlog(">> INDENT POP %u (%s) -> %u (%s)",
+    prev_indent.n, prev_indent.isblock ? "block" : "space",
+    s->indent.n, s->indent.isblock ? "block" : "space");
+  #endif
+
+  return isblock;
+}
+
+
 Tok ScannerNext(Scanner* s) {
   s->prevtokend = s->tokend;
   scan_again: {}  // jumped to when comments are skipped
   // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (size_t)(s->inp - s->src->body));
 
+  if (s->tokNextSynth != TNone) {
+    s->tok = s->tokNextSynth;
+    s->tokNextSynth = TNone;
+    debug_token_production(s);
+    return s->tok;
+  }
+
+  // unwind >1-level indent
+  if (s->indent.n > s->indentDst.n) {
+    bool isblock = indent_pop(s);
+    if (isblock) {
+      s->tok = TRBrace;
+      s->tokNextSynth = TSemi; // block is followed by semicolon
+      debug_token_production(s);
+      return s->tok;
+    }
+  }
+
   // whitespace
-  bool islnstart = s->inp == s->linestart; // for flags&ParseIndent
+  bool islnstart = s->inp == s->linestart;
   while (s->inp < s->inend && (charflags[*s->inp] & CH_WHITESPACE)) {
     if (*s->inp == '\n') {
       s->lineno++;
       s->linestart = s->inp + 1;
+      islnstart = true;
+    }
+    s->inp++;
+  }
+
+  // implicit semicolon, '{' or '}'
+  if (islnstart) {
+    s->tokstart = s->linestart - 1;
+    s->tokend = s->linestart - 1;
+    s->indentDst = (Indent){
+      .isblock = s->insertSemi,
+      .c = *s->linestart,
+      .n = (i32)(s->inp - s->linestart),
+    };
+    if (s->indentDst.n > s->indent.n) {
+      // increase in indentation; produce "{"
+      indent_push(s);
+      if (s->insertSemi) {
+        if (s->build->debug)
+          check_mixed_indent(s);
+        s->insertSemi = false;
+        s->tok = TLBrace;
+        debug_token_production(s);
+        return s->tok;
+      }
+    } else {
+      if (s->build->debug)
+        check_mixed_indent(s);
+      if (s->indentDst.n < s->indent.n) {
+        // decrease in indentation
+        bool isblock = indent_pop(s);
+        if (isblock) {
+          s->tokNextSynth = TSemi; // block is followed by semicolon
+          s->tok = TRBrace;
+          s->insertSemi = false; // cancel any semicolon since we set tokNextSynth
+          debug_token_production(s);
+          return s->tok;
+        }
+      }
       if (s->insertSemi) {
         s->insertSemi = false;
-        s->tokstart = s->inp;
-        s->tokend = s->tokstart;
-        s->inp++;
         s->tok = TSemi;
         debug_token_production(s);
         return s->tok;
       }
-      islnstart = true;
     }
-    s->inp++;
   }
 
   // EOF
@@ -274,14 +413,6 @@ Tok ScannerNext(Scanner* s) {
     } else {
       s->tok = TNone;
     }
-    return s->tok;
-  }
-
-  // indentation
-  if ((s->flags & ParseIndent) && islnstart && s->inp > s->linestart && *s->inp != '#') {
-    s->tokstart = s->linestart;
-    s->tokend = s->inp;
-    s->tok = TIndent;
     debug_token_production(s);
     return s->tok;
   }

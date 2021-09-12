@@ -15,6 +15,8 @@ IR_PRIMITIVE_TYPES(I_ENUM)
 
 
 Str IRTypeStr(const IRType* t, Str s) {
+  if (!t)
+    return str_appendcstr(s, "(null)");
   switch (t->code) {
     case TypeCode_array:
       assertnotnull_debug(t->elemv);

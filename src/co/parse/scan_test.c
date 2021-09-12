@@ -58,7 +58,11 @@ R_TEST(scan_basics) {
 
 
 R_TEST(scan_comments) {
-  auto source = "hello # trailing\n# leading1\n# leading2\n123";
+  auto source =
+    "hello # trailing\n"
+    "# leading1\n"
+    "# leading2\n"
+    "123";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
     TSemi,    "",
@@ -107,49 +111,88 @@ R_TEST(scan_comment_blocks) {
 
 R_TEST(scan_indent) {
   const u32 noerrors = 0;
-  asserteq(noerrors, testscan(ParseIndent,
-    "1 A\n"
-    "  2 B\n"
-    "  2\n"
-    "    3\n"
-    "  2\n"
+  asserteq(noerrors, testscan(ParseFlagsDefault,
+    "A\n"
+    "  B\n"
+    "  C\n"
+    "    D\n"
+    "  E\n"
     "       \n" // this empty line should not cause indent to be produced
-    "  2\n",
-                    TIntLit,"1", TId,"A", TSemi,"",
-    TIndent,"  ",   TIntLit,"2", TId,"B", TSemi,"",
-    TIndent,"  ",   TIntLit,"2", TSemi,"",
-    TIndent,"    ", TIntLit,"3", TSemi,"",
-    TIndent,"  ",   TIntLit,"2", TSemi,"",
-    TIndent,"  ",   TIntLit,"2", TSemi,"",
+    "  F\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TSemi,"",
+    TId,"C", TLBrace,"",
+    TId,"D", TRBrace,"", TSemi,"",
+    TId,"E", TSemi,"",
+    TId,"F", TRBrace,"", TSemi,"",
     TNone));
 
-  // first line indent
-  asserteq(noerrors, testscan(ParseIndent,
-    "  A\n",
-    TIndent,"  ", TId,"A", TSemi,"",
+  asserteq(noerrors, testscan(ParseFlagsDefault,
+    "A\n"
+    "  B\n"
+    "    C\n"
+    "D\n" // should drop 2 levels ('}', '}')
+    "\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TLBrace,"",
+    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"D", TSemi,"",
     TNone));
 
-  // without comments (comments should not cause TIndent)
-  asserteq(noerrors, testscan(ParseIndent,
+  asserteq(noerrors, testscan(ParseFlagsDefault,
+    "A\n"
+    "  B\n"
+    "    C\n"
+    " D\n" // should drop 2 levels and end at indent=1 (not prev indent 0)
+    "\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TLBrace,"",
+    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 1
+    TId,"D", TSemi,"", // drops to 0 from a non-block indent
+    TNone));
+
+  // with comments ignored
+  asserteq(noerrors, testscan(ParseFlagsDefault,
+    "A\n"
+    "  B\n"
+    "    # comment\n"
+    "    C\n"
+    "D\n" // should drop 2 levels ('}', '}')
+    "\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TLBrace,"",
+    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"D", TSemi,"",
+    TNone));
+
+  // comment ignored, on same level causes semicolon to be produced
+  asserteq(noerrors, testscan(ParseFlagsDefault,
     "A\n"
     "  B\n"
     "  # comment\n"
-    "  C\n",
-    TId,"A", TSemi,"",
-    TIndent,"  ", TId,"B", TSemi,"",
-    TIndent,"  ", TId,"C", TSemi,"",
+    "    C\n"
+    "D\n" // should drop 2 levels ('}', '}')
+    "\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TSemi,"",
+    // -- non-block indent here --
+    TId,"C", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"D", TSemi,"",
     TNone));
 
-  // with comments
-  asserteq(noerrors, testscan(ParseIndent|ParseComments,
+  // with comments parsed
+  asserteq(noerrors, testscan(ParseComments,
     "A\n"
     "  B\n"
-    "  # comment\n"
-    "  C\n",
-    TId,"A", TSemi,"",
-    TIndent,"  ", TId,"B", TSemi,"",
-    TIndent,"  ", TComment," comment",  TId,"C", TSemi,"",
-    // Note: TComment is synthetic: the scanner doesn't actually produce TComment tokens.
+    "    # comment\n"
+    "    C\n"
+    "D\n" // should drop 2 levels ('}', '}')
+    "\n",
+    TId,"A", TLBrace,"",
+    TId,"B", TLBrace,"",
+    TComment," comment",
+    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"D", TSemi,"",
     TNone));
 }
 

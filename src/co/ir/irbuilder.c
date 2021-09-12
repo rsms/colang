@@ -280,7 +280,7 @@ static const IRType* get_type(IRBuilder* u, Type* ast_type) {
 
     case NArrayType:
       //
-      // TODO: consider adding "user types" to the IRPkg
+      // TODO: consider adding "user" types to the IRPkg
       //
       return get_array_type(u, ast_type);
 
@@ -457,6 +457,8 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
     fmtnode(n->op.left),
     n->op.right != NULL ? fmtnode(n->op.right) : "nil"
   );
+  assertnotnull_debug(n->op.left->type);
+  assertnotnull_debug(n->op.right->type);
 
   // gen left operand
   auto left  = ast_add_expr(u, n->op.left);
@@ -464,6 +466,8 @@ static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
 
   dlog("[BinOp] left:  %s", debug_fmtval(0, left));
   dlog("[BinOp] right: %s", debug_fmtval(0, right));
+  assertnotnull(left->type);
+  assertnotnull(right->type);
 
   // lookup IROp
   IROp op = IROpFromAST(n->op.op, left->type->code, right->type->code);

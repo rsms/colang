@@ -13,7 +13,7 @@
 #include "bn/bn.h"
 #endif
 
-//#define ENABLE_CO_IR // enable generating Co's own IR
+#define ENABLE_CO_IR // enable generating Co's own IR
 
 ASSUME_NONNULL_BEGIN
 
@@ -271,7 +271,7 @@ int cmd_build(int argc, const char** argv) {
     dlog("AST validated OK");
   #endif
 
-  // goto end; // XXX
+  //goto end; // XXX
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
