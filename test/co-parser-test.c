@@ -128,7 +128,7 @@ static bool diff_ast(
 {
   // run both expected and actual through the S-expression pretty-printer
   // to remove any formatting differences.
-  Mem mem = MemLinearAlloc();
+  Mem mem = MemLinearAlloc(8);
 
   SExpr* actualn = sexpr_parse((const u8*)actualstr, actuallen, mem);
   assertnotnull(actualn);

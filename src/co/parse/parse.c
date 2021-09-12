@@ -735,11 +735,23 @@ static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     return pAssignField(p, e, fl, left);
   }
 
-  // let or var assignment
-  // common case: let binding. e.g. "x = 3" -> (let (Id x) (Int 3))
-  Node* init = NULL;
-  if (got(p, TAssign))
-    init = expr(p, PREC_LOWEST, PFlagRValue);
+  Node* existing = lookupsym(p, left->ref.name);
+  if (existing) {
+    // assign to existing var and make sure the target is marked as variable
+    NodeClearConst(existing);
+    auto n = mknode(p, NAssign);
+    n->op.op = p->s.tok;
+    nexttok(p); // consume '='
+    auto right = exprOrTuple(p, e->prec, fl);
+    n->op.left = left;
+    n->op.right = right;
+    NodeTransferUnresolved(n, right);
+    return n;
+  }
+
+  // var definition, e.g. "x = 3" -> (let (Id x) (Int 3))
+  nexttok(p); // consume '='
+  Node* init = expr(p, PREC_LOWEST, PFlagRValue);
   return makeLet(p, left, init); // copies left->ref.name and left->pos
 }
 
@@ -1270,9 +1282,14 @@ static Node* PFun(Parser* p, PFlag fl) {
   }
 
   // result type(s)
-  if (p->s.tok != TLBrace && p->s.tok != TSemi && p->s.tok != TRArr) {
-    n->fun.result = pType(p, fl);
-    NodeTransferUnresolved(n, n->fun.result);
+  if (p->s.tok != TLBrace && p->s.tok != TSemi) {
+    if (p->s.tok == TRArr) {
+      // e.g. "fun foo() -> 123" => "fun foo() auto { 123 }"
+      n->fun.result = Type_auto;
+    } else {
+      n->fun.result = pType(p, fl);
+      NodeTransferUnresolved(n, n->fun.result);
+    }
   } else {
     // no result type specified is the same as "nil" (does not return a value)
     n->fun.result = Type_nil;

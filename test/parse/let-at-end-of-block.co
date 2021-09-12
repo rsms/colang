@@ -10,17 +10,17 @@ fun d() -> var x int
 # fun d() -> x int  # error since x is in rvalue position
 
 #*!AST
-(Fun a (body
+(Fun a nil (body
   (Block
     (Call (Id b) nil)
     (Let x (IntLit 4)))))
-(Fun b (body
+(Fun b nil (body
   (Block
     (Let x))))
-(Fun c (body
+(Fun c auto (body
   (Let x
     (IntLit 4))))
-(Fun d (body
+(Fun d auto (body
   (Let x)))
 
 *#
