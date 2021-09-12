@@ -504,6 +504,7 @@ static Node* useAsRValue(Parser* p, Node* expr);
 static Node* resolve_id(Parser* p, Node* id) {
   asserteq_debug(id->kind, NId);
   assertnull_debug(id->ref.target);
+  assertnotnull_debug(id->ref.name);
 
   id->ref.target = lookupsym(p, id->ref.name);
 
@@ -1331,12 +1332,45 @@ static Node* PFun(Parser* p, PFlag fl) {
 }
 
 
+static Node* pField(Parser* p) {
+  asserteq_debug(p->s.tok, TId);
+  auto n = mknode(p, NField);
+  n->field.name = p->s.name;
+  nexttok(p); // consume name
+  NodeSetConst(n);
+
+  if (R_UNLIKELY(p->s.tok == TSemi)) {
+    // e.g. "type" (implicit name)
+    auto typename = mknode(p, NId);
+    typename->ref.name = n->field.name;
+    NodeSetConst(typename);
+    n->type = resolve_id(p, typename);
+  } else {
+    // e.g. "name type"
+    n->type = pType(p, PFlagNone);
+  }
+
+  defsym(p, n->field.name, n);
+
+  if (got(p, TAssign)) {
+    // e.g. "field = initval"
+    n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
+    if (!n->type)
+      n->type = n->field.init->type;
+    NodeTransferUnresolved(n, n->field.init);
+  }
+
+  NodeTransferUnresolved(n, n->type);
+
+  return n;
+}
+
+
 // StructType = "struct" Id? "{" fields? "}"
 // fields     = field ( ";" field )* ";"?
 //
 //!PrefixParselet TStruct
 static Node* PStruct(Parser* p, PFlag fl) {
-  dlog("struct");
   auto n = mknode(p, NStructType);
   nexttok(p); // consume "struct"
 
@@ -1354,34 +1388,21 @@ static Node* PStruct(Parser* p, PFlag fl) {
   }
 
   // fields
+  pushScope(p);
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
     if (R_UNLIKELY(p->s.tok != TId)) {
       syntaxerr(p, "expecting field or type name");
       return n;
     }
-    auto field = mknode(p, NField);
-    field->field.name = p->s.name;
-    nexttok(p); // consume name
-    NodeSetConst(field);
-
-    if (R_UNLIKELY(got(p, TSemi))) {
-      // e.g. "type" (implicit name)
-      auto typename = mknode(p, NId);
-      n->ref.name = p->s.name;
-      NodeSetConst(typename);
-      field->type = resolve_id(p, typename);
-    } else {
-      // e.g. "name type"
-      field->type = pType(p, fl);
-    }
-
-    NodeTransferUnresolved(field, field->type);
+    Node* field = pField(p);
     NodeTransferUnresolved(n, field);
     NodeArrayAppend(p->build->mem, &n->t.struc.a, field);
-
     if (!got(p, TSemi))
       break;
   }
+  popScope(p); // fields
+  // note: we only allow refs to previously defined fields to enforce no cycles.
+  // Thus we don't save the scope here.
 
   want(p, TRBrace); // end of body
   return n;

@@ -80,6 +80,9 @@ static bool run_parse_test(Str cofile) {
     goto end;
   }
 
+  // remove name from output (else contents need updating when file is renamed)
+  ast->cunit.name = NULL;
+
   // extract expected AST comment
   u32 expectlen;
   const char* expectstr = extract_src_ast_comment(tx->build->pkg->srclist, &expectlen);

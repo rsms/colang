@@ -1,4 +1,12 @@
+struct Bridge {
+  occupants uint
+}
+
 struct Spaceship {
-  fuel    int
+  Bridge
   shields float32
+  engine  struct {
+    fuel   int = 1000
+    output int = fuel / 2
+  }
 }
