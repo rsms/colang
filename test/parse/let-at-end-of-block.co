@@ -14,13 +14,8 @@ fun d() -> var x int
   (Block
     (Call (Id b) nil)
     (Let x (IntLit 4)))))
-(Fun b nil (body
-  (Block
-    (Let x))))
-(Fun c auto (body
-  (Let x
-    (IntLit 4))))
-(Fun d auto (body
-  (Let x)))
+(Fun b nil (body (Let x)))
+(Fun c auto (body (Let x (IntLit 4))))
+(Fun d auto (body (Let x)))
 
 *#
