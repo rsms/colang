@@ -1007,6 +1007,9 @@ static Node* PBlock(Parser* p, PFlag fl) {
   set_endpos(p, n);
   popScope(p);
 
+  if (n->array.a.len == 1)
+    return n->array.a.v[0];
+
   return n;
 }
 
