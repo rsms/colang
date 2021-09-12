@@ -1,0 +1,4 @@
+struct Spaceship {
+  fuel    int
+  shields float32
+}

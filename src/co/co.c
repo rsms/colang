@@ -165,7 +165,7 @@ static void dump_ast(const char* message, Node* ast) {
             | NodeReprRefs
             | NodeReprAttrs
   );
-  dlog("%s%s", message, *sp);
+  fprintf(stderr, "%s%s\n", message, *sp);
   PRINT_BANNER();
 }
 
@@ -250,7 +250,7 @@ int cmd_build(int argc, const char** argv) {
     Node* filenode = Parse(&parser, &build, src, ParseFlagsDefault, pkgscope);
     if (!filenode)
       return 1;
-    NodeArrayAppend(build.mem, &pkgnode->array.a, filenode);
+    NodeArrayAppend(build.mem, &pkgnode->cunit.a, filenode);
     NodeTransferUnresolved(pkgnode, filenode);
     src = src->next;
   }
@@ -271,7 +271,7 @@ int cmd_build(int argc, const char** argv) {
     dlog("AST validated OK");
   #endif
 
-  //goto end; // XXX
+  goto end; // XXX
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {

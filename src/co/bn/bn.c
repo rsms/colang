@@ -431,8 +431,8 @@ static BinaryenExpressionRef bn_expr_id(BNBuilder* b, Node* n) {
 }
 
 
-static BinaryenExpressionRef bn_expr_arg(BNBuilder* b, Node* n) {
-  asserteq_debug(n->kind, NArg);
+static BinaryenExpressionRef bn_expr_param(BNBuilder* b, Node* n) {
+  asserteq_debug(n->kind, NParam);
   return BinaryenLocalGet(b->module, n->field.index, bn_type(b, n->type));
 }
 
@@ -490,7 +490,7 @@ static BinaryenExpressionRef bn_expr(BNBuilder* b, Node* n) {
     case NBlock:  return bn_expr_block(b, n);
     case NBinOp:  return bn_expr_binop(b, n);
     case NId:     return bn_expr_id(b, n);
-    case NArg:    return bn_expr_arg(b, n);
+    case NParam:  return bn_expr_param(b, n);
     case NReturn: return bn_expr_ret(b, n);
     case NCall:   return bn_expr_call(b, n);
 
@@ -517,6 +517,7 @@ static BinaryenExpressionRef bn_expr(BNBuilder* b, Node* n) {
     case NBasicType:
     case NTupleType:
     case NArrayType:
+    case NStructType:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 
@@ -603,8 +604,8 @@ static bool bn_add_file(BNBuilder* b, Node* n) { // n->kind==NFile
     auto src = build_get_source(b->build, n->pos);
     dlog("bn_add_file %s", src ? src->filename : "(unknown)");
   #endif
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    if (!bn_add_toplevel(b, (Node*)n->array.a.v[i]))
+  for (u32 i = 0; i < n->cunit.a.len; i++) {
+    if (!bn_add_toplevel(b, (Node*)n->cunit.a.v[i]))
       return false;
   }
   return true;
@@ -631,9 +632,9 @@ static bool bn_add_toplevel(BNBuilder* b, Node* n) {
 
 
 static bool ast_add_pkg(BNBuilder* b, Node* n) { // n->kind==NPkg
-  PtrMapInit(&b->funmap, n->array.a.len, b->build->mem);
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    Node* filenode = (Node*)n->array.a.v[i];
+  PtrMapInit(&b->funmap, n->cunit.a.len, b->build->mem);
+  for (u32 i = 0; i < n->cunit.a.len; i++) {
+    Node* filenode = (Node*)n->cunit.a.v[i];
     if (!bn_add_file(b, filenode))
       return false;
   }

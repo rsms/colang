@@ -27,13 +27,29 @@ const NodeClassFlags _NodeClassTable[_NodeKindMax] = {
 Node* NewNode(Mem mem, NodeKind kind) {
   Node* n = (Node*)memalloc(mem, sizeof(Node));
   n->kind = kind;
-  auto cfl = NodeKindClass(kind);
-  if (R_UNLIKELY((cfl & NodeClassArray) != 0)) {
-    if (cfl & NodeClassType) {
-      ArrayInitWithStorage(&n->t.list.a, n->t.list.a_storage, countof(n->t.list.a_storage));
-    } else {
-      ArrayInitWithStorage(&n->array.a, n->array.a_storage, countof(n->array.a_storage));
-    }
+  switch (kind) {
+
+  case NPkg:
+  case NFile:
+    ArrayInitWithStorage(&n->cunit.a, n->cunit.a_storage, countof(n->cunit.a_storage));
+    break;
+
+  case NBlock:
+  case NArray:
+  case NTuple:
+    ArrayInitWithStorage(&n->array.a, n->array.a_storage, countof(n->array.a_storage));
+    break;
+
+  case NTupleType:
+    ArrayInitWithStorage(&n->t.list.a, n->t.list.a_storage, countof(n->t.list.a_storage));
+    break;
+
+  case NStructType:
+    ArrayInitWithStorage(&n->t.struc.a, n->t.struc.a_storage, countof(n->t.struc.a_storage));
+    break;
+
+  default:
+    break;
   }
   return n;
 }
@@ -172,9 +188,6 @@ const char* _DebugNodeClassStr(NodeClassFlags fl, u32 lineno) {
   if (fl & NodeClassExpr) APPEND("expr");
   if (fl & NodeClassType) APPEND("type");
 
-  // data attributes
-  if (fl & NodeClassArray) APPEND("array");
-
   #undef APPEND
   buf[len] = 0;
   return buf;
@@ -255,14 +268,6 @@ CType NodeIdealCType(const Node* n) {
     }
 
   }
-}
-
-
-Node* nullable ArrayNodeLast(Node* n) {
-  assert(NodeKindClass(n->kind) & NodeClassArray);
-  if (n->array.a.len == 0)
-    return NULL;
-  return n->array.a.v[n->array.a.len - 1];
 }
 
 

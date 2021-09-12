@@ -285,7 +285,7 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
         // function prototype claims to return type A while the body yields type B
         Node* lastexpr = n->fun.body;
         if (lastexpr->kind == NBlock)
-          lastexpr = ArrayNodeLast(lastexpr);
+          lastexpr = NodeArrayLast(&lastexpr->array.a);
         if (lastexpr->kind != NReturn) {
           // note: explicit "return" expressions already check and report type errors
           err_ret_type(ctx, n, lastexpr);
@@ -844,12 +844,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   // branch on node kind
   switch (n->kind) {
 
-  // uses Node.array
+  // uses Node.cunit
   case NPkg:
   case NFile:
     // File and Pkg are special in that types do not propagate
-    for (u32 i = 0; i < n->array.a.len; i++)
-      n->array.a.v[i] = resolve_type(ctx, (Node*)n->array.a.v[i], fl);
+    for (u32 i = 0; i < n->cunit.a.len; i++)
+      n->cunit.a.v[i] = resolve_type(ctx, (Node*)n->cunit.a.v[i], fl);
     // Note: Instead of setting n->type=Type_nil, leave as NULL and return early
     // to avoid check for null types.
     return n;
@@ -897,7 +897,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     }
     break;
 
-  case NArg:
+  case NParam:
   case NField:
     if (n->field.init) {
       n->field.init = resolve_type(ctx, n->field.init, fl);
@@ -947,6 +947,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NNone:
   case NBasicType:
   case NTupleType:
+  case NStructType:
   case _NodeKindMax:
     dlog("unexpected %s", fmtast(n));
     assert(!"expected to be typed");

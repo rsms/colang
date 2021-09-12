@@ -1,0 +1,54 @@
+fun A()
+  a = 1
+  if a < 3
+    a = 5
+  a
+
+fun B() {
+  a = 1
+  if a < 3
+    a = 5
+  a
+}
+
+fun C() {
+  a = 1
+  if a < 3 { a = 5 }
+  a
+}
+
+fun D()
+  a = 1
+  if a < 3 {
+  a = 5
+  }
+  a
+
+#*!AST
+; should all parse identically
+(Fun A nil (body (Block
+  (Let a (IntLit 1))
+  (If (cond (BinOp < (Id a (Let a)) (IntLit 3)))
+      (then (Assign (left (Id a (Let a))) (right (IntLit 5))) ))
+  (Id a (Let a)) )))
+
+(Fun B nil (body (Block
+  (Let a (IntLit 1))
+  (If (cond (BinOp < (Id a (Let a)) (IntLit 3)))
+      (then (Assign (left (Id a (Let a))) (right (IntLit 5))) ))
+  (Id a (Let a)) )))
+
+(Fun C nil (body (Block
+  (Let a (IntLit 1))
+  (If (cond (BinOp < (Id a (Let a)) (IntLit 3)))
+      (then (Assign (left (Id a (Let a))) (right (IntLit 5))) ))
+  (Id a (Let a)) )))
+
+(Fun D nil (body (Block
+  (Let a (IntLit 1))
+  (If (cond (BinOp < (Id a (Let a)) (IntLit 3)))
+      (then (Assign (left (Id a (Let a))) (right (IntLit 5))) ))
+  (Id a (Let a)) )))
+
+
+*#

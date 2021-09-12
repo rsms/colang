@@ -1,0 +1,12 @@
+struct Spaceship {
+  fuel int
+}
+
+# fun main() int {
+#   s = Spaceship(10)
+#   b = &s
+#   return b.fuel
+#   # s goes out of scope here,
+#   # so there's an implicit drop(s),
+#   # freeing the Spaceship.
+# }

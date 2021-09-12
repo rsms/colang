@@ -428,8 +428,8 @@ static Value build_global_let(B* b, Node* n) {
 
 static void build_pkgpart(B* b, Node* n) {
   assert(n->kind == NFile);
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    auto cn = (Node*)n->array.a.v[i];
+  for (u32 i = 0; i < n->cunit.a.len; i++) {
+    auto cn = (Node*)n->cunit.a.v[i];
     switch (cn->kind) {
       case NFun:
         build_fun(b, cn);
@@ -488,8 +488,8 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   }
 
   // build package parts
-  for (u32 i = 0; i < pkgnode->array.a.len; i++) {
-    auto cn = (Node*)pkgnode->array.a.v[i];
+  for (u32 i = 0; i < pkgnode->cunit.a.len; i++) {
+    auto cn = (Node*)pkgnode->cunit.a.v[i];
     build_pkgpart(b, cn);
   }
 

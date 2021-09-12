@@ -33,13 +33,23 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->op.right, "right");
     break;
 
+  // uses u.cunit
+  case NFile:
+  case NPkg: {
+    NodeList nl = (NodeList){ .parent = parent };
+    for (u32 i = 0; i < n->cunit.a.len; i++) {
+      nl.n = n->cunit.a.v[i];
+      nl.index = i;
+      if (!f(&nl, data))
+        return false;
+    }
+    break;
+  }
+
   // uses u.array
   case NBlock:
   case NArray:
-  case NTuple:
-  case NFile:
-  case NPkg:
-  {
+  case NTuple: {
     NodeList nl = (NodeList){ .parent = parent };
     for (u32 i = 0; i < n->array.a.len; i++) {
       nl.n = n->array.a.v[i];
@@ -55,7 +65,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->let.init, "init");
     break;
 
-  case NArg:
+  case NParam:
   case NField:
     if (n->field.init)
       return CALLBACK(n->field.init, "init");
@@ -131,6 +141,18 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return false;
     }
     return CALLBACK(n->t.array.subtype, "subtype");
+
+  // uses t.struc
+  case NStructType: {
+    NodeList nl = (NodeList){ .parent = parent };
+    for (u32 i = 0; i < n->t.struc.a.len; i++) {
+      nl.n = n->t.struc.a.v[i];
+      nl.index = i;
+      if (!f(&nl, data))
+        return false;
+    }
+    break;
+  }
 
   // Remaining nodes has no children.
   // Note: No default case, so that the compiler warns us about missing cases.

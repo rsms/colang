@@ -96,14 +96,14 @@ static Str styleStackInitRepr(StyleStack* sstack, Str s, NodeReprFlags fl) {
 // NodeStr
 
 
-static Str str_append_NodeArray(Str s, const NodeArray* na) {
+static Str str_append_NodeArray(Str s, const NodeArray* na, const char* glue, u32 gluelen) {
   bool isFirst = true;
   for (u32 i = 0; i < na->len; i++) {
     Node* n = na->v[i];
     if (isFirst) {
       isFirst = false;
     } else {
-      s = str_appendc(s, ' ');
+      s = str_append(s, glue, gluelen);
     }
     s = NodeStr(s, n);
   }
@@ -165,24 +165,28 @@ Str NodeStr(Str s, const Node* n) {
 
   case NArray: // [one two 3]
     s = str_appendc(s, '[');
-    s = str_append_NodeArray(s, &n->array.a);
+    s = str_append_NodeArray(s, &n->array.a, " ", 1);
     return str_appendc(s, ']');
 
   case NTuple: // (one two 3)
     s = str_appendc(s, '(');
-    s = str_append_NodeArray(s, &n->array.a);
+    s = str_append_NodeArray(s, &n->array.a, " ", 1);
     return str_appendc(s, ')');
 
   case NPkg: // pkg
-    return str_appendcstr(s, "pkg");
+    s = str_appendcstr(s, "pkg \"");
+    s = str_append(s, n->cunit.name, strlen(n->cunit.name));
+    return str_appendc(s, '"');
 
   case NFile: // file
-    return str_appendcstr(s, "file");
+    s = str_appendcstr(s, "file \"");
+    s = str_append(s, n->cunit.name, strlen(n->cunit.name));
+    return str_appendc(s, '"');
 
   case NLet: // let
     return str_appendfmt(s, "%s %s", n->let.ismut ? "var" : "let", n->let.name);
 
-  case NArg: // foo
+  case NParam: // foo
     return str_append(s, n->field.name, symlen(n->field.name));
 
   case NFun: // fun foo
@@ -244,7 +248,7 @@ Str NodeStr(Str s, const Node* n) {
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
-    s = str_append_NodeArray(s, &n->t.list.a);
+    s = str_append_NodeArray(s, &n->t.list.a, " ", 1);
     return str_appendc(s, ')');
 
   case NArrayType: // [4]int, []int
@@ -254,6 +258,16 @@ Str NodeStr(Str s, const Node* n) {
       return str_appendfmt(s, "array<" FMT_U64 ">", n->t.array.size);
     }
     return str_appendcstr(s, "slice");
+
+  case NStructType: // struct{foo float; y bool}
+    s = str_appendcstr(s, "struct ");
+    if (n->t.struc.name) {
+      s = str_append(s, n->t.struc.name, symlen(n->t.struc.name));
+      s = str_appendc(s, ' ');
+    }
+    s = str_appendc(s, '{');
+    s = str_append_NodeArray(s, &n->t.struc.a, "; ", 2);
+    return str_appendc(s, '}');
 
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
@@ -382,7 +396,7 @@ static bool l_collapse_field(NodeList* nl) {
 
   case NId:
   case NLet:
-  case NArg:
+  case NParam:
   case NField:
   case NReturn:
   case NBoolLit:
@@ -390,6 +404,9 @@ static bool l_collapse_field(NodeList* nl) {
   case NIntLit:
   case NStrLit:
     return true;
+
+  case NStructType:
+    return false;
 
   default:
     if (NodeKindIsType(nl->parent->n->kind))
@@ -467,9 +484,13 @@ static Str l_maybe_append_special(NodeList* nl, Str s) {
   auto n = nl->n;
   if (n == Const_nil || n == Const_true || n == Const_false)
     n = n->type;
-  if (n->kind == NBasicType)
-    return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
-  return s;
+
+  switch (n->kind) {
+    case NBasicType:
+      return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
+    default:
+      return s;
+  }
 }
 
 
@@ -561,13 +582,22 @@ static bool l_visit(NodeList* nl, void* cp) {
     }
     break;
   }
+  case NPkg:
   case NFile: {
-    // allocate function ids up front to avoid expanding a referenced function inside a body
-    // when the definition trails the use, syntactically.
-    for (u32 i = 0; i < n->array.a.len; i++) {
-      const Node* cn = n->array.a.v[i];
-      if (cn->kind == NFun)
-        l_seen_id(c, cn, NULL);
+    if (n->cunit.name) {
+      s = str_appendc(s, ' ');
+      s = style_push(&c->style, s, id_color);
+      s = str_append(s, n->cunit.name, strlen(n->cunit.name));
+      s = style_pop(&c->style, s);
+    }
+    if (n->kind == NFile) {
+      // allocate function ids up front to avoid expanding a referenced function inside a body
+      // when the definition trails the use, syntactically.
+      for (u32 i = 0; i < n->cunit.a.len; i++) {
+        const Node* cn = n->cunit.a.v[i];
+        if (cn->kind == NFun)
+          l_seen_id(c, cn, NULL);
+      }
     }
     break;
   }
@@ -589,6 +619,14 @@ static bool l_visit(NodeList* nl, void* cp) {
     descend = newfound;
     break;
   }
+  case NStructType:
+    if (n->t.struc.name) {
+      s = str_appendc(s, ' ');
+      s = style_push(&c->style, s, id_color);
+      s = str_append(s, n->t.struc.name, symlen(n->t.struc.name));
+      s = style_pop(&c->style, s);
+    }
+    break;
   default:
     break;
   } // switch(n->kind)
@@ -691,7 +729,7 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     }
     break;
 
-  case NArg:
+  case NParam:
   case NField:
     s = style_push(&c->style, s, id_color);
     s = str_append(s, n->field.name, symlen(n->field.name));

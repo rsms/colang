@@ -12,9 +12,6 @@ typedef enum {
   NodeClassLit  = 1 << 0, // literals like 123, true, nil.
   NodeClassExpr = 1 << 1, // e.g. (+ x y)
   NodeClassType = 1 << 2, // e.g. i32
-
-  // data attributes
-  NodeClassArray = 1 << 3, // uses Node.array, or Node.t.array if NodeClassType
 } NodeClassFlags;
 
 // DEF_NODE_KINDS defines primary node kinds which are either expressions or start of expressions
@@ -22,21 +19,22 @@ typedef enum {
   /* N<kind>     classification */ \
   _(None,        NodeClassInvalid) \
   _(Bad,         NodeClassInvalid) /* substitute "filler node" for invalid syntax */ \
+  \
   _(BoolLit,     NodeClassLit) /* boolean literal */ \
   _(IntLit,      NodeClassLit) /* integer literal */ \
   _(FloatLit,    NodeClassLit) /* floating-point literal */ \
   _(StrLit,      NodeClassLit) /* string literal */ \
   _(Nil,         NodeClassLit) /* the nil atom */ \
   _(Assign,      NodeClassExpr) \
-  _(Arg,         NodeClassExpr) \
-  _(Block,       NodeClassExpr|NodeClassArray) \
+  _(Block,       NodeClassExpr) \
   _(Call,        NodeClassExpr) \
+  _(Param,       NodeClassExpr) \
   _(Field,       NodeClassExpr) \
   _(Selector,    NodeClassExpr) \
   _(Index,       NodeClassExpr) \
   _(Slice,       NodeClassExpr) \
-  _(Pkg,         NodeClassExpr|NodeClassArray) \
-  _(File,        NodeClassExpr|NodeClassArray) \
+  _(Pkg,         NodeClassExpr) \
+  _(File,        NodeClassExpr) \
   _(Fun,         NodeClassExpr) \
   _(Id,          NodeClassExpr) \
   _(If,          NodeClassExpr) \
@@ -45,13 +43,14 @@ typedef enum {
   _(PrefixOp,    NodeClassExpr) \
   _(PostfixOp,   NodeClassExpr) \
   _(Return,      NodeClassExpr) \
-  _(Array,       NodeClassExpr|NodeClassArray) \
-  _(Tuple,       NodeClassExpr|NodeClassArray) \
+  _(Array,       NodeClassExpr) \
+  _(Tuple,       NodeClassExpr) \
   _(TypeCast,    NodeClassExpr) \
+  /* types */ \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
-  _(TupleType,   NodeClassType|NodeClassArray) /* (float,bool,int) */ \
-  /*_(StructType,  NodeClassType|NodeClassArray)*/ /* struct{foo float; y bool} */ \
+  _(TupleType,   NodeClassType) /* (float,bool,int) */ \
+  _(StructType,  NodeClassType) /* struct{foo float; y bool} */ \
   _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
 /*END DEF_NODE_KINDS*/
 
@@ -133,10 +132,15 @@ typedef struct Node {
       Node* nullable right;  // NULL for PrefixOp & PostfixOp
       Tok            op;
     } op;
-    /* array */ struct { // Tuple, Block, File, Pkg, Array
-      Scope* nullable scope;        // used for Pkg and File
+    /* cunit */ struct { // File, Pkg
+      const char*     name;         // reference to str in corresponding Source/Pkg struct
+      Scope* nullable scope;
       NodeArray       a;            // array of nodes
-      Node*           a_storage[4]; // in-struct storage for the first few entries of a
+      Node*           a_storage[3]; // in-struct storage for the first few entries of a
+    } cunit;
+    /* array */ struct { // Tuple, Block, Array
+      NodeArray a;            // array of nodes
+      Node*     a_storage[4]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
       Node* nullable tparams; // template params (NTuple)
@@ -149,7 +153,7 @@ typedef struct Node {
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;
-    /* field */ struct { // Arg, Field
+    /* field */ struct { // Param, Field
       Sym            name;
       Node* nullable init;  // initial value (may be NULL)
       u32            nrefs; // reference count
@@ -197,9 +201,10 @@ typedef struct Node {
           NodeArray a;            // Node[]
           Node*     a_storage[4]; // in-struct storage for the first few entries of a
         } list;
-        /* struct */ struct { // StructType
-          NodeArray a;            // NField[]
-          Node*     a_storage[4]; // in-struct storage for the first few entries of a
+        /* struc */ struct { // StructType
+          Sym nullable name;         // NULL for anonymous structs
+          NodeArray    a;            // NField[]
+          Node*        a_storage[4]; // in-struct storage for the first few entries of a
         } struc;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType
@@ -313,9 +318,6 @@ Node* ast_opt_ifcond(Node* n);
 // Format an NVal
 Str NValFmt(Str s, const NVal v);
 
-// ArrayNodeLast returns the last element of array node n or NULL if empty
-Node* nullable ArrayNodeLast(Node* n);
-
 
 // NodePosSpan returns the Pos span representing the logical span of the node.
 // For example, for a tuple that is the pos of the first to last element, inclusive.
@@ -323,6 +325,9 @@ PosSpan NodePosSpan(const Node* n);
 
 static void NodeArrayAppend(Mem mem, Array* a, Node* n);
 static void NodeArrayClear(Array* a);
+
+// NodeArrayLast returns the last element of a or NULL if empty
+static Node* nullable NodeArrayLast(Array* a);
 
 
 extern const Node* NodeBad; // kind==NBad
@@ -385,7 +390,6 @@ inline static NodeClassFlags NodeKindClass(NodeKind kind) {
 }
 
 inline static Node* NodeCopy(Mem mem, const Node* n) {
-  assert((NodeKindClass(n->kind) & NodeClassArray) == 0); // no support for copying these yet
   Node* n2 = (Node*)memalloc(mem, sizeof(Node));
   memcpy(n2, n, sizeof(Node));
   return n2;
@@ -397,6 +401,10 @@ inline static void NodeArrayAppend(Mem mem, Array* a, Node* n) {
 
 inline static void NodeArrayClear(Array* a) {
   ArrayClear(a);
+}
+
+inline static Node* nullable NodeArrayLast(Array* a) {
+  return a->len == 0 ? NULL : a->v[a->len - 1];
 }
 
 inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) {

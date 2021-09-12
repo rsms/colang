@@ -299,10 +299,10 @@ static void scopestackGrow(Parser* p) {
 //     Node* n = (Node*)p->scopestack.ptr[i];
 //     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
 //     if (R_UNLIKELY(n->kind == NLet && n->let.nrefs == 0 ||
-//                    n->kind == NArg && n->field.nrefs == 0))
+//                    n->kind == NParam && n->field.nrefs == 0))
 //     {
 //       build_warnf(p->build, NodePosSpan(n),
-//         "unused %s %s", n->kind == NArg ? "argument" : "variable", n->let.name);
+//         "unused %s %s", n->kind == NParam ? "argument" : "variable", n->let.name);
 //     }
 //   }
 // }
@@ -1134,7 +1134,7 @@ static Node* params(Parser* p) { // => NTuple
   PFlag fl = PFlagRValue;
 
   while (p->s.tok != endtok && p->s.tok != TNone) {
-    auto field = mknode(p, NArg);
+    auto field = mknode(p, NParam);
     if (p->s.tok == TId) {
       field->field.name = p->s.name;
       nexttok(p);
@@ -1330,6 +1330,63 @@ static Node* PFun(Parser* p, PFlag fl) {
   return n;
 }
 
+
+// StructType = "struct" Id? "{" fields? "}"
+// fields     = field ( ";" field )* ";"?
+//
+//!PrefixParselet TStruct
+static Node* PStruct(Parser* p, PFlag fl) {
+  dlog("struct");
+  auto n = mknode(p, NStructType);
+  nexttok(p); // consume "struct"
+
+  // name
+  if (p->s.tok == TId) {
+    n->t.struc.name = p->s.name;
+    defsym(p, p->s.name, n); // make sure to define the struct before parsing its body
+    nexttok(p); // consume name
+  }
+
+  // body
+  if (R_UNLIKELY(!got(p, TLBrace))) {
+    syntaxerr(p, "expecting { ... }");
+    return n;
+  }
+
+  // fields
+  while (p->s.tok != TNone && p->s.tok != TRBrace) {
+    if (R_UNLIKELY(p->s.tok != TId)) {
+      syntaxerr(p, "expecting field or type name");
+      return n;
+    }
+    auto field = mknode(p, NField);
+    field->field.name = p->s.name;
+    nexttok(p); // consume name
+    NodeSetConst(field);
+
+    if (R_UNLIKELY(got(p, TSemi))) {
+      // e.g. "type" (implicit name)
+      auto typename = mknode(p, NId);
+      n->ref.name = p->s.name;
+      NodeSetConst(typename);
+      field->type = resolve_id(p, typename);
+    } else {
+      // e.g. "name type"
+      field->type = pType(p, fl);
+    }
+
+    NodeTransferUnresolved(field, field->type);
+    NodeTransferUnresolved(n, field);
+    NodeArrayAppend(p->build->mem, &n->t.struc.a, field);
+
+    if (!got(p, TSemi))
+      break;
+  }
+
+  want(p, TRBrace); // end of body
+  return n;
+}
+
 // end of parselets
 // ============================================================================================
 // ============================================================================================
@@ -1352,6 +1409,7 @@ static const Parselet parselets[TMax] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
+  [TStruct] = {PStruct, NULL, PREC_MEMBER},
   [TAssign] = {NULL, PLetOrAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
@@ -1497,7 +1555,8 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
 Node* CreatePkgAST(Build* build, Scope* pkgscope) {
   // Scope* pkgscope
   auto n = NewNode(build->mem, NPkg);
-  n->array.scope = pkgscope;
+  n->cunit.name = build->pkg->name; // ok if null
+  n->cunit.scope = pkgscope;
   // Note: Do not set n->type as it would prevent type resolver from visiting files
   return n;
 }
@@ -1528,10 +1587,11 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
   // TODO: ParseFlags, where one option is PARSE_IMPORTS to parse only imports and then stop.
 
   auto file = mknode(p, NFile);
+  file->cunit.name = src->filename; // ok if null
 
   while (p->s.tok != TNone) {
     Node* n = exprOrTuple(p, PREC_LOWEST, PFlagNone);
-    NodeArrayAppend(p->build->mem, &file->array.a, n);
+    NodeArrayAppend(p->build->mem, &file->cunit.a, n);
     NodeTransferUnresolved(file, n);
 
     // // print associated comments

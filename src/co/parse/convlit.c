@@ -175,7 +175,7 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     }
     break;
 
-  case NArg:
+  case NParam:
     // keep as is
     break;
 

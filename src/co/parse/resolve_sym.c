@@ -124,19 +124,15 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
 }
 
 
-static Node* resolve_arraylike_node(ResCtx* ctx, Node* n) {
-  assert_debug(n->kind == NBlock
-            || n->kind == NTuple
-            || n->kind == NFile
-            || n->kind == NPkg);
+static Node* resolve_arraylike_node(ResCtx* ctx, Node* n, NodeArray* a) {
   // n.array = map n.array (cn => resolve_sym(cn))
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    Node* cn = (Node*)n->array.a.v[i];
-    n->array.a.v[i] = resolve_sym(ctx, cn);
+  for (u32 i = 0; i < a->len; i++) {
+    a->v[i] = resolve_sym(ctx, (Node*)a->v[i]);
   }
-  // simplify blocks with a single expression; (block expr) => expr
-  if (n->array.a.len == 1 && n->kind == NBlock)
-    n = n->array.a.v[0];
+  // Note: this moved to the parser:
+  // // simplify blocks with a single expression; (block expr) => expr
+  // if (n->array.a.len == 1 && n->kind == NBlock)
+  //   n = n->array.a.v[0];
   NodeClearUnresolved(n);
   return n;
 }
@@ -198,17 +194,19 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   case NId:
     return resolve_id(n, ctx);
 
-  // uses u.array
+  // array
   case NBlock:
   case NTuple:
   case NArray:
+    return resolve_arraylike_node(ctx, n, &n->array.a);
+
   case NFile:
-    return resolve_arraylike_node(ctx, n);
+    return resolve_arraylike_node(ctx, n, &n->cunit.a);
 
   case NPkg: {
     auto lookupscope = ctx->lookupscope;
-    ctx->lookupscope = n->array.scope;
-    n = resolve_arraylike_node(ctx, n);
+    ctx->lookupscope = n->cunit.scope;
+    n = resolve_arraylike_node(ctx, n, &n->cunit.a);
     ctx->lookupscope = lookupscope;
     break;
   }
@@ -285,7 +283,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n->let.init = resolve_sym(ctx, n->let.init);
     break;
 
-  case NArg:
+  case NParam:
   case NField:
     if (n->field.init)
       n->field.init = resolve_sym(ctx, n->field.init);
@@ -323,6 +321,9 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     n->t.array.subtype = resolve_sym(ctx, n->t.array.subtype);
     break;
   }
+
+  case NStructType:
+    return resolve_arraylike_node(ctx, n, &n->t.struc.a);
 
   case NNone:
   case NBad:

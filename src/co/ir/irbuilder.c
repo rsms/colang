@@ -436,7 +436,7 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
 }
 
 
-static IRValue* ast_add_arg(IRBuilder* u, Node* n) { // n->kind==NArg
+static IRValue* ast_add_param(IRBuilder* u, Node* n) { // n->kind==NArg
   if (R_UNLIKELY(n->type->kind != NBasicType)) {
     // TODO add support for NTupleType et al
     build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
@@ -886,7 +886,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NId:       return ast_add_id(u, n);
     case NIf:       return ast_add_if(u, n);
     case NTypeCast: return ast_add_typecast(u, n);
-    case NArg:      return ast_add_arg(u, n);
+    case NParam:    return ast_add_param(u, n);
     case NCall:     return ast_add_call(u, n);
     case NReturn:   return ast_add_ret(u, n);
     case NFun:      return ast_add_funexpr(u, n);
@@ -907,6 +907,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NBasicType:
     case NTupleType:
     case NArrayType:
+    case NStructType:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 
@@ -975,8 +976,8 @@ static bool ast_add_file(IRBuilder* u, Node* n) { // n->kind==NFile
   auto src = build_get_source(u->build, n->pos);
   dlog("ast_add_file %s", src ? src->filename : "(unknown)");
   #endif
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    if (!ast_add_toplevel(u, (Node*)n->array.a.v[i]))
+  for (u32 i = 0; i < n->cunit.a.len; i++) {
+    if (!ast_add_toplevel(u, (Node*)n->cunit.a.v[i]))
       return false;
   }
   return true;
@@ -984,8 +985,8 @@ static bool ast_add_file(IRBuilder* u, Node* n) { // n->kind==NFile
 
 
 static bool ast_add_pkg(IRBuilder* u, Node* n) { // n->kind==NPkg
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    if (!ast_add_file(u, (Node*)n->array.a.v[i]))
+  for (u32 i = 0; i < n->cunit.a.len; i++) {
+    if (!ast_add_file(u, (Node*)n->cunit.a.v[i]))
       return false;
   }
   return true;
