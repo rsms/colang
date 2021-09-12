@@ -19,8 +19,8 @@
 #
 #
 fun main()
-	a, b = 3,
-	       4
+	a = 3
+	b = 4
 	if a < b
 		b = 5
 	a + b
