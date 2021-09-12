@@ -538,6 +538,7 @@ Tok ScannerNext(Scanner* s) {
       case TContinue:
       case TReturn:
       case TNil:
+      case TStruct:
         insertSemi = true;
         break;
       default:
