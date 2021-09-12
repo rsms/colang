@@ -736,7 +736,7 @@ static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   Node* existing = lookupsym(p, left->ref.name);
-  if (existing) {
+  if (existing && existing->kind == NLet) {
     // assign to existing var and make sure the target is marked as variable
     NodeClearConst(existing);
     auto n = mknode(p, NAssign);
