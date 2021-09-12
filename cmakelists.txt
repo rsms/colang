@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
+cmake_policy(SET CMP0077 NEW) # option() honors normal variables
 set(LLVM_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/deps/llvm)
 set(CMAKE_C_COMPILER   ${LLVM_PREFIX}/bin/clang)
 set(CMAKE_CPP_COMPILER ${LLVM_PREFIX}/bin/clang++)
