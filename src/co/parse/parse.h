@@ -60,6 +60,7 @@ typedef Node Type;
   _( TAndAnd        , "&&")  \
   _( TPipePipe      , "||")  \
   _( TRArr          , "->")  \
+  _( TDot           , ".")  \
   _( TId            , "identifier")  \
   _( TIntLit        , "int") \
   _( TFloatLit      , "float") \

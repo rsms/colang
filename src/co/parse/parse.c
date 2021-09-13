@@ -399,21 +399,19 @@ inline static Node* nullable lookupsym(Parser* p, Sym key) {
   return lookupsymPkg(p, key);
 }
 
-#ifdef DEBUG_DEFSYM
-  static Node* nullable lookupsymShallow(Parser* p, Sym key) {
-    uintptr_t i = p->scopestack.len;
-    uintptr_t base = p->scopestack.base;
-    while (i > 1) {
-      i--;
-      if (i == base) {
-        break;
-      } else if (p->scopestack.ptr[i--] == (void*)key) {
-        return (Node*)p->scopestack.ptr[i];
-      }
+static Node* nullable lookupsymShallow(Parser* p, Sym key) {
+  uintptr_t i = p->scopestack.len;
+  uintptr_t base = p->scopestack.base;
+  while (i > 1) {
+    i--;
+    if (i == base) {
+      break;
+    } else if (p->scopestack.ptr[i--] == (void*)key) {
+      return (Node*)p->scopestack.ptr[i];
     }
-    return NULL;
   }
-#endif
+  return NULL;
+}
 
 static void defsym(Parser* p, Sym s, Node* n) {
   #ifdef DEBUG_DEFSYM
@@ -925,7 +923,6 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   NodeTransferUnresolved(n, n->call.receiver);
   NodeTransferConst(n, n->call.receiver);
 
-  // if (n->call.receiver->kind == NBasicType) {
   if (NodeIsType(n->call.receiver)) {
     n->kind = NTypeCast;
     if (n->call.receiver->kind == NArrayType) {
@@ -933,6 +930,7 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     } else {
       p->ctxtype = n->call.receiver;
     }
+    n->type = n->call.receiver;
   }
 
   // args
@@ -1037,9 +1035,9 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   n->op.left = useAsRValue(p, left);
   nexttok(p);
   n->op.right = expr(p, e->prec, fl | PFlagRValue);
-  nodeTransferUnresolved2(n, left, n->op.right);
   // Specialization of NodeTransferConst2:
   n->flags = ((left->flags & NodeFlagConst) & (n->op.right->flags & NodeFlagConst));
+  nodeTransferUnresolved2(n, left, n->op.right);
   return n;
 }
 
@@ -1050,8 +1048,28 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
   n->op.op = p->s.tok;
   n->op.left = useAsRValue(p, operand);
   nexttok(p); // consume "+"
-  NodeTransferUnresolved(n, n->op.left);
   n->flags = (n->op.left->flags & NodeFlagConst);
+  NodeTransferUnresolved(n, n->op.left);
+  return n;
+}
+
+// Selector = Expr "." Id
+//!Parselet (TDot MEMBER)
+static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  auto n = mknode(p, NSelector);
+  nexttok(p); // consume "."
+  n->sel.operand = useAsRValue(p, left);
+
+  // member is a name
+  if (R_UNLIKELY(p->s.tok != TId)) {
+    syntaxerr(p, "expecting member name");
+    return n;
+  }
+  n->sel.member = p->s.name;
+  set_endpos(p, n); // extend n to include member id
+  nexttok(p); // consume id
+
+  n->flags = n->sel.operand->flags;
   return n;
 }
 
@@ -1345,9 +1363,17 @@ static Node* pField(Parser* p) {
     typename->ref.name = n->field.name;
     NodeSetConst(typename);
     n->type = resolve_id(p, typename);
+    n->flags |= NodeFlagBase;
   } else {
     // e.g. "name type"
     n->type = pType(p, PFlagNone);
+  }
+
+  // check for duplicate names
+  Node* existing = lookupsymShallow(p, n->field.name);
+  if (existing) {
+    syntaxerrp(p, n->pos, "Duplicate field name \"%s\"", n->field.name);
+    build_notef(p->build, NodePosSpan(existing), "Also defined here");
   }
 
   defsym(p, n->field.name, n);
@@ -1373,6 +1399,7 @@ static Node* pField(Parser* p) {
 static Node* PStruct(Parser* p, PFlag fl) {
   auto n = mknode(p, NStructType);
   nexttok(p); // consume "struct"
+  NodeSetConst(n);
 
   // name
   if (p->s.tok == TId) {
@@ -1407,6 +1434,7 @@ static Node* PStruct(Parser* p, PFlag fl) {
   want(p, TRBrace); // end of body
   return n;
 }
+
 
 // end of parselets
 // ============================================================================================
@@ -1443,6 +1471,7 @@ static const Parselet parselets[TMax] = {
   [TGEq] = {NULL, PInfixOp, PREC_EQUAL},
   [TPlusPlus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},
   [TMinusMinus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},
+  [TDot] = {NULL, PSelector, PREC_MEMBER},
 };
 //PARSELET_MAP_END
 

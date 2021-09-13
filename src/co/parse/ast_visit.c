@@ -101,7 +101,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
 
   case NSelector:
-    return CALLBACK(n->sel.operand, "operand") && CALLBACK(n->sel.member, "member");
+    if (n->sel.target && !CALLBACK(n->sel.target, "target"))
+      return false;
+    return CALLBACK(n->sel.operand, "operand");
 
   case NIndex:
     return CALLBACK(n->index.operand, "operand") && CALLBACK(n->index.index, "index");

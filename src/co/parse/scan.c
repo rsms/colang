@@ -18,7 +18,7 @@ static u8 charflags[256] = {
 //         <CTRL> ...
 /* 0x10 */ 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
 //           ! " # $ % & ' ( ) * + , - . /
-/* 0x20 */ 2,0,0,0,0,0,0,0,0,0,0,1,0,1,1,0,
+/* 0x20 */ 2,0,0,0,0,0,0,0,0,0,0,1,0,1,0,0,
 //         0 1 2 3 4 5 6 7 8 9 : ; < = > ?
 /* 0x30 */ 1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,
 //         @ A B C D E F G H I J K L M N O
@@ -514,8 +514,9 @@ Tok ScannerNext(Scanner* s) {
   case '}': s->tok = TRBrace; insertSemi = true; break;
   case '[': s->tok = TLBrack;                    break;
   case ']': s->tok = TRBrack; insertSemi = true; break;
-  case ',': s->tok = TComma;                     break;
   case ';': s->tok = TSemi;                      break;
+  case ',': s->tok = TComma;                     break;
+  case '.': s->tok = TDot;                       break;
 
   case '#': // line comment
     scomment(s);
@@ -539,6 +540,7 @@ Tok ScannerNext(Scanner* s) {
       case TReturn:
       case TNil:
       case TStruct:
+      case TAuto:
         insertSemi = true;
         break;
       default:

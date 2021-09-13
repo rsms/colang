@@ -209,10 +209,9 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendcstr(s, "if");
 
   case NSelector: // expr.name | expr.selector
-    return str_appendcstr(s, "selector");
-    // s = NodeStr(s, n->sel.operand);
-    // s = str_appendc(s, '.');
-    // return NodeStr(s, n->sel.member);
+    s = NodeStr(s, n->sel.operand);
+    s = str_appendc(s, '.');
+    return str_append(s, n->sel.member, symlen(n->sel.member));
 
   case NIndex: // expr[index]
     return str_appendcstr(s, "subscript");
@@ -259,20 +258,22 @@ Str NodeStr(Str s, const Node* n) {
     }
     return str_appendcstr(s, "slice");
 
-  case NStructType: // struct{foo float; y bool}
+  case NStructType: // "struct Name" or "struct {foo float; y bool}"
     s = str_appendcstr(s, "struct ");
-    if (n->t.struc.name) {
-      s = str_append(s, n->t.struc.name, symlen(n->t.struc.name));
-      s = str_appendc(s, ' ');
-    }
+    if (n->t.struc.name)
+      return str_append(s, n->t.struc.name, symlen(n->t.struc.name));
     s = str_appendc(s, '{');
     s = str_append_NodeArray(s, &n->t.struc.a, "; ", 2);
     return str_appendc(s, '}');
 
+  case NField:
+    s = str_append(s, n->field.name, symlen(n->field.name));
+    s = str_appendc(s, ' ');
+    return NodeStr(s, n->type);
+
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
   case NNone:
-  case NField: // field is not yet implemented by parser
     return str_appendcstr(s, NodeKindName(n->kind));
 
   // TODO
@@ -455,6 +456,8 @@ static const char* l_listname(NodeList* nl) {
       // if (nl->parent && NodeIsType(nl->parent->n))
       //   return "";
       // return "TupleType ";
+    case NStructType:
+      return "struct";
     default:
       return NodeKindName(n->kind);
   }
@@ -582,6 +585,7 @@ static bool l_visit(NodeList* nl, void* cp) {
     }
     break;
   }
+
   case NPkg:
   case NFile: {
     if (n->cunit.name) {
@@ -601,8 +605,8 @@ static bool l_visit(NodeList* nl, void* cp) {
     }
     break;
   }
+
   case NLet: {
-    // Let
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
 
@@ -619,14 +623,31 @@ static bool l_visit(NodeList* nl, void* cp) {
     descend = newfound;
     break;
   }
-  case NStructType:
+
+  case NStructType: {
+    descend = false;
+    auto id = l_seen_id(c, n, &descend);
     if (n->t.struc.name) {
       s = str_appendc(s, ' ');
       s = style_push(&c->style, s, id_color);
       s = str_append(s, n->t.struc.name, symlen(n->t.struc.name));
       s = style_pop(&c->style, s);
     }
+    if (c->fl & NodeReprRefs) {
+      s = style_push(&c->style, s, ref_color);
+      s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
     break;
+  }
+
+  case NSelector:
+    s = str_appendc(s, ' ');
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->sel.member, symlen(n->sel.member));
+    s = style_pop(&c->style, s);
+    break;
+
   default:
     break;
   } // switch(n->kind)

@@ -741,16 +741,56 @@ static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
 }
 
 
-static Type* resolve_selector_type(ResCtx* ctx, Type* n, RFlag fl) {
+static Type* nullable resolve_struct_field_type(Type* st, Sym member) {
+  asserteq_debug(st->kind, NStructType);
+
+  for (u32 i = 0; i < st->t.struc.a.len; i++) {
+    Node* field = st->t.struc.a.v[i];
+    if (field->field.name == member)
+      return field->type;
+  }
+
+  // look for field in "parent" base structs e.g. "A{x T};B{A};b.x" => T
+  for (u32 i = 0; i < st->t.struc.a.len; i++) {
+    Node* field = st->t.struc.a.v[i];
+    Type* t;
+    if ((field->flags & NodeFlagBase) &&
+        field->type->kind == NStructType &&
+        (t = resolve_struct_field_type(field->type, member)) )
+    {
+      return t;
+    }
+  }
+
+  return NULL;
+}
+
+
+static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSelector);
+  dlog("[WIP] resolve selector %s", fmtnode(n));
+
   n->sel.operand = resolve_type(ctx, n->sel.operand, fl);
-  n->sel.member = resolve_type(ctx, n->sel.member, fl | RFlagResolveIdeal | RFlagEager);
-  panic("TODO");
+  Node* recvt = n->sel.operand->type;
+
+  // if the receiver is a struct, attempt to resolve field
+  if (recvt->kind == NStructType &&
+      (n->type = resolve_struct_field_type(recvt, n->sel.member)) )
+  {
+    return n;
+  }
+
+  // if resolve field on struct failed, treat as call (convert n to NCall).
+  panic("TODO: convert n to NCall");
+
+  // note: don't treat as call when it's the target of assignment.
+  n->type = Type_nil; // FIXME
+
   return n;
 }
 
 
-static Type* resolve_index_type(ResCtx* ctx, Type* n, RFlag fl) {
+static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
   n->index.operand = resolve_type(ctx, n->index.operand, fl);
 
@@ -773,7 +813,7 @@ static Type* resolve_index_type(ResCtx* ctx, Type* n, RFlag fl) {
 }
 
 
-static Type* resolve_slice_type(ResCtx* ctx, Type* n, RFlag fl) {
+static Node* resolve_slice(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSlice);
   n->slice.operand = resolve_type(ctx, n->slice.operand, fl);
   fl |= RFlagResolveIdeal | RFlagEager;
@@ -917,13 +957,13 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_arraytype_type(ctx, n, fl);
 
   case NSelector:
-    R_MUSTTAIL return resolve_selector_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_selector(ctx, n, fl);
 
   case NIndex:
-    R_MUSTTAIL return resolve_index_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_index(ctx, n, fl);
 
   case NSlice:
-    R_MUSTTAIL return resolve_slice_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_slice(ctx, n, fl);
 
   case NIntLit:
   case NFloatLit:

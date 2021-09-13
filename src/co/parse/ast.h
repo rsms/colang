@@ -108,6 +108,7 @@ typedef enum {
   NodeFlagsNone      = 0,
   NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
   NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
+  NodeFlagBase       = 1 << 2, // struct field: the field is a base type
 } NodeFlags;
 
 typedef struct Node {
@@ -166,8 +167,9 @@ typedef struct Node {
       bool           ismut; // true if this is mutable (variable)
     } let;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
-      Node* operand;
-      Node* member; // NId or NSelector
+      Node*          operand;
+      Sym            member; // id
+      Node* nullable target; // null until resolved
     } sel;
     /* index */ struct { // Index = Expr "[" Expr "]"
       Node* operand;
