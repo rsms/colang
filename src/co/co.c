@@ -278,7 +278,7 @@ int cmd_build(int argc, const char** argv) {
     RTIMER_START();
     pkgnode = ResolveSym(&build, ParseFlagsDefault, pkgnode, pkgscope);
     RTIMER_LOG("resolve symbolic references");
-    //dump_ast("", pkgnode);
+    dump_ast("", pkgnode);
     if (build.errcount) {
       errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
       return 1;

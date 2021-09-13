@@ -203,7 +203,12 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendc(s, '>');
 
   case NCall: // call foo
-    return str_appendcstr(s, "call");
+    s = str_appendcstr(s, "call ");
+    return NodeStr(s, n->call.receiver);
+
+  case NStructCons: // construct T
+    s = str_appendcstr(s, "construct ");
+    return NodeStr(s, n->call.receiver);
 
   case NIf: // if
     return str_appendcstr(s, "if");
@@ -599,7 +604,7 @@ static bool l_visit(NodeList* nl, void* cp) {
       // when the definition trails the use, syntactically.
       for (u32 i = 0; i < n->cunit.a.len; i++) {
         const Node* cn = n->cunit.a.v[i];
-        if (cn->kind == NFun)
+        if (cn->kind == NFun || cn->kind == NStructType)
           l_seen_id(c, cn, NULL);
       }
     }
@@ -625,8 +630,12 @@ static bool l_visit(NodeList* nl, void* cp) {
   }
 
   case NStructType: {
-    descend = false;
-    auto id = l_seen_id(c, n, &descend);
+    bool newfound = false;
+    auto id = l_seen_id(c, n, &newfound);
+    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
+      // see comments in case NFun
+      descend = false;
+    }
     if (n->t.struc.name) {
       s = str_appendc(s, ' ');
       s = style_push(&c->style, s, id_color);

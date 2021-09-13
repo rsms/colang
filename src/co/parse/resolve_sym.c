@@ -58,7 +58,8 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       }
       n->ref.target = target;
       NodeClearUnresolved(n);
-      dlog_mod("  SIMPLIFY %s => %s %s", n->ref.name, NodeKindName(target->kind), fmtnode(target));
+      dlog_mod("  SIMPLIFY %s => (N%s) %s",
+        n->ref.name, NodeKindName(target->kind), fmtnode(target));
     }
 
     switch (target->kind) {
@@ -66,13 +67,14 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         // note: all built-ins which are const have targets, meaning the code above will
         // not mutate those nodes.
         n = target;
-        dlog_mod("  RET id target %s %s", NodeKindName(n->kind), fmtnode(n));
+        dlog_mod("  RET id target (N%s) %s", NodeKindName(n->kind), fmtnode(n));
         break; // continue unwind loop
 
-      case NLet:
+      case NLet: {
         // Unwind let bindings
         assert(target->let.init != NULL);
-        if (!NodeKindIsExpr(target->let.init->kind)) {
+        Node* init = target->let.init;
+        if (NodeIsConst(init) || !NodeKindIsExpr(init->kind)) {
           // in the case of a let target with a constant or type, resolve to that.
           // Example:
           //   "x = true ; y = x"
@@ -83,10 +85,12 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
           //   (Let (Id x) (BoolLit true))
           //   (Let (Id y) (BoolLit true))
           //
-          n = target->let.init;
+          dlog_mod("  RET let-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
+          return target->let.init;
         }
-        dlog_mod("  RET let %s %s", NodeKindName(n->kind), fmtnode(n));
-        return n;
+        dlog_mod("  RET let (N%s) %s", NodeKindName(target->kind), fmtnode(target));
+        return target;
+      }
 
       case NBoolLit:
       case NIntLit:
@@ -95,12 +99,13 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       case NBasicType:
       case NTupleType:
       case NArrayType:
+      case NStructType:
       case NFunType: {
         // unwind identifier to constant/immutable value.
         // Example:
         //   (Id true #user) -> (Id true #builtin) -> (Bool true #builtin)
         //
-        dlog_mod("  RET target %s %s", NodeKindName(target->kind), fmtnode(target));
+        dlog_mod("  RET target (N%s) %s", NodeKindName(target->kind), fmtnode(target));
         if (ctx->assignNest == 0)
           n = target;
         // assignNest is >0 when resolving the LHS of an assignment.
@@ -111,11 +116,11 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       }
 
       default: {
-        assert_debug(!NodeIsConst(target)); // should be covered in case-statements above
-        dlog_mod("resolve_id FINAL %s => %s (target %s) type? %d",
+        dlog_mod("resolve_id FINAL %s => N%s (target N%s) istype=%s",
           n->ref.name, NodeKindName(n->kind), NodeKindName(target->kind),
-          NodeKindIsType(target->kind));
-        dlog_mod("  RET n %s %s", NodeKindName(n->kind), fmtnode(n));
+          NodeKindIsType(target->kind) ? "yes" : "no");
+        dlog_mod("  RET n (N%s) %s", NodeKindName(n->kind), fmtnode(n));
+        assert_debug(!NodeIsConst(target)); // should be covered in case-statements above
         return n;
       }
     }
@@ -168,14 +173,14 @@ inline static Node* resolve_sym(ResCtx* ctx, Node* n) {
 // wrap resolve_type to print return value
 static Node* _resolve_sym_dbg(ResCtx* ctx, Node* n);
 static Node* _resolve_sym(ResCtx* ctx, Node* n) {
-  dlog_mod("> resolve (N%s %s)", NodeKindName(n->kind), fmtnode(n));
+  dlog_mod("> resolve (N%s) %s", NodeKindName(n->kind), fmtnode(n));
   ctx->debug_depth++;
   Node* n2 = _resolve_sym_dbg(ctx, n);
   ctx->debug_depth--;
   if (n != n2) {
-    dlog_mod("< resolve (N%s %s) => %s", NodeKindName(n->kind), fmtnode(n), fmtnode(n2));
+    dlog_mod("< resolve (N%s) %s => %s", NodeKindName(n->kind), fmtnode(n), fmtnode(n2));
   } else {
-    dlog_mod("< resolve (N%s %s)", NodeKindName(n->kind), fmtnode(n));
+    dlog_mod("< resolve (N%s) %s", NodeKindName(n->kind), fmtnode(n));
   }
   return n2;
 }
@@ -258,25 +263,28 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   // uses u.call
   case NTypeCast:
+  case NStructCons:
+  case NCall:
     if (n->call.args)
       n->call.args = resolve_sym(ctx, n->call.args);
     n->call.receiver = resolve_sym(ctx, n->call.receiver);
     break;
 
-  case NCall:
-    if (n->call.args)
-      n->call.args = resolve_sym(ctx, n->call.args);
-    auto recv = resolve_sym(ctx, n->call.receiver);
-    // n->call.receiver = recv; // don't short circuit; messes up diagnostics
-    if (recv->kind != NFun) {
-      // convert to type cast, if receiver is a type. e.g. "x = uint8(4)"
-      if (recv->kind == NBasicType) {
-        n->kind = NTypeCast;
-      } else if (recv->kind != NId) {
-        build_errf(ctx->build, NodePosSpan(recv), "cannot call %s", fmtnode(recv));
-      }
-    }
-    break;
+  // the following moved to type resolver:
+  // case NCall:
+  //   if (n->call.args)
+  //     n->call.args = resolve_sym(ctx, n->call.args);
+  //   auto recv = resolve_sym(ctx, n->call.receiver);
+  //   // n->call.receiver = recv; // don't short circuit; messes up diagnostics
+  //   if (recv->kind != NFun) {
+  //     // convert to type cast, if receiver is a type. e.g. "x = uint8(4)"
+  //     if (recv->kind == NBasicType) {
+  //       n->kind = NTypeCast;
+  //     } else if (recv->kind != NId) {
+  //       build_errf(ctx->build, NodePosSpan(recv), "cannot call %s", fmtnode(recv));
+  //     }
+  //   }
+  //   break;
 
   case NLet:
     if (n->let.init)
@@ -291,7 +299,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   case NSelector:
     n->sel.operand = resolve_sym(ctx, n->sel.operand);
-    n->sel.member = resolve_sym(ctx, n->sel.member);
     break;
 
   case NIndex:

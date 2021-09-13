@@ -923,14 +923,19 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   NodeTransferUnresolved(n, n->call.receiver);
   NodeTransferConst(n, n->call.receiver);
 
+  // convert to typecast or type constructor
   if (NodeIsType(n->call.receiver)) {
-    n->kind = NTypeCast;
-    if (n->call.receiver->kind == NArrayType) {
-      p->ctxtype = n->call.receiver->t.array.subtype;
-    } else {
-      p->ctxtype = n->call.receiver;
-    }
     n->type = n->call.receiver;
+    if (n->call.receiver->kind == NStructType) {
+      n->kind = NStructCons;
+    } else {
+      n->kind = NTypeCast;
+      if (n->call.receiver->kind == NArrayType) {
+        p->ctxtype = n->call.receiver->t.array.subtype;
+      } else {
+        p->ctxtype = n->call.receiver;
+      }
+    }
   }
 
   // args
@@ -939,6 +944,10 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     if (n->call.receiver->kind == NBasicType) {
       // fast path for basic types e.g. "i16(123)"
       n->call.args = expr(p, PREC_LOWEST, fl | PFlagRValue);
+      if (n->call.receiver == n->call.args->type) {
+        // short circuit e.g. "x = i64(3)"
+        n = n->call.args;
+      }
     } else {
       auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
       assert_debug(args->kind == NTuple);
@@ -1396,7 +1405,7 @@ static Node* pField(Parser* p) {
 // fields     = field ( ";" field )* ";"?
 //
 //!PrefixParselet TStruct
-static Node* PStruct(Parser* p, PFlag fl) {
+static Node* PStructType(Parser* p, PFlag fl) {
   auto n = mknode(p, NStructType);
   nexttok(p); // consume "struct"
   NodeSetConst(n);
@@ -1406,6 +1415,9 @@ static Node* PStruct(Parser* p, PFlag fl) {
     n->t.struc.name = p->s.name;
     defsym(p, p->s.name, n); // make sure to define the struct before parsing its body
     nexttok(p); // consume name
+  } else if ((fl & PFlagRValue) == 0) {
+    syntaxerr(p, "expecting name");
+    nexttok(p);
   }
 
   // body
@@ -1458,7 +1470,7 @@ static const Parselet parselets[TMax] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
-  [TStruct] = {PStruct, NULL, PREC_MEMBER},
+  [TStruct] = {PStructType, NULL, PREC_MEMBER},
   [TAssign] = {NULL, PLetOrAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},

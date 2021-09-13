@@ -514,7 +514,17 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_struct_cons(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NStructCons);
+  assertnotnull_debug(n->call.receiver);
+  assertnotnull_debug(n->call.args);
+  dlog("[WIP] resolve struct cons %s", fmtnode(n));
+  // TODO
+  return n;
+}
+
+
+static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTypeCast);
   assertnotnull_debug(n->call.receiver);
   assertnotnull_debug(n->call.args);
@@ -555,15 +565,24 @@ static Node* resolve_typecast_type(ResCtx* ctx, Node* n, RFlag fl) {
 
 
 // Type call e.g. "int(x)", "[3]u8(1, 2, 3)", "MyStruct(45, 6)"
-static Node* resolve_type_call_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_type_call(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
   assert_debug(NodeIsType(n->call.receiver));
+  dlog("[WIP] resolve type call %s", fmtnode(n));
+
   n->type = n->call.receiver;
+
+  // call to type without constructor is treated as cast/conversion
+  if (n->call.receiver->kind != NStructType) {
+    n->kind = NTypeCast;
+    return resolve_typecast(ctx, n, fl);
+  }
+
   return n;
 }
 
 
-static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
 
   // Note: resolve_fun breaks handles cycles where a function calls itself,
@@ -572,7 +591,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 
   // type call?
   if (NodeIsType(n->call.receiver))
-    return resolve_type_call_type(ctx, n, fl);
+    return resolve_type_call(ctx, n, fl);
 
   auto ft = n->call.receiver->type;
   assert(ft != NULL);
@@ -633,7 +652,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_if(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIf);
   n->cond.cond = resolve_type(ctx, n->cond.cond, fl);
 
@@ -679,7 +698,7 @@ static Node* resolve_if_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Type* resolve_id_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NId);
   if (R_UNLIKELY(n->ref.target == NULL)) {
     // identifier failed to resolve
@@ -921,10 +940,13 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_binop_or_assign_type(ctx, n, fl);
 
   case NTypeCast:
-    R_MUSTTAIL return resolve_typecast_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_typecast(ctx, n, fl);
 
   case NCall:
-    R_MUSTTAIL return resolve_call_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_call(ctx, n, fl);
+
+  case NStructCons:
+    R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NLet:
     if (n->let.init) {
@@ -949,10 +971,10 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     break;
 
   case NIf:
-    R_MUSTTAIL return resolve_if_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_if(ctx, n, fl);
 
   case NId:
-    R_MUSTTAIL return resolve_id_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_id(ctx, n, fl);
 
   case NArrayType:
     R_MUSTTAIL return resolve_arraytype_type(ctx, n, fl);

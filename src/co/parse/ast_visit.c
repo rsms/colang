@@ -83,6 +83,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
 
   // uses u.call
   case NTypeCast:
+  case NStructCons:
   case NCall:
     if (!CALLBACK(n->call.receiver, "recv"))
       return false;

@@ -45,6 +45,7 @@ typedef enum {
   _(Return,      NodeClassExpr) \
   _(Array,       NodeClassExpr) \
   _(Tuple,       NodeClassExpr) \
+  _(StructCons,  NodeClassExpr) \
   _(TypeCast,    NodeClassExpr) \
   /* types */ \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
@@ -150,7 +151,7 @@ typedef struct Node {
       Sym   nullable name;    // NULL for lambda
       Node* nullable body;    // NULL for fun-declaration
     } fun;
-    /* call */ struct { // Call, TypeCast
+    /* call */ struct { // Call, TypeCast, StructCons
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;

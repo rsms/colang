@@ -1,3 +1,4 @@
+# Bridge = struct { occupants int }
 struct Bridge {
   occupants int
 }
@@ -9,10 +10,11 @@ struct Spaceship
     fuel   int = 1000
     output int = fuel / 2
 
-fun len(s Spaceship) auto
-  s.occupants
+# fun len(s Spaceship) auto
+#   s.occupants
 
 fun main() int
+  x = int(3)
   s = Spaceship()
   s.engine.fuel
   # s.occupants
