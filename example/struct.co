@@ -4,16 +4,16 @@ struct Bridge {
 
 struct Spaceship
   Bridge
-  shields float32
+  shields f32
   engine  struct
     fuel   int = 1000
     output int = fuel / 2
 
-# fun len(s Spaceship) int
-#   s.occupants
+fun len(s Spaceship) auto
+  s.occupants
 
 fun main() int
   s = Spaceship()
-  # s.engine.fuel
-  s.occupants
+  s.engine.fuel
+  # s.occupants
   # s.len # WIP

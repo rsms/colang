@@ -92,8 +92,8 @@ inline static BNPrimType bn_prim_type(Type* basicType) {
     [TypeCode_i64] = BNPrimType_i64,
     [TypeCode_u64] = BNPrimType_u64,
 
-    [TypeCode_float32] = BNPrimType_f32,
-    [TypeCode_float64] = BNPrimType_f64,
+    [TypeCode_f32] = BNPrimType_f32,
+    [TypeCode_f64] = BNPrimType_f64,
 
     // wasm32
     [TypeCode_int]   = BNPrimType_i32,

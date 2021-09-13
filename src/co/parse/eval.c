@@ -88,7 +88,7 @@ static Node* nullable _eval_binop(Build* b, Node* n, Node* left, Node* right) {
       double L = (i64)left->val.f;
       double R = (i64)right->val.f;
       double res;
-      if (t->t.basic.typeCode == TypeCode_float32) {
+      if (t->t.basic.typeCode == TypeCode_f32) {
         if (!_eval_binop_float32(b, n, n->op.op, (float)L, (float)R, &res))
           break;
       } else if (!_eval_binop_float64(b, n, n->op.op, L, R, &res)) {

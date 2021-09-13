@@ -47,35 +47,35 @@ Exp    = (Atom, List, Array) # A lisp expression is an Atom or List
 # Note: loadTypeCodes verifies that this list exactly matches the list in types.h
 typeCodeToIRType :{str:[str]} = {
   # multiple irtypes should be listed from most speecific to most generic
-  "bool":    ["bool"],
-  "i8":      ["s8",  "i8"],
-  "u8":      ["u8",  "i8"],
-  "i16":     ["s16", "i16"],
-  "u16":     ["u16", "i16"],
-  "i32":     ["s32", "i32"],
-  "u32":     ["u32", "i32"],
-  "i64":     ["s64", "i64"],
-  "u64":     ["u64", "i64"],
-  "float32": ["f32"],
-  "float64": ["f64"],
-  "str":     ["str"],
-  "nil":     ["nil"],
-  "auto":    ["auto"],
-  "ptr":     ["ptr", "mem"],
-  "fun":     ["ptr"],
-  "array":   ["array"],
-  "struct":  ["struct"],
-  "tuple":   ["struct"],
-  "ideal":   None,
-  "param1":  None,
-  "param2":  None,
+  "bool":   ["bool"],
+  "i8":     ["s8",  "i8"],
+  "u8":     ["u8",  "i8"],
+  "i16":    ["s16", "i16"],
+  "u16":    ["u16", "i16"],
+  "i32":    ["s32", "i32"],
+  "u32":    ["u32", "i32"],
+  "i64":    ["s64", "i64"],
+  "u64":    ["u64", "i64"],
+  "f32":    ["f32"],
+  "f64":    ["f64"],
+  "str":    ["str"],
+  "nil":    ["nil"],
+  "auto":   ["auto"],
+  "ptr":    ["ptr", "mem"],
+  "fun":    ["ptr"],
+  "array":  ["array"],
+  "struct": ["struct"],
+  "tuple":  ["struct"],
+  "ideal":  None,
+  "param1": None,
+  "param2": None,
 }
 
 typeCodeAliases = {
-  "int":    "i32",  # FIXME
-  "uint":   "u32",  # FIXME
-  "isize":  "i64",  # FIXME
-  "usize":  "u64",  # FIXME
+  "int":   "i32",  # FIXME
+  "uint":  "u32",  # FIXME
+  "isize": "i64",  # FIXME
+  "usize": "u64",  # FIXME
 }
 
 intTypes = set([

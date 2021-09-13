@@ -245,7 +245,7 @@ static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NFun);
   funstack_push(ctx, n);
   Type* ft = NewNode(ctx->build->mem, NFunType);
@@ -275,6 +275,7 @@ static Node* resolve_fun_type(ResCtx* ctx, Node* n, RFlag fl) {
     if (ft->t.fun.result == Type_auto) {
       // inferred return type, e.g. "fun foo() { 123 } => ()->int"
       ft->t.fun.result = bodyType;
+      n->fun.result = bodyType; // set result to make AST printouts nicer
     } else {
       // function's return type is explicit, e.g. "fun foo() int"
       // check for type mismatch
@@ -565,7 +566,7 @@ static Node* resolve_type_call_type(ResCtx* ctx, Node* n, RFlag fl) {
 static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
 
-  // Note: resolve_fun_type breaks handles cycles where a function calls itself,
+  // Note: resolve_fun breaks handles cycles where a function calls itself,
   // making this safe (i.e. will not cause an infinite loop.)
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
 
@@ -904,7 +905,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_tuple_type(ctx, n, fl);
 
   case NFun:
-    R_MUSTTAIL return resolve_fun_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_fun(ctx, n, fl);
 
   case NPostfixOp:
   case NPrefixOp:

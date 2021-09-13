@@ -429,9 +429,7 @@ contexts:
     - include: basic-types
 
   basic-types:
-    - match: '\b(i(nt|16|8|32|64|size)|u(int|16|8|32|64|size)|float(32|64)?|b(yte|ool)|error|str|rune)\b'
-      scope: storage.type.co
-    - match: '\b(ComplexType|FloatType|IntegerType|Type|Type1)\b'
+    - match: '\b(i(nt|16|8|32|64|size)|u(int|16|8|32|64|size)|f(32|64)?|b(yte|ool)|error|str|rune|auto)\b'
       scope: storage.type.co
 
   functions:

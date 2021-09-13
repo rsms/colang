@@ -459,13 +459,13 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
         }
         default: return OpNil;
       } // switch (type2)
-    case TypeCode_float32:
+    case TypeCode_f32:
       switch (type2) {
         case TypeCode_nil: switch (tok) {
           case TMinus : return OpNegF32 ;// f32 -> f32
           default: return OpNil;
         }
-        case TypeCode_float32: switch (tok) {
+        case TypeCode_f32: switch (tok) {
           case TStar  : return OpMulF32     ;// f32 f32 -> f32
           case TSlash : return OpDivF32     ;// f32 f32 -> f32
           case TPlus  : return OpAddF32     ;// f32 f32 -> f32
@@ -480,13 +480,13 @@ IROp IROpFromAST(Tok tok, TypeCode type1, TypeCode type2) {
         }
         default: return OpNil;
       } // switch (type2)
-    case TypeCode_float64:
+    case TypeCode_f64:
       switch (type2) {
         case TypeCode_nil: switch (tok) {
           case TMinus : return OpNegF64 ;// f64 -> f64
           default: return OpNil;
         }
-        case TypeCode_float64: switch (tok) {
+        case TypeCode_f64: switch (tok) {
           case TStar  : return OpMulF64     ;// f64 f64 -> f64
           case TSlash : return OpDivF64     ;// f64 f64 -> f64
           case TPlus  : return OpAddF64     ;// f64 f64 -> f64

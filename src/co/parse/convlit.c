@@ -33,8 +33,8 @@ static const i64 min_intval[TypeCode_NUM_END] = {
   (i64)0,                   // uint32
   (i64)-0x8000000000000000, // int64
   (i64)0,                   // uint64
-  (i64)0,                   // TODO float32
-  (i64)0,                   // TODO float64
+  (i64)0,                   // TODO f32
+  (i64)0,                   // TODO f64
   (i32)-0x80000000,         // int == int32
   (i64)0,                   // uint == uint32
   (i64)-0x8000000000000000, // isize
@@ -51,8 +51,8 @@ static const u64 max_intval[TypeCode_NUM_END] = {
   0xffffffff,          // uint32
   0x7fffffffffffffff,  // int64
   0xffffffffffffffff,  // uint64
-  0,                   // TODO float32
-  0,                   // TODO float64
+  0,                   // TODO f32
+  0,                   // TODO f64
   0x7fffffff,          // int == int32
   0xffffffff,          // uint == uint32
   0x7fffffffffffffff,  // isize
@@ -190,14 +190,14 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
 
   switch (n->kind) {
   case NIntLit:
-    if (t == Type_float32 || t == Type_float64) {
-      // IntLit -> FloatLit, e.g. "x = 123 as float64"
+    if (t == Type_f32 || t == Type_f64) {
+      // IntLit -> FloatLit, e.g. "x = 123 as f64"
       n->val.f = (double)n->val.i;
       n->kind = NFloatLit;
     }
     break;
   case NFloatLit:
-    if (t != Type_float32 && t != Type_float64) {
+    if (t != Type_f32 && t != Type_f64) {
       // FloatLit -> IntLit, e.g. "x = 1.0 as u32"
       n->val.i = (u64)n->val.f;
       n->kind = NIntLit;
@@ -214,7 +214,7 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
 // // binOpOkforType returns true if binary op Tok is available for operands of type TypeCode.
 // // Tok => TypeCode => bool
 // static bool binOpOkforType[T_PRIM_OPS_END - T_PRIM_OPS_START - 1][TypeCode_NUM_END] = {
-//   //                 bool    int8  uint8  int16 uint16 int32 uint32 int64 uint64 float32 float64
+//   //                 bool    int8  uint8  int16 uint16 int32 uint32 int64 uint64 f32 f64
 //   /* TPlus       */{ false,  true, true,  true, true,  true, true,  true, true,  true,   true },
 //   /* TMinus      */{ false,  true, true,  true, true,  true, true,  true, true,  true,   true },
 //   /* TStar       */{ false,  true, true,  true, true,  true, true,  true, true,  true,   true },

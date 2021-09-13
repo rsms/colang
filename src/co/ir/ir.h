@@ -50,14 +50,14 @@ struct IRType {
 
 #define IR_PRIMITIVE_TYPES(_) \
   /* name,   TypeCode_% */ \
-  _( void,    nil     ) \
-  _( i1,      bool    ) \
-  _( i8,      i8      ) \
-  _( i16,     i16     ) \
-  _( i32,     i32     ) \
-  _( i64,     i64     ) \
-  _( float32, float32 ) \
-  _( float64, float64 ) \
+  _( void, nil  ) \
+  _( i1,   bool ) \
+  _( i8,   i8   ) \
+  _( i16,  i16  ) \
+  _( i32,  i32  ) \
+  _( i64,  i64  ) \
+  _( f32,  f32  ) \
+  _( f64,  f64  ) \
 /*END IR_PRIMITIVE_TYPES*/
 
 #define I_ENUM(NAME, TYPECODE) extern const IRType* IRType_##NAME;

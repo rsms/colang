@@ -76,6 +76,12 @@ static Str mktypestr(Str s, const Node* n) {
         s = mktypestr(s, (Node*)n->t.list.a.v[i]);
       return str_appendc(s, TypeCodeEncoding(TypeCode_tupleEnd));
 
+    case NStructType:
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_struct));
+      for (u32 i = 0; i < n->t.struc.a.len; i++)
+        s = mktypestr(s, (Node*)n->t.struc.a.v[i]);
+      return str_appendc(s, TypeCodeEncoding(TypeCode_structEnd));
+
     case NFunType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_fun));
       if (n->t.fun.params) {

@@ -34,8 +34,8 @@ typedef enum TypeCodeFlag {
   _( u32       , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                    \
   _( i64       , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
   _( u64       , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                    \
-  _( float32   , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
-  _( float64   , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
+  _( f32       , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
+  _( f64       , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
   _( int       , 'i', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
   _( uint      , 'u', TypeCodeFlagInt )                                                        \
   _( isize     , 'I', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
@@ -94,23 +94,23 @@ const char* CTypeName(CType ct);
 // IMPORTANT: These must match the list of TypeCodes up until CONCRETE_END.
 // Looking for all type defs? universe.h puts it all together.
 #define TYPE_SYMS(_) \
-  _( bool    ) \
-  _( i8      ) \
-  _( u8      ) \
-  _( i16     ) \
-  _( u16     ) \
-  _( i32     ) \
-  _( u32     ) \
-  _( i64     ) \
-  _( u64     ) \
-  _( float32 ) \
-  _( float64 ) \
-  _( int     ) \
-  _( uint    ) \
-  _( isize   ) \
-  _( usize   ) \
-  _( str     ) \
-  _( auto    ) \
+  _( bool  ) \
+  _( i8    ) \
+  _( u8    ) \
+  _( i16   ) \
+  _( u16   ) \
+  _( i32   ) \
+  _( u32   ) \
+  _( i64   ) \
+  _( u64   ) \
+  _( f32   ) \
+  _( f64   ) \
+  _( int   ) \
+  _( uint  ) \
+  _( isize ) \
+  _( usize ) \
+  _( str   ) \
+  _( auto  ) \
 /*END TYPE_SYMS*/
 
 // TYPE_SYMS_PRIVATE: named types like TYPE_SYMS but not exported in the global namespace.

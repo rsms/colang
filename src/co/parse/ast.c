@@ -207,7 +207,7 @@ const Node* NodeEffectiveType(const Node* n) {
 Node* IdealType(CType ct) {
   switch (ct) {
   case CType_int:   return Type_int;
-  case CType_float: return Type_float64;
+  case CType_float: return Type_f64;
   case CType_str:   return Type_str;
   case CType_bool:  return Type_bool;
   case CType_nil:   return Type_nil;
