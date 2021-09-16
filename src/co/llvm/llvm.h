@@ -1,5 +1,6 @@
 #pragma once
 #include "../build.h"
+#include "../util/error.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
@@ -175,7 +176,7 @@ typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMV
 // llvm_build_and_emit
 typedef struct Node Node;
 EXTERN_C bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple);
-EXTERN_C int llvm_jit(Build* build, Node* pkgnode, const char* triple);
+EXTERN_C int llvm_jit(Build* build, Node* pkgnode);
 
 // llvm_init_targets initializes target info and returns the default target triplet.
 // Safe to call multiple times. Just returns a cached value on subsequent calls.
@@ -250,6 +251,13 @@ typedef struct CoLLDOptions {
 // Caller must always call LLVMDisposeMessage on errmsg.
 // Returns true on success.
 EXTERN_C bool lld_link(CoLLDOptions* options, char** errmsg);
+
+// —— JIT ——
+
+typedef struct CoJIT CoJIT;
+
+EXTERN_C CoJIT* jit_create(Error* err);
+EXTERN_C void   jit_dispose(CoJIT*);
 
 
 // -----------------------------------------------------------------------------------------------

@@ -164,12 +164,9 @@ Str pos_fmt(const PosMap* pm, PosSpan span, Str s, const char* fmt, ...) {
 
 Str pos_str(const PosMap* pm, Pos p, Str s) {
   const char* filename = "<input>";
-  size_t filenameLen = strlen("<input>");
   auto src = (Source*)pos_source(pm, p);
-  if (src) {
+  if (src)
     filename = src->filename;
-    filenameLen = strlen(filename);
-  }
   return str_appendfmt(s, "%s:%u:%u", filename, pos_line(p), pos_col(p));
 }
 

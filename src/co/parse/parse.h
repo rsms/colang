@@ -131,7 +131,6 @@ typedef struct Comment {
 // Indent is a scanned comment
 typedef struct Indent {
   bool isblock; // true if this indent is a block
-  u8   c;       // whitespace char
   u32  n;       // number of whitespace chars
 } Indent;
 
@@ -157,17 +156,16 @@ typedef struct Scanner {
 
   // token
   Tok        tok;           // current token
-  Tok        tokNextSynth;  // next synthetic token
   const u8*  tokstart;      // start of current token
   const u8*  tokend;        // end of current token
   const u8*  prevtokend;    // end of previous token
   Sym        name;          // Current name (valid for TId and keywords)
 
-  Comment*   comments_head; // linked list head of comments scanned so far
-  Comment*   comments_tail; // linked list tail of comments scanned so far
-
   u32        lineno;        // source position line
   const u8*  linestart;     // source position line start pointer (for column)
+
+  Comment*   comments_head; // linked list head of comments scanned so far
+  Comment*   comments_tail; // linked list tail of comments scanned so far
 } Scanner;
 
 // ScannerInit initializes a scanner. Returns false if SourceOpenBody fails.
@@ -203,7 +201,11 @@ typedef struct Parser {
   Scanner s;          // parser is based on a scanner
   Build*  build;      // compilation context
   Scope*  pkgscope;   // package-level scope
+  Node*   expr;       // most recently parsed expression
   u32     fnest;      // function nesting level (for error handling)
+
+  // set when parsing named type e.g. "type Foo ..."
+  Sym nullable typename;
 
   // ctxtype is non-null when the parser is confident about the type context
   Type* nullable ctxtype;

@@ -261,13 +261,8 @@ _git_pull_if_needed() {
   if [ -d "$gitdir" ]; then
     _pushd "$gitdir"
 
-    local githash_is_symbolic=false
-    # if _git_hash_is_symbolic "$githash"; then
-    if [ "$githash" = "main" ] || [ "$githash" = "master" ]; then
-      githash_is_symbolic=true
-      _log git fetch origin
-           git fetch origin
-    fi
+    _log git fetch origin
+         git fetch origin
 
     if _git_HEAD_is "$githash"; then
       echo "git source is up to date (at $githash)"
@@ -279,11 +274,6 @@ _git_pull_if_needed() {
       _log "git pull aborted: there are local uncommitted changes in $PWD"
       git status -s --untracked-files=no --ignore-submodules=dirty
       exit 1
-    fi
-
-    if ! $githash_is_symbolic; then
-      _log git fetch origin
-           git fetch origin
     fi
 
     _log git checkout "$githash"

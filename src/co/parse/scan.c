@@ -68,14 +68,13 @@ bool ScannerInit(Scanner* s, Build* build, Source* src, ParseFlags flags) {
     s->indentStack.cap = countof(s->indentStack.storage);
   }
 
-  s->tok          = TNone;
-  s->tokNextSynth = TNone;
-  s->tokstart     = s->inp;
-  s->tokend       = s->inp;
-  s->prevtokend   = s->inp;
+  s->tok        = TNone;
+  s->tokstart   = s->inp;
+  s->tokend     = s->inp;
+  s->prevtokend = s->inp;
 
-  s->linestart    = s->inp;
-  s->lineno       = 1;
+  s->linestart = s->inp;
+  s->lineno    = 1;
 
   return true;
 }
@@ -331,19 +330,11 @@ Tok ScannerNext(Scanner* s) {
   scan_again: {}  // jumped to when comments are skipped
   // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (size_t)(s->inp - s->src->body));
 
-  if (s->tokNextSynth != TNone) {
-    s->tok = s->tokNextSynth;
-    s->tokNextSynth = TNone;
-    debug_token_production(s);
-    return s->tok;
-  }
-
   // unwind >1-level indent
   if (s->indent.n > s->indentDst.n) {
     bool isblock = indent_pop(s);
     if (isblock) {
       s->tok = TRBrace;
-      s->tokNextSynth = TSemi; // block is followed by semicolon
       debug_token_production(s);
       return s->tok;
     }
@@ -366,7 +357,6 @@ Tok ScannerNext(Scanner* s) {
     s->tokend = s->linestart - 1;
     s->indentDst = (Indent){
       .isblock = s->insertSemi,
-      .c = *s->linestart,
       .n = (i32)(s->inp - s->linestart),
     };
     if (s->indentDst.n > s->indent.n) {
@@ -387,9 +377,8 @@ Tok ScannerNext(Scanner* s) {
         // decrease in indentation
         bool isblock = indent_pop(s);
         if (isblock) {
-          s->tokNextSynth = TSemi; // block is followed by semicolon
+          s->insertSemi = false;
           s->tok = TRBrace;
-          s->insertSemi = false; // cancel any semicolon since we set tokNextSynth
           debug_token_production(s);
           return s->tok;
         }
@@ -404,9 +393,17 @@ Tok ScannerNext(Scanner* s) {
   }
 
   // EOF
-  if (s->inp == s->inend) {
+  if (R_UNLIKELY(s->inp == s->inend)) {
     s->tokstart = s->inp - 1;
     s->tokend = s->tokstart;
+    s->indentDst.n = 0;
+    if (s->indent.n > 0 && indent_pop(s) /*isblock*/) {
+      // decrease indentation to 0 if source ends at indentation
+      s->tok = TRBrace;
+      s->insertSemi = false;
+      debug_token_production(s);
+      return s->tok;
+    }
     if (s->insertSemi) {
       s->insertSemi = false;
       s->tok = TSemi;

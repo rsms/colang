@@ -74,7 +74,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         // Unwind let bindings
         assert(target->let.init != NULL);
         Node* init = target->let.init;
-        if (NodeIsConst(init) || !NodeKindIsExpr(init->kind)) {
+        if ( /*NodeIsConst(init) || */ !NodeKindIsExpr(init->kind)) {
           // in the case of a let target with a constant or type, resolve to that.
           // Example:
           //   "x = true ; y = x"
@@ -268,6 +268,9 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     if (n->call.args)
       n->call.args = resolve_sym(ctx, n->call.args);
     n->call.receiver = resolve_sym(ctx, n->call.receiver);
+    if (n->call.receiver->kind == NStructType) {
+      n->kind = NStructCons;
+    }
     break;
 
   // the following moved to type resolver:

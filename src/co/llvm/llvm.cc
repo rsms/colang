@@ -5,7 +5,7 @@
 using namespace llvm;
 
 
-static bool llvm_error_to_errmsg(Error err, char** errmsg) {
+static bool llvm_error_to_errmsg(llvm::Error err, char** errmsg) {
   assert(err);
   std::string errstr = toString(std::move(err));
   *errmsg = LLVMCreateMessage(errstr.c_str());
@@ -138,9 +138,8 @@ bool llvm_optmod(
   std_instrumentations.registerCallbacks(instrCallbacks);
 
   // optimization pass builder
-  const bool debugLogging = false;
   Optional<PGOOptions> pgo = None;
-  PassBuilder passBuilder(debugLogging, &targetMachine, pipelineOpt, pgo, &instrCallbacks);
+  PassBuilder passBuilder(&targetMachine, pipelineOpt, pgo, &instrCallbacks);
   LoopAnalysisManager     loopAM;
   FunctionAnalysisManager functionAM;
   CGSCCAnalysisManager    cgsccAM;
@@ -201,6 +200,7 @@ bool llvm_optmod(
   }
   if (optLevel == OptimizationLevel::O0) {
     MPM = passBuilder.buildO0DefaultPipeline(optLevel, enable_lto);
+    MPM.addPass(createModuleToFunctionPassAdaptor(PromotePass())); // mem2reg
   } else if (enable_lto) {
     MPM = passBuilder.buildLTOPreLinkDefaultPipeline(optLevel);
   } else {
@@ -290,14 +290,15 @@ bool llvm_write_archive(
   SmallVector<NewArchiveMember, 4> newMembers;
   for (u32 i = 0; i < filesc; i += 1) {
     Expected<NewArchiveMember> newMember = NewArchiveMember::getFile(filesv[i], deterministic);
-    Error err = newMember.takeError();
+    llvm::Error err = newMember.takeError();
     if (err)
       return llvm_error_to_errmsg(std::move(err), errmsg);
     newMembers.push_back(std::move(*newMember));
   }
   bool writeSymtab = true;
   bool thin = false;
-  Error err = writeArchive(arhivefile, newMembers, writeSymtab, kind, deterministic, thin);
+  llvm::Error err = writeArchive(
+    arhivefile, newMembers, writeSymtab, kind, deterministic, thin);
   if (err)
     return llvm_error_to_errmsg(std::move(err), errmsg);
   return false;

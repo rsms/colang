@@ -166,6 +166,7 @@ typedef struct Node {
       Node* nullable init;
       u32            nrefs; // reference count
       bool           ismut; // true if this is mutable (variable)
+      void* nullable irval; // used by IR builders for temporary storage
     } let;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
       Node*          operand;

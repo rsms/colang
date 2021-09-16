@@ -496,6 +496,39 @@ static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
 static Node* useAsRValue(Parser* p, Node* expr);
 
 
+static Node* simplify_id(Parser* p, Node* id) {
+  asserteq_debug(id->kind, NId);
+  assertnotnull_debug(id->ref.target);
+  assertnotnull_debug(id->ref.name);
+
+  Node* target = id->ref.target;
+
+  // unwind type
+  for (Node* t = target; t->kind == NLet && NodeIsConst(t); ) {
+    t = t->let.init;
+    // Note: no NodeUnrefLet here
+    if (NodeIsType(t))
+      return useAsRValue(p, t);
+  }
+
+  if (NodeIsType(target)) {
+    // The target is a type; short-circuit and return that instead of the id
+    return useAsRValue(p, target);
+  }
+
+  if (target->kind == NLet)
+    NodeRefLet(target);
+
+  // Note: Don't transfer "unresolved" attribute of functions
+  if (target->kind != NFun)
+    NodeTransferUnresolved(id, target);
+
+  NodeTransferConst(id, target);
+
+  return id;
+}
+
+
 // resolve_id resolves an identifier.
 // Its target is assumed to be NULL.
 // Returns id or its target
@@ -518,22 +551,10 @@ static Node* resolve_id(Parser* p, Node* id) {
   if (id->ref.target == NULL) {
     // not found
     NodeSetUnresolved(id);
-  } else if (NodeIsType(id->ref.target)) {
-    // The target is a type; short-circuit and return that instead of the id
-    //NodeFree(id);
-    return useAsRValue(p, id->ref.target);
-  } else {
-    if (id->ref.target->kind == NLet)
-      NodeRefLet(id->ref.target);
-
-    // Note: Don't transfer "unresolved" attribute of functions
-    if (id->ref.target->kind != NFun)
-      NodeTransferUnresolved(id, id->ref.target);
-
-    NodeTransferConst(id, id->ref.target);
+    return id;
   }
 
-  return id;
+  return simplify_id(p, id);
 }
 
 
@@ -573,8 +594,12 @@ static Node* resolve_id(Parser* p, Node* id) {
 //     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
 //
 static Node* useAsRValue(Parser* p, Node* expr) {
-  if (expr->kind != NId || expr->ref.target)
+  if (expr->kind != NId)
     return expr;
+
+  if (expr->ref.target)
+    return simplify_id(p, expr);
+
   return resolve_id(p, expr);
 }
 
@@ -668,7 +693,7 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
             defsym(p, l->ref.name, r);
           } else {
             // e.g. foo.bar = 3
-            dlog("TODO pAssignField l->kind != NId");
+            panic("TODO pAssignField l->kind != NId");
           }
         }
       }
@@ -976,9 +1001,160 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
 }
 
 
+// Field = ( Id Type | NamedType ) ( "=" Expr )?
+static Node* pField(Parser* p) {
+  asserteq_debug(p->s.tok, TId);
+  auto n = mknode(p, NField);
+  n->field.name = p->s.name;
+  nexttok(p); // consume name
+  NodeSetConst(n);
+
+  if (R_UNLIKELY(p->s.tok == TSemi)) {
+    // e.g. "type" (implicit name)
+    auto typename = mknode(p, NId);
+    typename->ref.name = n->field.name;
+    NodeSetConst(typename);
+    n->type = resolve_id(p, typename);
+    n->flags |= NodeFlagBase;
+  } else {
+    // e.g. "name type"
+    p->typename = n->field.name; // use field name for anonymous structs
+    n->type = pType(p, PFlagNone);
+  }
+
+  // check for duplicate names
+  Node* existing = lookupsymShallow(p, n->field.name);
+  if (existing) {
+    syntaxerrp(p, n->pos, "Duplicate field name \"%s\"", n->field.name);
+    build_notef(p->build, NodePosSpan(existing), "Also defined here");
+  }
+
+  defsym(p, n->field.name, n);
+
+  if (got(p, TAssign)) {
+    // e.g. "field = initval"
+    n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
+    if (!n->type)
+      n->type = n->field.init->type;
+    NodeTransferUnresolved(n, n->field.init);
+  }
+
+  NodeTransferUnresolved(n, n->type);
+
+  return n;
+}
+
+
+static bool end_block(Parser* p) {
+  if (R_UNLIKELY(p->s.tok != TRBrace)) {
+    syntaxerr(p, "expecting ; or }");
+    return false;
+  }
+  // following is a dance to look ahead for tokens which when following
+  // a block does not warrant an implicit semicolon. E.g. "if { } else ..."
+  Scanner scanstate = p->s; // save scanner state
+  nexttok(p); // consume '}' and read next token
+  if (p->s.tok != TElse && p->s.tok != TSemi) {
+    p->s = scanstate; // restore scan state
+    p->s.tok = TSemi; // produce semicolon instead of '}'
+  }
+  return true;
+}
+
+
+// StructType = {" fields? "}"
+// fields     = Field ( ";" Field )* ";"?
+static Node* pStructTypeBody(Parser* p, PFlag fl, Node* n) {
+  asserteq_debug(p->s.tok, TLBrace);
+  nexttok(p); // consume "{"
+  NodeSetConst(n);
+
+  n->t.struc.name = p->typename;
+  p->typename = NULL;
+
+  pushScope(p);
+
+  while (p->s.tok != TNone && p->s.tok != TRBrace) {
+    if (R_UNLIKELY(p->s.tok != TId)) {
+      syntaxerr(p, "expecting field or type name");
+      return n;
+    }
+    Node* field = pField(p);
+    NodeTransferUnresolved(n, field);
+    NodeArrayAppend(p->build->mem, &n->t.struc.a, field);
+    if (!got(p, TSemi))
+      break;
+  }
+
+  end_block(p);
+
+  popScope(p);
+  // note: we only allow refs to previously defined fields to enforce no cycles.
+  // Thus we don't save the scope here.
+  return n;
+}
+
+
+// StructTypeDef = "struct" StructType
+//!PrefixParselet TStruct
+static Node* PStructType(Parser* p, PFlag fl) {
+  auto n = mknode(p, NStructType);
+  nexttok(p); // consume "struct"
+
+  // TODO: when infix, assign n->t.struc.name
+
+  // name
+  if (p->s.tok == TId) {
+    p->typename = p->s.name;
+    defsym(p, p->s.name, n); // make sure to define the struct before parsing its body
+    nexttok(p); // consume name
+  } else if ((fl & PFlagRValue) == 0) {
+    syntaxerr(p, "expecting name");
+    nexttok(p);
+  }
+
+  // body
+  if (R_LIKELY(p->s.tok == TLBrace))
+    return pStructTypeBody(p, fl, n);
+
+  syntaxerr(p, "expecting { ... }");
+  return n;
+}
+
+
+// TypeDef = "type" Id Type
+//
+//!PrefixParselet TType
+static Node* PTypeDef(Parser* p, PFlag fl) {
+  auto n = mknode(p, NLet); // TODO: introduce NTypeAlias
+  nexttok(p); // consume "type"
+  NodeSetConst(n);
+
+  // name
+  if (p->s.tok == TId) {
+    n->let.name = p->s.name;
+    // make sure to define the type before parsing a potential struct body
+    defsym(p, p->s.name, n);
+    nexttok(p); // consume name
+  } else if ((fl & PFlagRValue) == 0) {
+    syntaxerr(p, "expecting name");
+  }
+
+  p->typename = n->let.name;
+  n->let.init = pType(p, PFlagNone);
+  n->type = n->let.init;
+  NodeTransferUnresolved(n, n->let.init);
+  return n;
+}
+
+
+// BlockOrStructType = Block | StructType
 // Block = "{" Expr* "}"
 //!PrefixParselet TLBrace
-static Node* PBlock(Parser* p, PFlag fl) {
+static Node* PBlockOrStructType(Parser* p, PFlag fl) {
+  if (fl & PFlagType)
+    return pStructTypeBody(p, fl, mknode(p, NStructType));
+
   auto n = mknode(p, NBlock);
   nexttok(p); // consume "{"
   pushScope(p);
@@ -994,15 +1170,11 @@ static Node* PBlock(Parser* p, PFlag fl) {
       break;
   }
 
-  if (R_UNLIKELY(!got(p, TRBrace))) {
-    syntaxerr(p, "expecting ; or }");
-    nexttok(p);
-  } else {
+  if (end_block(p)) {
     if (cn && cn->kind == NLet) {
       // last expression is a let; increment its refcount
       NodeRefLet(cn);
     }
-
     // if (fl & PFlagRValue) {
     //   // block is used as an rvalue e.g. "x = { ... }"
     //   // if (cn && cn->kind == NLet) {
@@ -1067,7 +1239,7 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
 static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NSelector);
   nexttok(p); // consume "."
-  n->sel.operand = useAsRValue(p, left);
+  n->sel.operand = left; // note: id already gone through useAsRValue
 
   // member is a name
   if (R_UNLIKELY(p->s.tok != TId)) {
@@ -1110,12 +1282,14 @@ static Node* PIf(Parser* p, PFlag fl) {
   n->cond.thenb = expr(p, PREC_LOWEST, fl | PFlagRValue);
   nodeTransferUnresolved2(n, n->cond.cond, n->cond.thenb);
   NodeTransferConst2(n, n->cond.cond, n->cond.thenb);
+
   if (p->s.tok == TElse) {
     nexttok(p);
     n->cond.elseb = expr(p, PREC_LOWEST, fl);
     NodeTransferUnresolved(n, n->cond.elseb);
     NodeTransferConst(n, n->cond.elseb);
   }
+
   return n;
 }
 
@@ -1340,7 +1514,8 @@ static Node* PFun(Parser* p, PFlag fl) {
   PFlag bodyfl = n->fun.result == Const_nil ? (fl & ~PFlagRValue) : (fl | PFlagRValue);
   if (p->s.tok == TLBrace) {
     // assign body before parsing so that we can check for it in pBlock
-    n->fun.body = PBlock(p, bodyfl);
+    assert_debug((fl & PFlagType) == 0); // needed for PBlockOrStructType
+    n->fun.body = PBlockOrStructType(p, bodyfl);
   } else if (got(p, TRArr)) {
     n->fun.body = exprOrTuple(p, PREC_LOWEST, bodyfl);
   }
@@ -1359,95 +1534,6 @@ static Node* PFun(Parser* p, PFlag fl) {
 }
 
 
-static Node* pField(Parser* p) {
-  asserteq_debug(p->s.tok, TId);
-  auto n = mknode(p, NField);
-  n->field.name = p->s.name;
-  nexttok(p); // consume name
-  NodeSetConst(n);
-
-  if (R_UNLIKELY(p->s.tok == TSemi)) {
-    // e.g. "type" (implicit name)
-    auto typename = mknode(p, NId);
-    typename->ref.name = n->field.name;
-    NodeSetConst(typename);
-    n->type = resolve_id(p, typename);
-    n->flags |= NodeFlagBase;
-  } else {
-    // e.g. "name type"
-    n->type = pType(p, PFlagNone);
-  }
-
-  // check for duplicate names
-  Node* existing = lookupsymShallow(p, n->field.name);
-  if (existing) {
-    syntaxerrp(p, n->pos, "Duplicate field name \"%s\"", n->field.name);
-    build_notef(p->build, NodePosSpan(existing), "Also defined here");
-  }
-
-  defsym(p, n->field.name, n);
-
-  if (got(p, TAssign)) {
-    // e.g. "field = initval"
-    n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
-    if (!n->type)
-      n->type = n->field.init->type;
-    NodeTransferUnresolved(n, n->field.init);
-  }
-
-  NodeTransferUnresolved(n, n->type);
-
-  return n;
-}
-
-
-// StructType = "struct" Id? "{" fields? "}"
-// fields     = field ( ";" field )* ";"?
-//
-//!PrefixParselet TStruct
-static Node* PStructType(Parser* p, PFlag fl) {
-  auto n = mknode(p, NStructType);
-  nexttok(p); // consume "struct"
-  NodeSetConst(n);
-
-  // name
-  if (p->s.tok == TId) {
-    n->t.struc.name = p->s.name;
-    defsym(p, p->s.name, n); // make sure to define the struct before parsing its body
-    nexttok(p); // consume name
-  } else if ((fl & PFlagRValue) == 0) {
-    syntaxerr(p, "expecting name");
-    nexttok(p);
-  }
-
-  // body
-  if (R_UNLIKELY(!got(p, TLBrace))) {
-    syntaxerr(p, "expecting { ... }");
-    return n;
-  }
-
-  // fields
-  pushScope(p);
-  while (p->s.tok != TNone && p->s.tok != TRBrace) {
-    if (R_UNLIKELY(p->s.tok != TId)) {
-      syntaxerr(p, "expecting field or type name");
-      return n;
-    }
-    Node* field = pField(p);
-    NodeTransferUnresolved(n, field);
-    NodeArrayAppend(p->build->mem, &n->t.struc.a, field);
-    if (!got(p, TSemi))
-      break;
-  }
-  popScope(p); // fields
-  // note: we only allow refs to previously defined fields to enforce no cycles.
-  // Thus we don't save the scope here.
-
-  want(p, TRBrace); // end of body
-  return n;
-}
-
-
 // end of parselets
 // ============================================================================================
 // ============================================================================================
@@ -1462,7 +1548,9 @@ static const Parselet parselets[TMax] = {
   [TVar] = {PVar, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_COMMA},
   [TLBrack] = {PArrayPrefix, PArrayInfix, PREC_MEMBER},
-  [TLBrace] = {PBlock, NULL, PREC_MEMBER},
+  [TStruct] = {PStructType, NULL, PREC_MEMBER},
+  [TType] = {PTypeDef, NULL, PREC_MEMBER},
+  [TLBrace] = {PBlockOrStructType, NULL, PREC_MEMBER},
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TMinus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TExcalm] = {PPrefixOp, NULL, PREC_MEMBER},
@@ -1470,7 +1558,6 @@ static const Parselet parselets[TMax] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
-  [TStruct] = {PStructType, NULL, PREC_MEMBER},
   [TAssign] = {NULL, PLetOrAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
@@ -1493,13 +1580,15 @@ static Node* prefixExpr(Parser* p, PFlag fl) {
   assert((u32)p->s.tok < (u32)TMax);
   auto parselet = &parselets[p->s.tok];
   if (!parselet->fprefix) {
+    // dlog("prefixExpr NOT found for %s", TokName(p->s.tok));
     syntaxerr(p, "expecting expression");
     auto n = bad(p);
     Tok followlist[] = { TRParen, TRBrace, TRBrack, TSemi, 0 };
     advance(p, followlist);
     return n;
   }
-  return parselet->fprefix(p, fl);
+  // dlog("prefixExpr FOUND for %s", TokName(p->s.tok));
+  return p->expr = parselet->fprefix(p, fl);
 }
 
 
@@ -1509,14 +1598,17 @@ static Node* infixExpr(Parser* p, int precedence, PFlag fl, Node* left) {
   while (p->s.tok != TNone) {
     auto parselet = &parselets[p->s.tok];
     // if (parselet->f) {
-    //   dlog("found infix parselet for %s; parselet->prec=%d < precedence=%d = %s",
-    //     TokName(p->s.tok), parselet->prec, precedence, parselet->prec < precedence ? "Y" : "N");
+    //   dlog("infix parselet FOUND for %s; parselet->prec=%d < precedence=%d = %s",
+    //     TokName(p->s.tok), parselet->prec, precedence,
+    //     (int)parselet->prec < precedence ? "Y" : "N");
+    // } else {
+    //   dlog("infix parselet NOT found for %s", TokName(p->s.tok));
     // }
-    if ((int)parselet->prec < precedence || !parselet->f) {
+    if (!parselet->f || (int)parselet->prec < precedence) {
       break;
     }
     assert(parselet);
-    left = parselet->f(p, parselet, fl, left);
+    left = p->expr = parselet->f(p, parselet, fl, left);
   }
   return left;
 }
@@ -1631,6 +1723,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
 
   p->build = build;
   p->pkgscope = pkgscope;
+  p->expr = NULL;
   p->fnest = 0;
 
   // scopestack

@@ -604,7 +604,11 @@ static bool l_visit(NodeList* nl, void* cp) {
       // when the definition trails the use, syntactically.
       for (u32 i = 0; i < n->cunit.a.len; i++) {
         const Node* cn = n->cunit.a.v[i];
-        if (cn->kind == NFun || cn->kind == NStructType)
+        while (cn->kind == NLet && cn->let.init) {
+          l_seen_id(c, cn, NULL);
+          cn = cn->let.init;
+        }
+        if (cn->kind == NFun)
           l_seen_id(c, cn, NULL);
       }
     }
@@ -614,6 +618,10 @@ static bool l_visit(NodeList* nl, void* cp) {
   case NLet: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
+    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
+      // see comments in case NFun
+      descend = false;
+    }
 
     s = str_appendc(s, ' ');
     s = style_push(&c->style, s, id_color);
@@ -625,17 +633,14 @@ static bool l_visit(NodeList* nl, void* cp) {
       s = str_appendfmt(s, " #%zu", (size_t)id);
       s = style_pop(&c->style, s);
     }
-    descend = newfound;
     break;
   }
 
   case NStructType: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
-    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
-      // see comments in case NFun
+    if (!newfound)
       descend = false;
-    }
     if (n->t.struc.name) {
       s = str_appendc(s, ' ');
       s = style_push(&c->style, s, id_color);
@@ -693,25 +698,27 @@ static bool l_visit(NodeList* nl, void* cp) {
   }
 
   // include type
-  const Type* typ = n->type;
-  if (c->typenest == 0 && (c->fl & NodeReprTypes) && typ && typ != n) {
-    s = style_push(&c->style, s, type_color);
-    NodeList tnl = { .n = typ, .parent = nl, .fieldname = "type" };
-    if (nl->parent == NULL || nl->parent->n->type != typ) {
-      // okay, let's print this type as it differs from the parent type
-      c->s = s; // store s
-      c->typenest++;
-      l_visit(&tnl, c);
-      c->typenest--;
-      s = c->s; // load s
-    } else {
-      // Type is same as parent type.
-      // To avoid repeat printing of type trees, print something short and symbolic.
-      // s = str_appendcstr(s, " •");
-      s = str_appendc(s, ' ');
-      s = str_appendcstr(s, l_listname(&tnl));
+  if (c->fl & NodeReprTypes /* && c->typenest == 0*/ ) {
+    const Type* typ = n->type;
+    if (typ && typ != n) {
+      s = style_push(&c->style, s, type_color);
+      NodeList tnl = { .n = typ, .parent = nl, .fieldname = "type" };
+      if (nl->parent == NULL || nl->parent->n->type != typ) {
+        // okay, let's print this type as it differs from the parent type
+        c->s = s; // store s
+        c->typenest++;
+        l_visit(&tnl, c);
+        c->typenest--;
+        s = c->s; // load s
+      } else {
+        // Type is same as parent type.
+        // To avoid repeat printing of type trees, print something short and symbolic.
+        // s = str_appendcstr(s, " •");
+        s = str_appendc(s, ' ');
+        s = str_appendcstr(s, l_listname(&tnl));
+      }
+      s = style_pop(&c->style, s);
     }
-    s = style_pop(&c->style, s);
   }
 
   // end list

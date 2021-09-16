@@ -13,7 +13,7 @@
 #include "bn/bn.h"
 #endif
 
-#define ENABLE_CO_IR // enable generating Co's own IR
+//#define ENABLE_CO_IR // enable generating Co's own IR
 
 ASSUME_NONNULL_BEGIN
 
@@ -271,7 +271,7 @@ int cmd_build(int argc, const char** argv) {
     dlog("AST validated OK");
   #endif
 
-  // goto end; // XXX
+  //goto end; // XXX
 
   // resolve identifiers if needed (note: it often is needed)
   if (NodeIsUnresolved(pkgnode)) {
@@ -303,7 +303,7 @@ int cmd_build(int argc, const char** argv) {
     return 1;
   }
 
-  goto end; // XXX
+  //goto end; // XXX
 
   // build Co IR
   #ifdef ENABLE_CO_IR
@@ -326,7 +326,7 @@ int cmd_build(int argc, const char** argv) {
     RTIMER_START();
 
     // JIT
-    llvm_jit(&build, pkgnode, NULL/*target=host*/);
+    llvm_jit(&build, pkgnode);
 
     // Build native executable
     // if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {

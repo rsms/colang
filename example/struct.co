@@ -1,21 +1,27 @@
 # Bridge = struct { occupants int }
-struct Bridge {
+type Bridge
   occupants int
-}
 
-struct Spaceship
+type Spaceship
   Bridge
   shields f32
-  engine  struct
+  engine
     fuel   int = 1000
     output int = fuel / 2
+
+# fun Spaceship() Spaceship
+#   # custom constructor
+#   Spaceship(shields = 1.0)
 
 # fun len(s Spaceship) auto
 #   s.occupants
 
 fun main() int
   x = int(3)
-  s = Spaceship()
-  s.engine.fuel
+  # b = Bridge()
+  # b.occupants
+  # s = Spaceship()
+  # s.engine.fuel
   # s.occupants
   # s.len # WIP
+  x

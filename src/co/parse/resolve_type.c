@@ -91,7 +91,7 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 }
 
 
-static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
+static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
   switch (n->kind) {
     case NLet: {
       assert(n->let.nrefs > 0);
@@ -106,7 +106,7 @@ static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
       }
 
       // visit initializer node
-      auto init = resolveConst(b, n->let.init, mayReleaseLet_child);
+      auto init = resolve_const(b, n->let.init, mayReleaseLet_child);
 
       if (mayReleaseLet && NodeUnrefLet(n) == 0) {
         // release now-unused Let node
@@ -117,7 +117,7 @@ static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
 
     case NId:
       assert(n->ref.target != NULL);
-      return resolveConst(b, n->ref.target, mayReleaseLet);
+      return resolve_const(b, n->ref.target, mayReleaseLet);
 
     default:
       return n;
@@ -126,7 +126,7 @@ static Node* resolveConst(Build* b, Node* n, bool mayReleaseLet) {
 
 // ResolveConst resolves n to its constant value
 Node* ResolveConst(Build* b, Node* n) {
-  return resolveConst(b, n, /*mayReleaseLet*/true);
+  return resolve_const(b, n, /*mayReleaseLet*/true);
 }
 
 
@@ -518,8 +518,18 @@ static Node* resolve_struct_cons(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NStructCons);
   assertnotnull_debug(n->call.receiver);
   assertnotnull_debug(n->call.args);
-  dlog("[WIP] resolve struct cons %s", fmtnode(n));
-  // TODO
+
+  // receiver
+  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
+  n->type = n->call.receiver;
+  asserteq_debug(n->call.receiver->kind, NStructType);
+
+  // arguments
+  auto typecontext = typecontext_set(ctx, n->type);
+  n->call.args = resolve_type(ctx, n->call.args, fl | RFlagExplicitTypeCast);
+  assertnotnull_debug(n->call.args->type);
+  ctx->typecontext = typecontext; // restore typecontext
+
   return n;
 }
 
@@ -546,7 +556,7 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   assertnotnull_debug(n->call.args->type);
 
   if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
-    // source type == target type -- eliminate type cast.
+    // source type == target type: eliminate type cast.
     // The IR builder relies on this and will fail if a type conversion is a noop.
     n = n->call.args;
   } else {
@@ -564,22 +574,19 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-// Type call e.g. "int(x)", "[3]u8(1, 2, 3)", "MyStruct(45, 6)"
-static Node* resolve_type_call(ResCtx* ctx, Node* n, RFlag fl) {
-  asserteq_debug(n->kind, NCall);
-  assert_debug(NodeIsType(n->call.receiver));
-  dlog("[WIP] resolve type call %s", fmtnode(n));
-
-  n->type = n->call.receiver;
-
-  // call to type without constructor is treated as cast/conversion
-  if (n->call.receiver->kind != NStructType) {
-    n->kind = NTypeCast;
-    return resolve_typecast(ctx, n, fl);
-  }
-
-  return n;
-}
+// // Type call e.g. "int(x)", "[3]u8(1, 2, 3)", "MyStruct(45, 6)"
+// static Node* resolve_type_call(ResCtx* ctx, Node* n, RFlag fl) {
+//   asserteq_debug(n->kind, NCall);
+//   assert_debug(NodeIsType(n->call.receiver));
+//   dlog("[WIP] resolve type call %s", fmtnode(n));
+//   n->type = n->call.receiver;
+//   // call to type without constructor is treated as cast/conversion
+//   if (n->call.receiver->kind != NStructType) {
+//     n->kind = NTypeCast;
+//     return resolve_typecast(ctx, n, fl);
+//   }
+//   return n;
+// }
 
 
 static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
@@ -590,8 +597,9 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
 
   // type call?
-  if (NodeIsType(n->call.receiver))
-    return resolve_type_call(ctx, n, fl);
+  assert_debug( ! NodeIsType(n->call.receiver));
+  // if (NodeIsType(n->call.receiver))
+  //   return resolve_type_call(ctx, n, fl);
 
   auto ft = n->call.receiver->type;
   assert(ft != NULL);
@@ -654,8 +662,9 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_if(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIf);
-  n->cond.cond = resolve_type(ctx, n->cond.cond, fl);
+  n->cond.cond = resolve_type(ctx, n->cond.cond, fl | RFlagResolveIdeal | RFlagEager);
 
+  // condition must be of boolean type
   if (R_UNLIKELY(n->cond.cond->type != Type_bool)) {
     build_errf(ctx->build, NodePosSpan(n->cond.cond),
       "non-bool %s (type %s) used as condition",
@@ -665,7 +674,7 @@ static Node* resolve_if(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   // visit then branch
-  n->cond.thenb = resolve_type(ctx, n->cond.thenb, fl);
+  n->cond.thenb = resolve_type(ctx, n->cond.thenb, fl | RFlagResolveIdeal | RFlagEager);
   auto thentype = n->cond.thenb->type;
 
   // visit else branch
@@ -707,6 +716,14 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
   }
   n->ref.target = resolve_type(ctx, n->ref.target, fl);
   n->type = n->ref.target->type;
+
+  // // unwind compile-time constant [edit: breaks struct cons access?]
+  // n = n->ref.target;
+  // while (n->kind == NLet && NodeIsConst(n)) {
+  //   NodeUnrefLet(n);
+  //   n = n->let.init;
+  // }
+
   return n;
 }
 
@@ -788,7 +805,6 @@ static Type* nullable resolve_struct_field_type(Type* st, Sym member) {
 
 static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSelector);
-  dlog("[WIP] resolve selector %s", fmtnode(n));
 
   n->sel.operand = resolve_type(ctx, n->sel.operand, fl);
   Node* recvt = n->sel.operand->type;
@@ -888,7 +904,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     if (n->type == Type_ideal) {
       if ((fl & RFlagResolveIdeal) && ((fl & RFlagEager) || ctx->typecontext)) {
         if (ctx->typecontext)
-          R_MUSTTAIL return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
+          return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
         n = NodeCopy(ctx->build->mem, n);
         n->type = IdealType(n->val.ct);
       }
@@ -993,7 +1009,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     if (fl & RFlagResolveIdeal) {
       if (ctx->typecontext) {
         ConvlitFlags clfl = fl & RFlagExplicitTypeCast ? ConvlitExplicit : ConvlitImplicit;
-        R_MUSTTAIL return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
+        return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
       }
       // fallback
       n = NodeCopy(ctx->build->mem, n);

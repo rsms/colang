@@ -6,6 +6,7 @@
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
 #include <llvm-c/Transforms/Scalar.h>
 #include <llvm-c/LLJIT.h>
+#include <llvm-c/OrcEE.h>
 
 // rtimer helpers
 #define ENABLE_RTIMER_LOGGING
@@ -42,7 +43,7 @@ typedef struct B {
   LLVMTargetMachineRef target;
 
   // AST types, keyed by typeid
-  SymMap typemap;
+  SymMap internedTypes;
 
   // type constants
   LLVMTypeRef t_void;
@@ -57,6 +58,9 @@ typedef struct B {
   LLVMTypeRef t_int;
 
 } B;
+
+
+static LLVMTypeRef get_struct_type(B* b, Type* tn);
 
 
 static LLVMTypeRef get_type(B* b, Type* nullable n) {
@@ -79,9 +83,9 @@ static LLVMTypeRef get_type(B* b, Type* nullable n) {
         case TypeCode_i64:
         case TypeCode_u64:
           return b->t_i64;
-        case TypeCode_float32:
+        case TypeCode_f32:
           return b->t_f32;
-        case TypeCode_float64:
+        case TypeCode_f64:
           return b->t_f64;
         case TypeCode_ideal:
         case TypeCode_int:
@@ -96,6 +100,8 @@ static LLVMTypeRef get_type(B* b, Type* nullable n) {
       }
       break;
     }
+    case NStructType:
+      return get_struct_type(b, n);
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;
@@ -124,6 +130,25 @@ static Value get_current_fun(B* b) {
 static Value build_expr(B* b, Node* n, const char* debugname);
 
 
+inline static Sym ntypeid(B* b, Type* tn) {
+  return tn->t.id ? tn->t.id : GetTypeID(b->build, tn);
+}
+
+
+static LLVMTypeRef nullable get_intern_type(B* b, Type* tn) {
+  assert_debug(NodeIsType(tn));
+  Sym tid = ntypeid(b, tn);
+  return (LLVMTypeRef)SymMapGet(&b->internedTypes, tid);
+}
+
+static void add_intern_type(B* b, Type* tn, LLVMTypeRef tr) {
+  assert_debug(NodeIsType(tn));
+  assertnull_debug(get_intern_type(b, tn)); // must not be defined
+  Sym tid = ntypeid(b, tn);
+  SymMapSet(&b->internedTypes, tid, tr);
+}
+
+
 static LLVMTypeRef build_funtype(B* b, Node* nullable params, Node* nullable result) {
   LLVMTypeRef returnType = get_type(b, result);
   LLVMTypeRef* paramsv = NULL;
@@ -143,15 +168,13 @@ static LLVMTypeRef build_funtype(B* b, Node* nullable params, Node* nullable res
 }
 
 
-static LLVMTypeRef get_funtype(B* b, Node* funTypeNode) {
-  assert(funTypeNode->kind == NFunType);
-  assert(funTypeNode->t.id);
-  LLVMTypeRef ft = (LLVMTypeRef)SymMapGet(&b->typemap, funTypeNode->t.id);
-  if (!ft) {
-    ft = build_funtype(b, funTypeNode->t.fun.params, funTypeNode->t.fun.result);
-    SymMapSet(&b->typemap, funTypeNode->t.id, ft);
+static LLVMTypeRef get_funtype(B* b, Type* tn) {
+  LLVMTypeRef tr = get_intern_type(b, tn);
+  if (!tr) {
+    tr = build_funtype(b, tn->t.fun.params, tn->t.fun.result);
+    add_intern_type(b, tn, tr);
   }
-  return ft;
+  return tr;
 }
 
 
@@ -223,9 +246,9 @@ static Value get_fun(B* b, Node* n) { // n->kind==NFun
 
 
 static Value build_fun(B* b, Node* n) {
-  assert(n->kind == NFun);
-  assert(n->type);
-  assert(n->type->kind == NFunType);
+  asserteq_debug(n->kind, NFun);
+  assertnotnull_debug(n->type);
+  asserteq_debug(n->type->kind, NFunType);
   auto f = &n->fun;
 
   if (f->name) { // Sym
@@ -242,9 +265,6 @@ static Value build_fun(B* b, Node* n) {
   LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
   LLVMPositionBuilderAtEnd(b->builder, bb);
   Value bodyval = build_expr(b, n->fun.body, "");
-
-  // LLVMOpcode LLVMRet
-  LLVMOpcode LLVMGetInstructionOpcode(LLVMValueRef Inst);
 
   if (!bodyval || !value_is_ret(bodyval)) {
     // implicit return at end of body
@@ -339,8 +359,184 @@ static Value build_return(B* b, Node* n, const char* debugname) { // n->kind==NR
 }
 
 
+static LLVMTypeRef build_struct_type(B* b, Type* n) {
+  asserteq_debug(n->kind, NStructType);
+
+  u32 elemc = n->t.struc.a.len; // get_type
+  LLVMTypeRef elemv_st[32];
+  LLVMTypeRef* elemv = elemv_st; // TODO: memalloc if needed
+
+  for (u32 i = 0; i < n->t.struc.a.len; i++) {
+    Node* field = n->t.struc.a.v[i];
+    asserteq_debug(field->kind, NField);
+    elemv[i] = get_type(b, field->type);
+  }
+
+  LLVMTypeRef ty = LLVMStructCreateNamed(b->ctx, ntypeid(b, n));
+  LLVMStructSetBody(ty, elemv, elemc, /*packed*/false);
+
+  //return LLVMStructTypeInContext(b->ctx, elemv, elemc, /*packed*/false);
+  return ty;
+}
+
+
+static LLVMTypeRef get_struct_type(B* b, Type* tn) {
+  asserteq_debug(tn->kind, NStructType);
+  LLVMTypeRef ty = get_intern_type(b, tn);
+  if (!ty) {
+    ty = build_struct_type(b, tn);
+    add_intern_type(b, tn, ty);
+  }
+  return ty;
+}
+
+
+static Value get_struct_type_expr(B* b, Type* tn) {
+  // struct type used as value
+  LLVMTypeRef ty = get_struct_type(b, tn);
+
+  if (LLVMGetInsertBlock(b->builder)) // inside function
+    return LLVMBuildAlloca(b->builder, ty, "thing");
+
+  // global scope
+  LLVMValueRef* vals = NULL; // must be const
+  u32 nvals = 0;
+  return LLVMConstStructInContext(b->ctx, vals, nvals, /*packed*/false);
+}
+
+
+static Value build_struct(B* b, Node* n) {
+  asserteq_debug(n->kind, NStructCons);
+  assertnotnull_debug(n->type);
+
+  LLVMTypeRef ty = get_struct_type(b, n->type);
+
+  if (LLVMGetInsertBlock(b->builder)) { // inside function
+    dlog("TODO: initialize fields");
+    return LLVMBuildAlloca(b->builder, ty, "");
+  }
+
+  // global scope (FIXME)
+  LLVMValueRef* vals = NULL; // must be const
+  u32 nvals = 0;
+  return LLVMConstStructInContext(b->ctx, vals, nvals, /*packed*/false);
+}
+
+
+static Value build_selector(B* b, Node* n) {
+  asserteq_debug(n->kind, NSelector);
+  assertnotnull_debug(n->type);
+
+  dlog("TODO: GEP");
+
+  Value pointer = build_expr(b, n->sel.operand, "");
+  LLVMTypeRef ty = get_type(b, n->type);
+
+  dlog("do GEP");
+
+  u32 field_index = 0; // fixme
+
+  return LLVMBuildStructGEP2(b->builder, ty, pointer, field_index, "");
+
+  // TODO: if struct is a constant (materialized w/ LLVMConstStructInContext)
+  // then use LLVMConstGEP2.
+
+  // return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+}
+
+
+static Value build_index(B* b, Node* n) {
+  asserteq_debug(n->kind, NIndex);
+  assertnotnull_debug(n->type);
+  dlog("TODO: GEP");
+  // TODO: LLVMBuildGEP2
+  // LLVMValueRef LLVMBuildGEP2(LLVMBuilderRef B, LLVMTypeRef Ty,
+  //                          LLVMValueRef Pointer, LLVMValueRef *Indices,
+  //                          unsigned NumIndices, const char *Name);
+  return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+}
+
+
+static Value build_let(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NLet);
+  assertnotnull_debug(n->type);
+
+  if (n->let.nrefs == 0) // skip unused let
+    return NULL;
+
+  if (n->let.irval) // already allocated; return pointer
+    return (Value)n->let.irval;
+
+  // // FIXME don't use name lookup here; pointers POINTERS! (or Sym or PtrMap or something.)
+  // Value v = LLVMGetNamedGlobal(b->mod, n->let.name);
+  // if (v) {
+  //   dlog("found named global");
+  //   return v;
+  // }
+
+  if (NodeIsConst(n)) {
+    dlog("TODO: immutable local");
+    assertnotnull_debug(n->let.init); // should be resolved
+    // n->let.irval = build_expr(b, n->let.init, n->let.name);
+    // return n->let.irval;
+  }
+
+  // mutable variables
+  // See https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
+  LLVMTypeRef ty = get_type(b, n->type);
+  n->let.irval = LLVMBuildAlloca(b->builder, ty, n->let.name);
+
+  if (n->let.init) {
+    auto init = build_expr(b, n->let.init, n->let.name);
+    return LLVMBuildStore(b->builder, init, n->let.irval);
+  }
+
+  return n->let.irval;
+}
+
+
+static Value build_id_read(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NId);
+  assertnotnull_debug(n->type);
+  assertnotnull_debug(n->ref.target); // should be resolved
+
+  Value target = build_expr(b, n->ref.target, n->ref.name);
+
+  if (n->ref.target->kind == NLet) {
+    LLVMTypeRef ty = get_type(b, n->type);
+    return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
+  }
+
+  return target;
+}
+
+
+static Value build_assign(B* b, Node* n) {
+  asserteq_debug(n->kind, NId);
+  assertnotnull_debug(n->type);
+
+  // LLVMValueRef LLVMBuildStore(LLVMBuilderRef, LLVMValueRef val, LLVMValueRef Ptr);
+
+  panic("TODO");
+  return NULL; // FIXME
+}
+
+
+static Value build_binop(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NBinOp);
+  assertnotnull_debug(n->type);
+
+  Value x = build_expr(b, n->op.left, "");
+  Value y = build_expr(b, n->op.right, "");
+
+  // TODO FIXME: op (currently hard coded to "add")
+  if (n->type == Type_f64 || n->type == Type_f32)
+    return LLVMBuildFAdd(b->builder, x, y, debugname);
+  return LLVMBuildAdd(b->builder, x, y, debugname);
+}
+
+
 static Value build_expr(B* b, Node* n, const char* debugname) {
-retry:
   if (debugname && debugname[0]) {
     dlog("build_expr %s %s <%s> (\"%s\")",
       NodeKindName(n->kind), fmtnode(n), fmtnode(n->type), debugname);
@@ -348,55 +544,22 @@ retry:
     dlog("build_expr %s %s <%s>", NodeKindName(n->kind), fmtnode(n), fmtnode(n->type));
   }
   switch (n->kind) {
-    case NBinOp: {
-      Value x = build_expr(b, n->op.left, "");
-      Value y = build_expr(b, n->op.right, "");
-      // TODO FIXME: op (currently hard coded to "add")
-      if (n->type == Type_float64 || n->type == Type_float32) {
-        return LLVMBuildFAdd(b->builder, x, y, debugname);
-      } else {
-        return LLVMBuildAdd(b->builder, x, y, debugname);
-      }
-    }
-    case NId: {
-      assert(n->ref.target); // should be resolved
-      debugname = n->ref.name;
-      n = n->ref.target;
-      goto retry;
-    }
-    case NLet: {
-      if (n->let.nrefs == 0) {
-        // skip unused let
-        return NULL;
-      }
-      // FIXME don't use name lookup here; pointers POINTERS! (or Sym or PtrMap or something.)
-      Value v = LLVMGetNamedGlobal(b->mod, n->let.name);
-      if (v) {
-        dlog("found named global");
-        return v;
-      }
-      // TODO FIXME generate a location instead of just assuming init is the value
-      assert(n->let.init); // should be resolved
-      debugname = n->let.name;
-      n = n->let.init;
-      goto retry;
-    }
-    case NIntLit:
-      return LLVMConstInt(get_type(b, n->type), n->val.i, /*signext*/false);
-    case NFloatLit:
-      return LLVMConstReal(get_type(b, n->type), n->val.f);
-    case NArg:
-      return LLVMGetParam(get_current_fun(b), n->field.index);
-    case NBlock:
-      return build_block(b, n);
-    case NCall:
-      return build_call(b, n);
-    case NTypeCast:
-      return build_typecast(b, n, debugname);
-    case NReturn:
-      return build_return(b, n, debugname);
-    case NFun:
-      return get_fun(b, n);
+    case NBinOp:      return build_binop(b, n, debugname);
+    case NId:         return build_id_read(b, n, debugname);
+    case NLet:        return build_let(b, n, debugname);
+    case NIntLit:     return LLVMConstInt(get_type(b, n->type), n->val.i, /*signext*/false);
+    case NFloatLit:   return LLVMConstReal(get_type(b, n->type), n->val.f);
+    case NParam:      return LLVMGetParam(get_current_fun(b), n->field.index);
+    case NBlock:      return build_block(b, n);
+    case NCall:       return build_call(b, n);
+    case NTypeCast:   return build_typecast(b, n, debugname);
+    case NReturn:     return build_return(b, n, debugname);
+    case NStructType: return get_struct_type_expr(b, n);
+    case NStructCons: return build_struct(b, n);
+    case NSelector:   return build_selector(b, n);
+    case NIndex:      return build_index(b, n);
+    case NFun:        return get_fun(b, n);
+    case NAssign:     return build_assign(b, n);
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;
@@ -473,7 +636,7 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   };
   _b.t_int = _b.t_i32; // alias int = i32
   B* b = &_b;
-  SymMapInit(&b->typemap, 8, build->mem);
+  SymMapInit(&b->internedTypes, 16, build->mem);
 
   // initialize function pass manager (optimize)
   if (b->FPM) {
@@ -520,7 +683,7 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
 #ifdef DEBUG
 finish:
 #endif
-  SymMapDispose(&b->typemap);
+  SymMapDispose(&b->internedTypes);
   if (b->FPM)
     LLVMDisposePassManager(b->FPM);
   LLVMDisposeBuilder(b->builder);
@@ -590,9 +753,7 @@ static LLVMTargetMachineRef select_target_machine(
 }
 
 
-static LLVMOrcThreadSafeModuleRef llvm_jit_buildmod(
-  Build* build, Node* pkgnode, const char* triple)
-{
+static LLVMOrcThreadSafeModuleRef llvm_jit_buildmod(Build* build, Node* pkgnode) {
   RTIMER_INIT;
 
   LLVMOrcThreadSafeContextRef tsctx = LLVMOrcCreateNewThreadSafeContext();
@@ -600,7 +761,7 @@ static LLVMOrcThreadSafeModuleRef llvm_jit_buildmod(
   LLVMModuleRef M = LLVMModuleCreateWithNameInContext(build->pkg->id, ctx);
 
   // build module; Co AST -> LLVM IR
-  // TODO: move the IR building code to C++
+  // TODO: consider moving the IR building code to C++
   RTIMER_START();
   build_module(build, pkgnode, M);
   RTIMER_LOG("build llvm IR");
@@ -622,9 +783,11 @@ static int llvm_jit_handle_err(LLVMErrorRef Err) {
 }
 
 
-int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
+int llvm_jit(Build* build, Node* pkgnode) {
   dlog("llvm_jit");
   RTIMER_INIT;
+  // TODO: see llvm/examples/OrcV2Examples/LLJITWithObjectCache/LLJITWithObjectCache.cpp
+  // for an example of caching compiled code objects, like LLVM IR modules.
 
   int main_result = 0;
   LLVMErrorRef err;
@@ -645,12 +808,17 @@ int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
 
 
   // build module
-  LLVMOrcThreadSafeModuleRef M = llvm_jit_buildmod(build, pkgnode, triple);
+  LLVMOrcThreadSafeModuleRef M = llvm_jit_buildmod(build, pkgnode);
   LLVMOrcResourceTrackerRef RT;
 
-  RTIMER_START();
 
-  // Add our demo module to the JIT
+  // // get execution session
+  // LLVMOrcExecutionSessionRef ES = LLVMOrcLLJITGetExecutionSession(J);
+  // LLVMOrcObjectLayerRef objlayer =
+  //   LLVMOrcCreateRTDyldObjectLinkingLayerWithSectionMemoryManager(ES);
+
+
+  // Add our module to the JIT
   LLVMOrcJITDylibRef MainJD = LLVMOrcLLJITGetMainJITDylib(J);
     RT = LLVMOrcJITDylibCreateResourceTracker(MainJD);
   if ((err = LLVMOrcLLJITAddLLVMIRModuleWithRT(J, RT, M))) {
@@ -661,17 +829,18 @@ int llvm_jit(Build* build, Node* pkgnode, const char* triple) {
     goto jit_cleanup;
   }
 
-  // Look up the address of our demo entry point.
+  // Look up the address of our entry point
+  RTIMER_START();
   LLVMOrcJITTargetAddress entry_addr;
   if ((err = LLVMOrcLLJITLookup(J, &entry_addr, "main"))) {
     main_result = llvm_jit_handle_err(err);
     goto mod_cleanup;
   }
-  RTIMER_LOG("llvm JIT add module");
+  RTIMER_LOG("llvm JIT lookup entry function \"main\"");
 
-  RTIMER_START();
 
   // If we made it here then everything succeeded. Execute our JIT'd code.
+  RTIMER_START();
   auto entry_fun = (int(*)(void))entry_addr;
   int result = entry_fun();
   RTIMER_LOG("llvm JIT execute module main fun");
@@ -709,6 +878,7 @@ jit_cleanup:
     if (main_result == 0)
       main_result = x;
   }
+  // LLVMOrcDisposeObjectLayer(objlayer);
 
 llvm_shutdown:
   // Shut down LLVM.

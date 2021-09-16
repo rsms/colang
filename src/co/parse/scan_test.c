@@ -122,9 +122,9 @@ R_TEST(scan_indent) {
     TId,"A", TLBrace,"",
     TId,"B", TSemi,"",
     TId,"C", TLBrace,"",
-    TId,"D", TRBrace,"", TSemi,"",
+    TId,"D", TRBrace,"",
     TId,"E", TSemi,"",
-    TId,"F", TRBrace,"", TSemi,"",
+    TId,"F", TRBrace,"",
     TNone));
 
   asserteq(noerrors, testscan(ParseFlagsDefault,
@@ -135,7 +135,7 @@ R_TEST(scan_indent) {
     "\n",
     TId,"A", TLBrace,"",
     TId,"B", TLBrace,"",
-    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"C", TRBrace,"", TRBrace,"", // drops to 2, then 0
     TId,"D", TSemi,"",
     TNone));
 
@@ -147,7 +147,7 @@ R_TEST(scan_indent) {
     "\n",
     TId,"A", TLBrace,"",
     TId,"B", TLBrace,"",
-    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 1
+    TId,"C", TRBrace,"", TRBrace,"", // drops to 2, then 1
     TId,"D", TSemi,"", // drops to 0 from a non-block indent
     TNone));
 
@@ -161,7 +161,7 @@ R_TEST(scan_indent) {
     "\n",
     TId,"A", TLBrace,"",
     TId,"B", TLBrace,"",
-    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"C", TRBrace,"", TRBrace,"", // drops to 2, then 0
     TId,"D", TSemi,"",
     TNone));
 
@@ -176,7 +176,7 @@ R_TEST(scan_indent) {
     TId,"A", TLBrace,"",
     TId,"B", TSemi,"",
     // -- non-block indent here --
-    TId,"C", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"C", TSemi,"", TRBrace,"", // drops to 2, then 0
     TId,"D", TSemi,"",
     TNone));
 
@@ -191,7 +191,7 @@ R_TEST(scan_indent) {
     TId,"A", TLBrace,"",
     TId,"B", TLBrace,"",
     TComment," comment",
-    TId,"C", TRBrace,"", TSemi,"", TRBrace,"", TSemi,"", // drops to 2, then 0
+    TId,"C", TRBrace,"", TRBrace,"", // drops to 2, then 0
     TId,"D", TSemi,"",
     TNone));
 }

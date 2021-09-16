@@ -7,8 +7,8 @@ set(ENV{PATH} "${LLVM_PREFIX}/bin:$ENV{PATH}")
 
 # CO_WITH_LLVM -- enable LLVM component of co (src/co/llvm + llvm libs)
 set(CO_ENABLE_RT yes)
-# set(CO_WITH_LLVM yes)
-set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
+set(CO_WITH_LLVM yes)
+# set(CO_WITH_BINARYEN yes) # incompatible with CO_WITH_LLVM due to symbol clash
 
 # CO_LLVM_LINK_TYPE = SHARED | STATIC
 #   llvm libraries can either be statically linked into the co executable
@@ -131,6 +131,8 @@ execute_process(
   OUTPUT_VARIABLE LLVM_LLVM_LIBS
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
+
+set(LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS} -lxar")
 
 separate_arguments(LLVM_C_FLAGS UNIX_COMMAND ${LLVM_C_FLAGS})
 separate_arguments(LLVM_CXX_FLAGS UNIX_COMMAND ${LLVM_CXX_FLAGS})
@@ -278,6 +280,7 @@ add_library(colib
   src/co/parse/validate.c
   src/co/util/array.c
   src/co/util/array_test.c
+  src/co/util/error.c
   src/co/util/ptrmap.c
   src/co/util/rtimer.c
   src/co/util/sexpr.c
@@ -302,6 +305,7 @@ if (CO_WITH_LLVM)
     src/co/llvm/llvm.c
     src/co/llvm/llvm.cc
     src/co/llvm/lld.cc
+    src/co/llvm/jit.cc
   )
   target_compile_definitions(colib PUBLIC CO_WITH_LLVM=1)
   target_link_libraries(colib PUBLIC collvm)
@@ -323,7 +327,7 @@ target_link_libraries(co PRIVATE colib)
 
 # make sure all unit tests are included in debug builds
 if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
-  ckit_force_load_lib(co colib)
+  ckit_force_load_libfile(co libcolib.a)
 endif()
 
 # if (${CMAKE_BUILD_TYPE} MATCHES "Debug")
@@ -367,7 +371,8 @@ add_custom_command(
 # colib unit tests
 add_executable(test_colib src/co/co.c)
 target_link_libraries(test_colib PRIVATE colib)
-ckit_force_load_lib(test_colib colib) # make sure all tests in colib are included
+
+ckit_force_load_libfile(test_colib libcolib.a) # make sure all tests in colib are included
 ckit_add_test(test-colib test_colib -testonly)
 
 # parser tests

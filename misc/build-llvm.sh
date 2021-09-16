@@ -4,9 +4,17 @@ USERWD=$PWD
 cd "$(dirname "$0")/.."
 . misc/_common.sh
 
+# DESTDIR: where to install stuff
+# This is a prefix; each project is installed in a subdirectory, e.g. DESTDIR/zlib.
+DESTDIR="$DEPS_DIR"
+mkdir -p "$DESTDIR"
+
 # what git ref to build (commit, tag or branch)
-LLVM_GIT_BRANCH=llvmorg-12.0.0
-# LLVM_GIT_BRANCH=5f2b27666797c6462641434fee7ee010c77d22c0  # master at early pre-tag v13
+#LLVM_GIT_BRANCH=llvmorg-12.0.1
+LLVM_GIT_BRANCH=llvmorg-13.0.0-rc3
+LLVM_DESTDIR=$DESTDIR/llvm
+LLVM_GIT_URL=https://github.com/llvm/llvm-project.git
+
 ZLIB_VERSION=1.2.11
 ZLIB_CHECKSUM=e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
 
@@ -16,15 +24,14 @@ ZLIB_CHECKSUM=e1cb0d5c92da8e9a8c2635dfa249c341dfd00322
 # TODO: make this configurable for a CI -safe or -fast build.
 CO_LLVM_BUILD_COMPILER_RT=true
 
-# DESTDIR: where to install stuff
-# This is a prefix; each project is installed in a subdirectory, e.g. DESTDIR/zlib.
-DESTDIR="$DEPS_DIR"
-mkdir -p "$DESTDIR"
-
 [ "$1" != "-quiet" ] || OPT_QUIET=true
 
 # Host compiler location
-# HOST_LLVM_PREFIX=/usr/local/Cellar/llvm/11.0.0
+if [ -z "$HOST_LLVM_PREFIX" ] && [ "$(uname -s)" = "Darwin" ]; then
+  HOST_LLVM_PREFIX=$(ls -d /usr/local/Cellar/llvm/* | sort -V | tail -n1)
+  [ -d "$HOST_LLVM_PREFIX" ] || HOST_LLVM_PREFIX=
+fi
+
 if [ -z "$HOST_LLVM_PREFIX" ]; then
   HOST_LLVM_PREFIX="$(command -v clang)"
   [ -n "$HOST_LLVM_PREFIX" ] ||
@@ -72,10 +79,30 @@ if [ ! -f "$DESTDIR"/zlib/lib/libz.a ] || [ "$ZLIB_VERSION_INSTALLED" != "$ZLIB_
 fi
 
 # -------------------------------------------------------------------------
-# llvm & clang
+# xar (https://github.com/mackyle/xar) required by liblldMachO2.a
 
-LLVM_DESTDIR=$DESTDIR/llvm
-LLVM_GIT_URL=https://github.com/llvm/llvm-project.git
+# XAR_VERSION=1.6.1
+# XAR_VERSION_INSTALLED=
+
+# if [ ! -f "$DESTDIR"/xar/lib/libxar.a ] ||
+#    [ "$XAR_VERSION_INSTALLED" != "$XAR_VERSION" ]
+# then
+#   OPT_QUIET=false
+#   _download_pushsrc https://github.com/downloads/mackyle/xar/xar-$XAR_VERSION.tar.gz \
+#                     6f7827a034877eda673a22af1c42dc32f14edb4c
+#   ./configure --enable-static --disable-shared --prefix=
+#   # make -j$(nproc)
+#   # make check
+#   # rm -rf "$DESTDIR"/zlib
+#   # mkdir -p "$DESTDIR/zlib"
+#   # make DESTDIR="$DESTDIR/zlib" install
+#   # _popsrc
+# fi
+
+# exit 0
+
+# -------------------------------------------------------------------------
+# llvm & clang
 
 # fetch or update llvm sources
 SOURCE_CHANGED=false
@@ -150,7 +177,7 @@ _llvm_build() {
       \
       -DLLVM_TARGETS_TO_BUILD="AArch64;ARM;AVR;BPF;Mips;RISCV;WebAssembly;X86" \
       -DLLVM_ENABLE_PROJECTS="$LLVM_ENABLE_PROJECTS" \
-      -DLLVM_ENABLE_MODULES=ON \
+      -DLLVM_ENABLE_MODULES=OFF \
       -DLLVM_ENABLE_BINDINGS=OFF \
       -DLLVM_ENABLE_LIBXML2=OFF \
       -DLLVM_ENABLE_TERMINFO=OFF \
@@ -195,7 +222,8 @@ if $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/driver.cpp     misc/myclang/driver.cc
   cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1_main.cpp   misc/myclang/driver_cc1_main.cc
   cp -v "$DEPS_DIR"/llvm-src/clang/tools/driver/cc1as_main.cpp misc/myclang/driver_cc1as_main.cc
-  patch -p0 < misc/clang_driver.diff
+  #patch -p0 < misc/clang_driver.diff # clang 12
+  patch -p0 < misc/clang_driver-clang13.diff
   #
   # to make a new patch:
   #   cp deps/llvm-src/clang/tools/driver/driver.cpp misc/myclang/driver.cc
