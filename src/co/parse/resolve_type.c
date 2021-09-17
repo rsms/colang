@@ -338,7 +338,7 @@ static Node* resolve_block_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_array_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_array(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NArray);
 
   // Array expression is always in a known type context
@@ -360,7 +360,7 @@ static Node* resolve_array_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTuple);
 
   auto typecontext = ctx->typecontext; // save typecontext
@@ -372,7 +372,7 @@ static Node* resolve_tuple_type(ResCtx* ctx, Node* n, RFlag fl) {
       build_errf(ctx->build, NodePosSpan(tupleType),
         "outer type %s where tuple is expected", fmtnode(tupleType));
       tupleType = NULL;
-    } else if (R_UNLIKELY(tupleType->t.list.a.len != n->t.list.a.len)) {
+    } else if (R_UNLIKELY(tupleType->t.list.a.len != n->array.a.len)) {
       build_errf(ctx->build, NodePosSpan(n),
         "%u expressions where %u expressions are expected %s",
         n->array.a.len, tupleType->t.list.a.len, fmtnode(tupleType));
@@ -934,10 +934,10 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_block_type(ctx, n, fl);
 
   case NArray:
-    R_MUSTTAIL return resolve_array_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_array(ctx, n, fl);
 
   case NTuple:
-    R_MUSTTAIL return resolve_tuple_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_tuple(ctx, n, fl);
 
   case NFun:
     R_MUSTTAIL return resolve_fun(ctx, n, fl);
@@ -966,9 +966,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NLet:
     if (n->let.init) {
-      // leave unused Let untyped
-      if (n->let.nrefs == 0)
-        return n;
+      // // leave unused Let untyped
+      // if (n->let.nrefs == 0)
+      //   return n;
       n->let.init = resolve_type(ctx, n->let.init, fl);
       n->type = n->let.init->type;
     } else {

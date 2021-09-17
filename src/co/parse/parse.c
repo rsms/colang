@@ -289,23 +289,23 @@ static void scopestackGrow(Parser* p) {
 #endif /* DEBUG_SCOPE_BINDINGS */
 
 
-// static void scopestackCheckUnused(Parser* p) {
-//   assert_debug(p->scopestack.len > 0);
-//   uintptr_t i = p->scopestack.len;
-//   uintptr_t base = p->scopestack.base;
-//   while (--i > base) {
-//     //Sym key = (Sym)p->scopestack.ptr[i];
-//     i--;
-//     Node* n = (Node*)p->scopestack.ptr[i];
-//     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
-//     if (R_UNLIKELY(n->kind == NLet && n->let.nrefs == 0 ||
-//                    n->kind == NParam && n->field.nrefs == 0))
-//     {
-//       build_warnf(p->build, NodePosSpan(n),
-//         "unused %s %s", n->kind == NParam ? "argument" : "variable", n->let.name);
-//     }
-//   }
-// }
+static void scopestackCheckUnused(Parser* p) {
+  assert_debug(p->scopestack.len > 0);
+  uintptr_t i = p->scopestack.len;
+  uintptr_t base = p->scopestack.base;
+  while (--i > base) {
+    //Sym key = (Sym)p->scopestack.ptr[i];
+    i--;
+    Node* n = (Node*)p->scopestack.ptr[i];
+    //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
+    if (R_UNLIKELY(n->kind == NLet && n->let.nrefs == 0 ||
+                   n->kind == NParam && n->field.nrefs == 0))
+    {
+      build_warnf(p->build, NodePosSpan(n),
+        "unused %s %s", n->kind == NParam ? "argument" : "variable", n->let.name);
+    }
+  }
+}
 
 
 // pushScope adds a new scope to the stack. Returns the new scope.
@@ -339,12 +339,9 @@ inline static void popScope(Parser* p) {
     scopestackDebugDump(p);
   #endif
 
-  // // check for unused variables and parameters
-  // if (p->scopestack.len - p->scopestack.base > 1) {
-  //   // TODO: consider if this is the right place for this check.
-  //   // It might be easier and cheaper to check this in IR builder.
-  //   scopestackCheckUnused(p);
-  // }
+  // check for unused variables and parameters
+  if (p->build->debug && p->scopestack.len - p->scopestack.base > 1)
+    scopestackCheckUnused(p);
 
   // rewind and restore base of parent scope
   p->scopestack.len = p->scopestack.base;
@@ -496,28 +493,37 @@ static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
 static Node* useAsRValue(Parser* p, Node* expr);
 
 
-static Node* simplify_id(Parser* p, Node* id) {
+static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   asserteq_debug(id->kind, NId);
   assertnotnull_debug(id->ref.target);
   assertnotnull_debug(id->ref.name);
 
   Node* target = id->ref.target;
 
-  // unwind type
-  for (Node* t = target; t->kind == NLet && NodeIsConst(t); ) {
+  // unwind let targeting a type
+  Node* t = target;
+  for (; t->kind == NLet && NodeIsConst(t); ) {
     t = t->let.init;
     // Note: no NodeUnrefLet here
-    if (NodeIsType(t))
-      return useAsRValue(p, t);
+    if (NodeIsType(t)) {
+      target = t;
+      break;
+    }
   }
 
-  if (NodeIsType(target)) {
+  if (fl & PFlagRValue) {
+    id->flags |= NodeFlagRValue;
+    target = t;
+  }
+
+  if (NodeIsType(target) ||
+      ((fl & PFlagRValue) && (!NodeIsExpr(target) || NodeIsConst(target))))
+  {
     // The target is a type; short-circuit and return that instead of the id
     return useAsRValue(p, target);
   }
 
-  if (target->kind == NLet)
-    NodeRefLet(target);
+  NodeRef(target);
 
   // Note: Don't transfer "unresolved" attribute of functions
   if (target->kind != NFun)
@@ -532,7 +538,7 @@ static Node* simplify_id(Parser* p, Node* id) {
 // resolve_id resolves an identifier.
 // Its target is assumed to be NULL.
 // Returns id or its target
-static Node* resolve_id(Parser* p, Node* id) {
+static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
   asserteq_debug(id->kind, NId);
   assertnull_debug(id->ref.target);
   assertnotnull_debug(id->ref.name);
@@ -554,28 +560,8 @@ static Node* resolve_id(Parser* p, Node* id) {
     return id;
   }
 
-  return simplify_id(p, id);
+  return (id->flags & NodeFlagRValue) ? id : simplify_id(p, id, fl);
 }
-
-
-// // unwrapLet unwraps a let into an expression of its value
-// static Node* unwrapLet(Node* n) {
-//   // when unwrapping a let it must not be referenced
-//   assert_debug(n->let.nrefs == 0);
-//
-//   // unwrap initializer if there's one
-//   if (n->let.init)
-//     return n->let.init;
-//
-//   // let with initializer -- convert to type call
-//   // "{x int}" -> "{int()}"
-//   assert_debug(n->type); // must have type
-//   Node* typ = n->type; // tmp
-//   n->kind = NCall;
-//   n->call.receiver = typ;
-//   n->call.args = Const_nil;
-//   return n;
-// }
 
 
 // useAsRValue is used to lazily resolve identifiers which are used in rvalue position
@@ -594,13 +580,19 @@ static Node* resolve_id(Parser* p, Node* id) {
 //     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
 //
 static Node* useAsRValue(Parser* p, Node* expr) {
-  if (expr->kind != NId)
+  if (expr->flags & NodeFlagRValue)
     return expr;
 
-  if (expr->ref.target)
-    return simplify_id(p, expr);
+  if (expr->kind == NId) {
+    if (expr->ref.target) {
+      expr = simplify_id(p, expr, PFlagRValue);
+    } else {
+      expr = resolve_id(p, expr, PFlagRValue);
+    }
+  }
 
-  return resolve_id(p, expr);
+  expr->flags |= NodeFlagRValue;
+  return expr;
 }
 
 
@@ -658,8 +650,51 @@ static Node* PAuto(Parser* p, PFlag fl) {
 static Node* PId(Parser* p, PFlag fl) {
   auto n = pId(p);
   // eagerly resolve identifiers in rvalue position
-  if ((fl & PFlagRValue) || (p->s.tok != NAssign && p->s.tok != NId))
-    return resolve_id(p, n);
+  if ((fl & PFlagRValue) || (p->s.tok != TAssign && p->s.tok != TId))
+    return resolve_id(p, n, fl);
+  return n;
+}
+
+
+// VarDecl = "var" Id (Type | Type? "=" Expr)
+// e.g. "var x int", "var x = 4", "var x int = 4"
+//!PrefixParselet TVar
+static Node* PVar(Parser* p, PFlag fl) {
+  auto n = mknode(p, NLet);
+  n->let.ismut = true;
+  nexttok(p); // consume "var"
+
+  // name
+  // TODO: multi-name e.g. "var x, y, z int", "var x, y, z = 1, 2, 3"
+  if (R_UNLIKELY(p->s.tok != TId)) {
+    syntaxerr(p, "expecting %s", TokName(TId));
+  } else {
+    n->let.name = p->s.name;
+    n->pos = pos_union(n->pos, ScannerPos(&p->s));
+  }
+  nexttok(p);
+
+  if (p->s.tok != TAssign) {
+    // e.g. "var name type"
+    if (R_UNLIKELY(p->s.tok == TSemi)) {
+      // improved error message (we'd get a generic one from pType)
+      Pos epos = syntaxerr(p, "expecting type or assignment with initial value");
+      build_notef(p->build, (PosSpan){epos,epos},
+        "Fix by adding a type:\n  var %s TYPE\nor assigning a value:\n  var %s = VALUE\nhere:",
+        n->let.name, n->let.name);
+    } else {
+      n->type = pType(p, fl);
+    }
+  }
+  if (got(p, TAssign)) {
+    // e.g. "var name = x" or "var name type = x"
+    // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
+    n->let.init = expr(p, PREC_LOWEST, PFlagRValue);
+    if (!n->type)
+      n->type = n->let.init->type;
+    NodeTransferUnresolved(n, n->let.init);
+  }
+  defsym(p, n->let.name, n);
   return n;
 }
 
@@ -707,47 +742,6 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   return n;
 }
 
-// VarDecl = "var" Id (Type | Type? "=" Expr)
-// e.g. "var x int", "var x = 4", "var x int = 4"
-//!PrefixParselet TVar
-static Node* PVar(Parser* p, PFlag fl) {
-  auto n = mknode(p, NLet);
-  n->let.ismut = true;
-  nexttok(p); // consume "var"
-
-  // name
-  // TODO: multi-name e.g. "var x, y, z int", "var x, y, z = 1, 2, 3"
-  if (R_UNLIKELY(p->s.tok != TId)) {
-    syntaxerr(p, "expecting %s", TokName(TId));
-  } else {
-    n->let.name = p->s.name;
-    n->pos = pos_union(n->pos, ScannerPos(&p->s));
-  }
-  nexttok(p);
-
-  if (p->s.tok != TAssign) {
-    // e.g. "var name type"
-    if (R_UNLIKELY(p->s.tok == TSemi)) {
-      // improved error message (we'd get a generic one from pType)
-      Pos epos = syntaxerr(p, "expecting type or assignment with initial value");
-      build_notef(p->build, (PosSpan){epos,epos},
-        "Fix by adding a type:\n  var %s TYPE\nor assigning a value:\n  var %s = VALUE\nhere:",
-        n->let.name, n->let.name);
-    } else {
-      n->type = pType(p, fl);
-    }
-  }
-  if (got(p, TAssign)) {
-    // e.g. "var name = x" or "var name type = x"
-    // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
-    n->let.init = expr(p, PREC_LOWEST, PFlagRValue);
-    if (!n->type)
-      n->type = n->let.init->type;
-    NodeTransferUnresolved(n, n->let.init);
-  }
-  defsym(p, n->let.name, n);
-  return n;
-}
 
 // Infix assignment e.g. "=" in "left = expr"
 //!Parselet (TAssign ASSIGN)
@@ -756,18 +750,22 @@ static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
   if (left->kind != NId) {
     // assignment to field
+    dlog("assign field %s", fmtnode(left));
     return pAssignField(p, e, fl, left);
   }
 
+  left = resolve_id(p, left, PFlagNone);
+
   Node* existing = lookupsym(p, left->ref.name);
   if (existing && existing->kind == NLet) {
+    dlog("assign %s", fmtnode(existing));
     // assign to existing var and make sure the target is marked as variable
     NodeClearConst(existing);
     auto n = mknode(p, NAssign);
     n->op.op = p->s.tok;
     nexttok(p); // consume '='
     auto right = exprOrTuple(p, e->prec, fl);
-    n->op.left = left;
+    n->op.left = existing; // store NLet instead of NId to simplify IR generation
     n->op.right = right;
     NodeTransferUnresolved(n, right);
     return n;
@@ -906,7 +904,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     return id;
   }
 
-  Type* typ = resolve_id(p, id);
+  Type* typ = resolve_id(p, id, fl | PFlagType);
   Node* init = NULL;
   if (got(p, TAssign)) {
     auto ctxtype = set_ctxtype(p, typ);
@@ -1014,7 +1012,7 @@ static Node* pField(Parser* p) {
     auto typename = mknode(p, NId);
     typename->ref.name = n->field.name;
     NodeSetConst(typename);
-    n->type = resolve_id(p, typename);
+    n->type = resolve_id(p, typename, PFlagType);
     n->flags |= NodeFlagBase;
   } else {
     // e.g. "name type"
@@ -1170,17 +1168,17 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
       break;
   }
 
-  if (end_block(p)) {
-    if (cn && cn->kind == NLet) {
-      // last expression is a let; increment its refcount
-      NodeRefLet(cn);
-    }
+  if (end_block(p) && cn) {
+    // if last expression is a local, increment its refcount
+    NodeRef(cn);
+
+    n->array.a.v[n->array.a.len - 1] = useAsRValue(p, cn);
     // if (fl & PFlagRValue) {
     //   // block is used as an rvalue e.g. "x = { ... }"
-    //   // if (cn && cn->kind == NLet) {
-    //   //   // last expression is a let binding and will be used/returned, so unwrap it.
-    //   //   n->array.a.v[n->array.a.len - 1] = unwrapLet(cn);
-    //   // }
+    //   if (cn && cn->kind == NLet) {
+    //     // last expression is a let binding and will be used/returned, so unwrap it.
+    //     n->array.a.v[n->array.a.len - 1] = unwrapLet(cn);
+    //   }
     // }
   }
 
@@ -1282,6 +1280,9 @@ static Node* PIf(Parser* p, PFlag fl) {
   n->cond.thenb = expr(p, PREC_LOWEST, fl | PFlagRValue);
   nodeTransferUnresolved2(n, n->cond.cond, n->cond.thenb);
   NodeTransferConst2(n, n->cond.cond, n->cond.thenb);
+
+  if (fl & PFlagRValue)
+    n->flags |= NodeFlagRValue;
 
   if (p->s.tok == TElse) {
     nexttok(p);

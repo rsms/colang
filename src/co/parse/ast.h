@@ -110,6 +110,7 @@ typedef enum {
   NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
   NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
   NodeFlagBase       = 1 << 2, // struct field: the field is a base type
+  NodeFlagRValue     = 1 << 4, // resolved as rvalue
 } NodeFlags;
 
 typedef struct Node {
@@ -293,17 +294,20 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
 
 // NodeRefLet increments the reference counter of a Let node. Returns n as a convenience.
 static Node* NodeRefLet(Node* n);
+static Node* NodeRefParam(Node* n); // NParam
+static Node* NodeRef(Node* n); // any
 
 // NodeUnrefLet decrements the reference counter of a Let node.
 // Returns the value of n->let.nrefs after the subtraction.
 static u32 NodeUnrefLet(Node* n);
+static u32 NodeUnrefParam(Node* n); // NParam
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
 
 // Retrieve the effective "printable" type of a node.
 // For nodes which are lazily typed, like IntLit, this returns the default type of the constant.
-const Node* NodeEffectiveType(const Node* n);
+const Type* NodeEffectiveType(const Node* n);
 
 // NodeIdealCType returns a type for an arbitrary "ideal" (untyped constant) expression like "3".
 CType NodeIdealCType(const Node* n);
@@ -422,10 +426,31 @@ inline static Node* NodeRefLet(Node* n) {
   return n;
 }
 
+inline static Node* NodeRefParam(Node* n) {
+  asserteq_debug(n->kind, NParam);
+  n->field.nrefs++;
+  return n;
+}
+
+inline static Node* NodeRef(Node* n) {
+  switch (n->kind) {
+    case NLet:   n->let.nrefs++; break;
+    case NParam: n->field.nrefs++; break;
+    default: break;
+  }
+  return n;
+}
+
 inline static u32 NodeUnrefLet(Node* n) {
   asserteq_debug(n->kind, NLet);
   assertgt_debug(n->let.nrefs, 0);
   return --n->let.nrefs;
+}
+
+inline static u32 NodeUnrefParam(Node* n) {
+  asserteq_debug(n->kind, NParam);
+  assertgt_debug(n->field.nrefs, 0);
+  return --n->field.nrefs;
 }
 
 ASSUME_NONNULL_END

@@ -16,24 +16,26 @@ typedef Node Type;
   \
   _( T_PRIM_OPS_START , "") \
   /* primary "intrinsic" operator tokens, most of them mapping directly to IR ops */ \
+  _( TPlus          , "+")  \
+  _( TMinus         , "-")  \
   _( TStar          , "*")  \
   _( TSlash         , "/")  \
   _( TPercent       , "%")  \
   _( TShl           , "<<") \
   _( TShr           , ">>") \
   _( TAnd           , "&")  \
-  _( TPlus          , "+")  \
-  _( TMinus         , "-")  \
   _( TPipe          , "|")  \
   _( THat           , "^")  \
   _( TTilde         , "~")  \
   _( TExcalm        , "!")  \
-  _( TEq            , "==") \
+  /* binary comparison ops (IR builder assume these are packed!) */ \
+  _( TEq            , "==") /* must be first */ \
   _( TNEq           , "!=") \
   _( TLt            , "<")  \
   _( TLEq           , "<=") \
   _( TGt            , ">")  \
-  _( TGEq           , ">=") \
+  _( TGEq           , ">=") /* must be last */ \
+  /* unary ops */ \
   _( TPlusPlus      , "++") \
   _( TMinusMinus    , "--") \
   \

@@ -74,7 +74,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         // Unwind let bindings
         assert(target->let.init != NULL);
         Node* init = target->let.init;
-        if ( /*NodeIsConst(init) || */ !NodeKindIsExpr(init->kind)) {
+        if ( /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
           // in the case of a let target with a constant or type, resolve to that.
           // Example:
           //   "x = true ; y = x"

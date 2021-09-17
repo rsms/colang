@@ -326,12 +326,12 @@ int cmd_build(int argc, const char** argv) {
     RTIMER_START();
 
     // JIT
-    llvm_jit(&build, pkgnode);
+    //llvm_jit(&build, pkgnode);
 
     // Build native executable
-    // if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
-    //   return 1;
-    // }
+    if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
+      return 1;
+    }
     RTIMER_LOG("llvm total");
   #endif
 

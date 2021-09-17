@@ -771,6 +771,9 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     s = style_push(&c->style, s, id_color);
     s = str_append(s, n->field.name, symlen(n->field.name));
     s = style_pop(&c->style, s);
+    s = style_push(&c->style, s, ref_color);
+    s = str_appendfmt(s, " (uses %u)", n->let.nrefs);
+    s = style_pop(&c->style, s);
     break;
 
   case NBinOp:
