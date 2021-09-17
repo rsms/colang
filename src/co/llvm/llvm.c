@@ -442,12 +442,7 @@ static Value build_index(B* b, Node* n, const char* debugname) {
 
 static Value build_default_value(B* b, Type* tn, const char* name) {
   LLVMTypeRef ty = get_type(b, tn);
-  if (tn->kind == NBasicType && TypeCodeIsInt(tn->t.basic.typeCode)) {
-    return LLVMConstInt(ty, 0, /*signext*/false);
-  }
-  // TODO: more constant types
-  Value ptr = LLVMBuildAlloca(b->builder, ty, name);
-  return LLVMBuildLoad2(b->builder, ty, ptr, name);
+  return LLVMConstNull(ty);
 }
 
 

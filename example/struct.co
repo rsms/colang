@@ -20,9 +20,9 @@
 
 fun foo(x, y int) int
   z = int(1)
-  if x > y
+  if x < y
     z = 123
-  # z
+  z
 
 fun main() int
   foo(1, 2)
