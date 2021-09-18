@@ -136,7 +136,7 @@ typedef struct Node {
       Tok            op;
     } op;
     /* cunit */ struct { // File, Pkg
-      const char*     name;         // reference to str in corresponding Source/Pkg struct
+      ConstStr        name;         // reference to str in corresponding Source/Pkg struct
       Scope* nullable scope;
       NodeArray       a;            // array of nodes
       Node*           a_storage[3]; // in-struct storage for the first few entries of a
@@ -151,6 +151,7 @@ typedef struct Node {
       Node* nullable result;  // output results (NTuple | NExpr)
       Sym   nullable name;    // NULL for lambda
       Node* nullable body;    // NULL for fun-declaration
+      void* nullable irval;   // used by IR builders for temporary storage
     } fun;
     /* call */ struct { // Call, TypeCast, StructCons
       Node* receiver;      // Fun, Id or type

@@ -510,13 +510,13 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   }
 
   // The target is a type; short-circuit and return that instead of the id
-  if (NodeIsType(target))
+  if (NodeIsConst(id) && (NodeIsType(target) || target->kind == NFun))
     return target;
 
   if ((fl & PFlagRValue) && NodeIsVar(id->ref.target)) {
     NodeRefVar(id->ref.target);
-    if (id->ref.target->kind == NParam)
-      return id->ref.target;
+    // if (id->ref.target->kind == NParam)
+    return id->ref.target;
   }
 
   return id;
@@ -545,6 +545,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
   if (id->ref.target == NULL) {
     // not found
     NodeSetUnresolved(id);
+    id->flags |= NodeFlagRValue;
     return id;
   }
 
@@ -578,6 +579,8 @@ static Node* useAsRValue(Parser* p, Node* expr) {
     if (expr->ref.target)
       return simplify_id(p, expr, PFlagRValue);
     return resolve_id(p, expr, PFlagRValue);
+  } else {
+    expr->flags |= NodeFlagRValue;
   }
   return expr;
 }
@@ -1510,7 +1513,7 @@ static Node* PFun(Parser* p, PFlag fl) {
 
   if (n->fun.body) {
     NodeTransferUnresolved(n, n->fun.body);
-    NodeTransferConst(n, n->fun.body);
+    // Note: no NodeTransferConst(n, n->fun.body) here
   }
 
   popScope(p); // function parameter scope
