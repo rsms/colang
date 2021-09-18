@@ -433,7 +433,7 @@ static BinaryenExpressionRef bn_expr_id(BNBuilder* b, Node* n) {
 
 static BinaryenExpressionRef bn_expr_param(BNBuilder* b, Node* n) {
   asserteq_debug(n->kind, NParam);
-  return BinaryenLocalGet(b->module, n->field.index, bn_type(b, n->type));
+  return BinaryenLocalGet(b->module, n->var.index, bn_type(b, n->type));
 }
 
 

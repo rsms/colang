@@ -183,11 +183,11 @@ Str NodeStr(Str s, const Node* n) {
     s = str_append(s, n->cunit.name, strlen(n->cunit.name));
     return str_appendc(s, '"');
 
-  case NLet: // let
-    return str_appendfmt(s, "%s %s", n->let.ismut ? "var" : "let", n->let.name);
+  case NLet: // let x
+    return str_appendfmt(s, "%s %s", n->var.ismut ? "var" : "let", n->var.name);
 
-  case NParam: // foo
-    return str_append(s, n->field.name, symlen(n->field.name));
+  case NParam: // param x
+    return str_appendfmt(s, "param %s", n->var.name);
 
   case NFun: // fun foo
     s = str_appendcstr(s, "function");
@@ -431,6 +431,7 @@ static bool l_show_field(NodeList* nl) {
     case NPrefixOp:
     case NCall:
     case NLet:
+    case NParam:
     case NTypeCast:
     case NSelector:
     case NIndex:
@@ -453,7 +454,7 @@ static const char* l_listname(NodeList* nl) {
     case NBasicType:
       return n->t.basic.name;
     case NTuple:
-      if (nl->parent && nl->parent->n->kind == NLet)
+      if (nl->parent && NodeIsVar(nl->parent->n))
         return NodeKindName(n->kind);
       return "";
     case NTupleType:
@@ -604,9 +605,9 @@ static bool l_visit(NodeList* nl, void* cp) {
       // when the definition trails the use, syntactically.
       for (u32 i = 0; i < n->cunit.a.len; i++) {
         const Node* cn = n->cunit.a.v[i];
-        while (cn->kind == NLet && cn->let.init) {
+        while (cn->kind == NLet && cn->var.init) {
           l_seen_id(c, cn, NULL);
-          cn = cn->let.init;
+          cn = cn->var.init;
         }
         if (cn->kind == NFun)
           l_seen_id(c, cn, NULL);
@@ -615,7 +616,8 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
-  case NLet: {
+  case NLet:
+  case NParam: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
     if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
@@ -625,12 +627,18 @@ static bool l_visit(NodeList* nl, void* cp) {
 
     s = str_appendc(s, ' ');
     s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->let.name, symlen(n->let.name));
+    s = str_append(s, n->var.name, symlen(n->var.name));
     s = style_pop(&c->style, s);
 
     if (c->fl & NodeReprRefs) {
       s = style_push(&c->style, s, ref_color);
       s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
+
+    if (!n->var.init && n->kind == NLet) {
+      s = style_push(&c->style, s, lit_color);
+      s = str_appendcstr(s, " :definit");
       s = style_pop(&c->style, s);
     }
     break;
@@ -752,27 +760,26 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NLet:
-    if (n->let.ismut && (c->fl & NodeReprAttrs)) {
+  case NParam:
+    if (n->var.ismut && (c->fl & NodeReprAttrs)) {
       s = style_push(&c->style, s, attr_color);
       s = str_appendcstr(s, "@mutable");
       s = style_pop(&c->style, s);
     }
     if (c->fl & NodeReprUseCount) {
-      if (n->let.ismut)
+      if (n->var.ismut)
         s = str_appendc(s, ' ');
       s = style_push(&c->style, s, ref_color);
-      s = str_appendfmt(s, "(uses %u)", n->let.nrefs);
+      s = str_appendfmt(s, "(uses %u)", n->var.nrefs);
       s = style_pop(&c->style, s);
     }
     break;
-
-  case NParam:
   case NField:
     s = style_push(&c->style, s, id_color);
     s = str_append(s, n->field.name, symlen(n->field.name));
     s = style_pop(&c->style, s);
     s = style_push(&c->style, s, ref_color);
-    s = str_appendfmt(s, " (uses %u)", n->let.nrefs);
+    s = str_appendfmt(s, " (uses %u)", n->var.nrefs);
     s = style_pop(&c->style, s);
     break;
 

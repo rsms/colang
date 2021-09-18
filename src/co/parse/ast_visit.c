@@ -15,13 +15,13 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   auto n = parent->n;
   switch (n->kind) {
 
-  // uses u.ref
+  // ref
   case NId:
     if (n->ref.target)
       return CALLBACK(n->ref.target, "target");
     break;
 
-  // uses u.op
+  // op
   case NBinOp:
   case NPostfixOp:
   case NPrefixOp:
@@ -33,7 +33,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->op.right, "right");
     break;
 
-  // uses u.cunit
+  // cunit
   case NFile:
   case NPkg: {
     NodeList nl = (NodeList){ .parent = parent };
@@ -46,7 +46,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
-  // uses u.array
+  // array
   case NBlock:
   case NArray:
   case NTuple: {
@@ -60,18 +60,20 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
+  // var
   case NLet:
-    if (n->let.init)
-      return CALLBACK(n->let.init, "init");
+  case NParam:
+    if (n->var.init)
+      return CALLBACK(n->var.init, "init");
     break;
 
-  case NParam:
+  // field
   case NField:
     if (n->field.init)
       return CALLBACK(n->field.init, "init");
     break;
 
-  // uses u.fun
+  // fun
   case NFun:
     if (n->fun.params && !CALLBACK(n->fun.params, "params"))
       return false;
@@ -81,7 +83,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->fun.body, "body");
     break;
 
-  // uses u.call
+  // call
   case NTypeCast:
   case NStructCons:
   case NCall:
@@ -91,7 +93,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->call.args, "args");
     break;
 
-  // uses u.cond
+  // cond
   case NIf:
     if (!CALLBACK(n->cond.cond, "cond"))
       return false;

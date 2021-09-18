@@ -156,19 +156,20 @@ typedef struct Node {
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;
-    /* field */ struct { // Param, Field
+    /* field */ struct { // Field
       Sym            name;
       Node* nullable init;  // initial value (may be NULL)
       u32            nrefs; // reference count
       u32            index; // argument index or struct index
     } field;
-    /* let */ struct { // Let
+    /* var */ struct { // Param, Let
       Sym            name;
-      Node* nullable init;
+      Node* nullable init;  // initial/default value
       u32            nrefs; // reference count
-      bool           ismut; // true if this is mutable (variable)
+      u32            index; // argument index (used by Param)
+      bool           ismut; // true if this is mutable ("var")
       void* nullable irval; // used by IR builders for temporary storage
-    } let;
+    } var;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
       Node*          operand;
       Sym            member; // id
@@ -292,15 +293,15 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
   );
 }
 
-// NodeRefLet increments the reference counter of a Let node. Returns n as a convenience.
-static Node* NodeRefLet(Node* n);
-static Node* NodeRefParam(Node* n); // NParam
-static Node* NodeRef(Node* n); // any
+inline static bool NodeIsVar(const Node* n) { return n->kind == NLet || n->kind == NParam; }
 
-// NodeUnrefLet decrements the reference counter of a Let node.
-// Returns the value of n->let.nrefs after the subtraction.
-static u32 NodeUnrefLet(Node* n);
-static u32 NodeUnrefParam(Node* n); // NParam
+// NodeRefVar increments the reference counter of a Let node. Returns n as a convenience.
+static Node* NodeRefVar(Node* n); // NLet | NParam
+static Node* NodeRefAny(Node* n); // any
+
+// NodeUnrefVar decrements the reference counter of a Let node.
+// Returns the value of n->var.nrefs after the subtraction.
+static u32 NodeUnrefVar(Node* n); // NLet | NParam
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
@@ -420,37 +421,27 @@ inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) 
   return f(&parent, data);
 }
 
-inline static Node* NodeRefLet(Node* n) {
-  asserteq_debug(n->kind, NLet);
-  n->let.nrefs++;
+inline static Node* NodeRefVar(Node* n) {
+  assert_debug(n->kind == NLet || n->kind == NParam);
+  n->var.nrefs++;
   return n;
 }
 
-inline static Node* NodeRefParam(Node* n) {
-  asserteq_debug(n->kind, NParam);
-  n->field.nrefs++;
-  return n;
+inline static u32 NodeUnrefVar(Node* n) {
+  assert_debug(n->kind == NLet || n->kind == NParam);
+  assertgt_debug(n->var.nrefs, 0);
+  return --n->var.nrefs;
 }
 
-inline static Node* NodeRef(Node* n) {
+inline static Node* NodeRefAny(Node* n) {
   switch (n->kind) {
-    case NLet:   n->let.nrefs++; break;
-    case NParam: n->field.nrefs++; break;
-    default: break;
+    case NLet:
+    case NParam:
+      n->var.nrefs++;
+      return n;
+    default:
+      return n;
   }
-  return n;
-}
-
-inline static u32 NodeUnrefLet(Node* n) {
-  asserteq_debug(n->kind, NLet);
-  assertgt_debug(n->let.nrefs, 0);
-  return --n->let.nrefs;
-}
-
-inline static u32 NodeUnrefParam(Node* n) {
-  asserteq_debug(n->kind, NParam);
-  assertgt_debug(n->field.nrefs, 0);
-  return --n->field.nrefs;
 }
 
 ASSUME_NONNULL_END

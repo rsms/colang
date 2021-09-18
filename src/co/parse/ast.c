@@ -295,8 +295,8 @@ PosSpan NodePosSpan(const Node* n) {
       break;
 
     case NLet:
-      if (n->let.init)
-        span.end = n->let.init->pos;
+      if (n->var.init)
+        span.end = n->var.init->pos;
       break;
 
     default:
@@ -360,8 +360,8 @@ static Node* nullable diag_trail_next(Node* n, const char** msg) {
         break;
 
       case NLet:
-        // *msg = n->let.name;
-        n = n->let.init;
+        // *msg = n->var.name;
+        n = n->var.init;
         break;
 
       // TODO: more node kinds

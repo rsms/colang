@@ -19,16 +19,22 @@
 # g int = 3
 
 fun foo(x, y int) int
-  z = int(1)
-  if x < y
-    z = 123
-  z
+  # z = int(1)
+  # if x < y
+  #   x = 3
+  # else
+  #   z = 4
+  # x + z
 
-fun main() int
-  foo(1, 2)
-  # b = Bridge()
-  # b.occupants
-  # s = Spaceship()
-  # s.engine.fuel
-  # s.occupants
-  # s.len # WIP
+  z = 2
+  z = 3
+  x + z
+
+# fun main() int
+#   foo(1, 2)
+#   # b = Bridge()
+#   # b.occupants
+#   # s = Spaceship()
+#   # s.engine.fuel
+#   # s.occupants
+#   # s.len # WIP

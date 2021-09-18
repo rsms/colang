@@ -436,7 +436,7 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
 }
 
 
-static IRValue* ast_add_param(IRBuilder* u, Node* n) { // n->kind==NArg
+static IRValue* ast_add_param(IRBuilder* u, Node* n) {
   if (R_UNLIKELY(n->type->kind != NBasicType)) {
     // TODO add support for NTupleType et al
     build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
@@ -444,9 +444,9 @@ static IRValue* ast_add_param(IRBuilder* u, Node* n) { // n->kind==NArg
   }
   auto t = get_type(u, n->type);
   auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
-  v->auxInt = n->field.index;
+  v->auxInt = n->var.index;
   if (u->flags & IRBuilderComments)
-    IRValueAddComment(v, u->mem, n->field.name, symlen(n->field.name));
+    IRValueAddComment(v, u->mem, n->var.name, symlen(n->var.name));
   return v;
 }
 
@@ -514,21 +514,21 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 
 
 static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
-  if (n->let.nrefs == 0) {
+  if (n->var.nrefs == 0) {
     // unused, unreferenced; ok to return bad value
     dlog("skip unused %s", fmtnode(n));
     return NULL;
   }
-  assertnotnull(n->let.init); // TODO: support default-initializer (NULL)
+  assertnotnull(n->var.init); // TODO: support default-initializer (NULL)
   assertnotnull(n->type);
   assert(n->type != Type_ideal);
   dlog("ast_add_let %s %s = %s",
-    n->let.name ? n->let.name : "_",
+    n->var.name ? n->var.name : "_",
     fmtnode(n->type),
-    n->let.init ? fmtnode(n->let.init) : "nil"
+    n->var.init ? fmtnode(n->var.init) : "nil"
   );
-  auto v = ast_add_expr(u, n->let.init); // right-hand side
-  return ast_add_assign(u, n->let.name, v);
+  auto v = ast_add_expr(u, n->var.init); // right-hand side
+  return ast_add_assign(u, n->var.name, v);
 }
 
 

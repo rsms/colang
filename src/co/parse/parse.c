@@ -298,11 +298,9 @@ static void scopestackCheckUnused(Parser* p) {
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
-    if (R_UNLIKELY(n->kind == NLet && n->let.nrefs == 0 ||
-                   n->kind == NParam && n->field.nrefs == 0))
-    {
+    if (R_UNLIKELY((n->kind == NLet || n->kind == NParam) && n->var.nrefs == 0)) {
       build_warnf(p->build, NodePosSpan(n),
-        "unused %s %s", n->kind == NParam ? "argument" : "variable", n->let.name);
+        "unused %s %s", n->kind == NParam ? "argument" : "variable", n->var.name);
     }
   }
 }
@@ -478,9 +476,9 @@ static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
   auto n = NewNode(p->build->mem, NLet);
   NodeSetConst(n);
   n->pos = name->pos; // TODO: expand pos span to include type?
-  n->let.name = name->ref.name;
+  n->var.name = name->ref.name;
   if (init) {
-    n->let.init = init;
+    n->var.init = init;
     n->type = init->type;
     NodeTransferUnresolved(n, init);
     NodeTransferConst(n, init);
@@ -488,9 +486,6 @@ static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
   defsym(p, name->ref.name, n);
   return n;
 }
-
-
-static Node* useAsRValue(Parser* p, Node* expr);
 
 
 static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
@@ -502,34 +497,27 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 
   // unwind let targeting a type
   Node* t = target;
-  for (; t->kind == NLet && NodeIsConst(t); ) {
-    t = t->let.init;
+  while (t->kind == NLet && NodeIsConst(t)) {
+    t = t->var.init;
     // Note: no NodeUnrefLet here
-    if (NodeIsType(t)) {
-      target = t;
-      break;
-    }
+    if (NodeIsType(t))
+      return t;
   }
 
   if (fl & PFlagRValue) {
-    id->flags |= NodeFlagRValue;
     target = t;
+    id->flags |= NodeFlagRValue;
   }
 
-  if (NodeIsType(target) ||
-      ((fl & PFlagRValue) && (!NodeIsExpr(target) || NodeIsConst(target))))
-  {
-    // The target is a type; short-circuit and return that instead of the id
-    return useAsRValue(p, target);
+  // The target is a type; short-circuit and return that instead of the id
+  if (NodeIsType(target))
+    return target;
+
+  if ((fl & PFlagRValue) && NodeIsVar(id->ref.target)) {
+    NodeRefVar(id->ref.target);
+    if (id->ref.target->kind == NParam)
+      return id->ref.target;
   }
-
-  NodeRef(target);
-
-  // Note: Don't transfer "unresolved" attribute of functions
-  if (target->kind != NFun)
-    NodeTransferUnresolved(id, target);
-
-  NodeTransferConst(id, target);
 
   return id;
 }
@@ -560,7 +548,13 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
     return id;
   }
 
-  return (id->flags & NodeFlagRValue) ? id : simplify_id(p, id, fl);
+  // NodeRefAny(id->ref.target);
+  // Note: Don't transfer "unresolved" attribute of functions
+  if (id->ref.target->kind != NFun)
+    NodeTransferUnresolved(id, id->ref.target);
+  NodeTransferConst(id, id->ref.target);
+
+  R_MUSTTAIL return simplify_id(p, id, fl);
 }
 
 
@@ -580,18 +574,11 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
 //     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
 //
 static Node* useAsRValue(Parser* p, Node* expr) {
-  if (expr->flags & NodeFlagRValue)
-    return expr;
-
   if (expr->kind == NId) {
-    if (expr->ref.target) {
-      expr = simplify_id(p, expr, PFlagRValue);
-    } else {
-      expr = resolve_id(p, expr, PFlagRValue);
-    }
+    if (expr->ref.target)
+      return simplify_id(p, expr, PFlagRValue);
+    return resolve_id(p, expr, PFlagRValue);
   }
-
-  expr->flags |= NodeFlagRValue;
   return expr;
 }
 
@@ -661,7 +648,7 @@ static Node* PId(Parser* p, PFlag fl) {
 //!PrefixParselet TVar
 static Node* PVar(Parser* p, PFlag fl) {
   auto n = mknode(p, NLet);
-  n->let.ismut = true;
+  n->var.ismut = true;
   nexttok(p); // consume "var"
 
   // name
@@ -669,7 +656,7 @@ static Node* PVar(Parser* p, PFlag fl) {
   if (R_UNLIKELY(p->s.tok != TId)) {
     syntaxerr(p, "expecting %s", TokName(TId));
   } else {
-    n->let.name = p->s.name;
+    n->var.name = p->s.name;
     n->pos = pos_union(n->pos, ScannerPos(&p->s));
   }
   nexttok(p);
@@ -681,7 +668,7 @@ static Node* PVar(Parser* p, PFlag fl) {
       Pos epos = syntaxerr(p, "expecting type or assignment with initial value");
       build_notef(p->build, (PosSpan){epos,epos},
         "Fix by adding a type:\n  var %s TYPE\nor assigning a value:\n  var %s = VALUE\nhere:",
-        n->let.name, n->let.name);
+        n->var.name, n->var.name);
     } else {
       n->type = pType(p, fl);
     }
@@ -689,12 +676,12 @@ static Node* PVar(Parser* p, PFlag fl) {
   if (got(p, TAssign)) {
     // e.g. "var name = x" or "var name type = x"
     // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
-    n->let.init = expr(p, PREC_LOWEST, PFlagRValue);
+    n->var.init = expr(p, PREC_LOWEST, PFlagRValue);
     if (!n->type)
-      n->type = n->let.init->type;
-    NodeTransferUnresolved(n, n->let.init);
+      n->type = n->var.init->type;
+    NodeTransferUnresolved(n, n->var.init);
   }
-  defsym(p, n->let.name, n);
+  defsym(p, n->var.name, n);
   return n;
 }
 
@@ -748,24 +735,22 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   fl |= PFlagRValue;
 
-  if (left->kind != NId) {
-    // assignment to field
-    dlog("assign field %s", fmtnode(left));
+  if (left->kind != NId)
     return pAssignField(p, e, fl, left);
-  }
 
   left = resolve_id(p, left, PFlagNone);
+  asserteq_debug(left->kind, NId);
 
-  Node* existing = lookupsym(p, left->ref.name);
-  if (existing && existing->kind == NLet) {
-    dlog("assign %s", fmtnode(existing));
+  Node* target = left->ref.target;
+  if (target && NodeIsVar(target)) {
     // assign to existing var and make sure the target is marked as variable
-    NodeClearConst(existing);
+    NodeClearConst(target);
+    NodeRefVar(target);
     auto n = mknode(p, NAssign);
     n->op.op = p->s.tok;
     nexttok(p); // consume '='
     auto right = exprOrTuple(p, e->prec, fl);
-    n->op.left = existing; // store NLet instead of NId to simplify IR generation
+    n->op.left = target; // store NLet instead of NId to simplify IR generation
     n->op.right = right;
     NodeTransferUnresolved(n, right);
     return n;
@@ -885,7 +870,7 @@ static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   // NodeFree(left); // makeLet copies left->ref.name and left->pos
   n->type = type;
 
-  // TODO: add check to PLetOrAssign and update n->let.init
+  // TODO: add check to PLetOrAssign and update n->var.init
 
   return n;
 }
@@ -1130,7 +1115,7 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 
   // name
   if (p->s.tok == TId) {
-    n->let.name = p->s.name;
+    n->var.name = p->s.name;
     // make sure to define the type before parsing a potential struct body
     defsym(p, p->s.name, n);
     nexttok(p); // consume name
@@ -1138,10 +1123,10 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
     syntaxerr(p, "expecting name");
   }
 
-  p->typename = n->let.name;
-  n->let.init = pType(p, PFlagNone);
-  n->type = n->let.init;
-  NodeTransferUnresolved(n, n->let.init);
+  p->typename = n->var.name;
+  n->var.init = pType(p, PFlagNone);
+  n->type = n->var.init;
+  NodeTransferUnresolved(n, n->var.init);
   return n;
 }
 
@@ -1170,7 +1155,7 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
 
   if (end_block(p) && cn) {
     // if last expression is a local, increment its refcount
-    NodeRef(cn);
+    NodeRefAny(cn);
 
     n->array.a.v[n->array.a.len - 1] = useAsRValue(p, cn);
     // if (fl & PFlagRValue) {
@@ -1337,29 +1322,30 @@ static Node* params(Parser* p) { // => NTuple
   PFlag fl = PFlagRValue;
 
   while (p->s.tok != endtok && p->s.tok != TNone) {
-    auto field = mknode(p, NParam);
+    auto cn = mknode(p, NParam);
+    NodeSetConst(cn);
     if (p->s.tok == TId) {
-      field->field.name = p->s.name;
+      cn->var.name = p->s.name;
       nexttok(p);
       // TODO: check if "<" follows. If so, this is a type.
       if (p->s.tok != endtok && p->s.tok != TComma && p->s.tok != TSemi) {
-        field->type = pType(p, fl);
+        cn->type = pType(p, fl);
         hasTypedParam = true;
         // spread type to predecessors
         if (typeq.len > 0) {
           for (u32 i = 0; i < typeq.len; i++) {
-            ((Node*)typeq.v[i])->type = field->type;
+            ((Node*)typeq.v[i])->type = cn->type;
           }
           typeq.len = 0;
         }
       } else {
-        NodeArrayAppend(p->build->mem, &typeq, field);
+        NodeArrayAppend(p->build->mem, &typeq, cn);
       }
     } else {
       // definitely just type, e.g. "fun(int)int"
-      field->type = pType(p, fl);
+      cn->type = pType(p, fl);
     }
-    NodeArrayAppend(p->build->mem, &n->array.a, field);
+    NodeArrayAppend(p->build->mem, &n->array.a, cn);
     if (!got(p, TComma)) {
       if (p->s.tok != endtok) {
         syntaxerr(p, "expecting comma or )");
@@ -1378,30 +1364,30 @@ static Node* params(Parser* p) { // => NTuple
     }
     u32 index = 0;
     for (u32 i = 0; i < n->array.a.len; i++) {
-      Node* field = (Node*)n->array.a.v[i];
-      field->field.index = index++;
-      defsym(p, field->field.name, field);
-      NodeTransferUnresolved(field, field->type);
-      NodeTransferUnresolved(n, field->type);
+      Node* cn = (Node*)n->array.a.v[i];
+      cn->var.index = index++;
+      defsym(p, cn->var.name, cn);
+      NodeTransferUnresolved(cn, cn->type);
+      NodeTransferUnresolved(n, cn->type);
     }
   } else {
     // type-only form, e.g. "(T, T, Y)"
-    // make ident of each field->field.name where field->type == NULL
+    // make ident of each cn->var.name where cn->type == NULL
     //
     // TODO: for template parameters, this case means "name only without type constraints"
     //
     u32 index = 0;
     for (u32 i = 0; i < n->array.a.len; i++) {
-      Node* field = (Node*)n->array.a.v[i];
-      if (!field->type) {
+      Node* cn = (Node*)n->array.a.v[i];
+      if (!cn->type) {
         auto t = mknode(p, NId);
-        t->ref.name = field->field.name;
-        field->type = t;
-        field->field.name = sym__;
-        field->field.index = index++;
+        t->ref.name = cn->var.name;
+        cn->type = t;
+        cn->var.name = sym__;
+        cn->var.index = index++;
       }
-      NodeTransferUnresolved(field, field->type);
-      NodeTransferUnresolved(n, field->type);
+      NodeTransferUnresolved(cn, cn->type);
+      NodeTransferUnresolved(n, cn->type);
     }
   }
 

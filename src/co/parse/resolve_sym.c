@@ -72,8 +72,8 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
 
       case NLet: {
         // Unwind let bindings
-        assert(target->let.init != NULL);
-        Node* init = target->let.init;
+        assert(target->var.init != NULL);
+        Node* init = target->var.init;
         if ( /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
           // in the case of a let target with a constant or type, resolve to that.
           // Example:
@@ -86,7 +86,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
           //   (Let (Id y) (BoolLit true))
           //
           dlog_mod("  RET let-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
-          return target->let.init;
+          return target->var.init;
         }
         dlog_mod("  RET let (N%s) %s", NodeKindName(target->kind), fmtnode(target));
         return target;
@@ -290,11 +290,11 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   //   break;
 
   case NLet:
-    if (n->let.init)
-      n->let.init = resolve_sym(ctx, n->let.init);
+  case NParam:
+    if (n->var.init)
+      n->var.init = resolve_sym(ctx, n->var.init);
     break;
 
-  case NParam:
   case NField:
     if (n->field.init)
       n->field.init = resolve_sym(ctx, n->field.init);

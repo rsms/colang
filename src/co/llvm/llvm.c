@@ -116,10 +116,10 @@ static bool value_is_ret(LLVMValueRef v) {
          LLVMGetInstructionOpcode(v) == LLVMRet;
 }
 
-static bool value_is_call(LLVMValueRef v) {
-  return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
-         LLVMGetInstructionOpcode(v) == LLVMCall;
-}
+// static bool value_is_call(LLVMValueRef v) {
+//   return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
+//          LLVMGetInstructionOpcode(v) == LLVMCall;
+// }
 
 static Value get_current_fun(B* b) {
   LLVMBasicBlockRef BB = LLVMGetInsertBlock(b->builder);
@@ -191,7 +191,7 @@ static Value build_funproto(B* b, Node* n, const char* name) {
       auto param = (Node*)a.v[i];
       // param->kind==NArg
       Value p = LLVMGetParam(fn, i);
-      LLVMSetValueName2(p, param->field.name, symlen(param->field.name));
+      LLVMSetValueName2(p, param->var.name, symlen(param->var.name));
     }
   }
 
@@ -228,24 +228,44 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
 
   fn = build_funproto(b, n, name);
 
-  if (n->fun.body) {
-    // Create a new basic block to start insertion into.
-    // Note: entry BB is required, but its name can be empty.
-    LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
-    LLVMPositionBuilderAtEnd(b->builder, bb);
-    Value bodyval = build_expr(b, n->fun.body, "");
+  if (!n->fun.body)
+    return fn;
 
-    if (!bodyval || !value_is_ret(bodyval)) {
-      // implicit return at end of body
-      if (!bodyval || n->type->t.fun.result == Type_nil) {
-        LLVMBuildRetVoid(b->builder);
-      } else {
-        if (value_is_call(bodyval)) {
-          // TODO: might need to add a condition for matching parameters & return type
-          LLVMSetTailCall(bodyval, true);
-        }
-        LLVMBuildRet(b->builder, bodyval);
+  // Create a new basic block to start insertion into.
+  // Note: entry BB is required, but its name can be empty.
+  LLVMBasicBlockRef bb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
+  LLVMPositionBuilderAtEnd(b->builder, bb);
+
+  // process params eagerly
+  if (n->fun.params) {
+    auto a = n->fun.params->array.a;
+    for (u32 i = 0; i < a.len; i++) {
+      auto pn = (Node*)a.v[i];
+      asserteq_debug(pn->kind, NParam);
+      Value pv = LLVMGetParam(fn, i);
+      if (NodeIsConst(pn)) { // immutable
+        pn->var.irval = pv;
+      } else { // mutable
+        LLVMTypeRef ty = get_type(b, pn->type);
+        pn->var.irval = LLVMBuildAlloca(b->builder, ty, pn->var.name);
+        LLVMBuildStore(b->builder, pv, pn->var.irval);
       }
+    }
+  }
+
+  // build body
+  Value bodyval = build_expr(b, n->fun.body, "");
+
+  // handle implicit return at end of body
+  if (!bodyval || !value_is_ret(bodyval)) {
+    if (!bodyval || n->type->t.fun.result == Type_nil) {
+      LLVMBuildRetVoid(b->builder);
+    } else {
+      // if (value_is_call(bodyval)) {
+      //   // TODO: might need to add a condition for matching parameters & return type
+      //   LLVMSetTailCall(bodyval, true);
+      // }
+      LLVMBuildRet(b->builder, bodyval);
     }
   }
 
@@ -336,8 +356,8 @@ static Value build_return(B* b, Node* n, const char* debugname) {
   assertnotnull_debug(n->type);
   // TODO: check current function and if type is nil, use LLVMBuildRetVoid
   LLVMValueRef v = build_expr(b, n->op.left, debugname);
-  if (value_is_call(v))
-    LLVMSetTailCall(v, true);
+  // if (value_is_call(v))
+  //   LLVMSetTailCall(v, true);
   return LLVMBuildRet(b->builder, v);
 }
 
@@ -440,41 +460,62 @@ static Value build_index(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_default_value(B* b, Type* tn, const char* name) {
+static Value build_default_value(B* b, Type* tn) {
   LLVMTypeRef ty = get_type(b, tn);
   return LLVMConstNull(ty);
+}
+
+
+static Value load_var(B* b, Node* n, const char* debugname) {
+  assert_debug(NodeIsVar(n));
+  assertnotnull_debug(n->var.irval);
+  if (NodeIsConst(n))
+    return (Value)n->var.irval;
+  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(n->var.irval));
+  return LLVMBuildLoad2(b->builder, ty, n->var.irval, n->var.name);
 }
 
 
 static Value build_let(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NLet);
 
-  if (n->let.nrefs == 0 && !n->type) // skip unused let
+  if (n->var.nrefs == 0 && !n->type) // skip unused let
     return NULL;
 
   assertnotnull_debug(n->type);
 
-  if (n->let.irval) // already allocated; return pointer
-    return (Value)n->let.irval;
+  if (n->var.irval) // already computed
+    return (Value)n->var.irval;
 
   if (NodeIsConst(n)) {
-    dlog("TODO: immutable local");
-    assertnotnull_debug(n->let.init); // should be resolved
-    // n->let.irval = build_expr(b, n->let.init, n->let.name);
-    // return n->let.irval;
+    // immutable local
+    if (n->var.init) {
+      n->var.irval = build_expr(b, n->var.init, n->var.name);
+    } else {
+      n->var.irval = build_default_value(b, n->type);
+    }
+    return n->var.irval;
   }
 
   // mutable variables
   // See https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
   LLVMTypeRef ty = get_type(b, n->type);
-  n->let.irval = LLVMBuildAlloca(b->builder, ty, n->let.name);
+  n->var.irval = LLVMBuildAlloca(b->builder, ty, n->var.name);
 
-  if (n->let.init) {
-    auto init = build_expr(b, n->let.init, n->let.name);
-    return LLVMBuildStore(b->builder, init, n->let.irval);
+  if (n->var.init) {
+    auto init = build_expr(b, n->var.init, n->var.name);
+    return LLVMBuildStore(b->builder, init, n->var.irval);
   }
 
-  return n->let.irval;
+  return load_var(b, n, n->var.name);
+}
+
+
+static Value build_param(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NParam);
+  assertnotnull_debug(n->type);
+  assertnotnull_debug(n->var.irval); // precomputed by build_fun
+  return load_var(b, n, n->var.name);
 }
 
 
@@ -482,23 +523,11 @@ static Value build_id_read(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NId);
   assertnotnull_debug(n->type);
   assertnotnull_debug(n->ref.target); // should be resolved
-
   Value target = build_expr(b, n->ref.target, n->ref.name);
-
-  if (n->ref.target->kind == NLet) {
-    LLVMTypeRef ty = get_type(b, n->type);
-    return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
-  }
-
-  return target;
-}
-
-
-static Value build_param_read(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NParam);
-  assertnotnull_debug(n->type);
-  dlog("TODO load param %s", fmtnode(n));
-  return LLVMGetParam(get_current_fun(b), n->field.index);
+  if (NodeIsConst(n->ref.target))
+    return target;
+  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
+  return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
 }
 
 
@@ -506,17 +535,24 @@ static Value build_assign(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NAssign);
   assertnotnull_debug(n->type);
 
-  if (n->op.left->kind == NLet) {
-    // store to local variable
+  bool isrvalue = (n->flags & NodeFlagRValue) != 0; // n's value is required
+
+  if (n->op.left->kind == NLet || n->op.left->kind == NParam) {
+    // store to local
     const char* name = n->op.left->ref.name;
-    Value left = build_expr(b, n->op.left, name);
+    Value target = build_expr(b, n->op.left, name);
     Value right = build_expr(b, n->op.right, "rvalue");
-    LLVMBuildStore(b->builder, right, left);
+    LLVMBuildStore(b->builder, right, target);
+
     // value of assignment is its new value
-    return LLVMBuildLoad2(b->builder, LLVMGetElementType(LLVMTypeOf(left)), left, name);
+    if (isrvalue) {
+      LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
+      return LLVMBuildLoad2(b->builder, ty, target, name);
+    }
+  } else {
+    panic("TODO assign to %s", fmtnode(n->op.left));
   }
 
-  panic("TODO assign to %s", fmtnode(n->op.left));
   return NULL;
 }
 
@@ -653,7 +689,7 @@ static Value build_if(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NIf);
   assertnotnull_debug(n->type);
 
-  bool isrvalue = (n->flags & NodeFlagRValue) != 0; // n'value is required
+  bool isrvalue = (n->flags & NodeFlagRValue) != 0; // n's value is required
 
   // condition
   assertnotnull_debug(n->cond.cond->type);
@@ -693,7 +729,7 @@ static Value build_if(B* b, Node* n, const char* debugname) {
       if (!elseVal)
         return NULL; // codegen failure
     } else {
-      elseVal = build_default_value(b, n->cond.thenb->type, "else");
+      elseVal = build_default_value(b, n->cond.thenb->type);
     }
     LLVMBuildBr(b->builder, endb);
     // Codegen of "then" can change the current block, update thenb for the PHI
@@ -745,7 +781,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
     case NLet:        R_MUSTTAIL return build_let(b, n, debugname);
     case NIntLit:     R_MUSTTAIL return build_intlit(b, n, debugname);
     case NFloatLit:   R_MUSTTAIL return build_floatlit(b, n, debugname);
-    case NParam:      R_MUSTTAIL return build_param_read(b, n, debugname);
+    case NParam:      R_MUSTTAIL return build_param(b, n, debugname);
     case NBlock:      R_MUSTTAIL return build_block(b, n, debugname);
     case NCall:       R_MUSTTAIL return build_call(b, n, debugname);
     case NTypeCast:   R_MUSTTAIL return build_typecast(b, n, debugname);
@@ -770,17 +806,17 @@ static Value build_global_let(B* b, Node* n) {
   assert(n->kind == NLet);
   assert(n->type);
   Value gv;
-  if (n->let.init) {
-    Value v = build_expr(b, n->let.init, n->let.name);
+  if (n->var.init) {
+    Value v = build_expr(b, n->var.init, n->var.name);
     if (!LLVMIsConstant(v)) {
       panic("not a constant expression %s", fmtnode(n));
     }
-    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->let.name);
+    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->var.name);
     LLVMSetInitializer(gv, v);
   } else {
-    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->let.name);
+    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->var.name);
   }
-  n->let.irval = gv; // save pointer for later lookups
+  n->var.irval = gv; // save pointer for later lookups
   // Note: global vars are always stored to after they are defined as
   // "x = y" becomes a variable definition if "x" is not yet defined.
   // TODO: conditionally make linkage private

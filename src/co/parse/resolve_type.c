@@ -94,24 +94,25 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
   switch (n->kind) {
     case NLet: {
-      assert(n->let.nrefs > 0);
-      assert(n->let.init != NULL);
+      assert(n->var.nrefs > 0);
+      assert(n->var.init != NULL);
 
       // reset mayReleaseLet at let boundary
       bool mayReleaseLet_child = false;
-      if (mayReleaseLet && n->let.nrefs == 1) {
+      if (mayReleaseLet && n->var.nrefs == 1) {
         // we will release n after we have visited its children, so allow children
         // to be released as well.
         mayReleaseLet_child = true;
       }
 
       // visit initializer node
-      auto init = resolve_const(b, n->let.init, mayReleaseLet_child);
+      auto init = resolve_const(b, n->var.init, mayReleaseLet_child);
 
-      if (mayReleaseLet && NodeUnrefLet(n) == 0) {
-        // release now-unused Let node
-        n->let.init = NULL;
-      }
+      // if (mayReleaseLet && NodeUnrefVar(n) == 0) {
+      //   // release now-unused Let node
+      //   n->var.init = NULL;
+      // }
+
       return init;
     }
 
@@ -126,7 +127,7 @@ static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
 
 // ResolveConst resolves n to its constant value
 Node* ResolveConst(Build* b, Node* n) {
-  return resolve_const(b, n, /*mayReleaseLet*/true);
+  return NodeIsConst(n) ? resolve_const(b, n, /*mayReleaseLet*/true) : n;
 }
 
 
@@ -190,6 +191,12 @@ static Node* resolve_ideal_type1(
       assertnotnull_debug(n->op.left);
       n->op.left = resolve_ideal_type(ctx, n->op.left, typecontext, fl);
       n->type = n->op.left->type;
+      break;
+
+    case NLet:
+      assertnotnull_debug(n->var.init);
+      n->var.init = resolve_ideal_type(ctx, n->var.init, typecontext, fl);
+      n->type = n->var.init->type;
       break;
 
     default:
@@ -422,7 +429,7 @@ static Node* finalize_binop(ResCtx* ctx, Node* n) {
 }
 
 
-static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   assert_debug(n->kind == NBinOp || n->kind == NAssign);
   assert(n->op.right != NULL);
 
@@ -462,26 +469,30 @@ static Node* resolve_binop_or_assign_type(ResCtx* ctx, Node* n, RFlag fl) {
   //   a = (1 as uint32) + (2 as uint32) # 4  left & right are typed
   //
   if (lt == Type_ideal) {
-    if (rt == Type_ideal) {
-      dlog_mod("[binop] 1  left & right are untyped");
+    /*if (n->op.op == TAssign) {
+      dlog_mod("[binop] 1  left is untyped and an assignment target");
+      Node* left = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
+      dlog("left %s", fmtast(left));
+    } else*/ if (rt == Type_ideal) {
+      dlog_mod("[binop] 2  left & right are untyped");
       // TODO: we could pick the strongest type here by finding the CType of each operand and
       // then calling resolve_ideal_type on the stronger of the two. For example int32 > int16.
       n->op.left = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
       lt = n->op.left->type;
       // note: continue to statement outside these if blocks
     } else {
-      dlog_mod("[binop] 2  left is untyped, right is typed (%s)", fmtnode(rt));
+      dlog_mod("[binop] 3  left is untyped, right is typed (%s)", fmtnode(rt));
       n->op.left = convlit(ctx->build, n->op.left, rt, ConvlitImplicit | ConvlitRelaxedType);
       n->type = rt;
       return finalize_binop(ctx, n);
     }
   } else if (rt == Type_ideal) {
-    dlog_mod("[binop] 3  left is typed (%s), right is untyped", fmtnode(lt));
+    dlog_mod("[binop] 4  left is typed (%s), right is untyped", fmtnode(lt));
     n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
     n->type = lt;
     return finalize_binop(ctx, n);
   } else {
-    dlog_mod("[binop] 4  left & right are typed (%s, %s)", fmtnode(lt) , fmtnode(rt));
+    dlog_mod("[binop] 5  left & right are typed (%s, %s)", fmtnode(lt) , fmtnode(rt));
   }
 
   // we get here from either of the two conditions:
@@ -721,7 +732,7 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
   // n = n->ref.target;
   // while (n->kind == NLet && NodeIsConst(n)) {
   //   NodeUnrefLet(n);
-  //   n = n->let.init;
+  //   n = n->var.init;
   // }
 
   return n;
@@ -953,7 +964,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NBinOp:
   case NAssign:
-    R_MUSTTAIL return resolve_binop_or_assign_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_binop_or_assign(ctx, n, fl);
 
   case NTypeCast:
     R_MUSTTAIL return resolve_typecast(ctx, n, fl);
@@ -965,18 +976,18 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NLet:
-    if (n->let.init) {
+  case NParam:
+    if (n->var.init) {
       // // leave unused Let untyped
-      // if (n->let.nrefs == 0)
+      // if (n->var.nrefs == 0)
       //   return n;
-      n->let.init = resolve_type(ctx, n->let.init, fl);
-      n->type = n->let.init->type;
+      n->var.init = resolve_type(ctx, n->var.init, fl);
+      n->type = n->var.init->type;
     } else {
       n->type = Type_nil;
     }
     break;
 
-  case NParam:
   case NField:
     if (n->field.init) {
       n->field.init = resolve_type(ctx, n->field.init, fl);
