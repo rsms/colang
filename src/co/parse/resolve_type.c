@@ -127,7 +127,7 @@ static Node* resolve_const(Build* b, Node* n, bool mayReleaseVar) {
 
 // ResolveConst resolves n to its constant value
 Node* ResolveConst(Build* b, Node* n) {
-  return NodeIsConst(n) ? resolve_const(b, n, /*mayReleaseVar*/true) : n;
+  return NodeIsConst(n) && !NodeIsParam(n) ? resolve_const(b, n, /*mayReleaseVar*/true) : n;
 }
 
 
@@ -976,7 +976,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NVar:
-  case NParam:
     if (n->var.init) {
       // // leave unused Var untyped
       // if (n->var.nrefs == 0)

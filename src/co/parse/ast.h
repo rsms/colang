@@ -28,7 +28,6 @@ typedef enum {
   _(Assign,      NodeClassExpr) \
   _(Block,       NodeClassExpr) \
   _(Call,        NodeClassExpr) \
-  _(Param,       NodeClassExpr) \
   _(Field,       NodeClassExpr) \
   _(Selector,    NodeClassExpr) \
   _(Index,       NodeClassExpr) \
@@ -111,6 +110,7 @@ typedef enum {
   NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
   NodeFlagBase       = 1 << 2, // struct field: the field is a base type
   NodeFlagRValue     = 1 << 4, // resolved as rvalue
+  NodeFlagParam      = 1 << 5, // NVar used as function parameter (for diagnostics)
 } NodeFlags;
 
 typedef struct Node {
@@ -163,11 +163,11 @@ typedef struct Node {
       u32            nrefs; // reference count
       u32            index; // argument index or struct index
     } field;
-    /* var */ struct { // Param, Var
+    /* var */ struct { // Var
       Sym            name;
       Node* nullable init;  // initial/default value
       u32            nrefs; // reference count
-      u32            index; // argument index (used by Param)
+      u32            index; // argument index (used by function parameters)
       bool           ismut; // true if this is mutable
       void* nullable irval; // used by IR builders for temporary storage
     } var;
@@ -263,8 +263,8 @@ inline static bool NodeKindIsType(NodeKind kind) { return NodeKindClass(kind) & 
 inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & NodeClassExpr; }
 
 // NodeIs{Type|Expr} calls NodeKindIs{Type|Expr}(n->kind)
-inline static bool NodeIsType(const Node* n) { return NodeKindIsType(n->kind); }
-inline static bool NodeIsExpr(const Node* n) { return NodeKindIsExpr(n->kind); }
+static bool NodeIsType(const Node* n);
+static bool NodeIsExpr(const Node* n);
 
 // Node{Is,Set,Clear}Unresolved controls the "unresolved" flag of a node
 inline static bool NodeIsUnresolved(const Node* n) { return (n->flags & NodeFlagUnresolved) != 0; }
@@ -294,15 +294,20 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
   );
 }
 
-inline static bool NodeIsVar(const Node* n) { return n->kind == NVar || n->kind == NParam; }
+// Node{Is,Set,Clear}Param controls the "is function parameter" flag of a node
+inline static bool NodeIsParam(const Node* n) { return (n->flags & NodeFlagParam) != 0; }
+inline static void NodeSetParam(Node* n) { n->flags |= NodeFlagParam; }
+inline static void NodeClearParam(Node* n) { n->flags &= ~NodeFlagParam; }
+
+inline static bool NodeIsVar(const Node* n) { return n->kind == NVar; } // TODO remove
 
 // NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.
-static Node* NodeRefVar(Node* n); // NVar | NParam
+static Node* NodeRefVar(Node* n); // NVar
 static Node* NodeRefAny(Node* n); // any
 
 // NodeUnrefVar decrements the reference counter of a Var node.
 // Returns the value of n->var.nrefs after the subtraction.
-static u32 NodeUnrefVar(Node* n); // NVar | NParam
+static u32 NodeUnrefVar(Node* n); // NVar
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
@@ -399,6 +404,16 @@ inline static NodeClassFlags NodeKindClass(NodeKind kind) {
   return _NodeClassTable[kind];
 }
 
+inline static bool NodeIsType(const Node* n) {
+  assertnotnull_debug(n);
+  return NodeKindIsType(n->kind);
+}
+
+inline static bool NodeIsExpr(const Node* n) {
+  assertnotnull_debug(n);
+  return NodeKindIsExpr(n->kind);
+}
+
 inline static Node* NodeCopy(Mem mem, const Node* n) {
   Node* n2 = (Node*)memalloc(mem, sizeof(Node));
   memcpy(n2, n, sizeof(Node));
@@ -423,26 +438,21 @@ inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) 
 }
 
 inline static Node* NodeRefVar(Node* n) {
-  assert_debug(n->kind == NVar || n->kind == NParam);
+  asserteq_debug(n->kind, NVar);
   n->var.nrefs++;
   return n;
 }
 
 inline static u32 NodeUnrefVar(Node* n) {
-  assert_debug(n->kind == NVar || n->kind == NParam);
+  asserteq_debug(n->kind, NVar);
   assertgt_debug(n->var.nrefs, 0);
   return --n->var.nrefs;
 }
 
 inline static Node* NodeRefAny(Node* n) {
-  switch (n->kind) {
-    case NVar:
-    case NParam:
-      n->var.nrefs++;
-      return n;
-    default:
-      return n;
-  }
+  if (n->kind == NVar)
+    n->var.nrefs++;
+  return n;
 }
 
 ASSUME_NONNULL_END

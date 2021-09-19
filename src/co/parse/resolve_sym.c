@@ -290,7 +290,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   //   break;
 
   case NVar:
-  case NParam:
     if (n->var.init)
       n->var.init = resolve_sym(ctx, n->var.init);
     break;

@@ -38,7 +38,7 @@ typedef struct B {
   bool prettyIR; // if true, include names in the IR (function params, variables, etc)
   //std::unique_ptr<DIBuilder>   DBuilder;
   //DebugInfo                    debug;
-  bool noload; // for NVar and NParam
+  bool noload; // for NVar
 
   // optimization
   LLVMPassManagerRef FPM; // function pass manager
@@ -304,7 +304,8 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
     auto a = n->fun.params->array.a;
     for (u32 i = 0; i < a.len; i++) {
       auto pn = (Node*)a.v[i];
-      asserteq_debug(pn->kind, NParam);
+      asserteq_debug(pn->kind, NVar);
+      assert_debug(NodeIsParam(pn));
       Value pv = LLVMGetParam(fn, i);
       if (NodeIsConst(pn)) { // immutable
         pn->var.irval = pv;
@@ -548,13 +549,16 @@ static Value load_var(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_let(B* b, Node* n, const char* debugname) {
+static Value build_var(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NVar);
-  if (n->var.nrefs == 0 && !n->type) // skip unused var
-    return NULL;
-  assertnotnull_debug(n->type);
 
+  // build var if needed
   if (!n->var.irval) {
+    assert_debug( ! NodeIsParam(n)); // params are eagerly built by build_fun
+    if (n->var.nrefs == 0 && !n->type)// skip unused var
+      return NULL;
+    assertnotnull_debug(n->type);
+
     if (NodeIsConst(n)) {
       // immutable local
       if (n->var.init) {
@@ -580,14 +584,6 @@ static Value build_let(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_param(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NParam);
-  assertnotnull_debug(n->type);
-  assertnotnull_debug(n->var.irval); // precomputed in build_fun
-  R_MUSTTAIL return load_var(b, n, n->var.name);
-}
-
-
 static Value build_id_read(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NId);
   assertnotnull_debug(n->type);
@@ -609,7 +605,7 @@ static Value build_assign(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NAssign);
   assertnotnull_debug(n->type);
 
-  if (n->op.left->kind == NVar || n->op.left->kind == NParam) {
+  if (n->op.left->kind == NVar) {
     // store to local
     const char* name = n->op.left->var.name;
     build_expr_noload(b, n->op.left, name);
@@ -868,10 +864,9 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
   switch (n->kind) {
     case NBinOp:      RET(build_binop(b, n, debugname));
     case NId:         RET(build_id_read(b, n, debugname));
-    case NVar:        RET(build_let(b, n, debugname));
+    case NVar:        RET(build_var(b, n, debugname));
     case NIntLit:     RET(build_intlit(b, n, debugname));
     case NFloatLit:   RET(build_floatlit(b, n, debugname));
-    case NParam:      RET(build_param(b, n, debugname));
     case NBlock:      RET(build_block(b, n, debugname));
     case NCall:       RET(build_call(b, n, debugname));
     case NTypeCast:   RET(build_typecast(b, n, debugname));

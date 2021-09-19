@@ -298,9 +298,9 @@ static void scopestackCheckUnused(Parser* p) {
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
-    if (R_UNLIKELY((n->kind == NVar || n->kind == NParam) && n->var.nrefs == 0)) {
+    if (R_UNLIKELY(n->kind == NVar && n->var.nrefs == 0)) {
       build_warnf(p->build, NodePosSpan(n),
-        "unused %s %s", n->kind == NParam ? "argument" : "variable", n->var.name);
+        "unused %s %s", NodeIsParam(n) ? "function parameter" : "variable", n->var.name);
     }
   }
 }
@@ -497,10 +497,10 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 
   // unwind var targeting a type
   Node* t = target;
-  while (t->kind == NVar && NodeIsConst(t)) {
+  while (t->kind == NVar && NodeIsConst(t) && !NodeIsParam(t)) {
     t = t->var.init;
     // Note: no NodeUnrefVar here
-    if (NodeIsType(t))
+    if (t && NodeIsType(t))
       return t;
   }
 
@@ -513,9 +513,8 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   if (NodeIsConst(id) && (NodeIsType(target) || target->kind == NFun))
     return target;
 
-  if ((fl & PFlagRValue) && NodeIsVar(id->ref.target)) {
+  if ((fl & PFlagRValue) && id->ref.target->kind == NVar) {
     NodeRefVar(id->ref.target);
-    // if (id->ref.target->kind == NParam)
     return id->ref.target;
   }
 
@@ -1325,8 +1324,9 @@ static Node* params(Parser* p) { // => NTuple
   PFlag fl = PFlagRValue;
 
   while (p->s.tok != endtok && p->s.tok != TNone) {
-    auto cn = mknode(p, NParam);
+    auto cn = mknode(p, NVar);
     NodeSetConst(cn);
+    NodeSetParam(cn);
     if (p->s.tok == TId) {
       cn->var.name = p->s.name;
       nexttok(p);

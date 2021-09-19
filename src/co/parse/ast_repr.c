@@ -183,11 +183,8 @@ Str NodeStr(Str s, const Node* n) {
     s = str_append(s, n->cunit.name, strlen(n->cunit.name));
     return str_appendc(s, '"');
 
-  case NVar: // var x
-    return str_appendfmt(s, "var %s", n->var.name);
-
-  case NParam: // param x
-    return str_appendfmt(s, "param %s", n->var.name);
+  case NVar: // var x | param x
+    return str_appendfmt(s, "%s %s", NodeIsParam(n) ? "param" : "var", n->var.name);
 
   case NFun: // fun foo
     s = str_appendcstr(s, "function");
@@ -402,7 +399,6 @@ static bool l_collapse_field(NodeList* nl) {
 
   case NId:
   case NVar:
-  case NParam:
   case NField:
   case NReturn:
   case NBoolLit:
@@ -431,7 +427,6 @@ static bool l_show_field(NodeList* nl) {
     case NPrefixOp:
     case NCall:
     case NVar:
-    case NParam:
     case NTypeCast:
     case NSelector:
     case NIndex:
@@ -616,8 +611,7 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
-  case NVar:
-  case NParam: {
+  case NVar: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
     if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
@@ -760,7 +754,6 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NVar:
-  case NParam:
     if (n->var.ismut && (c->fl & NodeReprAttrs)) {
       s = style_push(&c->style, s, attr_color);
       s = str_appendcstr(s, "@mutable");

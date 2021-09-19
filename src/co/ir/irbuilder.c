@@ -436,21 +436,6 @@ static IRValue* ast_add_typecast(IRBuilder* u, Node* n) { // n->kind==NTypeCast
 }
 
 
-static IRValue* ast_add_param(IRBuilder* u, Node* n) {
-  if (R_UNLIKELY(n->type->kind != NBasicType)) {
-    // TODO add support for NTupleType et al
-    build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
-    return TODO_Value(u);
-  }
-  auto t = get_type(u, n->type);
-  auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
-  v->auxInt = n->var.index;
-  if (u->flags & IRBuilderComments)
-    IRValueAddComment(v, u->mem, n->var.name, symlen(n->var.name));
-  return v;
-}
-
-
 static IRValue* ast_add_binop(IRBuilder* u, Node* n) { // n->kind==NBinOp
   dlog("ast_add_binop %s %s = %s",
     TokName(n->op.op),
@@ -513,8 +498,8 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 }
 
 
-static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NVar
-  if (n->var.nrefs == 0) {
+static IRValue* nullable ast_add_var(IRBuilder* u, Node* n) { // n->kind==NVar
+  if (n->var.nrefs == 0 && !NodeIsParam(n)) {
     // unused, unreferenced; ok to return bad value
     dlog("skip unused %s", fmtnode(n));
     return NULL;
@@ -522,7 +507,7 @@ static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NVar
   assertnotnull(n->var.init); // TODO: support default-initializer (NULL)
   assertnotnull(n->type);
   assert(n->type != Type_ideal);
-  dlog("ast_add_let %s %s = %s",
+  dlog("ast_add_var %s %s = %s",
     n->var.name ? n->var.name : "_",
     fmtnode(n->type),
     n->var.init ? fmtnode(n->var.init) : "nil"
@@ -530,6 +515,22 @@ static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NVar
   auto v = ast_add_expr(u, n->var.init); // right-hand side
   return ast_add_assign(u, n->var.name, v);
 }
+
+
+// TODO: port this old NParam code into ast_add_var
+// static IRValue* ast_add_param(IRBuilder* u, Node* n) {
+//   if (R_UNLIKELY(n->type->kind != NBasicType)) {
+//     // TODO add support for NTupleType et al
+//     build_errf(u->build, NodePosSpan(n), "invalid argument type %s", fmtnode(n->type));
+//     return TODO_Value(u);
+//   }
+//   auto t = get_type(u, n->type);
+//   auto v = IRValueNew(u->f, u->b, OpArg, t, n->pos);
+//   v->auxInt = n->var.index;
+//   if (u->flags & IRBuilderComments)
+//     IRValueAddComment(v, u->mem, n->var.name, symlen(n->var.name));
+//   return v;
+// }
 
 
 // ast_add_if reads an "if" expression, e.g.
@@ -878,7 +879,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
   }
 
   switch (n->kind) {
-    case NVar:      return ast_add_let(u, n);
+    case NVar:      return ast_add_var(u, n);
     case NBlock:    return ast_add_block(u, n);
     case NIntLit:   return ast_add_intconst(u, n);
     case NBoolLit:  return ast_add_boolconst(u, n);
@@ -886,7 +887,6 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NId:       return ast_add_id(u, n);
     case NIf:       return ast_add_if(u, n);
     case NTypeCast: return ast_add_typecast(u, n);
-    case NParam:    return ast_add_param(u, n);
     case NCall:     return ast_add_call(u, n);
     case NReturn:   return ast_add_ret(u, n);
     case NFun:      return ast_add_funexpr(u, n);

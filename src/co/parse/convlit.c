@@ -175,10 +175,6 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     }
     break;
 
-  case NParam:
-    // keep as is
-    break;
-
   default:
     n = ResolveConst(b, n);
   }
