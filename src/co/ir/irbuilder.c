@@ -322,7 +322,7 @@ static IRValue* ast_add_boolconst(IRBuilder* u, Node* n) { // n->kind==NBoolLit
 static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
   assert(n->ref.target != NULL); // never unresolved
   // dlog("ast_add_id \"%s\" target = %s", n->ref.name, fmtnode(n->ref.target));
-  if (n->ref.target->kind == NLet) {
+  if (n->ref.target->kind == NVar) {
     // variable
     return var_read(u, n->ref.name, n->type, u->b);
   }
@@ -513,7 +513,7 @@ static IRValue* ast_add_assign(IRBuilder* u, Sym name /*nullable*/, IRValue* val
 }
 
 
-static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
+static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NVar
   if (n->var.nrefs == 0) {
     // unused, unreferenced; ok to return bad value
     dlog("skip unused %s", fmtnode(n));
@@ -534,8 +534,8 @@ static IRValue* nullable ast_add_let(IRBuilder* u, Node* n) { // n->kind==NLet
 
 // ast_add_if reads an "if" expression, e.g.
 //  (If (Op > (Ident x) (Int 1)) ; condition
-//      (Let x (Int 1))          ; then block
-//      (Let x (Int 2)) )        ; else block
+//      (Var x (Int 1))          ; then block
+//      (Var x (Int 2)) )        ; else block
 // Returns a new empty block that's the block after the if.
 static IRValue* ast_add_if(IRBuilder* u, Node* n) { // n->kind==NIf
   //
@@ -869,7 +869,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     // For example:
     //
     //   fun foo {
-    //     x = 1    # <- the NLet node is unused but its value (NIntLit 3) ...
+    //     x = 1    # <- the NVar node is unused but its value (NIntLit 3) ...
     //     bar(x)   # ... is used by this NCall node.
     //   }
     //
@@ -878,7 +878,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
   }
 
   switch (n->kind) {
-    case NLet:      return ast_add_let(u, n);
+    case NVar:      return ast_add_let(u, n);
     case NBlock:    return ast_add_block(u, n);
     case NIntLit:   return ast_add_intconst(u, n);
     case NBoolLit:  return ast_add_boolconst(u, n);
@@ -1000,10 +1000,10 @@ static bool ast_add_toplevel(IRBuilder* u, Node* n) {
     case NFile: return ast_add_file(u, n);
     case NFun:  return ast_add_fun(u, n) != NULL;
 
-    case NLet:
-      // top-level let bindings which are not exported can be ignored.
-      // All let bindings are resolved already, so they only concern IR if their data is exported.
-      // Since exporting is not implemented, just ignore top-level let for now.
+    case NVar:
+      // top-level var bindings which are not exported can be ignored.
+      // All var bindings are resolved already, so they only concern IR if their data is exported.
+      // Since exporting is not implemented, just ignore top-level var for now.
       return true;
 
     default:

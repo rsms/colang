@@ -421,7 +421,7 @@ static BinaryenExpressionRef bn_expr_call(BNBuilder* b, Node* n) {
 static BinaryenExpressionRef bn_expr_id(BNBuilder* b, Node* n) {
   asserteq_debug(n->kind, NId);
 
-  if (n->ref.target->kind == NLet) {
+  if (n->ref.target->kind == NVar) {
     // variable
     panic("TODO");
   }
@@ -478,7 +478,7 @@ static BinaryenExpressionRef bn_expr(BNBuilder* b, Node* n) {
     // For example:
     //
     //   fun foo {
-    //     x = 1    # <- the NLet node is unused but its value (NIntLit 3) ...
+    //     x = 1    # <- the NVar node is unused but its value (NIntLit 3) ...
     //     bar(x)   # ... is used by this NCall node.
     //   }
     //
@@ -498,7 +498,7 @@ static BinaryenExpressionRef bn_expr(BNBuilder* b, Node* n) {
     case NFloatLit:
     case NIntLit: return bn_expr_constnum(b, n);
 
-    case NLet:
+    case NVar:
     case NIf:
     case NTypeCast:
     case NFun:
@@ -618,10 +618,10 @@ static bool bn_add_toplevel(BNBuilder* b, Node* n) {
     case NFile: return bn_add_file(b, n);
     case NFun:  return bn_add_fun(b, n);
 
-    case NLet:
-      // top-level let bindings which are not exported can be ignored.
-      // All let bindings are resolved already, so they only concern IR if their data is exported.
-      // Since exporting is not implemented, just ignore top-level let for now.
+    case NVar:
+      // top-level var bindings which are not exported can be ignored.
+      // All var bindings are resolved already, so they only concern IR if their data is exported.
+      // Since exporting is not implemented, just ignore top-level var for now.
       return true;
 
     default:

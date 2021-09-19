@@ -121,7 +121,7 @@ static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable 
     case NId:
       return _eval(b, targetType, n->ref.target);
 
-    case NLet:
+    case NVar:
       return _eval(b, targetType, n->var.init);
 
     case NBoolLit:

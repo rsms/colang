@@ -298,7 +298,7 @@ static void scopestackCheckUnused(Parser* p) {
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
-    if (R_UNLIKELY((n->kind == NLet || n->kind == NParam) && n->var.nrefs == 0)) {
+    if (R_UNLIKELY((n->kind == NVar || n->kind == NParam) && n->var.nrefs == 0)) {
       build_warnf(p->build, NodePosSpan(n),
         "unused %s %s", n->kind == NParam ? "argument" : "variable", n->var.name);
     }
@@ -471,9 +471,9 @@ static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok
 }
 
 
-static Node* makeLet(Parser* p, const Node* name, Node* nullable init) {
+static Node* makeVar(Parser* p, const Node* name, Node* nullable init) {
   asserteq_debug(name->kind, NId);
-  auto n = NewNode(p->build->mem, NLet);
+  auto n = NewNode(p->build->mem, NVar);
   NodeSetConst(n);
   n->pos = name->pos; // TODO: expand pos span to include type?
   n->var.name = name->ref.name;
@@ -495,11 +495,11 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 
   Node* target = id->ref.target;
 
-  // unwind let targeting a type
+  // unwind var targeting a type
   Node* t = target;
-  while (t->kind == NLet && NodeIsConst(t)) {
+  while (t->kind == NVar && NodeIsConst(t)) {
     t = t->var.init;
-    // Note: no NodeUnrefLet here
+    // Note: no NodeUnrefVar here
     if (NodeIsType(t))
       return t;
   }
@@ -564,11 +564,11 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
 // For example:
 //   fun foo(x, y int) int {
 //     x
-//     ~ might be the beginning of a let definition
+//     ~ might be the beginning of a var definition
 // Scenario 1:
 //   fun foo(x, y int) int {
 //     x = 4
-//     ~~~~~ lvalue in a let definition; defining not resolving.
+//     ~~~~~ lvalue in a var definition; defining not resolving.
 // Scenario 2:
 //   fun foo(x, y int) int {
 //     x + y
@@ -650,7 +650,7 @@ static Node* PId(Parser* p, PFlag fl) {
 // e.g. "var x int", "var x = 4", "var x int = 4"
 //!PrefixParselet TVar
 static Node* PVar(Parser* p, PFlag fl) {
-  auto n = mknode(p, NLet);
+  auto n = mknode(p, NVar);
   n->var.ismut = true;
   nexttok(p); // consume "var"
 
@@ -735,7 +735,7 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
 // Infix assignment e.g. "=" in "left = expr"
 //!Parselet (TAssign ASSIGN)
-static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* PVarOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   fl |= PFlagRValue;
 
   if (left->kind != NId)
@@ -753,16 +753,16 @@ static Node* PLetOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     n->op.op = p->s.tok;
     nexttok(p); // consume '='
     auto right = exprOrTuple(p, e->prec, fl);
-    n->op.left = target; // store NLet instead of NId to simplify IR generation
+    n->op.left = target; // store NVar instead of NId to simplify IR generation
     n->op.right = right;
     NodeTransferUnresolved(n, right);
     return n;
   }
 
-  // var definition, e.g. "x = 3" -> (let (Id x) (Int 3))
+  // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
   nexttok(p); // consume '='
   Node* init = expr(p, PREC_LOWEST, PFlagRValue);
-  return makeLet(p, left, init); // copies left->ref.name and left->pos
+  return makeVar(p, left, init); // copies left->ref.name and left->pos
 }
 
 
@@ -794,7 +794,7 @@ static Node* pArrayType(Parser* p, PFlag fl) {
   n->t.array.subtype = expr(p, PREC_MEMBER, fl | PFlagRValue);
   NodeTransferUnresolved(n, n->t.array.subtype);
 
-  // if we are parsing in rvalue position it must be a parameter, else it's a let
+  // if we are parsing in rvalue position it must be a parameter, else it's a var
   if (fl & PFlagRValue) {
     // e.g. fun foo(arg [4]int)
     //              ~~~~~~~~~~
@@ -856,7 +856,7 @@ static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto type = pArrayType(p, fl);
 
   // e.g. "foo [4]int" =>
-  // (Let
+  // (Var
   //   (Id foo)
   //   (ArrayType (IntLit 4) (BasicType int))
   //   Initializer? )
@@ -869,11 +869,11 @@ static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     p->ctxtype = ctxtype;
   }
 
-  auto n = makeLet(p, left, init);
-  // NodeFree(left); // makeLet copies left->ref.name and left->pos
+  auto n = makeVar(p, left, init);
+  // NodeFree(left); // makeVar copies left->ref.name and left->pos
   n->type = type;
 
-  // TODO: add check to PLetOrAssign and update n->var.init
+  // TODO: add check to PVarOrAssign and update n->var.init
 
   return n;
 }
@@ -899,7 +899,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
     p->ctxtype = ctxtype;
   }
-  Node* letn = makeLet(p, left, init);
+  Node* letn = makeVar(p, left, init);
   letn->type = typ;
   return letn;
 }
@@ -1112,7 +1112,7 @@ static Node* PStructType(Parser* p, PFlag fl) {
 //
 //!PrefixParselet TType
 static Node* PTypeDef(Parser* p, PFlag fl) {
-  auto n = mknode(p, NLet); // TODO: introduce NTypeAlias
+  auto n = mknode(p, NVar); // TODO: introduce NTypeAlias
   nexttok(p); // consume "type"
   NodeSetConst(n);
 
@@ -1163,9 +1163,9 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
     n->array.a.v[n->array.a.len - 1] = useAsRValue(p, cn);
     // if (fl & PFlagRValue) {
     //   // block is used as an rvalue e.g. "x = { ... }"
-    //   if (cn && cn->kind == NLet) {
-    //     // last expression is a let binding and will be used/returned, so unwrap it.
-    //     n->array.a.v[n->array.a.len - 1] = unwrapLet(cn);
+    //   if (cn && cn->kind == NVar) {
+    //     // last expression is a var binding and will be used/returned, so unwrap it.
+    //     n->array.a.v[n->array.a.len - 1] = unwrapVar(cn);
     //   }
     // }
   }
@@ -1416,7 +1416,7 @@ static Node* templateParams(Parser* p) {
     Node* init = NULL;
     if (got(p, TAssign)) // T=something
       init = prefixExpr(p, fl | PFlagRValue);
-    Node* letn = makeLet(p, name, init);
+    Node* letn = makeVar(p, name, init);
     letn->type = Type_nil;
     NodeArrayAppend(p->build->mem, &tuple->array.a, letn);
   } while (got(p, TComma) && p->s.tok != TGt);
@@ -1548,7 +1548,7 @@ static const Parselet parselets[TMax] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
-  [TAssign] = {NULL, PLetOrAssign, PREC_ASSIGN},
+  [TAssign] = {NULL, PVarOrAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
   [TSlash] = {NULL, PInfixOp, PREC_MULTIPLY},

@@ -294,7 +294,7 @@ PosSpan NodePosSpan(const Node* n) {
       span.start = pos_with_adjusted_start(span.start, -1);
       break;
 
-    case NLet:
+    case NVar:
       if (n->var.init)
         span.end = n->var.init->pos;
       break;
@@ -359,7 +359,7 @@ static Node* nullable diag_trail_next(Node* n, const char** msg) {
         n = n->call.receiver;
         break;
 
-      case NLet:
+      case NVar:
         // *msg = n->var.name;
         n = n->var.init;
         break;

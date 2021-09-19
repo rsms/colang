@@ -38,7 +38,7 @@ typedef struct B {
   bool prettyIR; // if true, include names in the IR (function params, variables, etc)
   //std::unique_ptr<DIBuilder>   DBuilder;
   //DebugInfo                    debug;
-  bool noload; // for NLet and NParam
+  bool noload; // for NVar and NParam
 
   // optimization
   LLVMPassManagerRef FPM; // function pass manager
@@ -549,8 +549,8 @@ static Value load_var(B* b, Node* n, const char* debugname) {
 
 
 static Value build_let(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NLet);
-  if (n->var.nrefs == 0 && !n->type) // skip unused let
+  asserteq_debug(n->kind, NVar);
+  if (n->var.nrefs == 0 && !n->type) // skip unused var
     return NULL;
   assertnotnull_debug(n->type);
 
@@ -609,7 +609,7 @@ static Value build_assign(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NAssign);
   assertnotnull_debug(n->type);
 
-  if (n->op.left->kind == NLet || n->op.left->kind == NParam) {
+  if (n->op.left->kind == NVar || n->op.left->kind == NParam) {
     // store to local
     const char* name = n->op.left->var.name;
     build_expr_noload(b, n->op.left, name);
@@ -749,6 +749,7 @@ static Value build_binop(B* b, Node* n, const char* debugname) {
   }
 
   if (n->op.op >= TEq && n->op.op <= TGEq) {
+    // See how Go compares values: https://golang.org/ref/spec#Comparison_operators
     if (isfloat)
       return LLVMBuildFCmp(b->builder, (LLVMRealPredicate)op, left, right, debugname);
     return LLVMBuildICmp(b->builder, (LLVMIntPredicate)op, left, right, debugname);
@@ -867,7 +868,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
   switch (n->kind) {
     case NBinOp:      RET(build_binop(b, n, debugname));
     case NId:         RET(build_id_read(b, n, debugname));
-    case NLet:        RET(build_let(b, n, debugname));
+    case NVar:        RET(build_let(b, n, debugname));
     case NIntLit:     RET(build_intlit(b, n, debugname));
     case NFloatLit:   RET(build_floatlit(b, n, debugname));
     case NParam:      RET(build_param(b, n, debugname));
@@ -893,7 +894,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
 
 
 static Value build_global_let(B* b, Node* n) {
-  assert(n->kind == NLet);
+  assert(n->kind == NVar);
   assert(n->type);
   Value gv;
   if (n->var.init) {
@@ -924,7 +925,7 @@ static void build_file(B* b, Node* n) {
   // first build all globals
   for (u32 i = 0; i < n->cunit.a.len; i++) {
     auto cn = (Node*)n->cunit.a.v[i];
-    if (cn->kind == NLet)
+    if (cn->kind == NVar)
       build_global_let(b, cn);
   }
 
@@ -936,7 +937,7 @@ static void build_file(B* b, Node* n) {
         assertnotnull(cn->fun.name);
         build_fun(b, cn, cn->fun.name);
         break;
-      case NLet:
+      case NVar:
         break;
       default:
         dlog("TODO: %s", NodeKindName(cn->kind));

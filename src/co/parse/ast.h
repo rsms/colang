@@ -38,7 +38,7 @@ typedef enum {
   _(Fun,         NodeClassExpr) \
   _(Id,          NodeClassExpr) \
   _(If,          NodeClassExpr) \
-  _(Let,         NodeClassExpr) \
+  _(Var,         NodeClassExpr) \
   _(BinOp,       NodeClassExpr) \
   _(PrefixOp,    NodeClassExpr) \
   _(PostfixOp,   NodeClassExpr) \
@@ -163,12 +163,12 @@ typedef struct Node {
       u32            nrefs; // reference count
       u32            index; // argument index or struct index
     } field;
-    /* var */ struct { // Param, Let
+    /* var */ struct { // Param, Var
       Sym            name;
       Node* nullable init;  // initial/default value
       u32            nrefs; // reference count
       u32            index; // argument index (used by Param)
-      bool           ismut; // true if this is mutable ("var")
+      bool           ismut; // true if this is mutable
       void* nullable irval; // used by IR builders for temporary storage
     } var;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
@@ -229,7 +229,7 @@ typedef enum {
   NodeReprNoColor  = 1 << 0, // disable ANSI terminal styling
   NodeReprColor    = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
   NodeReprTypes    = 1 << 2, // include types in the output
-  NodeReprUseCount = 1 << 3, // include information about uses (ie for Let)
+  NodeReprUseCount = 1 << 3, // include information about uses (ie for Var)
   NodeReprRefs     = 1 << 4, // include "#N" reference indicators
   NodeReprAttrs    = 1 << 5, // include "@attr" attributes
 } NodeReprFlags;
@@ -294,15 +294,15 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
   );
 }
 
-inline static bool NodeIsVar(const Node* n) { return n->kind == NLet || n->kind == NParam; }
+inline static bool NodeIsVar(const Node* n) { return n->kind == NVar || n->kind == NParam; }
 
-// NodeRefVar increments the reference counter of a Let node. Returns n as a convenience.
-static Node* NodeRefVar(Node* n); // NLet | NParam
+// NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.
+static Node* NodeRefVar(Node* n); // NVar | NParam
 static Node* NodeRefAny(Node* n); // any
 
-// NodeUnrefVar decrements the reference counter of a Let node.
+// NodeUnrefVar decrements the reference counter of a Var node.
 // Returns the value of n->var.nrefs after the subtraction.
-static u32 NodeUnrefVar(Node* n); // NLet | NParam
+static u32 NodeUnrefVar(Node* n); // NVar | NParam
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
@@ -423,20 +423,20 @@ inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) 
 }
 
 inline static Node* NodeRefVar(Node* n) {
-  assert_debug(n->kind == NLet || n->kind == NParam);
+  assert_debug(n->kind == NVar || n->kind == NParam);
   n->var.nrefs++;
   return n;
 }
 
 inline static u32 NodeUnrefVar(Node* n) {
-  assert_debug(n->kind == NLet || n->kind == NParam);
+  assert_debug(n->kind == NVar || n->kind == NParam);
   assertgt_debug(n->var.nrefs, 0);
   return --n->var.nrefs;
 }
 
 inline static Node* NodeRefAny(Node* n) {
   switch (n->kind) {
-    case NLet:
+    case NVar:
     case NParam:
       n->var.nrefs++;
       return n;

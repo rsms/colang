@@ -91,25 +91,25 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 }
 
 
-static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
+static Node* resolve_const(Build* b, Node* n, bool mayReleaseVar) {
   switch (n->kind) {
-    case NLet: {
+    case NVar: {
       assert(n->var.nrefs > 0);
       assert(n->var.init != NULL);
 
-      // reset mayReleaseLet at let boundary
-      bool mayReleaseLet_child = false;
-      if (mayReleaseLet && n->var.nrefs == 1) {
+      // reset mayReleaseVar at var boundary
+      bool mayReleaseVar_child = false;
+      if (mayReleaseVar && n->var.nrefs == 1) {
         // we will release n after we have visited its children, so allow children
         // to be released as well.
-        mayReleaseLet_child = true;
+        mayReleaseVar_child = true;
       }
 
       // visit initializer node
-      auto init = resolve_const(b, n->var.init, mayReleaseLet_child);
+      auto init = resolve_const(b, n->var.init, mayReleaseVar_child);
 
-      // if (mayReleaseLet && NodeUnrefVar(n) == 0) {
-      //   // release now-unused Let node
+      // if (mayReleaseVar && NodeUnrefVar(n) == 0) {
+      //   // release now-unused Var node
       //   n->var.init = NULL;
       // }
 
@@ -118,7 +118,7 @@ static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
 
     case NId:
       assert(n->ref.target != NULL);
-      return resolve_const(b, n->ref.target, mayReleaseLet);
+      return resolve_const(b, n->ref.target, mayReleaseVar);
 
     default:
       return n;
@@ -127,13 +127,13 @@ static Node* resolve_const(Build* b, Node* n, bool mayReleaseLet) {
 
 // ResolveConst resolves n to its constant value
 Node* ResolveConst(Build* b, Node* n) {
-  return NodeIsConst(n) ? resolve_const(b, n, /*mayReleaseLet*/true) : n;
+  return NodeIsConst(n) ? resolve_const(b, n, /*mayReleaseVar*/true) : n;
 }
 
 
 // resolve_ideal_type resolves the concrete type of n. If typecontext is provided, convlit is
 // used to "fit" n into that type. Otherwise the natural concrete type of n is used. (e.g. int)
-// n is assumed to be Type_ideal and must be a node->kind = NIntLit | NFloatLit | NLet | NId.
+// n is assumed to be Type_ideal and must be a node->kind = NIntLit | NFloatLit | NVar | NId.
 //
 static Node* resolve_ideal_type(
   ResCtx* nonull   ctx,
@@ -148,7 +148,7 @@ static Node* resolve_ideal_type1(
   Node*   nullable typecontext,
   RFlag            fl
 ) {
-  // lower ideal types in all cases but NLet
+  // lower ideal types in all cases but NVar
   dlog_mod("%s node %s to typecontext %s", __func__, fmtnode(n), fmtnode(typecontext));
   assert(typecontext == NULL || typecontext->kind == NBasicType);
   asserteq(n->type, Type_ideal);
@@ -193,7 +193,7 @@ static Node* resolve_ideal_type1(
       n->type = n->op.left->type;
       break;
 
-    case NLet:
+    case NVar:
       assertnotnull_debug(n->var.init);
       n->var.init = resolve_ideal_type(ctx, n->var.init, typecontext, fl);
       n->type = n->var.init->type;
@@ -442,8 +442,8 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   //   x = 3 as int64
   //   y = x + 2
   // Parses to:
-  //   int64:(Let x int64:(IntLit 3))
-  //   ?:(Let y ?:(BinOp "+"
+  //   int64:(Var x int64:(IntLit 3))
+  //   ?:(Var y ?:(BinOp "+"
   //                ?:(Id x)
   //                *:(IntLit 2)))
   // If we were to simply resolve types by visiting the two operands without requesting
@@ -730,8 +730,8 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
 
   // // unwind compile-time constant [edit: breaks struct cons access?]
   // n = n->ref.target;
-  // while (n->kind == NLet && NodeIsConst(n)) {
-  //   NodeUnrefLet(n);
+  // while (n->kind == NVar && NodeIsConst(n)) {
+  //   NodeUnrefVar(n);
   //   n = n->var.init;
   // }
 
@@ -975,10 +975,10 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NStructCons:
     R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
-  case NLet:
+  case NVar:
   case NParam:
     if (n->var.init) {
-      // // leave unused Let untyped
+      // // leave unused Var untyped
       // if (n->var.nrefs == 0)
       //   return n;
       n->var.init = resolve_type(ctx, n->var.init, fl);

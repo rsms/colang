@@ -251,7 +251,7 @@ Node* ResolveSym(Build*, ParseFlags, Node*, Scope*);
 Node* ResolveType(Build* b, Node* n);
 
 // ResolveConst resolves n to its constant value.
-// This decrements Let refs and the result is expected to replace n.
+// This decrements Var refs and the result is expected to replace n.
 Node* ResolveConst(Build* b, Node* n);
 
 // GetTypeID retrieves the TypeID for the type node n.

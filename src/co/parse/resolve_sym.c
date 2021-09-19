@@ -70,25 +70,25 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
         dlog_mod("  RET id target (N%s) %s", NodeKindName(n->kind), fmtnode(n));
         break; // continue unwind loop
 
-      case NLet: {
-        // Unwind let bindings
+      case NVar: {
+        // Unwind var bindings
         assert(target->var.init != NULL);
         Node* init = target->var.init;
         if ( /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
-          // in the case of a let target with a constant or type, resolve to that.
+          // in the case of a var target with a constant or type, resolve to that.
           // Example:
           //   "x = true ; y = x"
           //  parsed as:
-          //   (Let (Id x) (BoolLit true))
-          //   (Let (Id y) (Id x))
+          //   (Var (Id x) (BoolLit true))
+          //   (Var (Id y) (Id x))
           //  transformed to:
-          //   (Let (Id x) (BoolLit true))
-          //   (Let (Id y) (BoolLit true))
+          //   (Var (Id x) (BoolLit true))
+          //   (Var (Id y) (BoolLit true))
           //
-          dlog_mod("  RET let-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
+          dlog_mod("  RET var-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
           return target->var.init;
         }
-        dlog_mod("  RET let (N%s) %s", NodeKindName(target->kind), fmtnode(target));
+        dlog_mod("  RET var (N%s) %s", NodeKindName(target->kind), fmtnode(target));
         return target;
       }
 
@@ -289,7 +289,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   //   }
   //   break;
 
-  case NLet:
+  case NVar:
   case NParam:
     if (n->var.init)
       n->var.init = resolve_sym(ctx, n->var.init);

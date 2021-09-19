@@ -61,7 +61,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   }
 
   // var
-  case NLet:
+  case NVar:
   case NParam:
     if (n->var.init)
       return CALLBACK(n->var.init, "init");

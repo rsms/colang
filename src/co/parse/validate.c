@@ -38,8 +38,8 @@ static bool visit(NodeList* nl, void* ctxp) {
   auto n = nl->n;
 
   switch (n->kind) {
-    // ignore unused Let
-    case NLet:
+    // ignore unused Var
+    case NVar:
       if (n->var.nrefs == 0)
         return true;
       break;

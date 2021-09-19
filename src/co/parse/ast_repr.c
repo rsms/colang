@@ -183,8 +183,8 @@ Str NodeStr(Str s, const Node* n) {
     s = str_append(s, n->cunit.name, strlen(n->cunit.name));
     return str_appendc(s, '"');
 
-  case NLet: // let x
-    return str_appendfmt(s, "%s %s", n->var.ismut ? "var" : "let", n->var.name);
+  case NVar: // var x
+    return str_appendfmt(s, "var %s", n->var.name);
 
   case NParam: // param x
     return str_appendfmt(s, "param %s", n->var.name);
@@ -397,11 +397,11 @@ static bool l_collapse_field(NodeList* nl) {
   switch (nl->parent->n->kind) {
 
   case NTuple:
-    // don't collapse (Let x (Tuple ...))
-    return (!nl->parent->parent || nl->parent->parent->n->kind != NLet);
+    // don't collapse (Var x (Tuple ...))
+    return (!nl->parent->parent || nl->parent->parent->n->kind != NVar);
 
   case NId:
-  case NLet:
+  case NVar:
   case NParam:
   case NField:
   case NReturn:
@@ -430,7 +430,7 @@ static bool l_show_field(NodeList* nl) {
     case NPostfixOp:
     case NPrefixOp:
     case NCall:
-    case NLet:
+    case NVar:
     case NParam:
     case NTypeCast:
     case NSelector:
@@ -605,7 +605,7 @@ static bool l_visit(NodeList* nl, void* cp) {
       // when the definition trails the use, syntactically.
       for (u32 i = 0; i < n->cunit.a.len; i++) {
         const Node* cn = n->cunit.a.v[i];
-        while (cn->kind == NLet && cn->var.init) {
+        while (cn->kind == NVar && cn->var.init) {
           l_seen_id(c, cn, NULL);
           cn = cn->var.init;
         }
@@ -616,7 +616,7 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
-  case NLet:
+  case NVar:
   case NParam: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
@@ -636,7 +636,7 @@ static bool l_visit(NodeList* nl, void* cp) {
       s = style_pop(&c->style, s);
     }
 
-    if (!n->var.init && n->kind == NLet) {
+    if (!n->var.init && n->kind == NVar) {
       s = style_push(&c->style, s, lit_color);
       s = str_appendcstr(s, " :definit");
       s = style_pop(&c->style, s);
@@ -759,7 +759,7 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     s = style_pop(&c->style, s);
     break;
 
-  case NLet:
+  case NVar:
   case NParam:
     if (n->var.ismut && (c->fl & NodeReprAttrs)) {
       s = style_push(&c->style, s, attr_color);
