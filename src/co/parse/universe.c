@@ -9,7 +9,7 @@
 //#define RUN_GENERATOR
 
 
-//-- BEGIN gen_constants() at src/co/parse/universe.c:389
+//-- BEGIN gen_constants()
 
 const Sym sym_as = &"\x87\x3D\x7F\xCD\x02\x00\x00\x08""as\0"[8];
 const Sym sym_auto = &"\xAD\xF8\x95\xF5\x04\x00\x00\x10""auto\0"[8];
@@ -233,7 +233,7 @@ __attribute__((used)) static const char* const debugSymCheck =
   "_ ";
 #endif
 
-//-- END gen_constants() at src/co/parse/universe.c:591
+//-- END gen_constants()
 
 
 
@@ -386,7 +386,7 @@ static bool gen_append_symdef_typecode_lit(Str* sp, RBNode** rp, SymPool* syms, 
 }
 
 __attribute__((constructor,used)) static void gen_constants() {
-  printf("\n//-- BEGIN gen_constants() at %s:%d\n\n", path_cwdrel(__FILE__), __LINE__);
+  printf("\n//-- BEGIN gen_constants()\n\n");
 
   SymPool syms;
   sympool_init(&syms, NULL, MemHeap, NULL);
@@ -589,7 +589,7 @@ __attribute__((constructor,used)) static void gen_constants() {
 
   // ---------------------------------------------------------------------------------------------
 
-  printf("\n//-- END gen_constants() at %s:%d\n\n", path_cwdrel(__FILE__), __LINE__);
+  printf("\n//-- END gen_constants()\n\n");
   sympool_dispose(&syms);
   exit(1);
 }
