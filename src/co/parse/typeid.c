@@ -72,8 +72,8 @@ static Str mktypestr(Str s, const Node* n) {
 
     case NTupleType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_tuple));
-      for (u32 i = 0; i < n->t.list.a.len; i++)
-        s = mktypestr(s, (Node*)n->t.list.a.v[i]);
+      for (u32 i = 0; i < n->t.tuple.a.len; i++)
+        s = mktypestr(s, (Node*)n->t.tuple.a.v[i]);
       return str_appendc(s, TypeCodeEncoding(TypeCode_tupleEnd));
 
     case NStructType:
@@ -239,9 +239,9 @@ R_TEST(typeid) {
 
   { // (int, int, bool) => "(iib)"
     Node* tupleType = mknode(NTupleType);
-    NodeArrayAppend(mem, &tupleType->t.list.a, Type_int);
-    NodeArrayAppend(mem, &tupleType->t.list.a, Type_int);
-    NodeArrayAppend(mem, &tupleType->t.list.a, Type_bool);
+    NodeArrayAppend(mem, &tupleType->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &tupleType->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &tupleType->t.tuple.a, Type_bool);
     auto id = GetTypeID(build, tupleType);
     // dlog("tuple (int, int, bool) id: %p %s", id, strrepr(id));
     assert(strcmp(id, "(iib)") == 0);
@@ -249,51 +249,51 @@ R_TEST(typeid) {
 
   { // ((int, int), (bool, int), int) => "((ii)(bi)i)"
     Node* t2 = mknode(NTupleType);
-    NodeArrayAppend(mem, &t2->t.list.a, Type_bool);
-    NodeArrayAppend(mem, &t2->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t2->t.tuple.a, Type_bool);
+    NodeArrayAppend(mem, &t2->t.tuple.a, Type_int);
 
     Node* t1 = mknode(NTupleType);
-    NodeArrayAppend(mem, &t1->t.list.a, Type_int);
-    NodeArrayAppend(mem, &t1->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t1->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &t1->t.tuple.a, Type_int);
 
     Node* t0 = mknode(NTupleType);
-    NodeArrayAppend(mem, &t0->t.list.a, t1);
-    NodeArrayAppend(mem, &t0->t.list.a, t2);
-    NodeArrayAppend(mem, &t0->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t0->t.tuple.a, t1);
+    NodeArrayAppend(mem, &t0->t.tuple.a, t2);
+    NodeArrayAppend(mem, &t0->t.tuple.a, Type_int);
 
     auto id = GetTypeID(build, t0);
     assert(strcmp(id, "((ii)(bi)i)") == 0);
 
     // create second one that has the same shape
     Node* t2b = mknode(NTupleType);
-    NodeArrayAppend(mem, &t2b->t.list.a, Type_bool);
-    NodeArrayAppend(mem, &t2b->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t2b->t.tuple.a, Type_bool);
+    NodeArrayAppend(mem, &t2b->t.tuple.a, Type_int);
 
     Node* t1b = mknode(NTupleType);
-    NodeArrayAppend(mem, &t1b->t.list.a, Type_int);
-    NodeArrayAppend(mem, &t1b->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t1b->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &t1b->t.tuple.a, Type_int);
 
     Node* t0b = mknode(NTupleType);
-    NodeArrayAppend(mem, &t0b->t.list.a, t1b);
-    NodeArrayAppend(mem, &t0b->t.list.a, t2b);
-    NodeArrayAppend(mem, &t0b->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t0b->t.tuple.a, t1b);
+    NodeArrayAppend(mem, &t0b->t.tuple.a, t2b);
+    NodeArrayAppend(mem, &t0b->t.tuple.a, Type_int);
 
     // they should be equivalent
     assert(TypeEquals(build, t0, t0b));
 
     // create third one that has a slightly different shape (bool at end)
     Node* t2c = mknode(NTupleType);
-    NodeArrayAppend(mem, &t2c->t.list.a, Type_bool);
-    NodeArrayAppend(mem, &t2c->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t2c->t.tuple.a, Type_bool);
+    NodeArrayAppend(mem, &t2c->t.tuple.a, Type_int);
 
     Node* t1c = mknode(NTupleType);
-    NodeArrayAppend(mem, &t1c->t.list.a, Type_int);
-    NodeArrayAppend(mem, &t1c->t.list.a, Type_int);
+    NodeArrayAppend(mem, &t1c->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &t1c->t.tuple.a, Type_int);
 
     Node* t0c = mknode(NTupleType);
-    NodeArrayAppend(mem, &t0c->t.list.a, t1c);
-    NodeArrayAppend(mem, &t0c->t.list.a, t2c);
-    NodeArrayAppend(mem, &t0c->t.list.a, Type_bool);
+    NodeArrayAppend(mem, &t0c->t.tuple.a, t1c);
+    NodeArrayAppend(mem, &t0c->t.tuple.a, t2c);
+    NodeArrayAppend(mem, &t0c->t.tuple.a, Type_bool);
 
     // they should be different
     assert( ! TypeEquals(build, t0, t0c));
@@ -302,8 +302,8 @@ R_TEST(typeid) {
 
   { // fun (int,bool) -> int
     Node* params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.list.a, Type_int);
-    NodeArrayAppend(mem, &params->t.list.a, Type_bool);
+    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &params->t.tuple.a, Type_bool);
 
     Node* result = Type_int;
 
@@ -327,28 +327,28 @@ R_TEST(typeid) {
 
   { // ( fun(int,bool)->int, fun(int)->bool, fun()->(int,bool) )
     Node* params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.list.a, Type_int);
-    NodeArrayAppend(mem, &params->t.list.a, Type_bool);
+    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &params->t.tuple.a, Type_bool);
     Node* f1 = mknode(NFunType);
     f1->t.fun.params = params;
     f1->t.fun.result = Type_int;
 
     params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.list.a, Type_int);
+    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
     Node* f2 = mknode(NFunType);
     f2->t.fun.params = params;
     f2->t.fun.result = Type_bool;
 
     auto result = mknode(NTupleType);
-    NodeArrayAppend(mem, &result->t.list.a, Type_int);
-    NodeArrayAppend(mem, &result->t.list.a, Type_bool);
+    NodeArrayAppend(mem, &result->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &result->t.tuple.a, Type_bool);
     Node* f3 = mknode(NFunType);
     f3->t.fun.result = result;
 
     Node* t1 = mknode(NTupleType);
-    NodeArrayAppend(mem, &t1->t.list.a, f1);
-    NodeArrayAppend(mem, &t1->t.list.a, f2);
-    NodeArrayAppend(mem, &t1->t.list.a, f3);
+    NodeArrayAppend(mem, &t1->t.tuple.a, f1);
+    NodeArrayAppend(mem, &t1->t.tuple.a, f2);
+    NodeArrayAppend(mem, &t1->t.tuple.a, f3);
 
     auto id = GetTypeID(build, t1);
     // dlog("t1 id: %p %s", id, strrepr(id));

@@ -18,20 +18,32 @@
 
 # g int = 3
 
-fun main() int
-  foo(1, 2)
-  # b = Bridge()
-  # b.occupants
-  # s = Spaceship()
-  # s.engine.fuel
-  # s.occupants
-  # s.len # WIP
+# fun main() int
+#   foo(1, 2)
+#   # b = Bridge()
+#   # b.occupants
+#   # s = Spaceship()
+#   # s.engine.fuel
+#   # s.occupants
+#   # s.len # WIP
+
 
 fun foo(x, y int) int
-  z = int(1)
-  if x < y
-    x = 3
-  else
-    z = 4
-  z + x
-  # x
+  # b = x
+  # x = y
+  # b + x
+
+  z = { a, b = u8(1), 2 }
+  # y is now value of x
+  # b is value of y before assignment
+  z[1]
+
+  # z = int(1)
+  # if x < y
+  #   x = 3
+  # else
+  #   z = 4
+  # z + x
+
+fun main() int
+  foo(1, 2)

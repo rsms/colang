@@ -479,9 +479,10 @@ static Node* makeVar(Parser* p, const Node* name, Node* nullable init) {
   n->var.name = name->ref.name;
   if (init) {
     n->var.init = init;
-    n->type = init->type;
+    if (init->type != Type_ideal)
+      n->type = init->type;
     NodeTransferUnresolved(n, init);
-    NodeTransferConst(n, init);
+    // NodeTransferConst(n, init);
   }
   defsym(p, name->ref.name, n);
   return n;
@@ -497,10 +498,10 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 
   // unwind var targeting a type
   Node* t = target;
-  while (t->kind == NVar && NodeIsConst(t) && !NodeIsParam(t)) {
+  while (t->kind == NVar && NodeIsConst(t) && !NodeIsParam(t) && t->var.init) {
     t = t->var.init;
     // Note: no NodeUnrefVar here
-    if (t && NodeIsType(t))
+    if (NodeIsType(t))
       return t;
   }
 
@@ -639,7 +640,8 @@ static Node* PAuto(Parser* p, PFlag fl) {
 static Node* PId(Parser* p, PFlag fl) {
   auto n = pId(p);
   // eagerly resolve identifiers in rvalue position
-  if ((fl & PFlagRValue) || (p->s.tok != TAssign && p->s.tok != TId))
+  //if ((fl & PFlagRValue) || (p->s.tok != TAssign && p->s.tok != TId && p->s.tok != TComma))
+  if (fl & PFlagRValue)
     return resolve_id(p, n, fl);
   return n;
 }
@@ -650,7 +652,7 @@ static Node* PId(Parser* p, PFlag fl) {
 //!PrefixParselet TVar
 static Node* PVar(Parser* p, PFlag fl) {
   auto n = mknode(p, NVar);
-  n->var.ismut = true;
+  NodeSetConst(n);
   nexttok(p); // consume "var"
 
   // name
@@ -688,44 +690,90 @@ static Node* PVar(Parser* p, PFlag fl) {
 }
 
 
-// assignment to fields, e.g. "x.y = 3" -> (assign (Field (Id x) (Id y)) (Int 3))
-static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  assert(fl & PFlagRValue);
-  auto n = mknode(p, NAssign);
+// assignment to fields, e.g. "x.y = 3" -> (assign (Selector (Id x) (Id y)) (Int 3))
+static Node* pAssignSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  panic("TODO pAssignSelector");
+  return bad(p);
+}
+
+
+static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  asserteq_debug(left->kind, NId);
+
+  left = resolve_id(p, left, PFlagNone);
+  Node* target = left->ref.target;
+
+  if (target) {
+    // assign to existing var and make sure the target is marked as variable
+    NodeClearConst(target);
+    if (target->kind == NVar)
+      NodeRefVar(target);
+    Node* n = mknode(p, NAssign);
+    n->op.op = TAssign;
+    nexttok(p); // consume '='
+    Node* right = expr(p, PREC_LOWEST, fl);
+    n->op.left = target; // store target (e.g. NVar) instead of NId to simplify IR generation
+    n->op.right = right;
+    NodeTransferUnresolved(n, right);
+    return n;
+  }
+
+  // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
+  nexttok(p); // consume '='
+  Node* init = expr(p, PREC_LOWEST, fl);
+  return makeVar(p, left, init); // copies left->ref.name and left->pos
+}
+
+
+// e.g. "a, b = x, y"
+static Node* pAssignTuple(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  asserteq_debug(left->kind, NTuple);
+  assert_debug(fl & PFlagRValue);
+
+  Node* n = mknode(p, NAssign);
   n->op.op = p->s.tok;
   nexttok(p); // consume '='
-  auto right = exprOrTuple(p, e->prec, fl);
+  Node* right = exprOrTuple(p, e->prec, fl);
   n->op.left = left;
   n->op.right = right;
   nodeTransferUnresolved2(n, left, right);
 
-  // defsym
-  if (left->kind == NTuple) {
-    if (right->kind != NTuple) {
-      syntaxerrp(p, left->pos, "assignment mismatch: %u targets but 1 value", left->array.a.len);
-    } else {
-      auto lnodes = &left->array.a;
-      auto rnodes = &right->array.a;
-      if (lnodes->len != rnodes->len) {
-        syntaxerrp(p, left->pos, "assignment mismatch: %u targets but %u values",
-          lnodes->len, rnodes->len);
-      } else {
-        for (u32 i = 0; i < lnodes->len; i++) {
-          Node* l = lnodes->v[i];
-          Node* r = rnodes->v[i];
-          if (l->kind == NId) {
-            defsym(p, l->ref.name, r);
-          } else {
-            // e.g. foo.bar = 3
-            panic("TODO pAssignField l->kind != NId");
-          }
-        }
-      }
+  if (right->kind != NTuple) {
+    syntaxerrp(p, left->pos, "assignment mismatch: %u targets but 1 value",
+      left->array.a.len);
+    return n;
+  }
+
+  NodeArray* lnodes = &left->array.a;
+  NodeArray* rnodes = &right->array.a;
+
+  if (lnodes->len != rnodes->len) {
+    syntaxerrp(p, left->pos, "assignment mismatch: %u targets but %u values",
+      lnodes->len, rnodes->len);
+    return n;
+  }
+
+  for (u32 i = 0; i < lnodes->len; i++) {
+    Node* dst = lnodes->v[i];
+    Node* src = rnodes->v[i];
+
+    if (dst->kind != NId) {
+      // e.g. foo.bar = 3
+      panic("TODO assign dst->kind=%s", NodeKindName(dst->kind));
     }
-  } else if (right->kind == NTuple) {
-    syntaxerrp(p, left->pos, "assignment mismatch: 1 target but %u values", right->array.a.len);
-  } else if (left->kind == NId) {
-    defsym(p, left->ref.name, right);
+
+    dst = resolve_id(p, dst, PFlagNone);
+    Node* target = dst->ref.target;
+    if (target) {
+      NodeClearConst(target);
+      if (target->kind == NVar)
+        NodeRefVar(target);
+      NodeTransferUnresolved(n, src);
+      lnodes->v[i] = target;
+    } else {
+      lnodes->v[i] = makeVar(p, dst, src);
+      rnodes->v[i] = NULL; // indicate that lnodes->v[i]->var.init is to be used
+    }
   }
 
   return n;
@@ -734,34 +782,16 @@ static Node* pAssignField(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
 // Infix assignment e.g. "=" in "left = expr"
 //!Parselet (TAssign ASSIGN)
-static Node* PVarOrAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   fl |= PFlagRValue;
-
-  if (left->kind != NId)
-    return pAssignField(p, e, fl, left);
-
-  left = resolve_id(p, left, PFlagNone);
-  asserteq_debug(left->kind, NId);
-
-  Node* target = left->ref.target;
-  if (target && NodeIsVar(target)) {
-    // assign to existing var and make sure the target is marked as variable
-    NodeClearConst(target);
-    NodeRefVar(target);
-    auto n = mknode(p, NAssign);
-    n->op.op = p->s.tok;
-    nexttok(p); // consume '='
-    auto right = exprOrTuple(p, e->prec, fl);
-    n->op.left = target; // store NVar instead of NId to simplify IR generation
-    n->op.right = right;
-    NodeTransferUnresolved(n, right);
-    return n;
+  switch (left->kind) {
+    case NId:       R_MUSTTAIL return pAssignId(p, e, fl, left);
+    case NTuple:    R_MUSTTAIL return pAssignTuple(p, e, fl, left);
+    case NSelector: R_MUSTTAIL return pAssignSelector(p, e, fl, left);
+    default:
+      syntaxerrp(p, left->pos, "cannot assign to %s", fmtnode(left));
+      return left;
   }
-
-  // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
-  nexttok(p); // consume '='
-  Node* init = expr(p, PREC_LOWEST, PFlagRValue);
-  return makeVar(p, left, init); // copies left->ref.name and left->pos
 }
 
 
@@ -817,7 +847,7 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NIndex);
   NodeSetConst(n);
   nexttok(p); // consume "["
-  n->index.operand = left;
+  n->index.operand = useAsRValue(p, left);
   if (R_UNLIKELY(p->s.tok == TRBrack)) {
     syntaxerr(p, "missing index");
     nexttok(p); // consume unexpected "]"
@@ -1548,7 +1578,7 @@ static const Parselet parselets[TMax] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
-  [TAssign] = {NULL, PVarOrAssign, PREC_ASSIGN},
+  [TAssign] = {NULL, PAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
   [TSlash] = {NULL, PInfixOp, PREC_MULTIPLY},

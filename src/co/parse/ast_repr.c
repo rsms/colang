@@ -249,7 +249,7 @@ Str NodeStr(Str s, const Node* n) {
 
   case NTupleType: // (int bool Foo)
     s = str_appendc(s, '(');
-    s = str_append_NodeArray(s, &n->t.list.a, " ", 1);
+    s = str_append_NodeArray(s, &n->t.tuple.a, " ", 1);
     return str_appendc(s, ')');
 
   case NArrayType: // [4]int, []int
@@ -449,7 +449,7 @@ static const char* l_listname(NodeList* nl) {
     case NBasicType:
       return n->t.basic.name;
     case NTuple:
-      if (nl->parent && NodeIsVar(nl->parent->n))
+      if (nl->parent && nl->parent->n && nl->parent->n->kind == NVar)
         return NodeKindName(n->kind);
       return "";
     case NTupleType:
@@ -502,6 +502,7 @@ static bool l_visit(NodeList* nl, void* cp) {
   auto c = (LReprCtx*)cp;
   Str s = c->s;
   auto n = nl->n;
+  assertnotnull_debug(n);
   u32 addedIndent = 0;
   u32 numExtraEndParens = 0;
 
@@ -674,7 +675,7 @@ static bool l_visit(NodeList* nl, void* cp) {
       s = style_push(&c->style, s, attr_color);
       if (NodeIsUnresolved(n))
         s = str_appendcstr(s, " @unres");
-      if (!NodeIsType(n) && NodeIsConst(n))
+      if (!NodeIsType(n) && NodeIsConst(n) && n->kind != NTuple)
         s = str_appendcstr(s, " @const");
       s = style_pop(&c->style, s);
     }
@@ -754,14 +755,7 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NVar:
-    if (n->var.ismut && (c->fl & NodeReprAttrs)) {
-      s = style_push(&c->style, s, attr_color);
-      s = str_appendcstr(s, "@mutable");
-      s = style_pop(&c->style, s);
-    }
     if (c->fl & NodeReprUseCount) {
-      if (n->var.ismut)
-        s = str_appendc(s, ' ');
       s = style_push(&c->style, s, ref_color);
       s = str_appendfmt(s, "(uses %u)", n->var.nrefs);
       s = style_pop(&c->style, s);

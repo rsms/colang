@@ -54,6 +54,8 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     for (u32 i = 0; i < n->array.a.len; i++) {
       nl.n = n->array.a.v[i];
       nl.index = i;
+      if (!nl.n)
+        nl.n = Const_nil;
       if (!f(&nl, data))
         return false;
     }
@@ -125,11 +127,11 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->t.fun.result, "result");
     break;
 
-  // uses t.list
+  // uses t.tuple
   case NTupleType: {
     NodeList nl = (NodeList){ .parent = parent };
-    for (u32 i = 0; i < n->t.list.a.len; i++) {
-      nl.n = n->t.list.a.v[i];
+    for (u32 i = 0; i < n->t.tuple.a.len; i++) {
+      nl.n = n->t.tuple.a.v[i];
       nl.index = i;
       if (!f(&nl, data))
         return false;

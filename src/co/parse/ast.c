@@ -5,7 +5,7 @@
 //#define DEBUG_LOOKUP
 
 
-static const Node _NodeBad = {NBad,0,NoPos,NoPos,NULL,{0}};
+static const Node _NodeBad = {NBad,0,NoPos,NoPos,NULL,NULL,{0}};
 const Node* NodeBad = &_NodeBad;
 
 
@@ -41,7 +41,7 @@ Node* NewNode(Mem mem, NodeKind kind) {
     break;
 
   case NTupleType:
-    ArrayInitWithStorage(&n->t.list.a, n->t.list.a_storage, countof(n->t.list.a_storage));
+    ArrayInitWithStorage(&n->t.tuple.a, n->t.tuple.a_storage, countof(n->t.tuple.a_storage));
     break;
 
   case NStructType:

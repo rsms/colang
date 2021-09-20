@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -91,34 +91,18 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 }
 
 
-static Node* resolve_const(Build* b, Node* n, bool mayReleaseVar) {
+static Node* resolve_const(Build* b, Node* n) {
   switch (n->kind) {
     case NVar: {
       assert(n->var.nrefs > 0);
       assert(n->var.init != NULL);
-
-      // reset mayReleaseVar at var boundary
-      bool mayReleaseVar_child = false;
-      if (mayReleaseVar && n->var.nrefs == 1) {
-        // we will release n after we have visited its children, so allow children
-        // to be released as well.
-        mayReleaseVar_child = true;
-      }
-
       // visit initializer node
-      auto init = resolve_const(b, n->var.init, mayReleaseVar_child);
-
-      // if (mayReleaseVar && NodeUnrefVar(n) == 0) {
-      //   // release now-unused Var node
-      //   n->var.init = NULL;
-      // }
-
-      return init;
+      return resolve_const(b, n->var.init);
     }
 
     case NId:
       assert(n->ref.target != NULL);
-      return resolve_const(b, n->ref.target, mayReleaseVar);
+      return resolve_const(b, n->ref.target);
 
     default:
       return n;
@@ -127,7 +111,7 @@ static Node* resolve_const(Build* b, Node* n, bool mayReleaseVar) {
 
 // ResolveConst resolves n to its constant value
 Node* ResolveConst(Build* b, Node* n) {
-  return NodeIsConst(n) && !NodeIsParam(n) ? resolve_const(b, n, /*mayReleaseVar*/true) : n;
+  return NodeIsConst(n) && !NodeIsParam(n) ? resolve_const(b, n) : n;
 }
 
 
@@ -371,6 +355,7 @@ static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTuple);
 
   auto typecontext = ctx->typecontext; // save typecontext
+  fl |= RFlagResolveIdeal;
 
   Type* tupleType = typecontext;
   u32 ctindex = 0;
@@ -379,14 +364,14 @@ static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
       build_errf(ctx->build, NodePosSpan(tupleType),
         "outer type %s where tuple is expected", fmtnode(tupleType));
       tupleType = NULL;
-    } else if (R_UNLIKELY(tupleType->t.list.a.len != n->array.a.len)) {
+    } else if (R_UNLIKELY(tupleType->t.tuple.a.len != n->array.a.len)) {
       build_errf(ctx->build, NodePosSpan(n),
         "%u expressions where %u expressions are expected %s",
-        n->array.a.len, tupleType->t.list.a.len, fmtnode(tupleType));
+        n->array.a.len, tupleType->t.tuple.a.len, fmtnode(tupleType));
       tupleType = NULL;
     } else {
-      assert(tupleType->t.list.a.len > 0); // tuples should never be empty
-      typecontext_set(ctx, tupleType->t.list.a.v[ctindex++]);
+      assert(tupleType->t.tuple.a.len > 0); // tuples should never be empty
+      typecontext_set(ctx, tupleType->t.tuple.a.v[ctindex++]);
     }
   }
 
@@ -394,14 +379,23 @@ static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
 
   // for each tuple entry
   for (u32 i = 0; i < n->array.a.len; i++) {
-    Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
-    if (R_UNLIKELY(!cn->type)) {
-      cn->type = (Node*)NodeBad;
-      build_errf(ctx->build, NodePosSpan(cn), "unknown type");
+    if (!n->array.a.v[i]) {
+      if (ctx->typecontext) {
+        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, ctx->typecontext);
+      } else {
+        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, (Node*)NodeBad);
+        build_errf(ctx->build, NodePosSpan(n), "unable to infer type of tuple element %u", i);
+      }
+    } else {
+      Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
+      if (R_UNLIKELY(!cn->type)) {
+        cn->type = (Node*)NodeBad;
+        build_errf(ctx->build, NodePosSpan(cn), "unknown type");
+      }
+      NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, cn->type);
     }
-    NodeArrayAppend(ctx->build->mem, &tt->t.list.a, cn->type);
     if (tupleType)
-      typecontext_set(ctx, tupleType->t.list.a.v[ctindex++]);
+      typecontext_set(ctx, tupleType->t.tuple.a.v[ctindex++]);
   }
 
   ctx->typecontext = typecontext; // restore typecontext
@@ -436,6 +430,7 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   Type* lt = NULL;
   Type* rt = NULL;
 
+
   // This is a bit of a mess, but what's going on here is making sure that untyped
   // operands are requested to become the type of typed operands.
   // For example:
@@ -456,10 +451,16 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   // finally we resolve the other, untyped, operand in the context of the requested type.
   //
   // fl & ~RFlagResolveIdeal = clear "resolve ideal" flag
+  auto typecontext = ctx->typecontext; // save typecontext
   n->op.left = resolve_type(ctx, n->op.left, fl & ~RFlagResolveIdeal);
+  if (n->op.op == TAssign && n->op.left->type->kind == NTupleType) {
+    // multi assignment: support var definitions which have NULL as LHS values
+    ctx->typecontext = n->op.left->type;
+  }
   n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
   lt = n->op.left->type;
   rt = n->op.right->type;
+  ctx->typecontext = typecontext; // restore typecontext
   //
   // convert operand types as needed. The following code tests all branches:
   //
@@ -739,6 +740,21 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* nullable eval_usize(ResCtx* ctx, Node* sizeExpr) {
+  assertnotnull_debug(sizeExpr); // must be array and not slice
+
+  auto zn = NodeEval(ctx->build, sizeExpr, Type_usize);
+
+  if (R_UNLIKELY(zn == NULL))
+    return NULL;
+
+  asserteq_debug(zn->kind, NIntLit);
+  asserteq_debug(zn->val.ct, CType_int);
+  // result in zn->val.i
+  return zn;
+}
+
+
 static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
   asserteq_debug(n->kind, NArrayType);
   asserteq_debug(n->t.array.size, 0); // must not be resolved already
@@ -746,7 +762,8 @@ static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
 
   // set temporary size so that we don't cause an infinite loop
   n->t.array.size = 0xFFFFFFFFFFFFFFFF;
-  auto zn = NodeEval(ctx->build, n->t.array.sizeExpr, Type_usize);
+
+  Node* zn = eval_usize(ctx, n->t.array.sizeExpr);
 
   if (R_UNLIKELY(zn == NULL)) {
     // TODO: improve these error message to be more specific
@@ -755,10 +772,8 @@ static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
     build_errf(ctx->build, NodePosSpan(zn), "invalid expression %s for array size", fmtnode(zn));
     node_diag_trail(ctx->build, DiagNote, zn);
   } else {
-    n->t.array.sizeExpr = zn;
-    asserteq_debug(zn->kind, NIntLit);
-    asserteq_debug(zn->val.ct, CType_int);
     n->t.array.size = zn->val.i;
+    n->t.array.sizeExpr = zn;
   }
 }
 
@@ -837,6 +852,36 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* resolve_index_tuple(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NIndex);
+  asserteq_debug(n->index.operand->type->kind, NTupleType);
+
+  Node* zn = eval_usize(ctx, n->index.index);
+
+  if (R_UNLIKELY(zn == NULL)) {
+    build_errf(ctx->build, NodePosSpan(n->index.index),
+      "%s is not a compile-time expression", fmtnode(n->index.index));
+    node_diag_trail(ctx->build, DiagNote, n->index.index);
+    return n;
+  }
+
+  n->index.index = zn; // note: zn->val.i holds valid index
+  Type* rtype = n->index.operand->type;
+  u64 index = zn->val.i;
+
+  if (R_UNLIKELY(index >= (u64)rtype->t.tuple.a.len)) {
+    build_errf(ctx->build, NodePosSpan(n->index.index),
+      "no element %s in %s", fmtnode(zn), fmtnode(n));
+    node_diag_trail(ctx->build, DiagNote, n->index.index);
+    return n;
+  }
+
+  n->type = rtype->t.tuple.a.v[index];
+
+  return n;
+}
+
+
 static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
   n->index.operand = resolve_type(ctx, n->index.operand, fl);
@@ -851,6 +896,10 @@ static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
       assertnotnull_debug(rtype->t.array.subtype);
       n->type = rtype->t.array.subtype;
       break;
+
+    case NTupleType:
+      R_MUSTTAIL return resolve_index_tuple(ctx, n, fl);
+
     default:
       build_errf(ctx->build, NodePosSpan(n),
         "cannot access %s of type %s by index",
@@ -910,21 +959,27 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   if (NodeKindIsType(n->kind)) {
     if (is_type_complete(n))
       return n;
-  } else if (n->type) {
-    // Has type already. Constant literals might have ideal type.
-    if (n->type == Type_ideal) {
-      if ((fl & RFlagResolveIdeal) && ((fl & RFlagEager) || ctx->typecontext)) {
-        if (ctx->typecontext)
-          return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
-        n = NodeCopy(ctx->build->mem, n);
-        n->type = IdealType(n->val.ct);
+  } else {
+    if (n->flags & NodeFlagRValue)
+      fl |= RFlagResolveIdeal | RFlagEager;
+
+    if (n->type) {
+      // Has type already. Constant literals might have ideal type.
+      if (n->type == Type_ideal) {
+        if ((fl & RFlagResolveIdeal) && ((fl & RFlagEager) || ctx->typecontext)) {
+          if (ctx->typecontext)
+            return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
+          n = NodeCopy(ctx->build->mem, n);
+          assert_debug(NodeHasNVal(n));
+          n->type = IdealType(n->val.ct);
+        }
+        // else: leave as ideal, for now
+        return n;
+      } else {
+        if (!is_type_complete(n->type))
+          n->type = resolve_type(ctx, n->type, fl);
+        return n;
       }
-      // else: leave as ideal, for now
-      return n;
-    } else {
-      if (!is_type_complete(n->type))
-        n->type = resolve_type(ctx, n->type, fl);
-      return n;
     }
   }
 
@@ -976,24 +1031,18 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NVar:
-    if (n->var.init) {
-      // // leave unused Var untyped
-      // if (n->var.nrefs == 0)
-      //   return n;
-      n->var.init = resolve_type(ctx, n->var.init, fl);
-      n->type = n->var.init->type;
-    } else {
-      n->type = Type_nil;
-    }
+    assertnotnull_debug(n->var.init);
+    // // leave unused Var untyped
+    // if (n->var.nrefs == 0)
+    //   return n;
+    n->var.init = resolve_type(ctx, n->var.init, fl);
+    n->type = n->var.init->type;
     break;
 
   case NField:
-    if (n->field.init) {
-      n->field.init = resolve_type(ctx, n->field.init, fl);
-      n->type = n->field.init->type;
-    } else {
-      n->type = Type_nil;
-    }
+    assertnotnull_debug(n->field.init);
+    n->field.init = resolve_type(ctx, n->field.init, fl);
+    n->type = n->field.init->type;
     break;
 
   case NIf:
@@ -1018,7 +1067,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NFloatLit:
     if (fl & RFlagResolveIdeal) {
       if (ctx->typecontext) {
-        ConvlitFlags clfl = fl & RFlagExplicitTypeCast ? ConvlitExplicit : ConvlitImplicit;
+        ConvlitFlags clfl = (fl & RFlagExplicitTypeCast) ? ConvlitExplicit : ConvlitImplicit;
         return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
       }
       // fallback

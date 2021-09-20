@@ -119,6 +119,7 @@ typedef struct Node {
   Pos            pos;    // source origin & position
   Pos            endpos; // Used by compount types like tuple. NoPos means "only use pos".
   Node* nullable type;   // value type. NULL if unknown.
+  void* nullable irval;  // used by IR builders for temporary storage
   union {
     void* _never; // for initializers
     NVal val; // BoolLit, IntLit, FloatLit, StrLit
@@ -151,7 +152,6 @@ typedef struct Node {
       Node* nullable result;  // output results (NTuple | NExpr)
       Sym   nullable name;    // NULL for lambda
       Node* nullable body;    // NULL for fun-declaration
-      void* nullable irval;   // used by IR builders for temporary storage
     } fun;
     /* call */ struct { // Call, TypeCast, StructCons
       Node* receiver;      // Fun, Id or type
@@ -168,8 +168,6 @@ typedef struct Node {
       Node* nullable init;  // initial/default value
       u32            nrefs; // reference count
       u32            index; // argument index (used by function parameters)
-      bool           ismut; // true if this is mutable
-      void* nullable irval; // used by IR builders for temporary storage
     } var;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
       Node*          operand;
@@ -204,10 +202,10 @@ typedef struct Node {
           u64            size;     // only used for array, not slice. 0 until sizeExpr is resolved
           Node*          subtype;
         } array;
-        /* list */ struct { // TupleType
+        /* tuple */ struct { // TupleType
           NodeArray a;            // Node[]
           Node*     a_storage[4]; // in-struct storage for the first few entries of a
-        } list;
+        } tuple;
         /* struc */ struct { // StructType
           Sym nullable name;         // NULL for anonymous structs
           NodeArray    a;            // NField[]
@@ -266,6 +264,8 @@ inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & 
 static bool NodeIsType(const Node* n);
 static bool NodeIsExpr(const Node* n);
 
+static bool NodeHasNVal(const Node* n); // true if n uses n->val
+
 // Node{Is,Set,Clear}Unresolved controls the "unresolved" flag of a node
 inline static bool NodeIsUnresolved(const Node* n) { return (n->flags & NodeFlagUnresolved) != 0; }
 inline static void NodeSetUnresolved(Node* n) { n->flags |= NodeFlagUnresolved; }
@@ -298,8 +298,6 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
 inline static bool NodeIsParam(const Node* n) { return (n->flags & NodeFlagParam) != 0; }
 inline static void NodeSetParam(Node* n) { n->flags |= NodeFlagParam; }
 inline static void NodeClearParam(Node* n) { n->flags &= ~NodeFlagParam; }
-
-inline static bool NodeIsVar(const Node* n) { return n->kind == NVar; } // TODO remove
 
 // NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.
 static Node* NodeRefVar(Node* n); // NVar
@@ -402,6 +400,18 @@ extern const NodeClassFlags _NodeClassTable[_NodeKindMax];
 
 inline static NodeClassFlags NodeKindClass(NodeKind kind) {
   return _NodeClassTable[kind];
+}
+
+inline static bool NodeHasNVal(const Node* n) {
+  switch (n->kind) {
+    case NBoolLit:
+    case NIntLit:
+    case NFloatLit:
+    case NStrLit:
+      return true;
+    default:
+      return false;
+  }
 }
 
 inline static bool NodeIsType(const Node* n) {

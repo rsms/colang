@@ -325,13 +325,16 @@ int cmd_build(int argc, const char** argv) {
     PRINT_BANNER();
     RTIMER_START();
 
+    #if 1
     // JIT
     llvm_jit(&build, pkgnode);
-
+    #else
     // Build native executable
-    // if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
-    //   return 1;
-    // }
+    build.opt = CoOptSafe;
+    if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
+      return 1;
+    }
+    #endif
     RTIMER_LOG("llvm total");
   #endif
 
