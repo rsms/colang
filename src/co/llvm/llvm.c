@@ -603,11 +603,6 @@ static Value build_struct_init(
     Node* field = tn->t.struc.a.v[i];
     values[i] = build_initializer(
       b, field->type, field->field.init, field->field.name);
-    // if (field->field.init) {
-    //   values[i] = build_expr(b, field->field.init, field->field.name);
-    // } else {
-    //   values[i] = build_default_value(b, field->type);
-    // }
   }
 
   for (u32 i = 0; i < numvalues; i++)

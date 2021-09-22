@@ -204,7 +204,7 @@ typedef struct Parser {
   Build*  build;      // compilation context
   Scope*  pkgscope;   // package-level scope
   Node*   expr;       // most recently parsed expression
-  u32     fnest;      // function nesting level (for error handling)
+  u32     fnest;      // function nesting level
 
   // set when parsing named type e.g. "type Foo ..."
   Sym nullable typename;

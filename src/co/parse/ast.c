@@ -294,10 +294,10 @@ PosSpan NodePosSpan(const Node* n) {
       span.start = pos_with_adjusted_start(span.start, -1);
       break;
 
-    case NVar:
-      if (n->var.init)
-        span.end = n->var.init->pos;
-      break;
+    // case NVar:
+    //   if (n->var.init)
+    //     span.end = n->var.init->pos;
+    //   break;
 
     default:
       break;
@@ -400,6 +400,8 @@ Str NodeFlagsStr(NodeFlags fl, Str s) {
   if (fl & NodeFlagParam)      { s = str_appendcstr(s, "Param"); }
   if (fl & NodeFlagMacroParam) { s = str_appendcstr(s, "MacroParam"); }
   if (fl & NodeFlagCustomInit) { s = str_appendcstr(s, "CustomInit"); }
+  if (fl & NodeFlagUnused)     { s = str_appendcstr(s, "Unused"); }
+  if (fl & NodeFlagPublic)     { s = str_appendcstr(s, "Public"); }
 
   return s;
 }

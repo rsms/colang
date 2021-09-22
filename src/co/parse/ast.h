@@ -111,10 +111,12 @@ typedef enum {
   NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
   NodeFlagBase       = 1 << 2, // [struct field] the field is a base of the struct
   NodeFlagRValue     = 1 << 4, // resolved as rvalue
-  NodeFlagParam      = 1 << 5, // [Var] used as function parameter
-  NodeFlagMacroParam = 1 << 6, // [Var] used as macro parameter
+  NodeFlagParam      = 1 << 5, // [Var] function parameter
+  NodeFlagMacroParam = 1 << 6, // [Var] macro parameter
   NodeFlagCustomInit = 1 << 7, // [StructType] has fields w/ non-zero initializer
-} NodeFlags;
+  NodeFlagUnused     = 1 << 8, // [Var] never referenced
+  NodeFlagPublic     = 1 << 9, // [Var|Fun] public visibility (aka published, exported)
+} NodeFlags; // remember to update NodeFlagsStr impl
 
 typedef struct Node {
   NodeKind       kind;   // kind of node (e.g. NId)
@@ -310,9 +312,20 @@ inline static void NodeSetParam(Node* n) { n->flags |= NodeFlagParam; }
 inline static void NodeClearParam(Node* n) { n->flags &= ~NodeFlagParam; }
 
 // Node{Is,Set,Clear}MacroParam controls the "is function parameter" flag of a node
-inline static bool NodeIsMacroParam(const Node* n) { return (n->flags & NodeFlagMacroParam) != 0; }
+inline static bool NodeIsMacroParam(const Node* n) {
+  return (n->flags & NodeFlagMacroParam) != 0; }
 inline static void NodeSetMacroParam(Node* n) { n->flags |= NodeFlagMacroParam; }
 inline static void NodeClearMacroParam(Node* n) { n->flags &= ~NodeFlagMacroParam; }
+
+// Node{Is,Set,Clear}Unused controls the "is unused" flag of a node
+inline static bool NodeIsUnused(const Node* n) { return (n->flags & NodeFlagUnused) != 0; }
+inline static void NodeSetUnused(Node* n) { n->flags |= NodeFlagUnused; }
+inline static void NodeClearUnused(Node* n) { n->flags &= ~NodeFlagUnused; }
+
+// Node{Is,Set,Clear}Public controls the "is public" flag of a node
+inline static bool NodeIsPublic(const Node* n) { return (n->flags & NodeFlagPublic) != 0; }
+inline static void NodeSetPublic(Node* n) { n->flags |= NodeFlagPublic; }
+inline static void NodeClearPublic(Node* n) { n->flags &= ~NodeFlagPublic; }
 
 inline static void NodeTransferCustomInit(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagCustomInit;

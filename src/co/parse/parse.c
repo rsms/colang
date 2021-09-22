@@ -361,17 +361,21 @@ static Node* nullable lookupsymPkg(Parser* p, Sym key) {
     dlog("lookup %s fallback to pkgscope", key);
   #endif
   Node* n = (Node*)ScopeLookup(p->pkgscope, key);
-  if (n && p->scopestack.cap - p->scopestack.len > 1) {
-    // Put it on the scopestack if there's space, as this will likely be requested soon again.
-    // For example, in this case "int" will lookupsym many times:
-    //   fun foo(x, y int) int {
-    //     tmp = 3 as int
-    //     tmp + x + y
-    //   }
-    // However, with this optimization lookup of "int" only takes the slow path once
-    // (for the first "int" in function params) and is then found in the local scopestack for
-    // all remaining lookups of "int".
-    scopestackPush(p, key, n);
+  if (n) {
+    NodeClearUnused(n);
+    if (p->scopestack.cap - p->scopestack.len > 1) {
+      // Put it on the scopestack if there's space, as this will likely be
+      // requested soon again.
+      // For example, in this case "int" will lookupsym many times:
+      //   fun foo(x, y int) int {
+      //     tmp = 3 as int
+      //     tmp + x + y
+      //   }
+      // However, with this optimization lookup of "int" only takes the slow path once
+      // (for the first "int" in function params) and is then found in the local
+      // scopestack for all remaining lookups of "int".
+      scopestackPush(p, key, n);
+    }
   }
   return n;
 }
@@ -386,7 +390,9 @@ inline static Node* nullable lookupsym(Parser* p, Sym key) {
     if (i == base) {
       base = (uintptr_t)p->scopestack.ptr[i];
     } else if (p->scopestack.ptr[i--] == (void*)key) {
-      return (Node*)p->scopestack.ptr[i];
+      Node* n = (Node*)p->scopestack.ptr[i];
+      NodeClearUnused(n);
+      return n;
     }
   }
   // not found in the current file's scope; look in the package's scope (including universe)
@@ -401,7 +407,9 @@ static Node* nullable lookupsymShallow(Parser* p, Sym key) {
     if (i == base) {
       break;
     } else if (p->scopestack.ptr[i--] == (void*)key) {
-      return (Node*)p->scopestack.ptr[i];
+      Node* n = (Node*)p->scopestack.ptr[i];
+      NodeClearUnused(n);
+      return n;
     }
   }
   return NULL;
@@ -456,6 +464,12 @@ static Node* bad(Parser* p) {
 }
 
 
+static bool name_is_pub(Sym name) {
+  assert_debug(symlen(name) > 0);
+  return name[0] != '_';
+}
+
+
 // tupleTrailingComma = Expr ("," Expr)* ","?
 // Used for call arguments.
 static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok) {
@@ -474,8 +488,11 @@ static Node* makeVar(Parser* p, const Node* name, Node* nullable init) {
   asserteq_debug(name->kind, NId);
   auto n = NewNode(p->build->mem, NVar);
   NodeSetConst(n);
+  NodeSetUnused(n);
   n->pos = name->pos; // TODO: expand pos span to include type?
   n->var.name = name->ref.name;
+  if (p->fnest == 0 && name_is_pub(n->var.name))
+    NodeSetPublic(n);
   if (init) {
     n->var.init = init;
     if (init->type != Type_ideal)
@@ -500,8 +517,9 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   while (t->kind == NVar && NodeIsConst(t) && !NodeIsParam(t) && t->var.init) {
     t = t->var.init;
     // Note: no NodeUnrefVar here
-    if (NodeIsType(t))
+    if (NodeIsType(t)) {
       return t;
+    }
   }
 
   if (fl & PFlagRValue) {
@@ -655,6 +673,7 @@ static Node* PId(Parser* p, PFlag fl) {
 static Node* PVar(Parser* p, PFlag fl) {
   auto n = mknode(p, NVar);
   NodeSetConst(n);
+  NodeSetUnused(n);
   nexttok(p); // consume "var"
 
   // name
@@ -679,6 +698,7 @@ static Node* PVar(Parser* p, PFlag fl) {
       n->type = pType(p, fl);
     }
   }
+
   if (got(p, TAssign)) {
     // e.g. "var name = x" or "var name type = x"
     // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
@@ -687,7 +707,12 @@ static Node* PVar(Parser* p, PFlag fl) {
       n->type = n->var.init->type;
     NodeTransferUnresolved(n, n->var.init);
   }
+
+  if (p->fnest == 0 && name_is_pub(n->var.name))
+    NodeSetPublic(n);
+
   defsym(p, n->var.name, n);
+
   return n;
 }
 
@@ -1159,13 +1184,17 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
   auto n = mknode(p, NVar); // TODO: introduce NTypeAlias
   nexttok(p); // consume "type"
   NodeSetConst(n);
+  NodeSetUnused(n);
 
   // name
   if (p->s.tok == TId) {
     n->var.name = p->s.name;
     // make sure to define the type before parsing a potential struct body
     defsym(p, p->s.name, n);
+    n->pos = pos_union(n->pos, ScannerPos(&p->s)); // include name
     nexttok(p); // consume name
+    if (p->fnest == 0 && name_is_pub(n->var.name))
+      NodeSetPublic(n);
   } else if ((fl & PFlagRValue) == 0) {
     syntaxerr(p, "expecting name");
   }
@@ -1377,6 +1406,7 @@ static Node* params(Parser* p) { // => NTuple
   while (p->s.tok != endtok && p->s.tok != TNone) {
     auto cn = mknode(p, NVar);
     NodeSetConst(cn);
+    NodeSetUnused(cn);
     NodeSetParam(cn);
     if (p->s.tok == TId) {
       cn->var.name = p->s.name;
@@ -1799,6 +1829,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
 
   while (p->s.tok != TNone) {
     Node* n = exprOrTuple(p, PREC_LOWEST, PFlagNone);
+
     NodeArrayAppend(p->build->mem, &file->cunit.a, n);
     NodeTransferUnresolved(file, n);
 

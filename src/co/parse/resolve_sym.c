@@ -4,7 +4,7 @@
 
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE "[resolvesym] "
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -58,6 +58,9 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
       }
       n->ref.target = target;
       NodeClearUnresolved(n);
+      NodeClearUnused(target);
+      if (target->kind == NVar)
+        NodeRefVar(target);
       dlog_mod("  SIMPLIFY %s => (N%s) %s",
         n->ref.name, NodeKindName(target->kind), fmtnode(target));
     }
@@ -72,9 +75,8 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
 
       case NVar: {
         // Unwind var bindings
-        assert(target->var.init != NULL);
         Node* init = target->var.init;
-        if ( /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
+        if (init && /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
           // in the case of a var target with a constant or type, resolve to that.
           // Example:
           //   "x = true ; y = x"
@@ -86,6 +88,7 @@ static Node* resolve_id(Node* n, ResCtx* ctx) {
           //   (Var (Id y) (BoolLit true))
           //
           dlog_mod("  RET var-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
+          NodeUnrefVar(target);
           return target->var.init;
         }
         dlog_mod("  RET var (N%s) %s", NodeKindName(target->kind), fmtnode(target));
@@ -178,7 +181,8 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n) {
   Node* n2 = _resolve_sym_dbg(ctx, n);
   ctx->debug_depth--;
   if (n != n2) {
-    dlog_mod("< resolve (N%s) %s => %s", NodeKindName(n->kind), fmtnode(n), fmtnode(n2));
+    dlog_mod("< resolve (N%s) %s => (N%s) %s",
+      NodeKindName(n->kind), fmtnode(n), NodeKindName(n2->kind), fmtnode(n2));
   } else {
     dlog_mod("< resolve (N%s) %s", NodeKindName(n->kind), fmtnode(n));
   }
@@ -240,7 +244,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   // uses u.op
   case NAssign: {
     ctx->assignNest++;
-    resolve_sym(ctx, n->op.left);
+    n->op.left = resolve_sym(ctx, n->op.left);
     ctx->assignNest--;
     assert(n->op.right != NULL);
     n->op.right = resolve_sym(ctx, n->op.right);
@@ -250,18 +254,9 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   case NPostfixOp:
   case NPrefixOp:
   case NReturn: {
-    auto newleft = resolve_sym(ctx, n->op.left);
-    if (n->op.left->kind != NId) {
-      // note: in case of assignment where the left side is an identifier,
-      // avoid replacing the identifier with its value.
-      // This branch is taken in all other cases.
-      n->op.left = newleft;
-    } else {
-      NodeClearUnresolved(n->op.left);
-    }
-    if (n->op.right) {
+    n->op.left = resolve_sym(ctx, n->op.left);
+    if (n->op.right)
       n->op.right = resolve_sym(ctx, n->op.right);
-    }
     break;
   }
 

@@ -290,6 +290,23 @@ int cmd_build(int argc, const char** argv) {
     #endif
   }
 
+  // check for and report unused globals
+  if (build.debug) {
+    for (u32 i = 0; i < pkgnode->cunit.a.len; i++) {
+      Node* file = pkgnode->cunit.a.v[i];
+      for (u32 j = 0; j < file->cunit.a.len; j++) {
+        Node* n = file->cunit.a.v[j];
+        if (n->kind == NVar && NodeIsUnused(n) && !NodeIsPublic(n)) {
+          build_diagf(&build, DiagWarn, NodePosSpan(n), "unused internal %s",
+            n->var.init == NULL ? "variable" :
+            NodeIsType(n->var.init) ? "type" : "value");
+        }
+      }
+    }
+  }
+
+  goto end; // XXX
+
   // resolve types
   RTIMER_START();
   pkgnode = ResolveType(&build, pkgnode);

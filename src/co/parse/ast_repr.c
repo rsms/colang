@@ -726,7 +726,7 @@ static bool l_visit(NodeList* nl, void* cp) {
 
   // attributes
   if (c->fl & NodeReprAttrs) {
-    if (NodeIsUnresolved(n) || NodeIsConst(n) || NodeIsMacroParam(n)) {
+    if (n->flags) {
       s = style_push(&c->style, s, attr_color);
       if (NodeIsUnresolved(n))
         s = str_appendcstr(s, " @unres");
@@ -735,6 +735,10 @@ static bool l_visit(NodeList* nl, void* cp) {
       } else if (!NodeIsType(n) && NodeIsConst(n) && n->kind != NTuple) {
         s = str_appendcstr(s, " @const");
       }
+      if ((n->flags & NodeFlagUnused))
+        s = str_appendcstr(s, " @unused");
+      if ((n->flags & NodeFlagPublic))
+        s = str_appendcstr(s, " @pub");
       s = style_pop(&c->style, s);
     }
     // pointer attr
@@ -831,16 +835,14 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
   case NVar:
     if (c->fl & NodeReprUseCount) {
       s = style_push(&c->style, s, ref_color);
-      s = str_appendfmt(s, "(uses %u)", n->var.nrefs);
+      s = str_appendfmt(s, "(%u refs)", n->var.nrefs);
       s = style_pop(&c->style, s);
     }
     break;
+
   case NField:
     s = style_push(&c->style, s, id_color);
     s = str_append(s, n->field.name, symlen(n->field.name));
-    s = style_pop(&c->style, s);
-    s = style_push(&c->style, s, ref_color);
-    s = str_appendfmt(s, " (uses %u)", n->var.nrefs);
     s = style_pop(&c->style, s);
     break;
 
