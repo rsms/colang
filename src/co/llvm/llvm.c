@@ -24,6 +24,18 @@
 #endif
 
 
+#define STK_ARRAY_MAKE(b,NAME,T,STKCAP,LEN)              \
+  T NAME##_stk[STKCAP];                                  \
+  T* NAME = NAME##_stk;                                  \
+  if ((LEN) > countof(NAME##_stk)) {                     \
+    NAME = memalloc((b)->build->mem, sizeof(T) * (LEN)); \
+  }
+
+#define STK_ARRAY_DISPOSE(b,NAME) do {                        \
+  if (NAME != NAME##_stk) { memfree((b)->build->mem, NAME); } \
+} while(0)
+
+
 // make the code more readable by using short name aliases
 typedef LLVMValueRef  Value;
 
@@ -204,6 +216,12 @@ inline static Value build_expr_mustload(B* b, Node* n, const char* debugname) {
   Value v = build_expr(b, n, debugname);
   b->noload = noload; // restore
   return v;
+}
+
+
+static Value build_default_value(B* b, Type* tn) {
+  LLVMTypeRef ty = get_type(b, tn);
+  return LLVMConstNull(ty);
 }
 
 
@@ -444,9 +462,8 @@ static Value build_return(B* b, Node* n, const char* debugname) {
 static LLVMTypeRef build_struct_type(B* b, Type* n) {
   asserteq_debug(n->kind, NStructType);
 
-  u32 elemc = n->t.struc.a.len; // get_type
-  LLVMTypeRef elemv_st[32];
-  LLVMTypeRef* elemv = elemv_st; // TODO: memalloc if needed
+  u32 elemc = n->t.struc.a.len;
+  STK_ARRAY_MAKE(b, elemv, LLVMTypeRef, 16, n->t.struc.a.len);
 
   for (u32 i = 0; i < n->t.struc.a.len; i++) {
     Node* field = n->t.struc.a.v[i];
@@ -454,254 +471,44 @@ static LLVMTypeRef build_struct_type(B* b, Type* n) {
     elemv[i] = get_type(b, field->type);
   }
 
-  LLVMTypeRef ty = LLVMStructCreateNamed(b->ctx, ntypeid(b, n));
-  LLVMStructSetBody(ty, elemv, elemc, /*packed*/false);
+  LLVMTypeRef ty;
+  if (n->t.struc.name) {
+    ty = LLVMStructCreateNamed(b->ctx, n->t.struc.name);
+    LLVMStructSetBody(ty, elemv, elemc, /*packed*/false);
+  } else {
+    ty = LLVMStructTypeInContext(b->ctx, elemv, elemc, /*packed*/false);
+  }
 
-  //return LLVMStructTypeInContext(b->ctx, elemv, elemc, /*packed*/false);
+  STK_ARRAY_DISPOSE(b, elemv);
+
   return ty;
 }
 
 
 static LLVMTypeRef get_struct_type(B* b, Type* tn) {
   asserteq_debug(tn->kind, NStructType);
-  LLVMTypeRef ty = get_intern_type(b, tn);
-  if (!ty) {
-    ty = build_struct_type(b, tn);
-    add_intern_type(b, tn, ty);
-  }
-  return ty;
-}
-
-
-static Value build_struct_type_expr(B* b, Type* tn, const char* debugname) {
-  // struct type used as value
-  LLVMTypeRef ty = get_struct_type(b, tn);
-
-  if (LLVMGetInsertBlock(b->builder)) // inside function
-    return LLVMBuildAlloca(b->builder, ty, debugname);
-
-  // global scope
-  LLVMValueRef* vals = NULL; // must be const
-  u32 nvals = 0;
-  return LLVMConstStructInContext(b->ctx, vals, nvals, /*packed*/false);
-}
-
-
-static Value build_struct(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NStructCons);
-  assertnotnull_debug(n->type);
-
-  LLVMTypeRef ty = get_struct_type(b, n->type);
-
-  if (LLVMGetInsertBlock(b->builder)) { // inside function
-    dlog("TODO: initialize fields");
-    return LLVMBuildAlloca(b->builder, ty, debugname);
-  }
-
-  // global scope (FIXME)
-  LLVMValueRef* vals = NULL; // must be const
-  u32 nvals = 0;
-  return LLVMConstStructInContext(b->ctx, vals, nvals, /*packed*/false);
-}
-
-
-static Value build_selector(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NSelector);
-  assertnotnull_debug(n->type);
-
-  dlog("TODO: GEP");
-
-  Value pointer = build_expr(b, n->sel.operand, debugname);
-  LLVMTypeRef ty = get_type(b, n->type);
-
-  dlog("do GEP");
-
-  u32 field_index = 0; // fixme
-
-  return LLVMBuildStructGEP2(b->builder, ty, pointer, field_index, debugname);
-
-  // TODO: if struct is a constant (materialized w/ LLVMConstStructInContext)
-  // then use LLVMConstGEP2.
-
-  // return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
-}
-
-
-// loads the value of field at index from struct at memory location ptr
-static Value build_struct_loadelem(B* b, Value ptr, u32 index, const char* debugname) {
-  assertnotnull_debug(ptr);
-
-  LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
-  assert_debug(index < LLVMCountStructElementTypes(st_ty));
-
-  LLVMValueRef indexv[2] = {
-    LLVMConstInt(b->t_i32, 0, /*signext*/false),
-    LLVMConstInt(b->t_i32, index, /*signext*/false),
-  };
-
-  // "inbounds" — the result value of the GEP is undefined if the address is outside
-  // the actual underlying allocated object and not the address one-past-the-end.
-  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, st_ty, ptr, indexv, 2, debugname);
-
-  LLVMTypeRef elem_ty = LLVMStructGetTypeAtIndex(st_ty, index);
-  return LLVMBuildLoad2(b->builder, elem_ty, elemptr, debugname);
-}
-
-
-static Value build_index(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NIndex);
-  assertnotnull_debug(n->type);
-  assertnotnull_debug(n->index.index);
-  assertnotnull_debug(n->index.operand->type);
-
-  Node* operand = assertnotnull_debug(n->index.operand);
-  u64 index = n->index.index->val.i;
-
-  // debugname "operand.index"
-  #ifdef DEBUG
-  char debugname2[256];
-  if (debugname[0] == 0 && operand->kind == NVar) {
-    int len = snprintf(
-      debugname2, sizeof(debugname2), "%s.%llu", operand->var.name, index);
-    if ((size_t)len >= sizeof(debugname2))
-      debugname2[sizeof(debugname2) - 1] = '\0'; // truncate
-    debugname = debugname2;
-  }
-  #endif
-
-  switch (operand->type->kind) {
-    case NTupleType: {
-      asserteq_debug(n->index.index->kind, NIntLit); // must be resolved const
-      Value ptr = assertnotnull_debug(build_expr_noload(b, operand, debugname));
-      assert_debug(index <= 0xFFFFFFFF);
-      return build_struct_loadelem(b, ptr, (u32)index, debugname);
-    }
-
-    // case NStructType:
-
-    // case NArrayType:
-    // TODO: LLVMBuildGEP2
-    // LLVMValueRef LLVMBuildGEP2(LLVMBuilderRef B, LLVMTypeRef Ty,
-    //                          LLVMValueRef Pointer, LLVMValueRef *Indices,
-    //                          unsigned NumIndices, const char *Name);
-
-    default:
-      panic("TODO: %s", NodeKindName(operand->type->kind));
-  }
-
-  return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
-}
-
-
-static Value build_default_value(B* b, Type* tn) {
-  LLVMTypeRef ty = get_type(b, tn);
-  return LLVMConstNull(ty);
-}
-
-
-static Value load_var(B* b, Node* n, const char* debugname) {
-  assert_debug(n->kind == NVar);
-  Value v = (Value)n->irval;
-  assertnotnull_debug(v);
-
-  if (NodeIsConst(n) || b->noload) {
-    // dlog(">> load_var use value (type %s): %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
-    return v;
-  }
-
-  if (debugname[0] == 0)
-    debugname = n->var.name;
-
-  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
-  // dlog(">> load_var load ptr (type %s => %s): %s",
-  //   fmttype(LLVMTypeOf(v)), fmttype(ty), fmtvalue(v));
-  return LLVMBuildLoad2(b->builder, ty, v, debugname);
-}
-
-
-static Value build_var_def(B* b, Node* n, const char* debugname, Value nullable init) {
-  asserteq_debug(n->kind, NVar);
-  assertnull_debug(n->irval);
-  assert_debug( ! NodeIsParam(n)); // params are eagerly built by build_fun
-
-  if (n->var.nrefs == 0 && !n->type) // skip unused var
-    return NULL;
-
-  assertnotnull_debug(n->type);
-
-  if (debugname[0] == 0)
-    debugname = n->var.name;
-
-  bool noload = b->noload; // save
-  b->noload = false;
-
-  if (NodeIsConst(n)) {
-    // immutable variable
-    if (init) {
-      n->irval = init;
-    } else if (n->var.init) {
-      n->irval = build_expr(b, n->var.init, debugname);
+  if (!tn->irval) {
+    if (tn->t.struc.name) { // not interning named struct types
+      tn->irval = build_struct_type(b, tn);
     } else {
-      n->irval = build_default_value(b, n->type);
-    }
-  } else {
-    // mutable variable
-    // See https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
-    LLVMTypeRef ty = get_type(b, n->type);
-    n->irval = LLVMBuildAlloca(b->builder, ty, debugname);
-    if (init || n->var.init) {
-      if (!init)
-        init = build_expr(b, n->var.init, debugname);
-      LLVMBuildStore(b->builder, init, n->irval);
+      tn->irval = get_intern_type(b, tn);
+      if (!tn->irval) {
+        tn->irval = build_struct_type(b, tn);
+        add_intern_type(b, tn, tn->irval);
+      }
     }
   }
-
-  b->noload = noload; // restore
-
-  return (Value)n->irval;
+  return tn->irval;
 }
 
 
-static Value build_var(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NVar);
+static Value build_struct_type_expr(B* b, Type* n, const char* debugname) {
+  LLVMTypeRef ty = get_struct_type(b, n);
+  dlog("build_struct_type_expr %s", fmttype(ty));
 
-  // build var if needed
-  if (!n->irval)
-    build_var_def(b, n, debugname, NULL);
-
-  R_MUSTTAIL return load_var(b, n, debugname);
-}
-
-
-static Value build_id_read(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NId);
-  assertnotnull_debug(n->type);
-  assertnotnull_debug(n->ref.target); // should be resolved
-  Value target = build_expr(b, n->ref.target, n->ref.name);
-  if (NodeIsConst(n->ref.target)) {
-    // dlog(">> build_id_read use value (type %s): %s",
-    //   fmttype(LLVMTypeOf(target)), fmtvalue(target));
-    return target;
-  }
-  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
-  // dlog(">> build_id_read load ptr (type %s => %s): %s",
-  //   fmttype(LLVMTypeOf(target)), fmttype(ty), fmtvalue(target));
-  return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
-}
-
-
-static Value build_assign_var(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->op.left->kind, NVar);
-
-  const char* name = n->op.left->var.name;
-  Value ptr = build_expr_noload(b, n->op.left, name);
-  Value right = build_expr_mustload(b, n->op.right, "rvalue");
-  LLVMBuildStore(b->builder, right, ptr);
-
-  // value of assignment is its new value
   if ((n->flags & NodeFlagRValue) && !b->noload) {
-    LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(ptr));
-    return LLVMBuildLoad2(b->builder, ty, ptr, name);
+    // struct type used as value
+    dlog("TODO: build type value %s", fmttype(ty));
   }
 
   return NULL;
@@ -759,6 +566,355 @@ static Value build_anon_struct(
 
   // return LLVMBuildLoad2(b->builder, ty, ptr, debugname);
   return ptr;
+}
+
+
+static Value build_struct_init(B* b, Type* tn, Node* nullable init, LLVMTypeRef ty);
+
+
+// build_initializer builds initialization value for type tn
+static Value build_initializer(B* b, Type* tn, Node* nullable init, const char* name) {
+  if (init)
+    return build_expr(b, init, name);
+
+  LLVMTypeRef ty = get_type(b, tn);
+
+  if (tn->kind == NStructType)
+    return build_struct_init(b, tn, init, ty);
+
+  return LLVMConstNull(ty);
+}
+
+
+static Value build_struct_init(
+  B* b, Type* tn, Node* nullable init, LLVMTypeRef ty)
+{
+  asserteq_debug(tn->kind, NStructType);
+
+  if ((tn->flags & NodeFlagCustomInit) == 0)
+    return LLVMConstNull(ty);
+
+  dlog("custom init");
+
+  u32 numvalues = tn->t.struc.a.len;
+  STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
+
+  for (u32 i = 0; i < numvalues; i++) {
+    Node* field = tn->t.struc.a.v[i];
+    values[i] = build_initializer(
+      b, field->type, field->field.init, field->field.name);
+    // if (field->field.init) {
+    //   values[i] = build_expr(b, field->field.init, field->field.name);
+    // } else {
+    //   values[i] = build_default_value(b, field->type);
+    // }
+  }
+
+  for (u32 i = 0; i < numvalues; i++)
+    dlog("values[%u] %s", i, fmtvalue(values[i]));
+
+  u32 nconst = 0;
+  for (u32 i = 0; i < numvalues; i++)
+    nconst += LLVMIsConstant(values[i]);
+
+  Value v;
+  if (numvalues == nconst) {
+    const char* structName = LLVMGetStructName(ty);
+    if (structName) {
+      // LLVM treats named struct types as unique and so we can't use
+      // LLVMConstStructInContext to create initializer for a struct of named type.
+      v = LLVMConstNamedStruct(ty, values, numvalues);
+    } else {
+      v = LLVMConstStructInContext(b->ctx, values, numvalues, /*packed*/false);
+    }
+  } else {
+    panic("TODO");
+  }
+
+  STK_ARRAY_DISPOSE(b, values);
+  return v;
+}
+
+
+static Value build_struct(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NStructCons);
+  assertnotnull_debug(n->type);
+  asserteq_debug(n->type->kind, NStructType);
+  asserteq_debug(n->call.receiver, n->type); // assumed to be resolved
+
+  LLVMTypeRef ty = get_struct_type(b, n->type);
+  dlog("build_struct %s", fmttype(ty));
+
+  if (!LLVMGetInsertBlock(b->builder)) {
+    // global
+
+    Value init = build_struct_init(b, n->type, NULL, ty);
+
+    dlog("LLVMIsConstant(init) %d", LLVMIsConstant(init));
+    dlog("LLVMSetInitializer %s", fmtvalue(init));
+    dlog("LLVMSetInitializer type: %s", fmttype(LLVMTypeOf(init)));
+    dlog("ptr type: %s", fmttype(ty));
+
+    LLVMValueRef ptr = LLVMAddGlobal(b->mod, ty, debugname);
+    LLVMSetLinkage(ptr, LLVMPrivateLinkage);
+    LLVMSetInitializer(ptr, init);
+    LLVMSetGlobalConstant(ptr, LLVMIsConstant(init));
+    // LLVMSetUnnamedAddr(ptr, true);
+
+    return ptr;
+  }
+
+  panic("TODO: build struct on stack or on heap");
+  return NULL;
+}
+
+
+// build_gep_load loads the value of field at index from sequence at memory location ptr
+static Value build_gep_load(B* b, Value ptr, u32 index, const char* debugname) {
+  assertnotnull_debug(ptr);
+  asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(ptr)), LLVMPointerTypeKind);
+
+  LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
+
+  asserteq_debug(LLVMGetTypeKind(st_ty), LLVMStructTypeKind); // Include LLVMArrayTypeKind?
+  assert_debug(index < LLVMCountStructElementTypes(st_ty));
+
+  LLVMValueRef indexv[2] = {
+    LLVMConstInt(b->t_i32, 0, /*signext*/false),
+    LLVMConstInt(b->t_i32, index, /*signext*/false),
+  };
+
+  // "inbounds" — the result value of the GEP is undefined if the address is outside
+  // the actual underlying allocated object and not the address one-past-the-end.
+  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, st_ty, ptr, indexv, 2, debugname);
+
+  LLVMTypeRef elem_ty = LLVMStructGetTypeAtIndex(st_ty, index);
+  return LLVMBuildLoad2(b->builder, elem_ty, elemptr, debugname);
+}
+
+
+static Value build_selector(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NSelector);
+  assertnotnull_debug(n->type);
+  assert_debug(n->sel.indices.len > 0); // GEP path should be resolved by type resolver
+
+  // #ifdef DEBUG
+  // fprintf(stderr, "[%s] GEP index path:", __func__);
+  // for (u32 i = 0; i < n->sel.indices.len; i++) {
+  //   fprintf(stderr, " %u", n->sel.indices.v[i]);
+  // }
+  // fprintf(stderr, "\n");
+  // #endif
+
+  Value ptr = assertnotnull_debug(build_expr_noload(b, n->sel.operand, debugname));
+  LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
+
+  u32 nindices = n->sel.indices.len + 1; // first index is for pointer array/offset
+  STK_ARRAY_MAKE(b, indices, LLVMValueRef, 16, nindices);
+  indices[0] = LLVMConstInt(b->t_i32, 0, /*signext*/false);
+  for (u32 i = 0; i < n->sel.indices.len; i++) {
+    indices[i + 1] = LLVMConstInt(b->t_i32, n->sel.indices.v[i], /*signext*/false);
+  }
+
+  // note: llvm kindly coalesces consecutive GEPs, meaning that nested NSelector nodes
+  // become a single GEP. e.g. "x.foo.bar" into nested struct "bar".
+
+  n->irval = LLVMBuildInBoundsGEP2(
+    b->builder, st_ty, ptr, indices, nindices, debugname);
+
+  STK_ARRAY_DISPOSE(b, indices);
+
+  if (b->noload)
+    return n->irval;
+
+  LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(n->irval));
+  return LLVMBuildLoad2(b->builder, elem_ty, n->irval, debugname);
+}
+
+
+static Value build_index(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NIndex);
+  assertnotnull_debug(n->type);
+  assertnotnull_debug(n->index.index);
+  assertnotnull_debug(n->index.operand->type);
+
+  Node* operand = assertnotnull_debug(n->index.operand);
+  u64 index = n->index.index->val.i;
+
+  // debugname "operand.index"
+  #ifdef DEBUG
+  char debugname2[256];
+  if (debugname[0] == 0 && operand->kind == NVar) {
+    int len = snprintf(
+      debugname2, sizeof(debugname2), "%s.%llu", operand->var.name, index);
+    if ((size_t)len >= sizeof(debugname2))
+      debugname2[sizeof(debugname2) - 1] = '\0'; // truncate
+    debugname = debugname2;
+  }
+  #endif
+
+  switch (operand->type->kind) {
+    case NTupleType: {
+      asserteq_debug(n->index.index->kind, NIntLit); // must be resolved const
+      Value ptr = assertnotnull_debug(build_expr_noload(b, operand, debugname));
+      assert_debug(index <= 0xFFFFFFFF);
+      return build_gep_load(b, ptr, (u32)index, debugname);
+    }
+
+    // case NStructType:
+
+    // case NArrayType:
+    // TODO: LLVMBuildGEP2
+    // LLVMValueRef LLVMBuildGEP2(LLVMBuilderRef B, LLVMTypeRef Ty,
+    //                          LLVMValueRef Pointer, LLVMValueRef *Indices,
+    //                          unsigned NumIndices, const char *Name);
+
+    default:
+      panic("TODO: %s", NodeKindName(operand->type->kind));
+  }
+
+  return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+}
+
+
+static Value load_var(B* b, Node* n, const char* debugname) {
+  assert_debug(n->kind == NVar);
+  Value v = (Value)assertnotnull_debug(n->irval);
+
+  if (NodeIsConst(n) || b->noload) {
+    // dlog(">> load_var use value (type %s): %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
+    return v;
+  }
+
+  if (debugname[0] == 0)
+    debugname = n->var.name;
+
+  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
+  // dlog(">> load_var load ptr (type %s => %s): %s",
+  //   fmttype(LLVMTypeOf(v)), fmttype(ty), fmtvalue(v));
+  return LLVMBuildLoad2(b->builder, ty, v, debugname);
+}
+
+
+static Value build_var_def(B* b, Node* n, const char* debugname, Value nullable init) {
+  asserteq_debug(n->kind, NVar);
+  assertnull_debug(n->irval);
+  assert_debug( ! NodeIsParam(n)); // params are eagerly built by build_fun
+  assertnotnull_debug(LLVMGetInsertBlock(b->builder)); // local, not global
+
+  if (n->var.nrefs == 0 && !n->type) // skip unused var
+    return NULL;
+
+  assertnotnull_debug(n->type);
+
+  if (debugname[0] == 0)
+    debugname = n->var.name;
+
+  bool noload = b->noload; // save
+  b->noload = false;
+
+  if (NodeIsConst(n)) {
+    // immutable variable
+    if (init) {
+      n->irval = init;
+    } else if (n->var.init) {
+      n->irval = build_expr(b, n->var.init, debugname);
+    } else {
+      n->irval = build_default_value(b, n->type);
+    }
+  } else {
+    // mutable variable
+    // See https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
+    LLVMTypeRef ty = get_type(b, n->type);
+    n->irval = LLVMBuildAlloca(b->builder, ty, debugname);
+    if (init || n->var.init) {
+      if (!init)
+        init = build_expr(b, n->var.init, debugname);
+      LLVMBuildStore(b->builder, init, n->irval);
+    }
+  }
+
+  b->noload = noload; // restore
+
+  return (Value)n->irval;
+}
+
+
+static Value build_var(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NVar);
+
+  // build var if needed
+  if (!n->irval)
+    build_var_def(b, n, debugname, NULL);
+
+  R_MUSTTAIL return load_var(b, n, debugname);
+}
+
+
+static Value build_global_var(B* b, Node* n) {
+  assert(n->kind == NVar);
+  assert(n->type);
+
+  if (NodeIsConst(n) && n->var.init && NodeIsType(n->var.init))
+    return NULL;
+
+  Value init;
+  if (n->var.init) {
+    init = build_expr(b, n->var.init, n->var.name);
+    assertnotnull_debug(init);
+    if (!LLVMIsConstant(init))
+      panic("not a constant expression %s", fmtnode(n));
+  } else {
+    init = LLVMConstNull(get_type(b, n->type));
+  }
+
+  if (NodeIsConst(n)) {
+    n->irval = init;
+  } else {
+    Value ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), n->var.name);
+    LLVMSetLinkage(ptr, LLVMPrivateLinkage);
+    LLVMSetInitializer(ptr, init);
+    LLVMSetGlobalConstant(ptr, false);
+    // LLVMSetUnnamedAddr(ptr, true);
+    n->irval = ptr; // save pointer for later lookups
+  }
+
+  return n->irval;
+}
+
+
+static Value build_id_read(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NId);
+  assertnotnull_debug(n->type);
+  assertnotnull_debug(n->ref.target); // should be resolved
+  Value target = build_expr(b, n->ref.target, n->ref.name);
+  if (NodeIsConst(n->ref.target)) {
+    // dlog(">> build_id_read use value (type %s): %s",
+    //   fmttype(LLVMTypeOf(target)), fmtvalue(target));
+    return target;
+  }
+  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
+  // dlog(">> build_id_read load ptr (type %s => %s): %s",
+  //   fmttype(LLVMTypeOf(target)), fmttype(ty), fmtvalue(target));
+  return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
+}
+
+
+static Value build_assign_var(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->op.left->kind, NVar);
+
+  const char* name = n->op.left->var.name;
+  Value ptr = build_expr_noload(b, n->op.left, name);
+  Value right = build_expr_mustload(b, n->op.right, "rvalue");
+  LLVMBuildStore(b->builder, right, ptr);
+
+  // value of assignment is its new value
+  if ((n->flags & NodeFlagRValue) && !b->noload) {
+    LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(ptr));
+    return LLVMBuildLoad2(b->builder, ty, ptr, name);
+  }
+
+  return NULL;
 }
 
 
@@ -1096,29 +1252,6 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_global_let(B* b, Node* n) {
-  assert(n->kind == NVar);
-  assert(n->type);
-  Value gv;
-  if (n->var.init) {
-    Value v = build_expr(b, n->var.init, n->var.name);
-    if (!LLVMIsConstant(v)) {
-      panic("not a constant expression %s", fmtnode(n));
-    }
-    gv = LLVMAddGlobal(b->mod, LLVMTypeOf(v), n->var.name);
-    LLVMSetInitializer(gv, v);
-  } else {
-    gv = LLVMAddGlobal(b->mod, get_type(b, n->type), n->var.name);
-  }
-  n->irval = gv; // save pointer for later lookups
-  // Note: global vars are always stored to after they are defined as
-  // "x = y" becomes a variable definition if "x" is not yet defined.
-  // TODO: conditionally make linkage private
-  LLVMSetLinkage(gv, LLVMPrivateLinkage);
-  return gv;
-}
-
-
 static void build_file(B* b, Node* n) {
   asserteq(n->kind, NFile);
 
@@ -1129,7 +1262,7 @@ static void build_file(B* b, Node* n) {
   for (u32 i = 0; i < n->cunit.a.len; i++) {
     auto cn = (Node*)n->cunit.a.v[i];
     if (cn->kind == NVar)
-      build_global_let(b, cn);
+      build_global_var(b, cn);
   }
 
   // then functions

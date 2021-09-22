@@ -217,9 +217,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   }
 
   // uses u.fun
-  case NFun: {
-    if (n->fun.tparams)
-      n->fun.tparams = resolve_sym(ctx, n->fun.tparams);
+  case NFun:
     if (n->fun.params)
       n->fun.params = resolve_sym(ctx, n->fun.params);
     if (n->fun.result)
@@ -227,11 +225,17 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     if (n->type)
       n->type = resolve_sym(ctx, n->type);
     // Note: Don't update lookupscope as a function's parameters should always be resolved
-    auto body = n->fun.body;
-    if (body)
-      n->fun.body = resolve_sym(ctx, body);
+    if (n->fun.body)
+      n->fun.body = resolve_sym(ctx, n->fun.body);
     break;
-  }
+
+  // macro
+  case NMacro:
+    if (n->macro.params)
+      n->macro.params = resolve_sym(ctx, n->macro.params);
+    // Note: Don't update lookupscope as a macro's parameters should always be resolved
+    n->macro.template = resolve_sym(ctx, n->macro.template);
+    break;
 
   // uses u.op
   case NAssign: {

@@ -46,6 +46,7 @@ typedef enum {
   _(Tuple,       NodeClassExpr) \
   _(StructCons,  NodeClassExpr) \
   _(TypeCast,    NodeClassExpr) \
+  _(Macro,       NodeClassExpr) /* TODO: different NodeClass */ \
   /* types */ \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
@@ -108,9 +109,11 @@ typedef enum {
   NodeFlagsNone      = 0,
   NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
   NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
-  NodeFlagBase       = 1 << 2, // struct field: the field is a base type
+  NodeFlagBase       = 1 << 2, // [struct field] the field is a base of the struct
   NodeFlagRValue     = 1 << 4, // resolved as rvalue
-  NodeFlagParam      = 1 << 5, // NVar used as function parameter (for diagnostics)
+  NodeFlagParam      = 1 << 5, // [Var] used as function parameter
+  NodeFlagMacroParam = 1 << 6, // [Var] used as macro parameter
+  NodeFlagCustomInit = 1 << 7, // [StructType] has fields w/ non-zero initializer
 } NodeFlags;
 
 typedef struct Node {
@@ -147,12 +150,16 @@ typedef struct Node {
       Node*     a_storage[4]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
-      Node* nullable tparams; // template params (NTuple)
       Node* nullable params;  // input params (NTuple or NULL if none)
       Node* nullable result;  // output results (NTuple | NExpr)
       Sym   nullable name;    // NULL for lambda
       Node* nullable body;    // NULL for fun-declaration
     } fun;
+    /* macro */ struct { // Macro
+      Node* nullable params;  // input params (NTuple or NULL if none)
+      Sym   nullable name;
+      Node*          template;
+    } macro;
     /* call */ struct { // Call, TypeCast, StructCons
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
@@ -170,9 +177,9 @@ typedef struct Node {
       u32            index; // argument index (used by function parameters)
     } var;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
-      Node*          operand;
-      Sym            member; // id
-      Node* nullable target; // null until resolved
+      Node*               operand;
+      Sym                 member;  // id
+      TARRAY_TYPE(u32,10) indices; // GEP index path
     } sel;
     /* index */ struct { // Index = Expr "[" Expr "]"
       Node* operand;
@@ -221,6 +228,8 @@ typedef struct Node {
   }; // union
 } Node;
 
+static_assert(sizeof(Node) <= 112, "Node struct grew. Update this or revert change.");
+
 // NodeReprFlags changes behavior of NodeRepr
 typedef enum {
   NodeReprDefault  = 0,
@@ -263,6 +272,7 @@ inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & 
 // NodeIs{Type|Expr} calls NodeKindIs{Type|Expr}(n->kind)
 static bool NodeIsType(const Node* n);
 static bool NodeIsExpr(const Node* n);
+static bool NodeIsPrimitiveConst(const Node* n); // NNil, NBasicType, NBoolLit
 
 static bool NodeHasNVal(const Node* n); // true if n uses n->val
 
@@ -298,6 +308,15 @@ inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) 
 inline static bool NodeIsParam(const Node* n) { return (n->flags & NodeFlagParam) != 0; }
 inline static void NodeSetParam(Node* n) { n->flags |= NodeFlagParam; }
 inline static void NodeClearParam(Node* n) { n->flags &= ~NodeFlagParam; }
+
+// Node{Is,Set,Clear}MacroParam controls the "is function parameter" flag of a node
+inline static bool NodeIsMacroParam(const Node* n) { return (n->flags & NodeFlagMacroParam) != 0; }
+inline static void NodeSetMacroParam(Node* n) { n->flags |= NodeFlagMacroParam; }
+inline static void NodeClearMacroParam(Node* n) { n->flags &= ~NodeFlagMacroParam; }
+
+inline static void NodeTransferCustomInit(Node* parent, Node* child) {
+  parent->flags |= child->flags & NodeFlagCustomInit;
+}
 
 // NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.
 static Node* NodeRefVar(Node* n); // NVar
@@ -384,12 +403,20 @@ typedef bool(*NodeVisitor)(NodeList* nl, void* nullable data);
 //   }
 //   NodeVisit(n, visit, NULL);
 static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f);
+static bool NodeVisitp(
+  NodeList* nullable parent, const Node* n, void* nullable data, NodeVisitor f);
 
 // NodeVisitChildren calls for each child of n, passing along n and data to f.
 bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f);
 
+// NodeValidateFlags changes behavior of NodeValidate
+typedef enum {
+  NodeValidateDefault      = 0,
+  NodeValidateMissingTypes = 1 << 0, // all types must be resolved
+} NodeValidateFlags;
+
 // NodeValidate checks an AST for inconsistencies. Useful for debugging and development.
-bool NodeValidate(Build* b, Node* n);
+bool NodeValidate(Build* b, Node* n, NodeValidateFlags fl);
 
 
 
@@ -403,6 +430,7 @@ inline static NodeClassFlags NodeKindClass(NodeKind kind) {
 }
 
 inline static bool NodeHasNVal(const Node* n) {
+  assertnotnull_debug(n);
   switch (n->kind) {
     case NBoolLit:
     case NIntLit:
@@ -422,6 +450,18 @@ inline static bool NodeIsType(const Node* n) {
 inline static bool NodeIsExpr(const Node* n) {
   assertnotnull_debug(n);
   return NodeKindIsExpr(n->kind);
+}
+
+inline static bool NodeIsPrimitiveConst(const Node* n) {
+  assertnotnull_debug(n);
+  switch (n->kind) {
+    case NNil:
+    case NBasicType:
+    case NBoolLit:
+      return true;
+    default:
+      return false;
+  }
 }
 
 inline static Node* NodeCopy(Mem mem, const Node* n) {
@@ -444,6 +484,13 @@ inline static Node* nullable NodeArrayLast(Array* a) {
 
 inline static bool NodeVisit(const Node* n, void* nullable data, NodeVisitor f) {
   NodeList parent = { .n = n };
+  return f(&parent, data);
+}
+
+inline static bool NodeVisitp(
+  NodeList* nullable p, const Node* n, void* nullable data, NodeVisitor f)
+{
+  NodeList parent = { .n = n, .parent = p };
   return f(&parent, data);
 }
 

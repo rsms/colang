@@ -1,0 +1,12 @@
+type Spaceship
+  shields f32
+  engine
+    fuel   int
+    output int
+
+B = Spaceship()
+
+fun main() int
+  B.engine.output
+
+# expected_exit_status 0

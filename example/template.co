@@ -3,7 +3,7 @@ fun add<T, R=T>(x, y T) R {
 }
 
 fun main {
-  x = 4 as uint32
-  y = 6 as uint32
+  x = 4 as u32
+  y = 6 as u32
   add(x, y)
 }

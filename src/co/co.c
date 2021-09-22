@@ -263,10 +263,7 @@ int cmd_build(int argc, const char** argv) {
 
   // validate AST produced by parser
   #ifdef DEBUG
-    RTIMER_START();
-    bool valid = NodeValidate(&build, pkgnode);
-    RTIMER_LOG("validate");
-    if (!valid)
+    if (!NodeValidate(&build, pkgnode, NodeValidateDefault))
       return 1;
     dlog("AST validated OK");
   #endif
@@ -287,7 +284,7 @@ int cmd_build(int argc, const char** argv) {
 
     // validate AST after symbol resolution
     #ifdef DEBUG
-      if (!NodeValidate(&build, pkgnode))
+      if (!NodeValidate(&build, pkgnode, NodeValidateDefault))
         return 1;
       dlog("AST validated OK");
     #endif
@@ -302,6 +299,12 @@ int cmd_build(int argc, const char** argv) {
     errlog("%u %s", build.errcount, build.errcount == 1 ? "error" : "errors");
     return 1;
   }
+  // validate AST after type resolution
+  #ifdef DEBUG
+    if (!NodeValidate(&build, pkgnode, NodeValidateMissingTypes))
+      return 1;
+    dlog("AST validated OK");
+  #endif
 
   //goto end; // XXX
 

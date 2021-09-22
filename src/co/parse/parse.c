@@ -173,9 +173,8 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
 static bool toklistHas(const Tok* list, Tok t) {
   Tok t2;
   while ((t2 = *list++)) {
-    if (t2 == t) {
+    if (t2 == t)
       return true;
-    }
   }
   return false;
 }
@@ -294,12 +293,12 @@ static void scopestackCheckUnused(Parser* p) {
   uintptr_t i = p->scopestack.len;
   uintptr_t base = p->scopestack.base;
   while (--i > base) {
-    //Sym key = (Sym)p->scopestack.ptr[i];
+    Sym key = (Sym)p->scopestack.ptr[i];
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
-    if (R_UNLIKELY(n->kind == NVar && n->var.nrefs == 0)) {
-      build_warnf(p->build, NodePosSpan(n),
+    if (R_UNLIKELY(key != sym__ && n->kind == NVar && n->var.nrefs == 0)) {
+      build_warnf(p->build, (PosSpan){ n->pos, n->endpos },
         "unused %s %s", NodeIsParam(n) ? "function parameter" : "variable", n->var.name);
     }
   }
@@ -511,8 +510,11 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   }
 
   // The target is a type; short-circuit and return that instead of the id
-  if (NodeIsConst(id) && (NodeIsType(target) || target->kind == NFun))
+  if (NodeIsConst(id) &&
+      (NodeIsType(target) || target->kind == NFun || target->kind == NMacro) )
+  {
     return target;
+  }
 
   if ((fl & PFlagRValue) && id->ref.target->kind == NVar) {
     NodeRefVar(id->ref.target);
@@ -551,7 +553,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
 
   // NodeRefAny(id->ref.target);
   // Note: Don't transfer "unresolved" attribute of functions
-  if (id->ref.target->kind != NFun)
+  if (id->ref.target->kind != NFun && id->ref.target->kind != NMacro)
     NodeTransferUnresolved(id, id->ref.target);
   NodeTransferConst(id, id->ref.target);
 
@@ -1033,8 +1035,13 @@ static Node* pField(Parser* p) {
     n->flags |= NodeFlagBase;
   } else {
     // e.g. "name type"
-    p->typename = n->field.name; // use field name for anonymous structs
-    n->type = pType(p, PFlagNone);
+    // custom error for "field = value"
+    if (R_UNLIKELY(p->s.tok == TAssign)) {
+      syntaxerr(p, "expecting type");
+      n->type = bad(p);
+    } else {
+      n->type = pType(p, PFlagNone);
+    }
   }
 
   // check for duplicate names
@@ -1049,11 +1056,11 @@ static Node* pField(Parser* p) {
   if (got(p, TAssign)) {
     // e.g. "field = initval"
     n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
-    if (!n->type)
-      n->type = n->field.init->type;
     NodeTransferUnresolved(n, n->field.init);
+    n->flags |= NodeFlagCustomInit; // TODO: only set if n->field.init is not zero/default
   }
 
+  NodeTransferCustomInit(n, n->type);
   NodeTransferUnresolved(n, n->type);
 
   return n;
@@ -1092,11 +1099,19 @@ static Node* pStructTypeBody(Parser* p, PFlag fl, Node* n) {
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
     if (R_UNLIKELY(p->s.tok != TId)) {
       syntaxerr(p, "expecting field or type name");
-      return n;
+      break;
     }
     Node* field = pField(p);
     NodeTransferUnresolved(n, field);
+    NodeTransferCustomInit(n, field);
     NodeArrayAppend(p->build->mem, &n->t.struc.a, field);
+
+    if (R_UNLIKELY(n->t.struc.a.len == 0xFFFFFFFF)) {
+      // overflow protection
+      syntaxerr(p, "too many stuct fields");
+      break;
+    }
+
     if (!got(p, TSemi))
       break;
   }
@@ -1157,8 +1172,13 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 
   p->typename = n->var.name;
   n->var.init = pType(p, PFlagNone);
-  n->type = n->var.init;
   NodeTransferUnresolved(n, n->var.init);
+
+  // struct with custom initializers must be visited by the type resolver,
+  // so be conservative with propagating the type here.
+  if ((n->var.init->flags & NodeFlagCustomInit) == 0)
+    n->type = n->var.init;
+
   return n;
 }
 
@@ -1254,7 +1274,8 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
 static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NSelector);
   nexttok(p); // consume "."
-  n->sel.operand = left; // note: id already gone through useAsRValue
+  n->sel.operand = useAsRValue(p, left);
+  TARRAY_INIT(&n->sel.indices);
 
   // member is a name
   if (R_UNLIKELY(p->s.tok != TId)) {
@@ -1446,9 +1467,10 @@ static Node* templateParams(Parser* p) {
     Node* init = NULL;
     if (got(p, TAssign)) // T=something
       init = prefixExpr(p, fl | PFlagRValue);
-    Node* letn = makeVar(p, name, init);
-    letn->type = Type_nil;
-    NodeArrayAppend(p->build->mem, &tuple->array.a, letn);
+    Node* var = makeVar(p, name, init);
+    var->flags |= NodeFlagMacroParam;
+    var->type = Type_nil;
+    NodeArrayAppend(p->build->mem, &tuple->array.a, var);
   } while (got(p, TComma) && p->s.tok != TGt);
   want(p, TGt);
   set_endpos(p, tuple);
@@ -1476,23 +1498,30 @@ static Node* PFun(Parser* p, PFlag fl) {
 
   // name
   if (p->s.tok == TId) {
-    auto name = p->s.name;
-    n->fun.name = name;
-    defsym(p, name, n);
+    n->fun.name = p->s.name;
     nexttok(p);
   } else if ((fl & PFlagRValue) == 0) {
     syntaxerr(p, "expecting name");
     nexttok(p);
   }
 
-  // template parameters, e.g. "fun foo<T, R>(...)"
+  // template parameters, e.g. "fun foo<T, R>(...)" => NMacro
+  Node* macro = NULL;
   if (p->s.tok == TLt) {
+    macro = mknode(p, NMacro);
+    NodeSetConst(macro);
+    if (n->fun.name)
+      defsym(p, n->fun.name, macro);
     pushScope(p);
-    n->fun.tparams = templateParams(p);
+    macro->macro.name = n->fun.name;
+    macro->macro.params = templateParams(p);
     // Note: no NodeTransferUnresolved for params
   } else {
     NodeSetConst(n);
   }
+
+  if (n->fun.name)
+    defsym(p, n->fun.name, n);
 
   // function parameters
   pushScope(p);
@@ -1547,8 +1576,12 @@ static Node* PFun(Parser* p, PFlag fl) {
   }
 
   popScope(p); // function parameter scope
-  if (n->fun.tparams)
+
+  if (macro) {
     popScope(p); // template parameter scope
+    macro->macro.template = n;
+    return macro;
+  }
 
   return n;
 }

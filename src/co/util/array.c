@@ -26,6 +26,18 @@ void ArraySort(Array* a, ArraySortFun f, void* userdata) {
   qsort_r(a->v, a->len, sizeof(void*), &ctx, &_sort);
 }
 
+void TArrayGrow(void** v, const void* init, u32* cap, size_t elemsize, Mem mem) {
+  u32 newcap = align2(*cap + 1, ARRAY_CAP_STEP);
+  if (*v != init) {
+    *v = memrealloc(mem, *v, elemsize * newcap);
+    *cap = newcap;
+  } else {
+    // moving array from stack to heap
+    if (R_LIKELY(*v = memalloc(mem, elemsize * newcap)))
+      memcpy(*v, init, elemsize * *cap);
+    *cap = newcap;
+  }
+}
 
 void ArrayGrow(Array* a, size_t addl, Mem mem) {
   u32 reqcap = a->cap + addl;

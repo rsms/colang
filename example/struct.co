@@ -1,49 +1,40 @@
+# type Bridge
+#   a int = 99
+#   b int = a / 2
+
+type Bridge
+  a int
+  b
+    c int = 99
+    d int = c / 2
+
 # # Bridge = struct { occupants int }
 # type Bridge
+#   r int
+#   v int
 #   occupants int
 
 # type Spaceship
-#   Bridge
 #   shields f32
+#   Bridge
 #   engine
 #     fuel   int = 1000
 #     output int = fuel / 2
 
-# fun Spaceship() Spaceship
-#   # custom constructor
-#   Spaceship(shields = 1.0)
+# # fun Spaceship() Spaceship
+# #   # custom constructor
+# #   Spaceship(shields = 1.0)
 
-# fun len(s Spaceship) auto
-#   s.occupants
+# # fun len(s Spaceship) auto
+# #   s.occupants
 
-# g int = 3
+# B = Spaceship()
 
 # fun main() int
-#   foo(1, 2)
 #   # b = Bridge()
-#   # b.occupants
-#   # s = Spaceship()
-#   # s.engine.fuel
-#   # s.occupants
-#   # s.len # WIP
-
-
-fun foo(x, y int) int
-  # b = x
-  # x = y
-  # b + x
-
-  z = { a, b = u8(1), 2 }
-  # y is now value of x
-  # b is value of y before assignment
-  z[1]
-
-  # z = int(1)
-  # if x < y
-  #   x = 3
-  # else
-  #   z = 4
-  # z + x
-
-fun main() int
-  foo(1, 2)
+#   # B.engine.output = 3
+#   B.engine.output
+# #   # s = Spaceship()
+# #   # s.engine.fuel
+# #   # s.occupants
+# #   # s.len # WIP

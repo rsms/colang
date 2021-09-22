@@ -392,8 +392,15 @@ void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
 Str NodeFlagsStr(NodeFlags fl, Str s) {
   if (fl == NodeFlagsNone)
     return str_appendcstr(s, "0");
-  if (fl & NodeFlagUnresolved)
-    s = str_appendcstr(s, "unresolved");
+
+  if (fl & NodeFlagUnresolved) { s = str_appendcstr(s, "Unresolved"); }
+  if (fl & NodeFlagConst)      { s = str_appendcstr(s, "Const"); }
+  if (fl & NodeFlagBase)       { s = str_appendcstr(s, "Base"); }
+  if (fl & NodeFlagRValue)     { s = str_appendcstr(s, "RValue"); }
+  if (fl & NodeFlagParam)      { s = str_appendcstr(s, "Param"); }
+  if (fl & NodeFlagMacroParam) { s = str_appendcstr(s, "MacroParam"); }
+  if (fl & NodeFlagCustomInit) { s = str_appendcstr(s, "CustomInit"); }
+
   return s;
 }
 

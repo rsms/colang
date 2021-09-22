@@ -47,7 +47,53 @@ void ArraySort(Array* a, ArraySortFun comparator, void* nullable userdata);
 //   ArrayForEach(Array* a, TYPE elemtype, NAME elemname) <body>
 //
 
-// ------------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
+
+#define TARRAY_TYPE(ELEMT,INITN)                  \
+  struct Array_##ELEMT {                          \
+    ELEMT* v;           /* entries */             \
+    u32    cap;         /* capacity of v */       \
+    u32    len;         /* valid entries at v */  \
+    ELEMT  init[INITN]; /* storage */             \
+  }
+
+#define TARRAY_INIT(ptr) do { \
+  auto a = (ptr);             \
+  a->v = a->init;             \
+  a->cap = countof(a->init);  \
+  a->len = 0;                 \
+} while(0)
+
+#define TARRAY_AT(ptr, index) ({      \
+  auto tmp_a_ = (ptr);                \
+  auto tmp_i_ = (index);              \
+  assert_debug(tmp_i_ < tmp_a_->len); \
+  tmp_a_->v[tmp_i_];                  \
+})
+
+#define TARRAY_APPEND(ptr, mem, value) ({                      \
+  auto tmp_a_ = (ptr);                                         \
+  if (R_UNLIKELY(tmp_a_->len == tmp_a_->cap)) {                \
+    Mem tmp_mem_ = (mem);                                      \
+    TArrayGrow((void**)&tmp_a_->v, tmp_a_->init, &tmp_a_->cap, \
+               sizeof(tmp_a_->v[0]), tmp_mem_);                \
+  }                                                            \
+  tmp_a_->v[tmp_a_->len++] = (value);                          \
+})
+
+#define TARRAY_DISPOSE(ptr, mem) ({   \
+  auto tmp_a_ = (ptr);                \
+  if (tmp_a_->v != tmp_a_->init)      \
+    memfree((mem), tmp_a_->v);        \
+  assert((tmp_a_->v = NULL) == NULL); \
+  assert((tmp_a_->cap = 0) == 0);     \
+  assert((tmp_a_->len = 0) == 0);     \
+})
+
+void TArrayGrow(void** v, const void* init, u32* cap, size_t elemsize, Mem mem);
+
+
+// -----------------------------------------------------------------------------------------
 // inline implementations
 
 inline static void ArrayInit(Array* a) {

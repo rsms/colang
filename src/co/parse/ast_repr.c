@@ -194,6 +194,14 @@ Str NodeStr(Str s, const Node* n) {
     }
     return s;
 
+  case NMacro: // macro foo
+    s = str_appendcstr(s, "macro");
+    if (n->macro.name) {
+      s = str_appendc(s, ' ');
+      s = str_appendcstr(s, n->macro.name);
+    }
+    return s;
+
   case NTypeCast: // typecast<int16>
     s = str_appendcstr(s, "typecast<");
     s = NodeStr(s, n->call.receiver);
@@ -269,6 +277,7 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendc(s, '}');
 
   case NField:
+    s = str_appendcstr(s, "field ");
     s = str_append(s, n->field.name, symlen(n->field.name));
     s = str_appendc(s, ' ');
     return NodeStr(s, n->type);
@@ -307,8 +316,10 @@ typedef struct LReprCtx {
   // pre-styled chunks
   const char* lparen;   // (
   const char* rparen;   // )
-  const char* lbrack;   // [
-  const char* rbrack;   // ]
+  // const char* lbrack;   // [
+  // const char* rbrack;   // ]
+  const char* langle;   // <
+  const char* rangle;   // >
 } LReprCtx;
 
 static bool l_visit(NodeList* nl, void* cp);
@@ -326,13 +337,17 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
   if (c.style.styles == TStyleNone) {
     c.lparen = "(";
     c.rparen = ")";
-    c.lbrack = "[";
-    c.rbrack = "]";
+    // c.lbrack = "[";
+    // c.rbrack = "]";
+    c.langle = "<";
+    c.rangle = ">";
   } else {
     c.lparen = "\x1b[2m(\x1b[22;1m";
     c.rparen = "\x1b[2m)\x1b[22;1m";
-    c.lbrack = "\x1b[2m[\x1b[22;1m";
-    c.rbrack = "\x1b[2m]\x1b[22;1m";
+    // c.lbrack = "\x1b[2m[\x1b[22;1m";
+    // c.rbrack = "\x1b[2m]\x1b[22;1m";
+    c.langle = "\x1b[2m<\x1b[22;1m";
+    c.rangle = "\x1b[2m>\x1b[22;1m";
   }
 
   NodeVisit(n, &c, l_visit);
@@ -393,10 +408,6 @@ static bool l_collapse_field(NodeList* nl) {
     return false;
   switch (nl->parent->n->kind) {
 
-  case NTuple:
-    // don't collapse (Var x (Tuple ...))
-    return (!nl->parent->parent || nl->parent->parent->n->kind != NVar);
-
   case NId:
   case NVar:
   case NField:
@@ -411,7 +422,7 @@ static bool l_collapse_field(NodeList* nl) {
     return false;
 
   default:
-    if (NodeKindIsType(nl->parent->n->kind))
+    if (NodeIsType(nl->parent->n))
       return true;
     return false;
   }
@@ -425,7 +436,6 @@ static bool l_show_field(NodeList* nl) {
     case NBinOp:
     case NPostfixOp:
     case NPrefixOp:
-    case NCall:
     case NVar:
     case NTypeCast:
     case NSelector:
@@ -433,10 +443,10 @@ static bool l_show_field(NodeList* nl) {
       return false;
 
     case NFun:
-      return !NodeKindIsType(nl->n->kind);
+      return !NodeIsType(nl->n);
 
     default:
-      if (NodeKindIsType(nl->n->kind))
+      if (NodeIsType(nl->n))
         return false;
       return true;
   }
@@ -483,26 +493,31 @@ static bool l_is_first_tuple_item(NodeList* nl) {
 }
 
 
-static Str l_maybe_append_special(NodeList* nl, Str s) {
+static Str l_maybe_append_special(LReprCtx* c, NodeList* nl, Str s) {
   // basic constants and types are simply shown as names e.g. "int", "nil", "true"
   auto n = nl->n;
+
+  NodeKind asType = n->kind == NBasicType && c->typenest == 1;
+
   if (n == Const_nil || n == Const_true || n == Const_false)
     n = n->type;
 
-  switch (n->kind) {
-    case NBasicType:
-      return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
-    default:
-      return s;
+  if (n->kind == NBasicType) {
+    if (asType)
+      s = append_delim(c, s, c->langle);
+    s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
+    if (asType)
+      s = append_delim(c, s, c->rangle);
   }
+
+  return s;
 }
 
 
 static bool l_visit(NodeList* nl, void* cp) {
   auto c = (LReprCtx*)cp;
   Str s = c->s;
-  auto n = nl->n;
-  assertnotnull_debug(n);
+  auto n = assertnotnull_debug(nl->n);
   u32 addedIndent = 0;
   u32 numExtraEndParens = 0;
 
@@ -510,56 +525,75 @@ static bool l_visit(NodeList* nl, void* cp) {
   s = str_makeroom(s, 64 + c->ind);
 
   // type as value?
-  if (c->typenest == 0 && NodeKindIsType(nl->n->kind))
-    s = style_push(&c->style, s, typeval_color);
+  if (c->typenest == 0 && NodeIsType(n))
+    s = style_push(&c->style, s, type_color);
+  c->typenest += (u32)NodeIsType(n);
 
   // indentation and fieldname
   if (c->ind > 0) {
-    bool collapseField = l_collapse_field(nl);
-    if (collapseField && l_curr_line_len(c, s) < c->maxline) {
-      // just a space as separator
-      if (!l_is_first_tuple_item(nl))
+    if (l_is_first_tuple_item(nl)) {
+      if (c->typenest == 0)
         s = str_appendc(s, ' ');
-    } else {
-      // new line
-      s = l_new_line(c, s);
-      s = append_indent(s, c->ind);
-      // maybe include fieldname
-      if (nl->fieldname && !collapseField && l_show_field(nl)) {
-        u32 fieldname_len = (u32)strlen(nl->fieldname);
-        s = append_delim(c, s, c->lparen);
-        numExtraEndParens++;
-        s = style_push(&c->style, s, field_color);
-        s = str_append(s, nl->fieldname, fieldname_len);
-        s = style_pop(&c->style, s);
-        s = str_appendc(s, ' ');
-        addedIndent = fieldname_len + INDENT_DEPTH;
-        if (n->kind == NTuple)
-          addedIndent += 1;
-      }
       addedIndent += INDENT_DEPTH;
+    } else {
+      bool collapseField = l_collapse_field(nl);
+      if (collapseField && l_curr_line_len(c, s) < c->maxline) {
+        // just a space as separator
+        s = str_appendc(s, ' ');
+      } else {
+        // new line
+        s = l_new_line(c, s);
+        s = append_indent(s, c->ind);
+        // maybe include fieldname
+        if (nl->fieldname && !collapseField && l_show_field(nl)) {
+          u32 fieldname_len = (u32)strlen(nl->fieldname);
+          s = append_delim(c, s, c->lparen);
+          numExtraEndParens++;
+          s = style_push(&c->style, s, field_color);
+          s = str_append(s, nl->fieldname, fieldname_len);
+          s = style_pop(&c->style, s);
+          s = str_appendc(s, ' ');
+          addedIndent = fieldname_len + INDENT_DEPTH;
+          // if (n->kind == NTuple)
+          //   addedIndent += 1;
+        }
+        addedIndent += INDENT_DEPTH;
+      }
     }
   } else {
     addedIndent = INDENT_DEPTH;
   }
 
+  // macro template var (except in macro "params")
+  if (NodeIsMacroParam(n) &&
+      ( !nl->parent || !nl->parent->parent ||
+        nl->parent->n->kind != NTuple ||
+        nl->parent->parent->n->kind != NMacro) )
+  {
+    asserteq_debug(n->kind, NVar);
+    s = style_push(&c->style, s, typeval_color);
+    s = str_append(s, n->var.name, symlen(n->var.name));
+    s = style_pop(&c->style, s);
+    addedIndent = 0;
+    goto end;
+  }
+
   // specials
-  if (c->typenest != 1) {
-    // Note: (typenest != 1) ensures that when we begin printing a type it is always
-    // surrounded by '[' and ']', even for e.g. "int", "nil" etc.
-    u32 len1 = str_len(s);
-    s = l_maybe_append_special(nl, s);
-    if (str_len(s) != len1) {
-      addedIndent = 0;
-      goto end;
-    }
+  u32 len1 = str_len(s);
+  s = l_maybe_append_special(c, nl, s);
+  if (str_len(s) != len1) {
+    addedIndent = 0;
+    goto end;
   }
 
   c->ind += addedIndent;
   bool descend = true;
 
-  // header, e.g. "(NodeKind" or "[" for types
-  s = append_delim(c, s, c->typenest ? c->lbrack : c->lparen);
+  // header, e.g. "(NodeKind"
+  bool startType = c->typenest == 1;
+  const char* delim_start = startType ? c->langle : c->lparen;
+  const char* delim_end   = startType ? c->rangle : c->rparen;
+  s = append_delim(c, s, delim_start);
   s = str_appendcstr(s, l_listname(nl));
 
   switch (n->kind) {
@@ -588,6 +622,54 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
+  case NMacro: {
+    bool newfound = false;
+    auto id = l_seen_id(c, n, &newfound);
+    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
+      // see comments in case NFun
+      descend = false;
+    }
+    if (n->macro.name) {
+      s = str_appendc(s, ' ');
+      s = style_push(&c->style, s, id_color);
+      s = str_append(s, n->macro.name, symlen(n->macro.name));
+      s = style_pop(&c->style, s);
+    }
+    if (c->fl & NodeReprRefs) {
+      s = style_push(&c->style, s, ref_color);
+      s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
+    break;
+  }
+
+  case NVar: {
+    bool newfound = false;
+    auto id = l_seen_id(c, n, &newfound);
+    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
+      // see comments in case NFun
+      descend = false;
+    }
+
+    s = str_appendc(s, ' ');
+    s = style_push(&c->style, s, NodeIsMacroParam(n) ? typeval_color : id_color);
+    s = str_append(s, n->var.name, symlen(n->var.name));
+    s = style_pop(&c->style, s);
+
+    if (c->fl & NodeReprRefs) {
+      s = style_push(&c->style, s, ref_color);
+      s = str_appendfmt(s, " #%zu", (size_t)id);
+      s = style_pop(&c->style, s);
+    }
+
+    if (!n->var.init && !NodeIsMacroParam(n)) {
+      s = style_push(&c->style, s, lit_color);
+      s = str_appendcstr(s, " :definit");
+      s = style_pop(&c->style, s);
+    }
+    break;
+  }
+
   case NPkg:
   case NFile: {
     if (n->cunit.name) {
@@ -608,33 +690,6 @@ static bool l_visit(NodeList* nl, void* cp) {
         if (cn->kind == NFun)
           l_seen_id(c, cn, NULL);
       }
-    }
-    break;
-  }
-
-  case NVar: {
-    bool newfound = false;
-    auto id = l_seen_id(c, n, &newfound);
-    if (!newfound && nl->parent && nl->parent->n->kind != NFile) {
-      // see comments in case NFun
-      descend = false;
-    }
-
-    s = str_appendc(s, ' ');
-    s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->var.name, symlen(n->var.name));
-    s = style_pop(&c->style, s);
-
-    if (c->fl & NodeReprRefs) {
-      s = style_push(&c->style, s, ref_color);
-      s = str_appendfmt(s, " #%zu", (size_t)id);
-      s = style_pop(&c->style, s);
-    }
-
-    if (!n->var.init && n->kind == NVar) {
-      s = style_push(&c->style, s, lit_color);
-      s = str_appendcstr(s, " :definit");
-      s = style_pop(&c->style, s);
     }
     break;
   }
@@ -671,12 +726,15 @@ static bool l_visit(NodeList* nl, void* cp) {
 
   // attributes
   if (c->fl & NodeReprAttrs) {
-    if (NodeIsUnresolved(n) || NodeIsConst(n)) {
+    if (NodeIsUnresolved(n) || NodeIsConst(n) || NodeIsMacroParam(n)) {
       s = style_push(&c->style, s, attr_color);
       if (NodeIsUnresolved(n))
         s = str_appendcstr(s, " @unres");
-      if (!NodeIsType(n) && NodeIsConst(n) && n->kind != NTuple)
+      if (NodeIsMacroParam(n)) {
+        s = str_appendcstr(s, " @typeparam");
+      } else if (!NodeIsType(n) && NodeIsConst(n) && n->kind != NTuple) {
         s = str_appendcstr(s, " @const");
+      }
       s = style_pop(&c->style, s);
     }
     // pointer attr
@@ -700,32 +758,46 @@ static bool l_visit(NodeList* nl, void* cp) {
     s = c->s; // load s
   }
 
-  // include type
+  // type
   if (c->fl & NodeReprTypes /* && c->typenest == 0*/ ) {
     const Type* typ = n->type;
     if (typ && typ != n) {
-      s = style_push(&c->style, s, type_color);
       NodeList tnl = { .n = typ, .parent = nl, .fieldname = "type" };
-      if (nl->parent == NULL || nl->parent->n->type != typ) {
-        // okay, let's print this type as it differs from the parent type
-        c->s = s; // store s
-        c->typenest++;
-        l_visit(&tnl, c);
-        c->typenest--;
-        s = c->s; // load s
-      } else {
+      if (nl->parent && nl->parent->n->type == typ) {
         // Type is same as parent type.
         // To avoid repeat printing of type trees, print something short and symbolic.
-        // s = str_appendcstr(s, " •");
         s = str_appendc(s, ' ');
-        s = str_appendcstr(s, l_listname(&tnl));
+        s = style_push(&c->style, s, type_color);
+        s = append_delim(c, s, c->langle);
+        if (NodeIsMacroParam(typ)) {
+          asserteq_debug(typ->kind, NVar);
+          s = style_push(&c->style, s, typeval_color);
+          s = str_append(s, typ->var.name, symlen(typ->var.name));
+          s = style_pop(&c->style, s);
+        } else {
+          s = str_appendcstr(s, l_listname(&tnl));
+        }
+        s = append_delim(c, s, c->rangle);
+        s = style_pop(&c->style, s);
+      } else {
+        // print this type since it differs from the parent type
+        c->s = s; // store s
+        l_visit(&tnl, c);
+        s = c->s; // load s
       }
+    } else if (!NodeIsType(n) && n->kind != NFile && n->kind != NPkg) {
+      // missing type "<?>"
+      s = str_appendc(s, ' ');
+      s = style_push(&c->style, s, type_color);
+      s = append_delim(c, s, c->langle);
+      s = str_appendcstr(s, "?");
+      s = append_delim(c, s, c->rangle);
       s = style_pop(&c->style, s);
     }
   }
 
   // end list
-  s = append_delim(c, s, c->typenest ? c->rbrack : c->rparen);
+  s = append_delim(c, s, delim_end);
 
 end:
   while (numExtraEndParens) {
@@ -733,8 +805,10 @@ end:
     numExtraEndParens--;
   }
 
+  c->typenest -= (u32)NodeIsType(n);
+
   // end type color
-  if (c->typenest == 0 && NodeKindIsType(nl->n->kind))
+  if (c->typenest == 0 && NodeIsType(n))
     s = style_pop(&c->style, s);
 
   c->ind -= addedIndent;

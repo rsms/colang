@@ -4,8 +4,9 @@
 
 bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   #define CALLBACK(child, fieldname_) ({ \
+    auto _tmp_cn = (child);              \
     NodeList nl = (NodeList){            \
-      .n = (child),                      \
+      .n = _tmp_cn ? _tmp_cn : Const_nil,\
       .parent = parent,                  \
       .fieldname = fieldname_,           \
     };                                   \
@@ -17,8 +18,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
 
   // ref
   case NId:
-    if (n->ref.target)
-      return CALLBACK(n->ref.target, "target");
+    return CALLBACK(n->ref.target, "target");
     break;
 
   // op
@@ -64,49 +64,38 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
 
   // var
   case NVar:
-    if (n->var.init)
-      return CALLBACK(n->var.init, "init");
-    break;
+    return CALLBACK(n->var.init, "init");
 
   // field
   case NField:
-    if (n->field.init)
-      return CALLBACK(n->field.init, "init");
-    break;
+    return CALLBACK(n->field.init, "init");
 
   // fun
   case NFun:
-    if (n->fun.params && !CALLBACK(n->fun.params, "params"))
-      return false;
-    if (n->fun.result && !CALLBACK(n->fun.result, "result"))
-      return false;
-    if (n->fun.body)
-      return CALLBACK(n->fun.body, "body");
-    break;
+    return (
+      CALLBACK(n->fun.params, "params") &&
+      CALLBACK(n->fun.result, "result") &&
+      CALLBACK(n->fun.body, "body") );
+
+  // macro
+  case NMacro:
+    return CALLBACK(n->macro.params, "params") && CALLBACK(n->macro.template, "template");
 
   // call
   case NTypeCast:
   case NStructCons:
   case NCall:
-    if (!CALLBACK(n->call.receiver, "recv"))
-      return false;
-    if (n->call.args)
-      return CALLBACK(n->call.args, "args");
-    break;
+    return CALLBACK(n->call.receiver, "recv") && CALLBACK(n->call.args, "args");
 
   // cond
   case NIf:
-    if (!CALLBACK(n->cond.cond, "cond"))
-      return false;
-    if (!CALLBACK(n->cond.thenb, "then"))
+    if (!CALLBACK(n->cond.cond, "cond") || !CALLBACK(n->cond.thenb, "then"))
       return false;
     if (n->cond.elseb)
       return CALLBACK(n->cond.elseb, "else");
     break;
 
   case NSelector:
-    if (n->sel.target && !CALLBACK(n->sel.target, "target"))
-      return false;
     return CALLBACK(n->sel.operand, "operand");
 
   case NIndex:
@@ -115,17 +104,12 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   case NSlice:
     return (
       CALLBACK(n->slice.operand, "operand") &&
-      (!n->slice.start || CALLBACK(n->slice.start, "start")) &&
-      (!n->slice.end || CALLBACK(n->slice.end, "end"))
-    );
+      CALLBACK(n->slice.start, "start") &&
+      CALLBACK(n->slice.end, "end") );
 
   // uses t.fun
   case NFunType:
-    if (n->t.fun.params && !CALLBACK(n->t.fun.params, "params"))
-      return false;
-    if (n->t.fun.result)
-      return CALLBACK(n->t.fun.result, "result");
-    break;
+    return CALLBACK(n->t.fun.params, "params") && CALLBACK(n->t.fun.result, "result");
 
   // uses t.tuple
   case NTupleType: {

@@ -128,8 +128,10 @@ Sym GetTypeID(Build* b, Type* n) {
 bool TypeEquals(Build* b, Type* x, Type* y) {
   assert(x != NULL);
   assert(y != NULL);
-  assertf(NodeKindIsType(x->kind), "x is not a type but %s.", NodeKindName(x->kind));
-  assertf(NodeKindIsType(y->kind), "y is not a type but %s.", NodeKindName(x->kind));
+  assertf(NodeIsType(x) || NodeIsMacroParam(x),
+    "x is not a type but %s.", NodeKindName(x->kind));
+  assertf(NodeIsType(y) || NodeIsMacroParam(y),
+    "y is not a type but %s.", NodeKindName(x->kind));
   if (x == y)
     return true;
   if (x->kind != y->kind)

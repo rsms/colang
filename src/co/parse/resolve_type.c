@@ -64,7 +64,7 @@ Node* ResolveType(Build* build, Node* n) {
 // returns old type
 static Type* nullable typecontext_set(ResCtx* ctx, Type* nullable newtype) {
   if (newtype) {
-    assert(NodeIsType(newtype));
+    assert(NodeIsType(newtype) || NodeIsMacroParam(newtype));
     assertne(newtype, Type_ideal);
   }
   dlog_mod("typecontext_set %s", fmtnode(newtype));
@@ -236,6 +236,18 @@ static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* resolve_macro(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NMacro);
+
+  assertnotnull(n->macro.template);
+  n->macro.template = resolve_type(ctx, n->macro.template, fl);
+
+  n->type = n->macro.template->type;
+
+  return n;
+}
+
+
 static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NFun);
   funstack_push(ctx, n);
@@ -246,7 +258,7 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
   n->type = ft;
 
   if (n->fun.params) {
-    resolve_type(ctx, n->fun.params, fl);
+    n->fun.params = resolve_type(ctx, n->fun.params, fl);
     ft->t.fun.params = (Type*)n->fun.params->type;
   }
 
@@ -609,18 +621,23 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
 
   // type call?
-  assert_debug( ! NodeIsType(n->call.receiver));
-  // if (NodeIsType(n->call.receiver))
-  //   return resolve_type_call(ctx, n, fl);
+  if (NodeIsType(n->call.receiver)) {
+    // return resolve_type_call(ctx, n, fl);
+    panic("TODO: resolve type call");
+  }
 
+  // must be function call
   auto ft = n->call.receiver->type;
   assert(ft != NULL);
-
   if (R_UNLIKELY(ft->kind != NFunType)) {
     build_errf(ctx->build, NodePosSpan(n->call.receiver),
       "cannot call %s", fmtnode(n->call.receiver));
     n->type = Type_nil;
     return n;
+  }
+
+  if (n->call.receiver->kind == NMacro) {
+    panic("TODO: resolve macro call (infer macro arguments)");
   }
 
   dlog_mod("%s ft: %s", __func__, fmtnode(ft));
@@ -779,17 +796,21 @@ static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
 
 
 static bool is_type_complete(Type* n) {
-  if (n->kind == NArrayType &&
-      ( (n->t.array.sizeExpr && n->t.array.size == 0) ||
-        !is_type_complete(n->t.array.subtype) ) )
-  {
-    return false;
+  switch (n->kind) {
+    case NArrayType:
+      return !( (n->t.array.sizeExpr && n->t.array.size == 0) ||
+                !is_type_complete(n->t.array.subtype) );
+
+    case NStructType:
+      return (n->flags & NodeFlagCustomInit) == 0;
+
+    default:
+      return true;
   }
-  return true;
 }
 
 
-static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
+static Type* resolve_array_type(ResCtx* ctx, Type* n, RFlag fl) {
   asserteq_debug(n->kind, NArrayType);
 
   if (n->t.array.sizeExpr && n->t.array.size == 0) {
@@ -804,27 +825,67 @@ static Type* resolve_arraytype_type(ResCtx* ctx, Type* n, RFlag fl) {
 }
 
 
-static Type* nullable resolve_struct_field_type(Type* st, Sym member) {
+static Type* resolve_struct_type(ResCtx* ctx, Type* t, RFlag fl) {
+  asserteq_debug(t->kind, NStructType);
+
+  // clear flag
+  // t->flags &= ~NodeFlagCustomInit;
+
+  // make sure we resolve ideals
+  fl |= RFlagResolveIdeal | RFlagEager;
+
+  auto typecontext = ctx->typecontext; // save
+
+  for (u32 i = 0; i < t->t.struc.a.len; i++) {
+    Node* field = t->t.struc.a.v[i];
+    if (field->field.init) {
+      ctx->typecontext = field->type;
+      field->field.init = resolve_type(ctx, field->field.init, fl);
+      //field->flags &= ~NodeFlagCustomInit; // not neccessary, but nice for consistency
+      if (!field->type)
+        field->type = field->field.init->type;
+    }
+    if (!is_type_complete(field->type)) {
+      ctx->typecontext = field->type; // in case it changed above
+      field->type = resolve_type(ctx, field->type, fl);
+    }
+  }
+
+  ctx->typecontext = typecontext; // restore
+
+  return t;
+}
+
+
+static Type* nullable resolve_selector_struct_field(ResCtx* ctx, Node* seln, Type* st) {
   asserteq_debug(st->kind, NStructType);
+  asserteq_debug(seln->kind, NSelector);
 
   for (u32 i = 0; i < st->t.struc.a.len; i++) {
     Node* field = st->t.struc.a.v[i];
-    if (field->field.name == member)
+    if (field->field.name == seln->sel.member) {
+      TARRAY_APPEND(&seln->sel.indices, ctx->build->mem, i);
       return field->type;
+    }
   }
 
   // look for field in "parent" base structs e.g. "A{x T};B{A};b.x" => T
+  u32 ii = seln->sel.indices.len;
+  TARRAY_APPEND(&seln->sel.indices, ctx->build->mem, 0); // preallocate
   for (u32 i = 0; i < st->t.struc.a.len; i++) {
     Node* field = st->t.struc.a.v[i];
     Type* t;
     if ((field->flags & NodeFlagBase) &&
         field->type->kind == NStructType &&
-        (t = resolve_struct_field_type(field->type, member)) )
+        (t = resolve_selector_struct_field(ctx, seln, field->type)) )
     {
+      seln->sel.indices.v[ii] = i;
       return t;
     }
   }
 
+  // not found
+  seln->sel.indices.len--; // undo preallocation
   return NULL;
 }
 
@@ -836,9 +897,12 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
   Node* recvt = n->sel.operand->type;
 
   // if the receiver is a struct, attempt to resolve field
-  if (recvt->kind == NStructType &&
-      (n->type = resolve_struct_field_type(recvt, n->sel.member)) )
-  {
+  if (recvt->kind == NStructType) {
+    n->type = resolve_selector_struct_field(ctx, n, recvt);
+    if (!n->type) {
+      build_errf(ctx->build, NodePosSpan(n),
+        "no member %s in %s", n->sel.member, fmtnode(recvt));
+    }
     return n;
   }
 
@@ -922,6 +986,32 @@ static Node* resolve_slice(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NVar);
+  assertnotnull_debug(n->var.init);
+  assert_debug( ! NodeIsMacroParam(n)); // macro params should be typed already
+
+  // // leave unused Var untyped
+  // if (n->var.nrefs == 0)
+  //   return n;
+
+  n->var.init = resolve_type(ctx, n->var.init, fl);
+
+  // check for type as vars might point to types (and typeof(t) is Type)
+  n->type = NodeIsType(n->var.init) ? n->var.init : n->var.init->type;
+  return n;
+}
+
+
+static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NField);
+  assertnotnull_debug(n->field.init);
+  n->field.init = resolve_type(ctx, n->field.init, fl);
+  n->type = n->field.init->type;
+  return n;
+}
+
+
 // ————————————————————————————————————————————————————————————————————————————
 // resolve_type
 
@@ -975,6 +1065,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
         }
         // else: leave as ideal, for now
         return n;
+      } else if (n->flags & NodeFlagCustomInit) {
+        // clear flag and continue
+        //n->flags &= ~NodeFlagCustomInit;
       } else {
         if (!is_type_complete(n->type))
           n->type = resolve_type(ctx, n->type, fl);
@@ -1008,6 +1101,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NFun:
     R_MUSTTAIL return resolve_fun(ctx, n, fl);
 
+  case NMacro:
+    R_MUSTTAIL return resolve_macro(ctx, n, fl);
+
   case NPostfixOp:
   case NPrefixOp:
     n->op.left = resolve_type(ctx, n->op.left, fl);
@@ -1031,28 +1127,16 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NVar:
-    assertnotnull_debug(n->var.init);
-    // // leave unused Var untyped
-    // if (n->var.nrefs == 0)
-    //   return n;
-    n->var.init = resolve_type(ctx, n->var.init, fl);
-    n->type = n->var.init->type;
-    break;
+    R_MUSTTAIL return resolve_var(ctx, n, fl);
 
   case NField:
-    assertnotnull_debug(n->field.init);
-    n->field.init = resolve_type(ctx, n->field.init, fl);
-    n->type = n->field.init->type;
-    break;
+    R_MUSTTAIL return resolve_field(ctx, n, fl);
 
   case NIf:
     R_MUSTTAIL return resolve_if(ctx, n, fl);
 
   case NId:
     R_MUSTTAIL return resolve_id(ctx, n, fl);
-
-  case NArrayType:
-    R_MUSTTAIL return resolve_arraytype_type(ctx, n, fl);
 
   case NSelector:
     R_MUSTTAIL return resolve_selector(ctx, n, fl);
@@ -1062,6 +1146,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NSlice:
     R_MUSTTAIL return resolve_slice(ctx, n, fl);
+
+  case NArrayType:
+    R_MUSTTAIL return resolve_array_type(ctx, n, fl);
+
+  case NStructType:
+    R_MUSTTAIL return resolve_struct_type(ctx, n, fl);
 
   case NIntLit:
   case NFloatLit:
@@ -1085,7 +1175,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NNone:
   case NBasicType:
   case NTupleType:
-  case NStructType:
   case _NodeKindMax:
     dlog("unexpected %s", fmtast(n));
     assert(!"expected to be typed");

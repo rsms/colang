@@ -265,8 +265,9 @@ add_library(colib
   src/co/ir/irbuilder.c
   src/co/ir/op.c
   src/co/parse/ast.c
-  src/co/parse/ast_visit.c
   src/co/parse/ast_repr.c
+  src/co/parse/ast_validate.c
+  src/co/parse/ast_visit.c
   src/co/parse/convlit.c
   src/co/parse/eval.c
   src/co/parse/parse.c
@@ -277,7 +278,6 @@ add_library(colib
   src/co/parse/token.c
   src/co/parse/typeid.c
   src/co/parse/universe.c
-  src/co/parse/validate.c
   src/co/util/array.c
   src/co/util/array_test.c
   src/co/util/error.c
