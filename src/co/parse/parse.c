@@ -298,8 +298,13 @@ static void scopestackCheckUnused(Parser* p) {
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, NodeKindName(n->kind), fmtnode(n));
     if (R_UNLIKELY(key != sym__ && n->kind == NVar && n->var.nrefs == 0)) {
+      // TODO: combine the error message with that of package-level reporter
       build_warnf(p->build, (PosSpan){ n->pos, n->endpos },
-        "unused %s %s", NodeIsParam(n) ? "function parameter" : "variable", n->var.name);
+        "unused %s %s",
+        ( NodeIsParam(n) ? "function parameter" :
+          n->var.init && NodeIsType(n->var.init) ? "type" :
+          "variable" ),
+        n->var.name);
     }
   }
 }

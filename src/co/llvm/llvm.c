@@ -601,8 +601,8 @@ static Value build_struct_init(
 
   for (u32 i = 0; i < numvalues; i++) {
     Node* field = tn->t.struc.a.v[i];
-    values[i] = build_initializer(
-      b, field->type, field->field.init, field->field.name);
+    Node* initexpr = field->field.init; // TODO: use constructor value if present
+    values[i] = build_initializer(b, field->type, initexpr, field->field.name);
   }
 
   for (u32 i = 0; i < numvalues; i++)

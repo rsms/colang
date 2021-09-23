@@ -353,9 +353,7 @@ CType NodeIdealCType(const Node* n);
 Node* nullable IdealType(CType ct);
 
 // NodeIsUntyped returns true for untyped constants, like for example "x = 123"
-inline static bool NodeIsUntyped(const Node* n) {
-  return n->type == Type_ideal;
-}
+inline static bool NodeIsUntyped(const Node* n) { return n->type == Type_ideal; }
 
 // ast_opt_ifcond attempts to optimize an NIf node with constant expression conditions
 Node* ast_opt_ifcond(Node* n);

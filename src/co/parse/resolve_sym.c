@@ -4,7 +4,7 @@
 
 
 // DEBUG_MODULE: define to enable trace logging
-#define DEBUG_MODULE ""
+//#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
