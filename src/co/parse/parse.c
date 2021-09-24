@@ -367,7 +367,8 @@ static Node* nullable lookupsymPkg(Parser* p, Sym key) {
   #endif
   Node* n = (Node*)ScopeLookup(p->pkgscope, key);
   if (n) {
-    NodeClearUnused(n);
+    if (NodeIsUnused(n)) // must check to avoid editing universe
+      NodeClearUnused(n);
     if (p->scopestack.cap - p->scopestack.len > 1) {
       // Put it on the scopestack if there's space, as this will likely be
       // requested soon again.
@@ -396,7 +397,8 @@ inline static Node* nullable lookupsym(Parser* p, Sym key) {
       base = (uintptr_t)p->scopestack.ptr[i];
     } else if (p->scopestack.ptr[i--] == (void*)key) {
       Node* n = (Node*)p->scopestack.ptr[i];
-      NodeClearUnused(n);
+      if (NodeIsUnused(n)) // must check to avoid editing universe
+        NodeClearUnused(n);
       return n;
     }
   }
@@ -413,7 +415,8 @@ static Node* nullable lookupsymShallow(Parser* p, Sym key) {
       break;
     } else if (p->scopestack.ptr[i--] == (void*)key) {
       Node* n = (Node*)p->scopestack.ptr[i];
-      NodeClearUnused(n);
+      if (NodeIsUnused(n)) // must check to avoid editing universe
+        NodeClearUnused(n);
       return n;
     }
   }
@@ -521,10 +524,9 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   Node* t = target;
   while (t->kind == NVar && NodeIsConst(t) && !NodeIsParam(t) && t->var.init) {
     t = t->var.init;
-    // Note: no NodeUnrefVar here
-    if (NodeIsType(t)) {
-      return t;
-    }
+    // // Note: no NodeUnrefVar here
+    // if (NodeIsType(t))
+    //   return t;
   }
 
   if (fl & PFlagRValue) {
@@ -532,19 +534,30 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
     id->flags |= NodeFlagRValue;
   }
 
-  // The target is a type; short-circuit and return that instead of the id
-  if (NodeIsConst(id) &&
-      (NodeIsType(target) || target->kind == NFun || target->kind == NMacro) )
-  {
+  if (NodeIsPrimitiveConst(target)) // NNil, NBasicType, NBoolLit
     return target;
-  }
-
-  if ((fl & PFlagRValue) && id->ref.target->kind == NVar) {
-    NodeRefVar(id->ref.target);
-    return id->ref.target;
-  }
 
   return id;
+
+  // // The target is a type; short-circuit and return that instead of the id
+  // if (NodeIsConst(id) &&
+  //     (NodeIsType(target) || target->kind == NFun || target->kind == NMacro) )
+  // {
+  //   return target;
+  // }
+
+  // if ((fl & PFlagRValue) == 0)
+  //   return id;
+
+  // switch (target->kind) {
+  //   case NVar:
+  //     NodeRefVar(target);
+  //     return target;
+  //   case NField:
+  //     return target;
+  //   default:
+  //     return id;
+  // }
 }
 
 
@@ -574,10 +587,13 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
     return id;
   }
 
-  // NodeRefAny(id->ref.target);
+  id->type = id->ref.target->type;
+  NodeRefAny(id->ref.target);
+
   // Note: Don't transfer "unresolved" attribute of functions
   if (id->ref.target->kind != NFun && id->ref.target->kind != NMacro)
     NodeTransferUnresolved(id, id->ref.target);
+
   NodeTransferConst(id, id->ref.target);
 
   R_MUSTTAIL return simplify_id(p, id, fl);
@@ -600,14 +616,19 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
 //     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
 //
 static Node* useAsRValue(Parser* p, Node* expr) {
-  if (expr->kind == NId) {
-    if (expr->ref.target)
-      return simplify_id(p, expr, PFlagRValue);
-    return resolve_id(p, expr, PFlagRValue);
-  } else {
-    expr->flags |= NodeFlagRValue;
+  switch (expr->kind) {
+    case NId:
+      if (expr->ref.target)
+        return simplify_id(p, expr, PFlagRValue);
+      return resolve_id(p, expr, PFlagRValue);
+
+    case NBasicType:
+      return expr; // immutable memory, allocated by universe
+
+    default:
+      expr->flags |= NodeFlagRValue;
+      return expr;
   }
-  return expr;
 }
 
 
@@ -995,26 +1016,13 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   NodeTransferUnresolved(n, n->call.receiver);
   NodeTransferConst(n, n->call.receiver);
 
-  // convert to typecast or type constructor
-  if (NodeIsType(n->call.receiver)) {
-    n->type = n->call.receiver;
-    if (n->call.receiver->kind == NStructType) {
-      n->kind = NStructCons;
-    } else {
-      n->kind = NTypeCast;
-      if (n->call.receiver->kind == NArrayType) {
-        p->ctxtype = n->call.receiver->t.array.subtype;
-      } else {
-        p->ctxtype = n->call.receiver;
-      }
-    }
-  }
-
   // args
   n->call.args = Const_nil;
   if (!got(p, TRParen)) {
     if (n->call.receiver->kind == NBasicType) {
-      // fast path for basic types e.g. "i16(123)"
+      // fast path for primitive types e.g. "i16(123)"
+      n->kind = NTypeCast;
+      p->ctxtype = n->call.receiver;
       n->call.args = expr(p, PREC_LOWEST, fl | PFlagRValue);
       if (n->call.receiver == n->call.args->type) {
         // short circuit e.g. "x = i64(3)"
@@ -1023,17 +1031,6 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     } else {
       auto args = tupleTrailingComma(p, PREC_LOWEST, fl | PFlagRValue, TRParen);
       assert_debug(args->kind == NTuple);
-      if (n->call.receiver->kind == NArrayType) {
-        args->kind = NArray;
-        if (!NodeIsUnresolved(args)) {
-          want(p, TRParen);
-          p->ctxtype = ctxtype; // restore ctxtype
-          args->type = n->call.receiver;
-          return args;
-        }
-      }
-      // Note: the type of call.args should structually match the type of fun.params.
-      // This reduces the work needed by the type resolver.
       if (args->array.a.len > 0) {
         n->call.args = args;
         NodeTransferUnresolved(n, args);
@@ -1085,7 +1082,10 @@ static Node* pField(Parser* p) {
 
   if (got(p, TAssign)) {
     // e.g. "field = initval"
+    auto ctxtype = p->ctxtype; // save ctxtype
+    p->ctxtype = n->type;
     n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
+    p->ctxtype = ctxtype; // restore ctxtype
     NodeTransferUnresolved(n, n->field.init);
     n->flags |= NodeFlagCustomInit; // TODO: only set if n->field.init is not zero/default
   }
@@ -1116,11 +1116,12 @@ static bool end_block(Parser* p) {
 
 // StructType = {" fields? "}"
 // fields     = Field ( ";" Field )* ";"?
-static Node* pStructTypeBody(Parser* p, PFlag fl, Node* n) {
+static Node* pStructType(Parser* p, PFlag fl, Node* n) {
   asserteq_debug(p->s.tok, TLBrace);
   nexttok(p); // consume "{"
   NodeSetConst(n);
 
+  n->t.kind = TypeKindStruct;
   n->t.struc.name = p->typename;
   p->typename = NULL;
 
@@ -1175,7 +1176,7 @@ static Node* PStructType(Parser* p, PFlag fl) {
 
   // body
   if (R_LIKELY(p->s.tok == TLBrace))
-    return pStructTypeBody(p, fl, n);
+    return pStructType(p, fl, n);
 
   syntaxerr(p, "expecting { ... }");
   return n;
@@ -1222,7 +1223,7 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 //!PrefixParselet TLBrace
 static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   if (fl & PFlagType)
-    return pStructTypeBody(p, fl, mknode(p, NStructType));
+    return pStructType(p, fl, mknode(p, NStructType));
 
   auto n = mknode(p, NBlock);
   nexttok(p); // consume "{"
@@ -1282,9 +1283,12 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NBinOp);
   NodeSetConst(n);
   n->op.op = p->s.tok;
-  n->op.left = useAsRValue(p, left);
   nexttok(p);
+  n->op.left = useAsRValue(p, left);
+  auto ctxtype = p->ctxtype; // save ctxtype
+  p->ctxtype = n->op.left->type;
   n->op.right = expr(p, e->prec, fl | PFlagRValue);
+  p->ctxtype = ctxtype; // restore ctxtype
   // Specialization of NodeTransferConst2:
   n->flags = ((left->flags & NodeFlagConst) & (n->op.right->flags & NodeFlagConst));
   nodeTransferUnresolved2(n, left, n->op.right);

@@ -246,6 +246,12 @@ Str NodeStr(Str s, const Node* n) {
       return str_appendcstr(s, "ideal");
     return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
 
+  case NField:
+    s = str_appendcstr(s, "field ");
+    s = str_append(s, n->field.name, symlen(n->field.name));
+    s = str_appendc(s, ' ');
+    return NodeStr(s, n->type);
+
   case NFunType: // (int int)->bool
     if (n->t.fun.params == NULL) {
       s = str_appendcstr(s, "()");
@@ -276,11 +282,9 @@ Str NodeStr(Str s, const Node* n) {
     s = str_append_NodeArray(s, &n->t.struc.a, "; ", 2);
     return str_appendc(s, '}');
 
-  case NField:
-    s = str_appendcstr(s, "field ");
-    s = str_append(s, n->field.name, symlen(n->field.name));
-    s = str_appendc(s, ' ');
-    return NodeStr(s, n->type);
+  case NTypeType: // "type ..."
+    s = str_appendcstr(s, "type ");
+    return NodeStr(s, n->t.type);
 
   // The remaining types are not expected to appear. Use their kind if they do.
   case NBad:
@@ -320,6 +324,9 @@ typedef struct LReprCtx {
   // const char* rbrack;   // ]
   const char* langle;   // <
   const char* rangle;   // >
+
+  const char* delim_open;   // ( or <
+  const char* delim_close;  // ) or >
 } LReprCtx;
 
 static bool l_visit(NodeList* nl, void* cp);
@@ -349,6 +356,9 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
     c.langle = "\x1b[2m<\x1b[22;1m";
     c.rangle = "\x1b[2m>\x1b[22;1m";
   }
+
+  c.delim_open = c.lparen;
+  c.delim_close = c.rparen;
 
   NodeVisit(n, &c, l_visit);
 
@@ -403,19 +413,30 @@ static uintptr_t l_seen_id(LReprCtx* c, const Node* n, bool* newfound) {
 }
 
 
+static bool l_is_compact(Node* n) {
+  return n == NULL ||
+         (NodeKindClass(n->kind) & NodeClassLit) ||
+         NodeIsPrimitiveConst(n);
+}
+
+
 static bool l_collapse_field(NodeList* nl) {
   if (!nl->parent)
     return false;
   switch (nl->parent->n->kind) {
 
-  case NId:
-  case NVar:
   case NField:
+     return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->field.init);
+  case NVar:
+     return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init);
+
+  case NId:
   case NReturn:
   case NBoolLit:
   case NFloatLit:
   case NIntLit:
   case NStrLit:
+  case NTypeType:
     return true;
 
   case NStructType:
@@ -469,6 +490,8 @@ static const char* l_listname(NodeList* nl) {
       // return "TupleType ";
     case NStructType:
       return "struct";
+    case NTypeType:
+      return "type";
     default:
       return NodeKindName(n->kind);
   }
@@ -479,6 +502,21 @@ static Str append_delim(LReprCtx* c, Str s, const char* chunk) {
   s = str_appendcstr(s, chunk);
   if (c->style.styles != TStyleNone)
     c->style.nbyteswritten += strlen(chunk) - 1;
+  return s;
+}
+
+
+static Str append_open_delim(LReprCtx* c, Str s) {
+  s = append_delim(c, s, c->delim_open);
+  c->delim_close = c->delim_open == c->lparen ? c->rparen : c->rangle;
+  c->delim_open = c->lparen;
+  return s;
+}
+
+
+static Str append_close_delim(LReprCtx* c, Str s) {
+  s = append_delim(c, s, c->delim_close);
+  c->delim_close = c->rparen;
   return s;
 }
 
@@ -497,17 +535,16 @@ static Str l_maybe_append_special(LReprCtx* c, NodeList* nl, Str s) {
   // basic constants and types are simply shown as names e.g. "int", "nil", "true"
   auto n = nl->n;
 
-  NodeKind asType = n->kind == NBasicType && c->typenest == 1;
-
-  if (n == Const_nil || n == Const_true || n == Const_false)
-    n = n->type;
-
-  if (n->kind == NBasicType) {
-    if (asType)
-      s = append_delim(c, s, c->langle);
+  if (n == Const_nil) {
+    s = str_append(s, sym_nil, symlen(sym_nil));
+  } else if (n == Const_true) {
+    s = str_append(s, sym_true, symlen(sym_true));
+  } else if (n == Const_false) {
+    s = str_append(s, sym_false, symlen(sym_false));
+  } else if (n->kind == NBasicType) {
+    s = append_delim(c, s, c->langle);
     s = str_append(s, n->t.basic.name, symlen(n->t.basic.name));
-    if (asType)
-      s = append_delim(c, s, c->rangle);
+    s = append_delim(c, s, c->rangle);
   }
 
   return s;
@@ -590,11 +627,15 @@ static bool l_visit(NodeList* nl, void* cp) {
   bool descend = true;
 
   // header, e.g. "(NodeKind"
-  bool startType = c->typenest == 1;
-  const char* delim_start = startType ? c->langle : c->lparen;
-  const char* delim_end   = startType ? c->rangle : c->rparen;
-  s = append_delim(c, s, delim_start);
+  // bool startType = c->typenest == 1;
+  // const char* delim_start = startType ? c->langle : c->lparen;
+  // const char* delim_end   = startType ? c->rangle : c->rparen;
+  s = append_open_delim(c, s);
+  const char* delim_close = c->delim_close;
   s = str_appendcstr(s, l_listname(nl));
+
+  // record current line so that we can later detect line breaks
+  u32 linestart = c->linestart;
 
   switch (n->kind) {
 
@@ -694,6 +735,13 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
+  case NSelector:
+    s = str_appendc(s, ' ');
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->sel.member, symlen(n->sel.member));
+    s = style_pop(&c->style, s);
+    break;
+
   case NStructType: {
     bool newfound = false;
     auto id = l_seen_id(c, n, &newfound);
@@ -712,13 +760,6 @@ static bool l_visit(NodeList* nl, void* cp) {
     }
     break;
   }
-
-  case NSelector:
-    s = str_appendc(s, ' ');
-    s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->sel.member, symlen(n->sel.member));
-    s = style_pop(&c->style, s);
-    break;
 
   default:
     break;
@@ -763,45 +804,49 @@ static bool l_visit(NodeList* nl, void* cp) {
   }
 
   // type
-  if (c->fl & NodeReprTypes /* && c->typenest == 0*/ ) {
-    const Type* typ = n->type;
-    if (typ && typ != n) {
-      NodeList tnl = { .n = typ, .parent = nl, .fieldname = "type" };
-      if (nl->parent && nl->parent->n->type == typ) {
-        // Type is same as parent type.
-        // To avoid repeat printing of type trees, print something short and symbolic.
+  if ((c->fl & NodeReprTypes) &&
+      !NodeIsType(n) && n->kind != NTypeType && n->kind != NFile && n->kind != NPkg)
+  {
+    c->delim_open = c->langle;
+    NodeList tnl = { .n = n->type, .parent = nl, .fieldname = "type" };
+
+    if (n->type && (!nl->parent || nl->parent->n->type != n->type)) {
+      // print this type since it differs from the parent type
+      dlog("dig type of %s", fmtnode(n));
+      c->s = s; // store s
+      l_visit(&tnl, c);
+      s = c->s; // load s
+    } else {
+      if (linestart != c->linestart) {
+        s = l_new_line(c, s);
+        s = append_indent(s, c->ind);
+      } else {
         s = str_appendc(s, ' ');
-        s = style_push(&c->style, s, type_color);
-        s = append_delim(c, s, c->langle);
-        if (NodeIsMacroParam(typ)) {
-          asserteq_debug(typ->kind, NVar);
+      }
+      s = style_push(&c->style, s, type_color);
+      s = append_open_delim(c, s);
+      if (n->type) {
+        // Type is same as parent type. (checked earlier)
+        // To avoid repeat printing of type trees, print something short and symbolic.
+        if (NodeIsMacroParam(n->type)) {
+          asserteq_debug(n->type->kind, NVar);
           s = style_push(&c->style, s, typeval_color);
-          s = str_append(s, typ->var.name, symlen(typ->var.name));
+          s = str_append(s, n->type->var.name, symlen(n->type->var.name));
           s = style_pop(&c->style, s);
         } else {
           s = str_appendcstr(s, l_listname(&tnl));
         }
-        s = append_delim(c, s, c->rangle);
-        s = style_pop(&c->style, s);
       } else {
-        // print this type since it differs from the parent type
-        c->s = s; // store s
-        l_visit(&tnl, c);
-        s = c->s; // load s
+        // missing type "<?>"
+        s = str_appendcstr(s, "?");
       }
-    } else if (!NodeIsType(n) && n->kind != NFile && n->kind != NPkg) {
-      // missing type "<?>"
-      s = str_appendc(s, ' ');
-      s = style_push(&c->style, s, type_color);
-      s = append_delim(c, s, c->langle);
-      s = str_appendcstr(s, "?");
-      s = append_delim(c, s, c->rangle);
+      s = append_close_delim(c, s);
       s = style_pop(&c->style, s);
     }
   }
 
   // end list
-  s = append_delim(c, s, delim_end);
+  s = append_delim(c, s, delim_close);
 
 end:
   while (numExtraEndParens) {
@@ -810,6 +855,7 @@ end:
   }
 
   c->typenest -= (u32)NodeIsType(n);
+  c->delim_open = c->lparen;
 
   // end type color
   if (c->typenest == 0 && NodeIsType(n))

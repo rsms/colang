@@ -594,7 +594,7 @@ static Value build_struct_init(
   if ((tn->flags & NodeFlagCustomInit) == 0)
     return LLVMConstNull(ty);
 
-  dlog("custom init");
+  dlog("custom init %s", fmtnode(tn));
 
   u32 numvalues = tn->t.struc.a.len;
   STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
@@ -882,16 +882,19 @@ static Value build_id_read(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NId);
   assertnotnull_debug(n->type);
   assertnotnull_debug(n->ref.target); // should be resolved
-  Value target = build_expr(b, n->ref.target, n->ref.name);
-  if (NodeIsConst(n->ref.target)) {
-    // dlog(">> build_id_read use value (type %s): %s",
-    //   fmttype(LLVMTypeOf(target)), fmtvalue(target));
-    return target;
-  }
-  LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
-  // dlog(">> build_id_read load ptr (type %s => %s): %s",
-  //   fmttype(LLVMTypeOf(target)), fmttype(ty), fmtvalue(target));
-  return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
+
+  return build_expr(b, n->ref.target, n->ref.name);
+
+  // Value target = build_expr(b, n->ref.target, n->ref.name);
+  // if (NodeIsConst(n->ref.target)) {
+  //   // dlog(">> build_id_read use value (type %s): %s",
+  //   //   fmttype(LLVMTypeOf(target)), fmtvalue(target));
+  //   return target;
+  // }
+  // LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
+  // // dlog(">> build_id_read load ptr (type %s => %s): %s",
+  // //   fmttype(LLVMTypeOf(target)), fmttype(ty), fmtvalue(target));
+  // return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
 }
 
 

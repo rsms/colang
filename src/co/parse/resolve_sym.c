@@ -4,7 +4,7 @@
 
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -40,95 +40,38 @@ Node* ResolveSym(Build* build, ParseFlags fl, Node* n, Scope* scope) {
 }
 
 
-static Node* resolve_id(Node* n, ResCtx* ctx) {
+static Node* resolve_id(ResCtx* ctx, Node* n) {
   assert(n->kind == NId);
-  auto name = n->ref.name;
 
-  dlog_mod("resolve_id %s (%p)", name, n);
-  while (1) {
-    auto target = n->ref.target;
-
-    if (target == NULL) {
-      dlog_mod("  LOOKUP %s", n->ref.name);
-      target = (Node*)ScopeLookup(ctx->lookupscope, n->ref.name);
-      if (R_UNLIKELY(target == NULL)) {
-        build_errf(ctx->build, NodePosSpan(n), "undefined symbol %s", name);
-        n->ref.target = (Node*)NodeBad;
-        return n;
-      }
-      n->ref.target = target;
-      NodeClearUnresolved(n);
-      NodeClearUnused(target);
-      if (target->kind == NVar)
-        NodeRefVar(target);
-      dlog_mod("  SIMPLIFY %s => (N%s) %s",
-        n->ref.name, NodeKindName(target->kind), fmtnode(target));
-    }
-
-    switch (target->kind) {
-      case NId:
-        // note: all built-ins which are const have targets, meaning the code above will
-        // not mutate those nodes.
-        n = target;
-        dlog_mod("  RET id target (N%s) %s", NodeKindName(n->kind), fmtnode(n));
-        break; // continue unwind loop
-
-      case NVar: {
-        // Unwind var bindings
-        Node* init = target->var.init;
-        if (init && /*NodeIsConst(init) || */ !NodeIsExpr(init)) {
-          // in the case of a var target with a constant or type, resolve to that.
-          // Example:
-          //   "x = true ; y = x"
-          //  parsed as:
-          //   (Var (Id x) (BoolLit true))
-          //   (Var (Id y) (Id x))
-          //  transformed to:
-          //   (Var (Id x) (BoolLit true))
-          //   (Var (Id y) (BoolLit true))
-          //
-          dlog_mod("  RET var-init (N%s) %s", NodeKindName(init->kind), fmtnode(init));
-          NodeUnrefVar(target);
-          return target->var.init;
-        }
-        dlog_mod("  RET var (N%s) %s", NodeKindName(target->kind), fmtnode(target));
-        return target;
-      }
-
-      case NBoolLit:
-      case NIntLit:
-      case NNil:
-      case NFun:
-      case NBasicType:
-      case NTupleType:
-      case NArrayType:
-      case NStructType:
-      case NFunType: {
-        // unwind identifier to constant/immutable value.
-        // Example:
-        //   (Id true #user) -> (Id true #builtin) -> (Bool true #builtin)
-        //
-        dlog_mod("  RET target (N%s) %s", NodeKindName(target->kind), fmtnode(target));
-        if (ctx->assignNest == 0)
-          n = target;
-        // assignNest is >0 when resolving the LHS of an assignment.
-        // In this case we do not unwind constants as that would lead to things like this:
-        //   (assign (tuple (ident a) (ident b)) (tuple (int 1) (int 2))) =>
-        //   (assign (tuple (int 1) (int 2)) (tuple (int 1) (int 2)))
-        return n;
-      }
-
-      default: {
-        dlog_mod("resolve_id FINAL %s => N%s (target N%s) istype=%s",
-          n->ref.name, NodeKindName(n->kind), NodeKindName(target->kind),
-          NodeKindIsType(target->kind) ? "yes" : "no");
-        dlog_mod("  RET n (N%s) %s", NodeKindName(n->kind), fmtnode(n));
-        assert_debug(!NodeIsConst(target)); // should be covered in case-statements above
-        return n;
-      }
-    }
+  Node* target = n->ref.target;
+  if (target) {
+    n->ref.target = resolve_sym(ctx, target);
+    NodeClearUnresolved(n);
+    return n;
   }
-  UNREACHABLE;
+
+  // lookup name
+  target = (Node*)ScopeLookup(ctx->lookupscope, n->ref.name);
+
+  if (R_UNLIKELY(target == NULL)) {
+    dlog_mod("LOOKUP %s FAILED", n->ref.name);
+    build_errf(ctx->build, NodePosSpan(n), "undefined symbol %s", n->ref.name);
+    n->ref.target = (Node*)NodeBad;
+    return n;
+  }
+
+  NodeClearUnresolved(n);
+  n->ref.target = target = resolve_sym(ctx, target);
+  n->type = target->type;
+  NodeClearUnused(target);
+
+  if (target->kind == NVar)
+    NodeRefVar(target);
+
+  dlog_mod("LOOKUP %s => (N%s) %s",
+    n->ref.name, NodeKindName(target->kind), fmtnode(target));
+
+  return n;
 }
 
 
@@ -199,11 +142,10 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   switch (n->kind) {
 
-  // uses u.ref
+  // ref
   case NId:
-    return resolve_id(n, ctx);
+    return resolve_id(ctx, n);
 
-  // array
   case NBlock:
   case NTuple:
   case NArray:
@@ -220,7 +162,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     break;
   }
 
-  // uses u.fun
   case NFun:
     if (n->fun.params)
       n->fun.params = resolve_sym(ctx, n->fun.params);
@@ -233,7 +174,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n->fun.body = resolve_sym(ctx, n->fun.body);
     break;
 
-  // macro
   case NMacro:
     if (n->macro.params)
       n->macro.params = resolve_sym(ctx, n->macro.params);
@@ -241,7 +181,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     n->macro.template = resolve_sym(ctx, n->macro.template);
     break;
 
-  // uses u.op
   case NAssign: {
     ctx->assignNest++;
     n->op.left = resolve_sym(ctx, n->op.left);
@@ -260,7 +199,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     break;
   }
 
-  // uses u.call
   case NTypeCast:
   case NStructCons:
   case NCall:
@@ -315,7 +253,6 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n->slice.end = resolve_sym(ctx, n->slice.end);
     break;
 
-  // uses u.cond
   case NIf:
     n->cond.cond = resolve_sym(ctx, n->cond.cond);
     n->cond.thenb = resolve_sym(ctx, n->cond.thenb);
@@ -323,12 +260,11 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n = ast_opt_ifcond(n);
     break;
 
-  case NArrayType: {
+  case NArrayType:
     if (n->t.array.sizeExpr)
       n->t.array.sizeExpr = resolve_sym(ctx, n->t.array.sizeExpr);
     n->t.array.subtype = resolve_sym(ctx, n->t.array.subtype);
     break;
-  }
 
   case NStructType:
     return resolve_arraylike_node(ctx, n, &n->t.struc.a);
@@ -338,6 +274,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   case NBasicType:
   case NFunType:
   case NTupleType:
+  case NTypeType:
   case NNil:
   case NBoolLit:
   case NIntLit:

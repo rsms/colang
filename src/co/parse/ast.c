@@ -24,6 +24,28 @@ const NodeClassFlags _NodeClassTable[_NodeKindMax] = {
 };
 
 
+const char* NodeKindName(NodeKind nk) {
+  return NodeKindNameTable[nk];
+}
+
+
+const char* TypeKindName(TypeKind tk) {
+  switch (tk) {
+    case TypeKindVoid:     return "void";
+    case TypeKindF16:      return "16-bit floating-point number";
+    case TypeKindF32:      return "32-bit floating-point number";
+    case TypeKindF64:      return "64-bit floating-point number";
+    case TypeKindInteger:  return "integer";
+    case TypeKindFunction: return "function";
+    case TypeKindStruct:   return "struct";
+    case TypeKindArray:    return "array";
+    case TypeKindPointer:  return "pointer";
+    case TypeKindVector:   return "vector";
+  }
+  return "?";
+}
+
+
 Node* NewNode(Mem mem, NodeKind kind) {
   Node* n = (Node*)memalloc(mem, sizeof(Node));
   n->kind = kind;
@@ -55,8 +77,26 @@ Node* NewNode(Mem mem, NodeKind kind) {
 }
 
 
-const char* NodeKindName(NodeKind t) {
-  return NodeKindNameTable[t];
+Type* NewTypeType(Mem mem, Type* tn) {
+  Type* n = NewNode(mem, NTypeType);
+  n->t.type = tn;
+  return n;
+}
+
+
+Node* NodeUnbox(Node* n) {
+  while (1) switch (n->kind) {
+    case NId:
+      n = assertnotnull_debug(n->ref.target);
+      break;
+    case NVar:
+      if (!NodeIsConst(n) || !n->var.init)
+        return n;
+      n = assertnotnull_debug(n->var.init);
+      break;
+    default:
+      return n;
+  }
 }
 
 
@@ -432,7 +472,7 @@ const Scope* GetGlobalScope() {
   if (globalScope == NULL) {
     auto s = ScopeNew(NULL, MemHeap);
 
-    #define X(name) SymMapSet(&s->bindings, sym_##name, (void*)Type_##name);
+    #define X(name, ...) SymMapSet(&s->bindings, sym_##name, (void*)Type_##name);
     TYPE_SYMS(X)
     #undef X
 

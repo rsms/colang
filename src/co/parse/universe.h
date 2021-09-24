@@ -36,7 +36,8 @@ TOKEN_KEYWORDS(SYM_DEF)
 
 // symbols and AST nodes for predefined types (defined in types.h)
 typedef struct Node Node;
-#define SYM_DEF(name) \
+extern Node* Type_type;
+#define SYM_DEF(name, ...) \
   extern const Sym sym_##name; \
   extern Node* Type_##name;
 TYPE_SYMS(SYM_DEF)

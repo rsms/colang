@@ -6,7 +6,7 @@ ASSUME_NONNULL_BEGIN
 
 // NodeClassFlags classifies AST Node kinds
 typedef enum {
-  NodeClassInvalid = 0,
+  NodeClassNone = 0,
 
   // category
   NodeClassLit  = 1 << 0, // literals like 123, true, nil.
@@ -17,8 +17,10 @@ typedef enum {
 // DEF_NODE_KINDS defines primary node kinds which are either expressions or start of expressions
 #define DEF_NODE_KINDS(_) \
   /* N<kind>     classification */ \
-  _(None,        NodeClassInvalid) \
-  _(Bad,         NodeClassInvalid) /* substitute "filler node" for invalid syntax */ \
+  _(None,        NodeClassNone) \
+  _(Bad,         NodeClassNone) /* substitute "filler node" for invalid syntax */ \
+  _(Pkg,         NodeClassNone) \
+  _(File,        NodeClassNone) \
   \
   _(BoolLit,     NodeClassLit) /* boolean literal */ \
   _(IntLit,      NodeClassLit) /* integer literal */ \
@@ -32,8 +34,6 @@ typedef enum {
   _(Selector,    NodeClassExpr) \
   _(Index,       NodeClassExpr) \
   _(Slice,       NodeClassExpr) \
-  _(Pkg,         NodeClassExpr) \
-  _(File,        NodeClassExpr) \
   _(Fun,         NodeClassExpr) \
   _(Id,          NodeClassExpr) \
   _(If,          NodeClassExpr) \
@@ -53,6 +53,7 @@ typedef enum {
   _(TupleType,   NodeClassType) /* (float,bool,int) */ \
   _(StructType,  NodeClassType) /* struct{foo float; y bool} */ \
   _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
+  _(TypeType,    NodeClassNone) /* type of a type */ \
 /*END DEF_NODE_KINDS*/
 
 // NodeKind { NNone, NBad, NBoolLit, ... ,_NodeKindMax }
@@ -62,17 +63,6 @@ typedef enum {
   #undef I_ENUM
   _NodeKindMax
 } NodeKind;
-
-// NodeKindName returns the name of node kind constant
-const char* NodeKindName(NodeKind);
-
-// DebugNodeClassStr returns a printable representation of NodeClassFlags. Not thread safe!
-#ifdef DEBUG
-  #define DebugNodeClassStr(fl) _DebugNodeClassStr((fl), __LINE__)
-  const char* _DebugNodeClassStr(NodeClassFlags, u32 lineno);
-#else
-  #define DebugNodeClassStr(fl) ("NodeClassFlags")
-#endif
 
 // AST node types
 typedef struct Node Node;
@@ -103,6 +93,20 @@ typedef struct NVal {
     Str    s;  // StrLit
   };
 } NVal;
+
+// NodeTypeKind
+typedef enum {
+  TypeKindVoid,     // type with no size
+  TypeKindF16,      // 16 bit floating point type
+  TypeKindF32,      // 32 bit floating point type
+  TypeKindF64,      // 64 bit floating point type
+  TypeKindInteger,  // Arbitrary bit width integers
+  TypeKindFunction, // Functions
+  TypeKindStruct,   // Structures
+  TypeKindArray,    // Arrays
+  TypeKindPointer,  // Pointers
+  TypeKindVector,   // Fixed width SIMD vector type
+} TypeKind; // similar to LLVMTypeKind
 
 // NodeFlags
 typedef enum {
@@ -201,6 +205,7 @@ typedef struct Node {
     // Type
     /* t */ struct {
       Sym nullable id; // lazy; initially NULL. Computed from Node.
+      TypeKind     kind;
       union {
         /* basic */ struct { // BasicType (int, bool, auto, etc)
           TypeCode typeCode;
@@ -218,12 +223,13 @@ typedef struct Node {
         /* struc */ struct { // StructType
           Sym nullable name;         // NULL for anonymous structs
           NodeArray    a;            // NField[]
-          Node*        a_storage[4]; // in-struct storage for the first few entries of a
+          Node*        a_storage[3]; // in-struct storage for the first few entries of a
         } struc;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType
           Node* nullable result; // tuple or single type
         } fun;
+        Type* type; // TypeType
       };
     } t;
 
@@ -263,6 +269,20 @@ ConstStr fmtast(const Node* nullable n);
 // fmtnode returns a short representation of n using NodeStr, suitable for error messages.
 // This function is not suitable for high-frequency use as it uses temporary buffers in TLS.
 ConstStr fmtnode(const Node* nullable n);
+
+// NodeKindName returns the name of node kind constant
+const char* NodeKindName(NodeKind);
+
+// TypeKindName returns the name of type kind constant
+const char* TypeKindName(TypeKind);
+
+// DebugNodeClassStr returns a printable representation of NodeClassFlags. Not thread safe!
+#ifdef DEBUG
+  #define DebugNodeClassStr(fl) _DebugNodeClassStr((fl), __LINE__)
+  const char* _DebugNodeClassStr(NodeClassFlags, u32 lineno);
+#else
+  #define DebugNodeClassStr(fl) ("NodeClassFlags")
+#endif
 
 // NodeKindClass returns NodeClassFlags for kind. It's a fast inline table lookup.
 static NodeClassFlags NodeKindClass(NodeKind kind);
@@ -339,6 +359,10 @@ static Node* NodeRefAny(Node* n); // any
 // Returns the value of n->var.nrefs after the subtraction.
 static u32 NodeUnrefVar(Node* n); // NVar
 
+// NodeUnbox returns the effective value of n by unboxing NId to its target
+// and immutable variables to their initializer.
+Node* NodeUnbox(Node* n);
+
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
 
@@ -377,6 +401,9 @@ extern const Node* NodeBad; // kind==NBad
 
 // NewNode allocates a node in mem
 Node* NewNode(Mem mem, NodeKind kind);
+
+// NewTypeType allocates a NTypeType for type tn in mem
+Type* NewTypeType(Mem mem, Type* tn);
 
 // NodeCopy creates a shallow copy of n in mem
 static Node* NodeCopy(Mem mem, const Node* n);

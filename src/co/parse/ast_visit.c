@@ -144,6 +144,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
+  case NTypeType:
+    return CALLBACK(assertnotnull_debug(n->t.type), "type");
+
   // Remaining nodes has no children.
   // Note: No default case, so that the compiler warns us about missing cases.
   case NBad:

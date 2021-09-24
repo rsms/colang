@@ -94,30 +94,30 @@ const char* CTypeName(CType ct);
 // IMPORTANT: These must match the list of TypeCodes up until CONCRETE_END.
 // Looking for all type defs? universe.h puts it all together.
 #define TYPE_SYMS(_) \
-  _( bool  ) \
-  _( i8    ) \
-  _( u8    ) \
-  _( i16   ) \
-  _( u16   ) \
-  _( i32   ) \
-  _( u32   ) \
-  _( i64   ) \
-  _( u64   ) \
-  _( f32   ) \
-  _( f64   ) \
-  _( int   ) \
-  _( uint  ) \
-  _( isize ) \
-  _( usize ) \
-  _( str   ) \
-  _( auto  ) \
+  _( bool  ,TypeKindInteger ) \
+  _( i8    ,TypeKindInteger ) \
+  _( u8    ,TypeKindInteger ) \
+  _( i16   ,TypeKindInteger ) \
+  _( u16   ,TypeKindInteger ) \
+  _( i32   ,TypeKindInteger ) \
+  _( u32   ,TypeKindInteger ) \
+  _( i64   ,TypeKindInteger ) \
+  _( u64   ,TypeKindInteger ) \
+  _( f32   ,TypeKindF32 ) \
+  _( f64   ,TypeKindF64 ) \
+  _( int   ,TypeKindInteger ) \
+  _( uint  ,TypeKindInteger ) \
+  _( isize ,TypeKindInteger ) \
+  _( usize ,TypeKindInteger ) \
+  _( str   ,TypeKindPointer ) \
+  _( auto  ,TypeKindVoid ) \
 /*END TYPE_SYMS*/
 
 // TYPE_SYMS_PRIVATE: named types like TYPE_SYMS but not exported in the global namespace.
 // These also have AST nodes `Type_NAME` predefined by universe.c
 #define TYPE_SYMS_PRIVATE(_) \
-  _( ideal ) \
-  _( nil ) \
+  _( ideal, TypeKindVoid ) \
+  _( nil,   TypeKindVoid ) \
 /*END TYPE_SYMS_PRIVATE*/
 
 // TypeCodeEncoding returns the string encoding character for type code t.

@@ -78,7 +78,7 @@ static bool visit(NodeList* nl, void* ctxp) {
   }
 
   // check for "bad" nodes (placeholders used to recover parsing on syntax error)
-  if (NodeKindClass(n->kind) == NodeClassInvalid) {
+  if (NodeKindClass(n->kind) == NodeClassNone && n->kind != NPkg && n->kind != NFile) {
     report_error(ctx, nl, "invalid AST node");
     errors = true;
   }

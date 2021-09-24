@@ -9,6 +9,10 @@
 //#define RUN_GENERATOR
 
 
+static const Node _Type_type = {.kind=NTypeType, .flags=NodeFlagConst};
+Node* Type_type = (Node*)&_Type_type;
+
+
 //-- BEGIN gen_constants()
 
 const Sym sym_as = &"\x87\x3D\x7F\xCD\x02\x00\x00\x08""as\0"[8];
@@ -71,44 +75,44 @@ const Sym sym_a = &"\x60\xE5\x1B\x67\x01\x00\x00\x00""a\0"[8];
 const Sym sym_$x2a = &"\x9C\x1C\x9F\x3C\x01\x00\x00\x00""*\0"[8];
 const Sym sym_0 = &"\xFE\xED\xFA\xA1\x01\x00\x00\x00""0\0"[8];
 
-static Node _Type_bool =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_b,.basic={TypeCode_bool,sym_bool}}}};
-static Node _Type_i8 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_1,.basic={TypeCode_i8,sym_i8}}}};
-static Node _Type_u8 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_2,.basic={TypeCode_u8,sym_u8}}}};
-static Node _Type_i16 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_3,.basic={TypeCode_i16,sym_i16}}}};
-static Node _Type_u16 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_4,.basic={TypeCode_u16,sym_u16}}}};
-static Node _Type_i32 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_5,.basic={TypeCode_i32,sym_i32}}}};
-static Node _Type_u32 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_6,.basic={TypeCode_u32,sym_u32}}}};
-static Node _Type_i64 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_7,.basic={TypeCode_i64,sym_i64}}}};
-static Node _Type_u64 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_8,.basic={TypeCode_u64,sym_u64}}}};
-static Node _Type_f32 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_f,.basic={TypeCode_f32,sym_f32}}}};
-static Node _Type_f64 =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_F,.basic={TypeCode_f64,sym_f64}}}};
-static Node _Type_int =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_i,.basic={TypeCode_int,sym_int}}}};
-static Node _Type_uint =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_u,.basic={TypeCode_uint,sym_uint}}}};
-static Node _Type_isize =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_I,.basic={TypeCode_isize,sym_isize}}}};
-static Node _Type_usize =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_U,.basic={TypeCode_usize,sym_usize}}}};
-static Node _Type_str =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_s,.basic={TypeCode_str,sym_str}}}};
-static Node _Type_auto =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_a,.basic={TypeCode_auto,sym_auto}}}};
-static Node _Type_ideal =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_$x2a,.basic={TypeCode_ideal,sym_ideal}}}};
-static Node _Type_nil =
-  {NBasicType,NodeFlagConst,0,0,NULL,NULL,{.t={sym_0,.basic={TypeCode_nil,sym_nil}}}};
+static const Node _Type_bool = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_b,TypeKindInteger,.basic={TypeCode_bool,sym_bool}}} };
+static const Node _Type_i8 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_1,TypeKindInteger,.basic={TypeCode_i8,sym_i8}}} };
+static const Node _Type_u8 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_2,TypeKindInteger,.basic={TypeCode_u8,sym_u8}}} };
+static const Node _Type_i16 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_3,TypeKindInteger,.basic={TypeCode_i16,sym_i16}}} };
+static const Node _Type_u16 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_4,TypeKindInteger,.basic={TypeCode_u16,sym_u16}}} };
+static const Node _Type_i32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_5,TypeKindInteger,.basic={TypeCode_i32,sym_i32}}} };
+static const Node _Type_u32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_6,TypeKindInteger,.basic={TypeCode_u32,sym_u32}}} };
+static const Node _Type_i64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_7,TypeKindInteger,.basic={TypeCode_i64,sym_i64}}} };
+static const Node _Type_u64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_8,TypeKindInteger,.basic={TypeCode_u64,sym_u64}}} };
+static const Node _Type_f32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_f,TypeKindF32,.basic={TypeCode_f32,sym_f32}}} };
+static const Node _Type_f64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_F,TypeKindF64,.basic={TypeCode_f64,sym_f64}}} };
+static const Node _Type_int = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_i,TypeKindInteger,.basic={TypeCode_int,sym_int}}} };
+static const Node _Type_uint = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_u,TypeKindInteger,.basic={TypeCode_uint,sym_uint}}} };
+static const Node _Type_isize = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_I,TypeKindInteger,.basic={TypeCode_isize,sym_isize}}} };
+static const Node _Type_usize = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_U,TypeKindInteger,.basic={TypeCode_usize,sym_usize}}} };
+static const Node _Type_str = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_s,TypeKindPointer,.basic={TypeCode_str,sym_str}}} };
+static const Node _Type_auto = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_a,TypeKindVoid,.basic={TypeCode_auto,sym_auto}}} };
+static const Node _Type_ideal = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_$x2a,TypeKindVoid,.basic={TypeCode_ideal,sym_ideal}}} };
+static const Node _Type_nil = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+  {.t={sym_0,TypeKindVoid,.basic={TypeCode_nil,sym_nil}}} };
 
 static const Node _Const_true =
   {NBoolLit,NodeFlagConst,0,0,(Node*)&_Type_bool,NULL,{.val={CType_bool,.i=1}}};
@@ -139,28 +143,6 @@ Node* Type_nil = (Node*)&_Type_nil;
 Node* Const_true = (Node*)&_Const_true;
 Node* Const_false = (Node*)&_Const_false;
 Node* Const_nil = (Node*)&_Const_nil;
-
-inline static void init_type_nodes() {
-  _Type_bool.type = Type_bool;
-  _Type_i8.type = Type_i8;
-  _Type_u8.type = Type_u8;
-  _Type_i16.type = Type_i16;
-  _Type_u16.type = Type_u16;
-  _Type_i32.type = Type_i32;
-  _Type_u32.type = Type_u32;
-  _Type_i64.type = Type_i64;
-  _Type_u64.type = Type_u64;
-  _Type_f32.type = Type_f32;
-  _Type_f64.type = Type_f64;
-  _Type_int.type = Type_int;
-  _Type_uint.type = Type_uint;
-  _Type_isize.type = Type_isize;
-  _Type_usize.type = Type_usize;
-  _Type_str.type = Type_str;
-  _Type_auto.type = Type_auto;
-  _Type_ideal.type = Type_ideal;
-  _Type_nil.type = Type_nil;
-}
 
 static SymRBNode n_u16 = { sym_u16, true, NULL, NULL };
 static SymRBNode n_bool = { sym_bool, true, NULL, NULL };
@@ -229,8 +211,8 @@ __attribute__((used)) static const char* const debugSymCheck =
   "as#101 auto#102 break#103 continue#104 defer#105 else#106 enum#107 "
   "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e select#10f "
   "struct#110 switch#111 type#112 var#113 bool i8 u8 i16 u16 i32 u32 i64 "
-  "u64 f32 f64 int uint isize usize str auto true:bool=1 false:bool=0 nil:nil=0 "
-  "_ ";
+  "u64 f32 f64 int uint isize usize str auto ideal nil true:bool=1 false:bool=0 "
+  "nil:nil=0 _ ";
 #endif
 
 //-- END gen_constants()
@@ -240,7 +222,7 @@ __attribute__((used)) static const char* const debugSymCheck =
 const SymPool* universe_syms() {
   static SymPool p = {};
   if (p.root == NULL) {
-    init_type_nodes();
+    //init_type_nodes();
     sympool_init(&p, NULL, MemInvalid(), _symroot);
   }
   return &p;
@@ -457,12 +439,12 @@ __attribute__((constructor,used)) static void gen_constants() {
   // TODO: precompute t.id Sym
   // const Node* type_NAME
   printf("\n");
-  #define NODE_GEN(name)                                                       \
-    printf(                                                                    \
-      "static Node _Type_%s =\n"                                               \
-      "  {NBasicType,NodeFlagConst,0,0,NULL,NULL,"                             \
-        "{.t={sym_%s,.basic={TypeCode_%s,sym_%s}}}};\n",                       \
-      #name, typecode_cident(TypeCodeEncoding(TypeCode_##name)), #name, #name  \
+  #define NODE_GEN(name, typeKind)                                                       \
+    printf(                                                                              \
+      "static const Node _Type_%s ="                                                     \
+      " { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,\n"                       \
+      "  {.t={sym_%s,%s,.basic={TypeCode_%s,sym_%s}}} };\n",                             \
+      #name, typecode_cident(TypeCodeEncoding(TypeCode_##name)), #typeKind, #name, #name \
     );
   TYPE_SYMS(NODE_GEN)
   TYPE_SYMS_PRIVATE(NODE_GEN)
@@ -488,7 +470,7 @@ __attribute__((constructor,used)) static void gen_constants() {
 
   // Generate named pointers
   printf("\n");
-  #define NODE_GEN(name) printf("Node* Type_%s = (Node*)&_Type_%s;\n", #name, #name);
+  #define NODE_GEN(name, ...) printf("Node* Type_%s = (Node*)&_Type_%s;\n", #name, #name);
   TYPE_SYMS(NODE_GEN)
   TYPE_SYMS_PRIVATE(NODE_GEN)
   #undef NODE_GEN
@@ -497,16 +479,16 @@ __attribute__((constructor,used)) static void gen_constants() {
   #undef NODE_GEN
 
 
-  // generate function "init_type_nodes" to init type nodes, e.g.
-  //   _Type_i32.type = Type_i32;
-  printf("\n");
-  printf("inline static void init_type_nodes() {\n");
-  #define NODE_GEN(name) \
-    printf("  _Type_%s.type = Type_%s;\n", #name, #name);
-  TYPE_SYMS(NODE_GEN)
-  TYPE_SYMS_PRIVATE(NODE_GEN)
-  #undef NODE_GEN
-  printf("}\n");
+  // // generate function "init_type_nodes" to init type nodes, e.g.
+  // //   _Type_i32.type = Type_i32;
+  // printf("\n");
+  // printf("inline static void init_type_nodes() {\n");
+  // #define NODE_GEN(name, ...) \
+  //   printf("  _Type_%s.type = Type_%s;\n", #name, #name);
+  // TYPE_SYMS(NODE_GEN)
+  // TYPE_SYMS_PRIVATE(NODE_GEN)
+  // #undef NODE_GEN
+  // printf("}\n");
 
 
   // ---------------------------------------------------------------------------------------------
@@ -573,12 +555,13 @@ __attribute__((constructor,used)) static void gen_constants() {
     printf("%s:%s=%s ", #name, #type, #val);   \
     col += strlen(#name #type #val) + 3;      \
     if (col > 70) { col = 0; printf("\"\n  \""); }
-  #define NAME(name)               \
+  #define NAME(name, ...)          \
     printf("%s ", #name);          \
     col += strlen(#name) + 1;      \
     if (col > 70) { col = 0; printf("\"\n  \""); }
   TOKEN_KEYWORDS(KW)
   TYPE_SYMS(NAME)
+  TYPE_SYMS_PRIVATE(NAME)
   PREDEFINED_CONSTANTS(CONST)
   PREDEFINED_IDENTS(NAME)
   #undef KW
@@ -606,9 +589,10 @@ __attribute__((constructor)) static void debug_check() {
 
   #define KW(str, tok)           s = str_appendfmt(s, "%s#%03x ", #str, tok);
   #define CONST(name, type, val) s = str_appendfmt(s, "%s:%s=%s ", #name, #type, #val);
-  #define NAME(name)             s = str_appendcstr(s, #name " ");
+  #define NAME(name, ...)        s = str_appendcstr(s, #name " ");
   TOKEN_KEYWORDS(KW)
   TYPE_SYMS(NAME)
+  TYPE_SYMS_PRIVATE(NAME)
   PREDEFINED_CONSTANTS(CONST)
   PREDEFINED_IDENTS(NAME)
   #undef KW

@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -469,6 +469,8 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
     // multi assignment: support var definitions which have NULL as LHS values
     ctx->typecontext = n->op.left->type;
   }
+  // if (n->op.left->type != Type_ideal)
+  //   ctx->typecontext = n->op.left->type;
   n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
   lt = n->op.left->type;
   rt = n->op.right->type;
@@ -620,24 +622,32 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   // making this safe (i.e. will not cause an infinite loop.)
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
 
-  // type call?
-  if (NodeIsType(n->call.receiver)) {
-    // return resolve_type_call(ctx, n, fl);
+  dlog("call (N%s) %s (type %s)",
+    NodeKindName(n->call.receiver->kind), fmtnode(n->call.receiver),
+    fmtnode(n->call.receiver->type));
+
+  // Node* recv = unbox(n->call.receiver);
+  Node* recv = n->call.receiver;
+
+  if (recv->type->kind == NTypeType) {
+    if (assertnotnull_debug(recv->type->t.type)->kind == NStructType) {
+      n->kind = NStructCons;
+      return resolve_struct_cons(ctx, n, fl);
+    }
     panic("TODO: resolve type call");
   }
 
-  // must be function call
-  auto ft = n->call.receiver->type;
-  assert(ft != NULL);
-  if (R_UNLIKELY(ft->kind != NFunType)) {
-    build_errf(ctx->build, NodePosSpan(n->call.receiver),
-      "cannot call %s", fmtnode(n->call.receiver));
-    n->type = Type_nil;
-    return n;
+  if (recv->kind == NMacro) {
+    panic("TODO: resolve macro call (infer macro arguments)");
   }
 
-  if (n->call.receiver->kind == NMacro) {
-    panic("TODO: resolve macro call (infer macro arguments)");
+  // must be function call
+  auto ft = recv->type;
+  if (R_UNLIKELY(ft->kind != NFunType)) {
+    build_errf(ctx->build, NodePosSpan(n->call.receiver),
+      "cannot call %s (%s)", fmtnode(recv), fmtnode(ft));
+    n->type = Type_nil;
+    return n;
   }
 
   dlog_mod("%s ft: %s", __func__, fmtnode(ft));
@@ -680,8 +690,8 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
       argtypes = (const char*)fmtnode(n->call.args->type);
     }
     build_errf(ctx->build, posSpan,
-      "can't call function %s %s with arguments of type %s",
-      fmtnode(n->call.receiver), fmtnode(ft), argtypes);
+      "can't call function %s (type %s) with arguments of type %s",
+      fmtnode(recv), fmtnode(ft), argtypes);
   }
 
   n->type = ft->t.fun.result;
@@ -745,14 +755,6 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
   }
   n->ref.target = resolve_type(ctx, n->ref.target, fl);
   n->type = n->ref.target->type;
-
-  // // unwind compile-time constant [edit: breaks struct cons access?]
-  // n = n->ref.target;
-  // while (n->kind == NVar && NodeIsConst(n)) {
-  //   NodeUnrefVar(n);
-  //   n = n->var.init;
-  // }
-
   return n;
 }
 
@@ -829,7 +831,7 @@ static Type* resolve_struct_type(ResCtx* ctx, Type* t, RFlag fl) {
   asserteq_debug(t->kind, NStructType);
 
   // clear flag
-  // t->flags &= ~NodeFlagCustomInit;
+  t->flags &= ~NodeFlagCustomInit;
 
   // make sure we resolve ideals
   fl |= RFlagResolveIdeal | RFlagEager;
@@ -838,13 +840,18 @@ static Type* resolve_struct_type(ResCtx* ctx, Type* t, RFlag fl) {
 
   for (u32 i = 0; i < t->t.struc.a.len; i++) {
     Node* field = t->t.struc.a.v[i];
-    if (field->field.init) {
-      ctx->typecontext = field->type;
-      field->field.init = resolve_type(ctx, field->field.init, fl);
-      //field->flags &= ~NodeFlagCustomInit; // not neccessary, but nice for consistency
-      if (!field->type)
-        field->type = field->field.init->type;
-    }
+    field = resolve_type(ctx, field, fl);
+    t->t.struc.a.v[i] = field;
+
+    // if (field->field.init) {
+    //   ctx->typecontext = field->type;
+    //   field->field.init = resolve_type(ctx, field->field.init, fl);
+    //   //field->flags &= ~NodeFlagCustomInit; // not neccessary, but nice for consistency
+    //   if (!field->type)
+    //     field->type = field->field.init->type;
+    // }
+
+    assertnotnull_debug(field->type);
     if (!is_type_complete(field->type)) {
       ctx->typecontext = field->type; // in case it changed above
       field->type = resolve_type(ctx, field->type, fl);
@@ -852,6 +859,8 @@ static Type* resolve_struct_type(ResCtx* ctx, Type* t, RFlag fl) {
   }
 
   ctx->typecontext = typecontext; // restore
+  // t->type = Type_type;
+  t->type = NewTypeType(ctx->build->mem, t);
 
   return t;
 }
@@ -996,18 +1005,35 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   //   return n;
 
   n->var.init = resolve_type(ctx, n->var.init, fl);
-
-  // check for type as vars might point to types (and typeof(t) is Type)
-  n->type = NodeIsType(n->var.init) ? n->var.init : n->var.init->type;
+  n->type = assertnotnull_debug(n->var.init->type);
   return n;
 }
 
 
 static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NField);
-  assertnotnull_debug(n->field.init);
-  n->field.init = resolve_type(ctx, n->field.init, fl);
-  n->type = n->field.init->type;
+
+  if (n->field.init) {
+    n->flags &= ~NodeFlagCustomInit;
+
+    auto typecontext = typecontext_set(ctx, n->type);
+
+    n->field.init = resolve_type(ctx, n->field.init, fl);
+
+    if (n->field.init->type != n->type) {
+      build_errf(ctx->build, NodePosSpan(n->field.init),
+        "value of type %s where type %s is expected",
+        fmtnode(n->field.init->type), fmtnode(n->type));
+      if (n->type->kind == NBasicType) {
+        // suggest type cast: x + (y as int)
+        build_notef(ctx->build, NodePosSpan(n->op.right),
+          "try a type cast: %s(%s)", fmtnode(n->type), fmtnode(n->field.init));
+      }
+    }
+
+    ctx->typecontext = typecontext; // restore typecontext
+  }
+
   return n;
 }
 
@@ -1175,6 +1201,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NNone:
   case NBasicType:
   case NTupleType:
+  case NTypeType:
   case _NodeKindMax:
     dlog("unexpected %s", fmtast(n));
     assert(!"expected to be typed");

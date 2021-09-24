@@ -910,6 +910,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NTupleType:
     case NArrayType:
     case NStructType:
+    case NTypeType:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;
 

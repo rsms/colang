@@ -5,11 +5,11 @@
 #   occupants int
 
 type Spaceship
-  shields f32
+  shields u8 = 1
   # Bridge
   engine
-    fuel   int = 1000
-    output int = fuel / 2
+    fuel   u64 = 1000
+    output int = int(fuel / 2)
 
 # fun Spaceship() Spaceship
 #   # custom constructor
@@ -20,11 +20,11 @@ type Spaceship
 
 B = Spaceship()
 
-fun main() int
-  # b = Bridge()
-  # B.engine.output = 3
-  B.engine.output
-#   # s = Spaceship()
-#   # s.engine.fuel
-#   # s.occupants
-#   # s.len # WIP
+# fun main() int
+#   # b = Bridge()
+#   # B.engine.output = 3
+#   B.engine.output
+# #   # s = Spaceship()
+# #   # s.engine.fuel
+# #   # s.occupants
+# #   # s.len # WIP
