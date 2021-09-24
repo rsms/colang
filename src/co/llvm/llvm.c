@@ -1,6 +1,7 @@
 #include "../common.h"
 #include "../parse/parse.h"
 #include "../util/rtimer.h"
+#include "../util/ptrmap.h"
 #include "llvm.h"
 
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
@@ -58,8 +59,8 @@ typedef struct B {
   // target
   LLVMTargetMachineRef target;
 
-  // AST types, keyed by typeid
-  SymMap internedTypes;
+  SymMap internedTypes; // AST types, keyed by typeid
+  PtrMap defaultInits;  // constant initializers (LLVMTypeRef => Value)
 
   // type constants
   LLVMTypeRef t_void;
@@ -241,6 +242,16 @@ static void add_intern_type(B* b, Type* tn, LLVMTypeRef tr) {
   assertnull_debug(get_intern_type(b, tn)); // must not be defined
   Sym tid = ntypeid(b, tn);
   SymMapSet(&b->internedTypes, tid, tr);
+}
+
+
+inline static Value nullable get_default_init(B* b, LLVMTypeRef ty) {
+  return (Value)PtrMapGet(&b->defaultInits, ty);
+}
+
+inline static void add_default_init(B* b, LLVMTypeRef ty, Value v) {
+  assertnull_debug(get_default_init(b, ty));
+  PtrMapSet(&b->defaultInits, ty, v);
 }
 
 
@@ -618,15 +629,26 @@ static Value build_initializer(B* b, Type* tn, Node* nullable init, const char* 
 }
 
 
-static Value build_struct_init(
-  B* b, Type* tn, Node* nullable init, LLVMTypeRef ty)
-{
+static Value build_field(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NField);
+  // TODO: use constructor arguments if present
+  return build_initializer(b, n->type, n->field.init, n->field.name);
+}
+
+
+static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef ty) {
   asserteq_debug(tn->kind, NStructType);
+  assert_debug(args == NULL || args->kind == NTuple);
 
-  if ((tn->flags & NodeFlagCustomInit) == 0)
-    return LLVMConstNull(ty);
+  Value v = NULL;
 
-  dlog("struct custom init %s", fmtnode(tn));
+  if (args == NULL && (v = get_default_init(b, ty))) {
+    // use precomputed default constant initializer
+    return v;
+  }
+
+  if (args)
+    dlog("TODO: use args as initializers %s", fmtnode(args));
 
   u32 numvalues = tn->t.struc.a.len;
   STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
@@ -637,15 +659,22 @@ static Value build_struct_init(
     values[i] = build_initializer(b, field->type, initexpr, field->field.name);
   }
 
-  for (u32 i = 0; i < numvalues; i++)
-    dlog("values[%u] %s", i, fmtvalue(values[i]));
-
+  // if all inits are zero, use LLVMConstNull
+  u32 nzero = 0;
   u32 nconst = 0;
   for (u32 i = 0; i < numvalues; i++)
-    nconst += LLVMIsConstant(values[i]);
+    nzero += (u32)LLVMIsNull(values[i]);
+  if (nzero == numvalues) {
+    v = LLVMConstNull(ty);
+    nconst = numvalues;
+    goto end;
+  }
 
-  Value v;
-  if (numvalues == nconst) {
+  // check if all initializers are constant
+  for (u32 i = 0; i < numvalues; i++)
+    nconst += (u32)LLVMIsConstant(values[i]);
+
+  if (nconst == numvalues) {
     const char* structName = LLVMGetStructName(ty);
     if (structName) {
       // LLVM treats named struct types as unique and so we can't use
@@ -655,10 +684,13 @@ static Value build_struct_init(
       v = LLVMConstStructInContext(b->ctx, values, numvalues, /*packed*/false);
     }
   } else {
-    panic("TODO");
+    panic("TODO: non-const struct initializer");
   }
 
+end:
   STK_ARRAY_DISPOSE(b, values);
+  if (args == NULL && nconst == numvalues)
+    add_default_init(b, ty, v); // save as default constant initializer
   return v;
 }
 
@@ -674,23 +706,17 @@ static Value build_struct_cons(B* b, Node* n, const char* debugname) {
   asserteq_debug(structType->kind, NStructType);
 
   LLVMTypeRef ty = get_struct_type(b, structType);
-  dlog("build_struct_cons %s", fmttype(ty));
+
+  Node* args = n->call.args == Const_nil ? NULL : n->call.args;
+  Value init = build_struct_init(b, structType, args, ty);
 
   if (!LLVMGetInsertBlock(b->builder)) {
     // global
-    Value init = build_struct_init(b, structType, NULL, ty);
-
-    dlog("LLVMIsConstant(init) %d", LLVMIsConstant(init));
-    dlog("LLVMSetInitializer %s", fmtvalue(init));
-    dlog("LLVMSetInitializer type: %s", fmttype(LLVMTypeOf(init)));
-    dlog("ptr type: %s", fmttype(ty));
-
     LLVMValueRef ptr = LLVMAddGlobal(b->mod, ty, debugname);
     LLVMSetLinkage(ptr, LLVMPrivateLinkage);
     LLVMSetInitializer(ptr, init);
     LLVMSetGlobalConstant(ptr, LLVMIsConstant(init));
     // LLVMSetUnnamedAddr(ptr, true);
-
     return ptr;
   }
 
@@ -1251,6 +1277,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
   switch (n->kind) {
     case NBinOp:      RET(build_binop(b, n, debugname));
     case NId:         RET(build_id_read(b, n, debugname));
+    case NField:      RET(build_field(b, n, debugname));
     case NVar:        RET(build_var(b, n, debugname));
     case NIntLit:     RET(build_intlit(b, n, debugname));
     case NFloatLit:   RET(build_floatlit(b, n, debugname));
@@ -1334,6 +1361,7 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
   _b.t_size = _b.t_i64; // alias size = i32
   B* b = &_b;
   SymMapInit(&b->internedTypes, 16, build->mem);
+  PtrMapInit(&b->defaultInits, 16, build->mem);
 
   // initialize function pass manager (optimize)
   if (b->FPM) {
@@ -1383,6 +1411,7 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
 finish:
 #endif
   SymMapDispose(&b->internedTypes);
+  PtrMapDispose(&b->defaultInits);
   if (b->FPM)
     LLVMDisposePassManager(b->FPM);
   LLVMDisposeBuilder(b->builder);

@@ -1,0 +1,12 @@
+type Spaceship
+  shields u8 = 0
+  engine
+    fuel   u64 = 1000
+    output int = int(fuel / 2)
+
+B = Spaceship()
+
+fun main() int
+  B.engine.output
+
+# expected_exit_status 500

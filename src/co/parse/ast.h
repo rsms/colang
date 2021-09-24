@@ -218,12 +218,12 @@ typedef struct Node {
         } array;
         /* tuple */ struct { // TupleType
           NodeArray a;            // Node[]
-          Node*     a_storage[4]; // in-struct storage for the first few entries of a
+          Node*     a_storage[4]; // in-struct storage for the first few elements
         } tuple;
         /* struc */ struct { // StructType
           Sym nullable name;         // NULL for anonymous structs
           NodeArray    a;            // NField[]
-          Node*        a_storage[3]; // in-struct storage for the first few entries of a
+          Node*        a_storage[3]; // in-struct storage for the first few fields
         } struc;
         /* fun */ struct { // FunType
           Node* nullable params; // kind==NTupleType

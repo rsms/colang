@@ -6,7 +6,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-#define DEBUG_MODULE ""
+//#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -594,9 +594,9 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   // making this safe (i.e. will not cause an infinite loop.)
   n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
 
-  dlog("call (N%s) %s (type %s)",
-    NodeKindName(n->call.receiver->kind), fmtnode(n->call.receiver),
-    fmtnode(n->call.receiver->type));
+  // dlog("call (N%s) %s (type %s)",
+  //   NodeKindName(n->call.receiver->kind), fmtnode(n->call.receiver),
+  //   fmtnode(n->call.receiver->type));
 
   // Node* recv = unbox(n->call.receiver);
   Node* recv = n->call.receiver;
@@ -877,7 +877,7 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSelector);
 
   n->sel.operand = resolve_type(ctx, n->sel.operand, fl);
-  Node* recvt = n->sel.operand->type;
+  Node* recvt = assertnotnull_debug(n->sel.operand->type);
 
   // if the receiver is a struct, attempt to resolve field
   if (recvt->kind == NStructType) {
@@ -885,6 +885,7 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
     if (!n->type) {
       build_errf(ctx->build, NodePosSpan(n),
         "no member %s in %s", n->sel.member, fmtnode(recvt));
+      n->type = Type_nil;
     }
     return n;
   }

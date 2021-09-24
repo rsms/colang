@@ -5,8 +5,7 @@
 #   occupants int
 
 type Spaceship
-  shields u8 = 1
-  # Bridge
+  shields u8 = 0
   engine
     fuel   u64 = 1000
     output int = int(fuel / 2)
@@ -18,13 +17,14 @@ type Spaceship
 # fun len(s Spaceship) auto
 #   s.occupants
 
+A = Spaceship()
 B = Spaceship()
 
 fun main() int
   # b = Bridge()
   # B.engine.output = 3
   B.engine.output
-#   # s = Spaceship()
-#   # s.engine.fuel
-#   # s.occupants
-#   # s.len # WIP
+  # s = Spaceship()
+  # s.engine.fuel
+  # s.occupants
+  # s.len # WIP
