@@ -432,32 +432,47 @@ static bool l_is_compact(Node* n) {
 }
 
 
-static bool l_collapse_field(NodeList* nl) {
+static bool l_collapse_field(LReprCtx* c, NodeList* nl) {
   if (!nl->parent)
     return false;
+
+  // don't collapse nodes which are likely to print many lines
+  if (nl->parent->n->kind != NTypeType && nl->n->kind == NStructType &&
+    PtrMapGet(&c->seenmap, nl->n) == NULL)
+  {
+    switch (nl->n->kind) {
+      case NStructType:
+      case NFun:
+      case NTuple:
+        return false;
+      default:
+        break;
+    }
+  }
+
   switch (nl->parent->n->kind) {
 
-  case NField:
-     return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->field.init);
-  case NVar:
-     return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init);
+    case NField:
+       return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->field.init);
+    case NVar:
+       return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init);
 
-  case NId:
-  case NReturn:
-  case NBoolLit:
-  case NFloatLit:
-  case NIntLit:
-  case NStrLit:
-  case NTypeType:
-    return true;
-
-  case NStructType:
-    return false;
-
-  default:
-    if (NodeIsType(nl->parent->n))
+    case NId:
+    case NReturn:
+    case NBoolLit:
+    case NFloatLit:
+    case NIntLit:
+    case NStrLit:
+    case NTypeType:
       return true;
-    return false;
+
+    case NStructType:
+      return false;
+
+    default:
+      if (NodeIsType(nl->parent->n))
+        return true;
+      return false;
   }
 }
 
@@ -504,6 +519,8 @@ static const char* l_listname(NodeList* nl) {
       return "struct";
     case NTypeType:
       return "type";
+    case NFunType:
+      return "fun";
     default:
       return NodeKindName(n->kind);
   }
@@ -585,7 +602,7 @@ static bool l_visit(NodeList* nl, void* cp) {
         s = str_appendc(s, ' ');
       addedIndent += INDENT_DEPTH;
     } else {
-      bool collapseField = l_collapse_field(nl);
+      bool collapseField = l_collapse_field(c, nl);
       if (collapseField && l_curr_line_len(c, s) < c->maxline) {
         // just a space as separator
         s = str_appendc(s, ' ');
@@ -821,6 +838,7 @@ static bool l_visit(NodeList* nl, void* cp) {
   {
     c->delim_open = c->langle;
     NodeList tnl = { .n = n->type, .parent = nl, .fieldname = "type" };
+    s = style_push(&c->style, s, type_color);
 
     if (n->type && (!nl->parent || nl->parent->n->type != n->type)) {
       // print this type since it differs from the parent type
@@ -834,7 +852,6 @@ static bool l_visit(NodeList* nl, void* cp) {
       } else {
         s = str_appendc(s, ' ');
       }
-      s = style_push(&c->style, s, type_color);
       s = append_open_delim(c, s);
       if (n->type) {
         // Type is same as parent type. (checked earlier)
@@ -852,8 +869,9 @@ static bool l_visit(NodeList* nl, void* cp) {
         s = str_appendcstr(s, "?");
       }
       s = append_close_delim(c, s);
-      s = style_pop(&c->style, s);
     }
+
+    s = style_pop(&c->style, s);
   }
 
   // end list
