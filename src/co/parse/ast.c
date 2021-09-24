@@ -17,7 +17,7 @@ static const char* const NodeKindNameTable[] = {
 };
 
 // Lookup table N<kind> => NClass<class>
-const NodeClassFlags _NodeClassTable[_NodeKindMax] = {
+const NodeClass _NodeClassTable[_NodeKindMax] = {
   #define I_ENUM(_name, flags) flags,
   DEF_NODE_KINDS(I_ENUM)
   #undef  I_ENUM
@@ -205,34 +205,16 @@ R_TEST(parse_node_repr_flags) {
 }
 
 
-#ifdef DEBUG
-const char* _DebugNodeClassStr(NodeClassFlags fl, u32 lineno) {
-  if (fl == 0)
-    return "invalid";
-  // select a temporary buffer to use
-  static char bufs[4][256];
-  static u32 bufsn = 0;
-  char* buf = bufs[(lineno + bufsn++) % countof(bufs)];
-  u32 len = 0;
-
-  #define APPEND(cstr) ({       \
-    size_t z = strlen(cstr);    \
-    if (len > 0)                \
-      buf[len++] = '|';         \
-    memcpy(buf+len, (cstr), z); \
-    len += z;                   \
-  })
-
-  // category
-  if (fl & NodeClassLit)  APPEND("lit");
-  if (fl & NodeClassExpr) APPEND("expr");
-  if (fl & NodeClassType) APPEND("type");
-
-  #undef APPEND
-  buf[len] = 0;
-  return buf;
+const char* NodeClassStr(NodeClass nc) {
+  switch (nc) {
+    case NodeClassNone: return "none";
+    case NodeClassLit:  return "lit";
+    case NodeClassExpr: return "expr";
+    case NodeClassType: return "type";
+    case NodeClassMeta: return "meta";
+  }
+  return "?";
 }
-#endif
 
 
 const Node* NodeEffectiveType(const Node* n) {

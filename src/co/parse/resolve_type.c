@@ -465,12 +465,12 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   // fl & ~RFlagResolveIdeal = clear "resolve ideal" flag
   auto typecontext = ctx->typecontext; // save typecontext
   n->op.left = resolve_type(ctx, n->op.left, fl & ~RFlagResolveIdeal);
-  if (n->op.op == TAssign && n->op.left->type->kind == NTupleType) {
-    // multi assignment: support var definitions which have NULL as LHS values
-    ctx->typecontext = n->op.left->type;
-  }
-  // if (n->op.left->type != Type_ideal)
+  // if (n->op.op == TAssign && n->op.left->type->kind == NTupleType) {
+  //   // multi assignment: support var definitions which have NULL as LHS values
   //   ctx->typecontext = n->op.left->type;
+  // }
+  if (n->op.left->type != Type_ideal)
+    ctx->typecontext = n->op.left->type;
   n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
   lt = n->op.left->type;
   rt = n->op.right->type;
@@ -524,7 +524,8 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
 
     // check if convlit failed
     if (R_UNLIKELY(!TypeEquals(ctx->build, lt, n->op.right->type))) {
-      build_errf(ctx->build, NodePosSpan(n), "invalid operation: %s (mismatched types %s and %s)",
+      build_errf(ctx->build, NodePosSpan(n),
+        "invalid operation: %s (mismatched types %s and %s)",
         fmtnode(n), fmtnode(lt), fmtnode(n->op.right->type));
       if (lt->kind == NBasicType) {
         // suggest type cast: x + (y as int)
@@ -590,7 +591,7 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
     n->call.args = convlit(
       ctx->build, n->call.args, n->call.receiver, ConvlitExplicit | ConvlitRelaxedType);
     if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
-      // source type == target type -- eliminate type cast
+      // source type == target type: eliminate type cast
       n = n->call.args;
     }
   }
@@ -598,21 +599,6 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   ctx->typecontext = typecontext; // restore typecontext
   return n;
 }
-
-
-// // Type call e.g. "int(x)", "[3]u8(1, 2, 3)", "MyStruct(45, 6)"
-// static Node* resolve_type_call(ResCtx* ctx, Node* n, RFlag fl) {
-//   asserteq_debug(n->kind, NCall);
-//   assert_debug(NodeIsType(n->call.receiver));
-//   dlog("[WIP] resolve type call %s", fmtnode(n));
-//   n->type = n->call.receiver;
-//   // call to type without constructor is treated as cast/conversion
-//   if (n->call.receiver->kind != NStructType) {
-//     n->kind = NTypeCast;
-//     return resolve_typecast(ctx, n, fl);
-//   }
-//   return n;
-// }
 
 
 static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
@@ -629,34 +615,33 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   // Node* recv = unbox(n->call.receiver);
   Node* recv = n->call.receiver;
 
-  if (recv->type->kind == NTypeType) {
-    if (assertnotnull_debug(recv->type->t.type)->kind == NStructType) {
-      n->kind = NStructCons;
-      return resolve_struct_cons(ctx, n, fl);
-    }
-    panic("TODO: resolve type call");
+  // expected input type
+  Type* intype = NULL;
+  Type* outtype = NULL;
+  Type* recvt = assertnotnull_debug(recv->type);
+  switch (recvt->kind) {
+    case NTypeType: // type constructor call
+      intype = recvt->t.type;
+      outtype = recvt->t.type;
+      break;
+    case NFunType: // function call
+      intype = recvt->t.fun.params;
+      outtype = recvt->t.fun.result;
+      break;
+    default:
+      build_errf(ctx->build, NodePosSpan(n->call.receiver),
+        "cannot call %s %s (%s)",
+        TypeKindName(recvt->t.kind), fmtnode(recv), fmtnode(recvt));
+      n->type = Type_nil;
+      return n;
   }
 
-  if (recv->kind == NMacro) {
-    panic("TODO: resolve macro call (infer macro arguments)");
-  }
+  dlog_mod("%s recvt: %s", __func__, fmtnode(recvt));
 
-  // must be function call
-  auto ft = recv->type;
-  if (R_UNLIKELY(ft->kind != NFunType)) {
-    build_errf(ctx->build, NodePosSpan(n->call.receiver),
-      "cannot call %s (%s)", fmtnode(recv), fmtnode(ft));
-    n->type = Type_nil;
-    return n;
-  }
 
-  dlog_mod("%s ft: %s", __func__, fmtnode(ft));
-
-  bool fail = false;
-
-  if (ft->t.fun.params) {
+  if (intype) {
     // add parameter types to the "requested type" stack
-    auto typecontext = typecontext_set(ctx, ft->t.fun.params);
+    auto typecontext = typecontext_set(ctx, intype);
 
     // input arguments, in context of receiver parameters
     assertnotnull(n->call.args);
@@ -669,32 +654,34 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
     // TODO: Consider arguments with defaults:
     // fun foo(a, b int, c int = 0)
     // foo(1, 2) == foo(1, 2, 0)
-
-    fail = !TypeEquals(ctx->build, ft->t.fun.params, n->call.args->type);
-  } else {
-    // no parameters
-    fail = (n->call.args && n->call.args != Const_nil);
-    // if (n->call.args && n->call.args != Const_nil) {
-    //   auto poss = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
-    //   build_errf(ctx->build, poss,
-    //     "passing arguments to a function that does not accept any arguments");
-    // }
   }
 
-  if (R_UNLIKELY(fail)) {
-    auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
-    const char* argtypes = "()";
-    if (n->call.args != Const_nil) {
-      if (!n->call.args->type)
-        n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
-      argtypes = (const char*)fmtnode(n->call.args->type);
+  // verify arguments
+  if (recvt->kind == NFunType) {
+    bool fail = false;
+    if (intype) {
+      fail = !TypeEquals(ctx->build, intype, n->call.args->type);
+    } else { // no parameters
+      fail = n->call.args && n->call.args != Const_nil;
     }
-    build_errf(ctx->build, posSpan,
-      "can't call function %s (type %s) with arguments of type %s",
-      fmtnode(recv), fmtnode(ft), argtypes);
+
+    if (R_UNLIKELY(fail)) {
+      auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
+      const char* argtypes = "()";
+      if (n->call.args != Const_nil) {
+        if (!n->call.args->type) {
+          n->call.args = resolve_type(
+            ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
+        }
+        argtypes = (const char*)fmtnode(n->call.args->type);
+      }
+      build_errf(ctx->build, posSpan,
+        "cannot call %s %s (%s) with arguments of type %s",
+        TypeKindName(recvt->t.kind), fmtnode(recv), fmtnode(recvt), argtypes);
+    }
   }
 
-  n->type = ft->t.fun.result;
+  n->type = outtype;
   return n;
 }
 
@@ -1049,7 +1036,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl) {
   dlog_mod("○ %s %s (%p, class %s, type %s%s%s)",
     NodeKindName(n->kind), fmtnode(n),
     n,
-    DebugNodeClassStr(NodeKindClass(n->kind)),
+    NodeClassStr(NodeKindClass(n->kind)),
     fmtnode(n->type),
     ctx->typecontext ? ", typecontext " : "",
     ctx->typecontext ? fmtnode(ctx->typecontext) : "" );

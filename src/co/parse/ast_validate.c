@@ -70,7 +70,7 @@ static bool visit(NodeList* nl, void* ctxp) {
 
   // check for missing types
   if ((ctx->fl & NodeValidateMissingTypes) &&
-      n->kind != NPkg && n->kind != NFile && !NodeIsType(n) &&
+      n->kind != NTypeType && n->kind != NPkg && n->kind != NFile && !NodeIsType(n) &&
       n->type == NULL)
   {
     report_error(ctx, nl, "missing type");

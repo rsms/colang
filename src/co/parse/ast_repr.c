@@ -812,7 +812,6 @@ static bool l_visit(NodeList* nl, void* cp) {
 
     if (n->type && (!nl->parent || nl->parent->n->type != n->type)) {
       // print this type since it differs from the parent type
-      dlog("dig type of %s", fmtnode(n));
       c->s = s; // store s
       l_visit(&tnl, c);
       s = c->s; // load s

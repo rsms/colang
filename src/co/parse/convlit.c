@@ -2,25 +2,14 @@
 #include "parse.h"
 
 // DEBUG_MODULE: define to enable debug logging
-//#define DEBUG_MODULE "convlit"
+//#define DEBUG_MODULE "[convlit] "
 
 #ifdef DEBUG_MODULE
-  #define dlog_mod(format, ...) dlog("[" DEBUG_MODULE "] " format, ##__VA_ARGS__)
+  #define dlog_mod(format, ...) dlog(DEBUG_MODULE format, ##__VA_ARGS__)
 #else
   #define dlog_mod(...) do{}while(0)
 #endif
 
-
-static void err_invalid_binop(Build* b, Node* n) {
-  assert(n->kind == NBinOp);
-  auto ltype = NodeEffectiveType(n->op.left);
-  auto rtype = NodeEffectiveType(n->op.right);
-  build_errf(b, NodePosSpan(n),
-    "invalid operation: %s (mismatched types %s and %s)",
-    TokName(n->op.op),
-    fmtnode(ltype),
-    fmtnode(rtype));
-}
 
 
 static const i64 min_intval[TypeCode_NUM_END] = {
@@ -122,11 +111,13 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
   assert(t != Type_ideal);
   assert(NodeKindIsType(t->kind));
 
-  dlog_mod("[%s] %s of type %s as %s",
+  dlog_mod("[%s] N%s %s of type %s as %s",
     (fl & ConvlitExplicit) ? "explicit" : "implicit",
-    fmtnode(n), fmtnode(n->type), fmtnode(t));
+    NodeKindName(n->kind), fmtnode(n), fmtnode(n->type), fmtnode(t));
 
-  if ((fl&ConvlitRelaxedType) && n->type != NULL && n->type != Type_nil && n->type != Type_ideal) {
+  if ((fl & ConvlitRelaxedType) &&
+    n->type != NULL && n->type != Type_nil && n->type != Type_ideal)
+  {
     if ((fl & ConvlitExplicit) == 0) {
       // in implicit mode, if something is typed already, we don't try and convert the type.
       dlog_mod("[implicit] no-op -- n is already typed: %s", fmtnode(n->type));
@@ -163,12 +154,15 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
       //   err_invalid_binop(b, n);
       //   break;
       // }
-      n->op.left  = convlit(b, n->op.left, t, fl);
-      n->op.right = convlit(b, n->op.right, t, fl);
-      if (R_UNLIKELY(!TypeEquals(b, n->op.left->type, n->op.right->type))) {
-        err_invalid_binop(b, n);
-        break;
+      assert(TypeEquals(b, n->op.left->type, n->op.right->type));
+      Node* left  = convlit(b, n->op.left, t, fl);
+      Node* right = convlit(b, n->op.right, t, fl);
+      if (!TypeEquals(b, left->type, right->type)) {
+        // literal conversion failed
+        return n;
       }
+      n->op.left = left;
+      n->op.right = right;
       n->type = n->op.left->type;
     } else {
       dlog("TODO NBinOp %s as %s", fmtnode(n), fmtnode(t));

@@ -4,23 +4,24 @@
 
 ASSUME_NONNULL_BEGIN
 
-// NodeClassFlags classifies AST Node kinds
+// NodeClass classifies AST Node kinds
 typedef enum {
   NodeClassNone = 0,
 
   // category
-  NodeClassLit  = 1 << 0, // literals like 123, true, nil.
-  NodeClassExpr = 1 << 1, // e.g. (+ x y)
-  NodeClassType = 1 << 2, // e.g. i32
-} NodeClassFlags;
+  NodeClassLit,  // literals like 123, true, nil.
+  NodeClassExpr, // e.g. (+ x y)
+  NodeClassType, // e.g. i32
+  NodeClassMeta, // e.g. TypeType
+} NodeClass;
 
 // DEF_NODE_KINDS defines primary node kinds which are either expressions or start of expressions
 #define DEF_NODE_KINDS(_) \
   /* N<kind>     classification */ \
   _(None,        NodeClassNone) \
   _(Bad,         NodeClassNone) /* substitute "filler node" for invalid syntax */ \
-  _(Pkg,         NodeClassNone) \
-  _(File,        NodeClassNone) \
+  _(Pkg,         NodeClassMeta) \
+  _(File,        NodeClassMeta) \
   \
   _(BoolLit,     NodeClassLit) /* boolean literal */ \
   _(IntLit,      NodeClassLit) /* integer literal */ \
@@ -53,7 +54,7 @@ typedef enum {
   _(TupleType,   NodeClassType) /* (float,bool,int) */ \
   _(StructType,  NodeClassType) /* struct{foo float; y bool} */ \
   _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
-  _(TypeType,    NodeClassNone) /* type of a type */ \
+  _(TypeType,    NodeClassMeta) /* type of a type */ \
 /*END DEF_NODE_KINDS*/
 
 // NodeKind { NNone, NBad, NBoolLit, ... ,_NodeKindMax }
@@ -276,20 +277,17 @@ const char* NodeKindName(NodeKind);
 // TypeKindName returns the name of type kind constant
 const char* TypeKindName(TypeKind);
 
-// DebugNodeClassStr returns a printable representation of NodeClassFlags. Not thread safe!
-#ifdef DEBUG
-  #define DebugNodeClassStr(fl) _DebugNodeClassStr((fl), __LINE__)
-  const char* _DebugNodeClassStr(NodeClassFlags, u32 lineno);
-#else
-  #define DebugNodeClassStr(fl) ("NodeClassFlags")
-#endif
+// NodeClassStr returns a printable representation of NodeClass
+const char* NodeClassStr(NodeClass);
 
-// NodeKindClass returns NodeClassFlags for kind. It's a fast inline table lookup.
-static NodeClassFlags NodeKindClass(NodeKind kind);
+// NodeKindClass returns NodeClass for kind. It's a fast inline table lookup.
+static NodeClass NodeKindClass(NodeKind kind);
 
 // NodeKindIs{Type|Expr} returns true if kind is of class Type or Expr.
-inline static bool NodeKindIsType(NodeKind kind) { return NodeKindClass(kind) & NodeClassType; }
-inline static bool NodeKindIsExpr(NodeKind kind) { return NodeKindClass(kind) & NodeClassExpr; }
+inline static bool NodeKindIsType(NodeKind kind) {
+  return NodeKindClass(kind) == NodeClassType; }
+inline static bool NodeKindIsExpr(NodeKind kind) {
+  return NodeKindClass(kind) == NodeClassExpr; }
 
 // NodeIs{Type|Expr} calls NodeKindIs{Type|Expr}(n->kind)
 static bool NodeIsType(const Node* n);
@@ -461,9 +459,9 @@ bool NodeValidate(Build* b, Node* n, NodeValidateFlags fl);
 // -----------------------------------------------------------------------------------------------
 // implementations
 
-extern const NodeClassFlags _NodeClassTable[_NodeKindMax];
+extern const NodeClass _NodeClassTable[_NodeKindMax];
 
-inline static NodeClassFlags NodeKindClass(NodeKind kind) {
+inline static NodeClass NodeKindClass(NodeKind kind) {
   return _NodeClassTable[kind];
 }
 
