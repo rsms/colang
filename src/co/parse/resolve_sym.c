@@ -4,7 +4,7 @@
 
 
 // DEBUG_MODULE: define to enable trace logging
-#define DEBUG_MODULE ""
+//#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -200,31 +200,11 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
   }
 
   case NTypeCast:
-  case NStructCons:
   case NCall:
     if (n->call.args)
       n->call.args = resolve_sym(ctx, n->call.args);
     n->call.receiver = resolve_sym(ctx, n->call.receiver);
-    if (n->call.receiver->kind == NStructType) {
-      n->kind = NStructCons;
-    }
     break;
-
-  // the following moved to type resolver:
-  // case NCall:
-  //   if (n->call.args)
-  //     n->call.args = resolve_sym(ctx, n->call.args);
-  //   auto recv = resolve_sym(ctx, n->call.receiver);
-  //   // n->call.receiver = recv; // don't short circuit; messes up diagnostics
-  //   if (recv->kind != NFun) {
-  //     // convert to type cast, if receiver is a type. e.g. "x = uint8(4)"
-  //     if (recv->kind == NBasicType) {
-  //       n->kind = NTypeCast;
-  //     } else if (recv->kind != NId) {
-  //       build_errf(ctx->build, NodePosSpan(recv), "cannot call %s", fmtnode(recv));
-  //     }
-  //   }
-  //   break;
 
   case NVar:
     if (n->var.init)

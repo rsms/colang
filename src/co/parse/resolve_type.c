@@ -262,23 +262,29 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
     ft->t.fun.params = (Type*)n->fun.params->type;
   }
 
+  // return type
   assertnotnull(n->fun.result);
-  n->fun.result = resolve_type(ctx, n->fun.result, fl);
-  ft->t.fun.result = n->fun.result->type;
+  ft->t.fun.result = resolve_type(ctx, n->fun.result, fl);
+  if (R_UNLIKELY(!NodeIsType(ft->t.fun.result))) {
+    build_errf(ctx->build, NodePosSpan(n->fun.result),
+      "%s is not a type", fmtnode(n->fun.result));
 
-  if (n->fun.body) {
+  } else if (n->fun.body) {
+    // body
     n->fun.body = resolve_type(ctx, n->fun.body, fl);
 
     if (n->fun.body->type == Type_ideal && ft->t.fun.result != Type_nil) {
       n->fun.body = resolve_ideal_type(ctx, n->fun.body, ft->t.fun.result, fl);
     }
 
-    auto bodyType = n->fun.body->type;
+    auto bodyType = assertnotnull_debug(n->fun.body->type);
+    dlog_mod("bodyType    => N%s %s", NodeKindName(bodyType->kind), fmtnode(bodyType));
+    dlog_mod("return type => N%s %s",
+      NodeKindName(ft->t.fun.result->kind), fmtnode(ft->t.fun.result));
 
     if (ft->t.fun.result == Type_auto) {
       // inferred return type, e.g. "fun foo() { 123 } => ()->int"
       ft->t.fun.result = bodyType;
-      n->fun.result = bodyType; // set result to make AST printouts nicer
     } else {
       // function's return type is explicit, e.g. "fun foo() int"
       // check for type mismatch
@@ -541,26 +547,6 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_struct_cons(ResCtx* ctx, Node* n, RFlag fl) {
-  asserteq_debug(n->kind, NStructCons);
-  assertnotnull_debug(n->call.receiver);
-  assertnotnull_debug(n->call.args);
-
-  // receiver
-  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
-  n->type = n->call.receiver;
-  asserteq_debug(n->call.receiver->kind, NStructType);
-
-  // arguments
-  auto typecontext = typecontext_set(ctx, n->type);
-  n->call.args = resolve_type(ctx, n->call.args, fl | RFlagExplicitTypeCast);
-  assertnotnull_debug(n->call.args->type);
-  ctx->typecontext = typecontext; // restore typecontext
-
-  return n;
-}
-
-
 static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTypeCast);
   assertnotnull_debug(n->call.receiver);
@@ -623,6 +609,7 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
     case NTypeType: // type constructor call
       intype = recvt->t.type;
       outtype = recvt->t.type;
+      fl |= RFlagExplicitTypeCast;
       break;
     case NFunType: // function call
       intype = recvt->t.fun.params;
@@ -1135,9 +1122,6 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NCall:
     R_MUSTTAIL return resolve_call(ctx, n, fl);
-
-  case NStructCons:
-    R_MUSTTAIL return resolve_struct_cons(ctx, n, fl);
 
   case NVar:
     R_MUSTTAIL return resolve_var(ctx, n, fl);

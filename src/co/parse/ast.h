@@ -45,7 +45,6 @@ typedef enum {
   _(Return,      NodeClassExpr) \
   _(Array,       NodeClassExpr) \
   _(Tuple,       NodeClassExpr) \
-  _(StructCons,  NodeClassExpr) \
   _(TypeCast,    NodeClassExpr) \
   _(Macro,       NodeClassExpr) /* TODO: different NodeClass */ \
   /* types */ \
@@ -167,7 +166,7 @@ typedef struct Node {
       Sym   nullable name;
       Node*          template;
     } macro;
-    /* call */ struct { // Call, TypeCast, StructCons
+    /* call */ struct { // Call, TypeCast
       Node* receiver;      // Fun, Id or type
       Node* nullable args; // NULL if there are no args, else a NTuple
     } call;

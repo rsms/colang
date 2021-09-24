@@ -903,7 +903,6 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NTuple:
     case NSelector:
     case NSlice:
-    case NStructCons:
     case NMacro:
     case NFunType:
     case NBasicType:

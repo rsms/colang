@@ -513,7 +513,6 @@ static BinaryenExpressionRef bn_expr(BNBuilder* b, Node* n) {
     case NTuple:
     case NSelector:
     case NSlice:
-    case NStructCons:
     case NFunType:
     case NBasicType:
     case NTupleType:

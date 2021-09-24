@@ -20,11 +20,11 @@ type Spaceship
 
 B = Spaceship()
 
-# fun main() int
-#   # b = Bridge()
-#   # B.engine.output = 3
-#   B.engine.output
-# #   # s = Spaceship()
-# #   # s.engine.fuel
-# #   # s.occupants
-# #   # s.len # WIP
+fun main() int
+  # b = Bridge()
+  # B.engine.output = 3
+  B.engine.output
+#   # s = Spaceship()
+#   # s.engine.fuel
+#   # s.occupants
+#   # s.len # WIP

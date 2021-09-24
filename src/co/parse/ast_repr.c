@@ -211,10 +211,6 @@ Str NodeStr(Str s, const Node* n) {
     s = str_appendcstr(s, "call ");
     return NodeStr(s, n->call.receiver);
 
-  case NStructCons: // construct T
-    s = str_appendcstr(s, "construct ");
-    return NodeStr(s, n->call.receiver);
-
   case NIf: // if
     return str_appendcstr(s, "if");
 
@@ -274,13 +270,29 @@ Str NodeStr(Str s, const Node* n) {
     }
     return str_appendcstr(s, "slice");
 
-  case NStructType: // "struct Name" or "struct {foo float; y bool}"
+  case NStructType: { // "struct Name" or "struct {foo float; y bool}"
     s = str_appendcstr(s, "struct ");
     if (n->t.struc.name)
       return str_append(s, n->t.struc.name, symlen(n->t.struc.name));
     s = str_appendc(s, '{');
-    s = str_append_NodeArray(s, &n->t.struc.a, "; ", 2);
+    bool isFirst = true;
+    for (u32 i = 0; i < n->t.struc.a.len; i++) {
+      Node* cn = n->t.struc.a.v[i];
+      if (isFirst) {
+        isFirst = false;
+      } else {
+        s = str_appendcstr(s, "; ");
+      }
+      if (cn->kind == NField) {
+        s = str_append(s, cn->field.name, symlen(cn->field.name));
+        s = str_appendc(s, ' ');
+        s = NodeStr(s, cn->type);
+      } else {
+        s = NodeStr(s, cn);
+      }
+    }
     return str_appendc(s, '}');
+  }
 
   case NTypeType: // "type ..."
     s = str_appendcstr(s, "type ");

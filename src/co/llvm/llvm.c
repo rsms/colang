@@ -392,15 +392,32 @@ static Value build_block(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_call(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NCall);
-  assertnotnull_debug(n->type);
+static Value build_struct_cons(B* b, Node* n, const char* debugname);
 
-  if (NodeIsType(n->call.receiver)) {
-    // type call, e.g. str(1)
-    panic("TODO: type call");
-    return NULL;
+
+static Value build_type_call(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NCall);
+  assertnotnull_debug(n->call.receiver->type);
+  asserteq_debug(n->call.receiver->type->kind, NTypeType);
+
+  // type call, e.g. str(1), MyStruct(x, y), etc.
+  Type* tn = assertnotnull_debug(n->call.receiver->type->t.type);
+
+  switch (tn->kind) {
+    case NStructType:
+      return build_struct_cons(b, n, debugname);
+    default:
+      panic("TODO: type call %s", fmtnode(tn));
+      return NULL;
   }
+}
+
+
+static Value build_fun_call(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NCall);
+  assertnotnull_debug(n->call.receiver->type);
+  asserteq_debug(n->call.receiver->type->kind, NFunType);
+
   // n->call.receiver->kind==NFun
   Value callee = build_expr(b, n->call.receiver, "callee");
   if (!callee) {
@@ -422,18 +439,33 @@ static Value build_call(B* b, Node* n, const char* debugname) {
   }
 
   // check argument count
-  #ifdef DEBUG
   if (LLVMCountParams(callee) != argc) {
     errlog("wrong number of arguments: %u (expected %u)", argc, LLVMCountParams(callee));
     return NULL;
   }
-  #endif
 
   Value v = LLVMBuildCall(b->builder, callee, argv, argc, "");
   // LLVMSetTailCall(v, true); // set tail call when we know it for sure
   if (argv)
     memfree(b->build->mem, argv);
   return v;
+}
+
+
+static Value build_call(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NCall);
+  assertnotnull_debug(n->type);
+
+  Type* recvt = assertnotnull_debug(n->call.receiver->type);
+  switch (recvt->kind) {
+    case NTypeType: // type constructor call
+      return build_type_call(b, n, debugname);
+    case NFunType: // function call
+      return build_fun_call(b, n, debugname);
+    default:
+      panic("invalid call %s", fmtnode(n));
+      return NULL;
+  }
 }
 
 
@@ -594,7 +626,7 @@ static Value build_struct_init(
   if ((tn->flags & NodeFlagCustomInit) == 0)
     return LLVMConstNull(ty);
 
-  dlog("custom init %s", fmtnode(tn));
+  dlog("struct custom init %s", fmtnode(tn));
 
   u32 numvalues = tn->t.struc.a.len;
   STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
@@ -631,19 +663,22 @@ static Value build_struct_init(
 }
 
 
-static Value build_struct(B* b, Node* n, const char* debugname) {
-  asserteq_debug(n->kind, NStructCons);
-  assertnotnull_debug(n->type);
-  asserteq_debug(n->type->kind, NStructType);
-  asserteq_debug(n->call.receiver, n->type); // assumed to be resolved
+static Value build_struct_cons(B* b, Node* n, const char* debugname) {
+  // called by build_type_call
+  asserteq_debug(n->kind, NCall);
 
-  LLVMTypeRef ty = get_struct_type(b, n->type);
-  dlog("build_struct %s", fmttype(ty));
+  Type* recvt = assertnotnull_debug(n->call.receiver->type);
+  asserteq_debug(recvt->kind, NTypeType);
+
+  Type* structType = assertnotnull_debug(recvt->t.type);
+  asserteq_debug(structType->kind, NStructType);
+
+  LLVMTypeRef ty = get_struct_type(b, structType);
+  dlog("build_struct_cons %s", fmttype(ty));
 
   if (!LLVMGetInsertBlock(b->builder)) {
     // global
-
-    Value init = build_struct_init(b, n->type, NULL, ty);
+    Value init = build_struct_init(b, structType, NULL, ty);
 
     dlog("LLVMIsConstant(init) %d", LLVMIsConstant(init));
     dlog("LLVMSetInitializer %s", fmtvalue(init));
@@ -880,21 +915,11 @@ static Value build_global_var(B* b, Node* n) {
 
 static Value build_id_read(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NId);
-  assertnotnull_debug(n->type);
   assertnotnull_debug(n->ref.target); // should be resolved
 
-  return build_expr(b, n->ref.target, n->ref.name);
-
-  // Value target = build_expr(b, n->ref.target, n->ref.name);
-  // if (NodeIsConst(n->ref.target)) {
-  //   // dlog(">> build_id_read use value (type %s): %s",
-  //   //   fmttype(LLVMTypeOf(target)), fmtvalue(target));
-  //   return target;
-  // }
-  // LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(target));
-  // // dlog(">> build_id_read load ptr (type %s => %s): %s",
-  // //   fmttype(LLVMTypeOf(target)), fmttype(ty), fmtvalue(target));
-  // return LLVMBuildLoad2(b->builder, ty, target, n->ref.name);
+  Value v = build_expr(b, n->ref.target, n->ref.name);
+  n->irval = n->ref.target->irval;
+  return v;
 }
 
 
@@ -1234,7 +1259,6 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
     case NTypeCast:   RET(build_typecast(b, n, debugname));
     case NReturn:     RET(build_return(b, n, debugname));
     case NStructType: RET(build_struct_type_expr(b, n, debugname));
-    case NStructCons: RET(build_struct(b, n, debugname));
     case NSelector:   RET(build_selector(b, n, debugname));
     case NIndex:      RET(build_index(b, n, debugname));
     case NFun:        RET(build_fun(b, n, debugname));
