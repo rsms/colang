@@ -366,7 +366,7 @@ contexts:
           pop: true
 
   keywords:
-    - match: \b(s(elect|witch)|c(ontinue|ase)|i(f|mport)|def(er|ault)|package|else|f(or|allthrough)|r(eturn|ange)|go(to)?|break|while)\b
+    - match: \b(select|switch|continue|case|if|import|defer|default|package|else|for|fallthrough|return|range|goto|break|while)\b
       scope: keyword.control.co
     - match: \b(nil|true|false|iota)\b
       scope: constant.language.co
@@ -429,7 +429,7 @@ contexts:
     - include: basic-types
 
   basic-types:
-    - match: '\b(i(nt|16|8|32|64|size)|u(int|16|8|32|64|size)|f(32|64)?|b(yte|ool)|error|str|rune|auto)\b'
+    - match: '\b([ui](8|16|32|64|size)|u?int|f32|f64|byte|bool|error|str|rune|auto)\b'
       scope: storage.type.co
 
   functions:
