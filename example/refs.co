@@ -1,12 +1,36 @@
-struct Spaceship {
-  fuel int
-}
+type IVec3
+  x, y, z int
 
-# fun main() int {
-#   s = Spaceship(10)
-#   b = &s
-#   return b.fuel
-#   # s goes out of scope here,
-#   # so there's an implicit drop(s),
-#   # freeing the Spaceship.
-# }
+fun ia2(v &IVec3)     # read-only reference
+fun ia3(v &mut IVec3) # mutable reference
+fun ia1(v IVec3)      # takes ownership (may be from a copy)
+
+fun oa1() &IVec3      # read-only reference
+fun oa2() &mut IVec3  # mutable reference
+fun oa3() IVec3       # caller takes ownership
+
+
+fun ia2(v &IVec3)     # read-only reference
+fun ia3(v *IVec3)     # mutable reference
+fun ia1(v IVec3)      # takes ownership (may be from a copy)
+
+fun oa1() &IVec3      # read-only reference
+fun oa2() *IVec3      # mutable reference
+fun oa3() IVec3       # caller takes ownership
+
+
+fun ib1(v IVec3)      # read-only reference
+fun ib2(v &IVec3)     # mutable reference
+fun ib3(v !IVec3)     # takes ownership (may be from a copy)
+
+fun ob1() IVec3       # read-only reference
+fun ob2() &IVec3      # mutable reference
+fun ob3() !IVec3      # caller takes ownership
+
+
+fun main() int
+  a = IVec3(1, 2, 3) # allocated on stack or heap depending on usage
+  b = &a
+  return b.x
+  # s goes out of scope here,
+  # so there's an implicit drop(s), freeing the IVec3
