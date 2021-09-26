@@ -1,0 +1,50 @@
+@import url('https://rsms.me/inter/inter.css');
+@import url("_css/jbm.css");
+@import url("_css/raster.css");
+@import url("_css/code.css");
+
+:root {
+  --fontSize: 16px;
+  --monoFont: ui-monospace, SFMono-Regular, SF Mono, Consolas, Liberation Mono, Menlo, monospace;
+}
+@supports (font-variation-settings: normal) {
+  :root {
+    --monoFont: jbmono, ui-monospace, SFMono-Regular, SF Mono, Consolas, Liberation Mono, Menlo, monospace;
+  }
+}
+
+body {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+li > p + ul,
+li > p + ol {
+  margin-top: calc(var(--blockSpacingBottom) * -1);
+}
+ul > li,
+ol > li {
+  margin-bottom: 0;
+}
+
+h2 > a.anchor {
+  position: relative;
+  display: block;
+  height: 0;
+  background: lightpink;
+  visibility: hidden;
+}
+h2 > a.anchor::after {
+  position: absolute;
+  opacity: 0.3;
+  right: 0;
+  content: "#";
+  font-weight: 500;
+  padding: 0 0.3em;
+}
+h2:hover > a.anchor {
+  visibility: visible;
+}
+h2 > a.anchor:hover::after {
+  opacity: 1;
+}

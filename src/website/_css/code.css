@@ -1,0 +1,74 @@
+pre {
+  /* background:    #efefef; */
+  /* border: 1px solid #ddd; */
+  background:    #f6f8fa;
+  font-size:     0.875rem;  /* 14dp @ font-size 16 */
+  padding:       0.625rem;  /* 10dp @ font-size 16 */
+  border-radius: 0.3125rem; /* 5dp @ font-size 16 */
+  -webkit-text-size-adjust: none;
+}
+
+/* comments  */
+.hl-comment,
+.hl-meta {
+  color: rgba(0,0,0,0.6);
+  display: inline-block;
+  background: #e7f3f4;
+  padding: 0 0.2857em;
+  border-radius: 2px;
+}
+
+/* variable */
+.hl-variable,
+.hl-template-variable {
+  color: rgba(0,0,0,0.6);
+}
+
+/* keywords */
+.hl-keyword,
+.hl-selector-tag,
+.hl-section,
+.hl-name,
+.hl-tag,
+.hl-attr,
+.hl-selector-id,
+.hl-selector-class,
+.hl-selector-attr,
+.hl-selector-pseudo,
+.hl-type,
+.hl-built_in {
+  color: #d73a49;
+  /* color: #8c007e; */
+  /* color: #d63712; */
+  /* color: #773333; */
+  /* color: rgba(0,0,0,0.6); */
+}
+
+/* data  */
+.hl-string,
+.hl-strong,
+.hl-emphasis,
+.hl-quote,
+.hl-number,
+.hl-literal,
+.hl-symbol,
+.hl-bullet,
+.hl-attribute,
+.hl span.n + span.o + span.n {
+  color: #333377;
+}
+
+.hl-function {
+  /* .hl-keyword {} "fun" */
+  .hl-title { /* function's name */
+    font-weight: 600;
+  }
+  .hl-params {}
+}
+
+/* diff */
+.hl-addition { color:#55a532; background-color:#eaffea; }
+.hl-deletion { color:#bd2c00; background-color:#ffecec; }
+
+/* hyperlink..? */
+.hl-link {}
