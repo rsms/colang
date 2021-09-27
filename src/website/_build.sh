@@ -21,9 +21,9 @@ if ! [ -f "$MKWEB_EXE" ]; then
   chmod +x "$MKWEB_EXE"
 fi
 
-MKWEB_ARGS=( -verbose )
-if [ -z "$1" -o "$1" != "-w" ]; then
-  MKWEB_ARGS+=( -opt )
-fi
+MKWEB_ARGS=( -verbose -opt )
+# if [ -z "$1" -o "$1" != "-w" ]; then
+#   MKWEB_ARGS+=( -opt )
+# fi
 
 exec "$MKWEB_EXE" "${MKWEB_ARGS[@]}" "$@"
