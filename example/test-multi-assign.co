@@ -1,11 +1,11 @@
 fun foo(x, y int) int
   y, b = x, y
-  # y is now value of x
-  # b is value of y before assignment
+  // y is now value of x
+  // b is value of y before assignment
   y = 7
   y * b
 
 fun main() int
   foo(1, 2)
 
-# expected_exit_status 14
+// expected_exit_status 14

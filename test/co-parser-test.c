@@ -4,7 +4,7 @@ AST-based parser test program.
 
 Parses all *.co files in FIXTURES_DIR. If parsing fails the test fails.
 
-If a file contains a "#*!AST ... *#" comment block, the contents of that comment is
+If a file contains a "!AST ... " comment block, the contents of that comment is
 compared with the results of the parser. If the results differ the test fails.
 
 The expected AST in a "!AST" is a LISP representation of the parse result as produced
@@ -17,21 +17,21 @@ Examples:
 
   foo.co
   | x = 4
-  | #*!AST
+  | / *!AST
   | (Let x (IntLit 4))
-  | *#
+  | * /
 
   foo.co with types
   | x = 4
-  | #*!AST types
+  | / *!AST types
   | (Let x (IntLit 4 ideal) [ideal])
-  | *#
+  | * /
 
   foo.co with types, use count and attributes
   | x = 4
-  | #*!AST types usecount attrs
+  | / *!AST types usecount attrs
   | (Let x @const (uses 0) (IntLit @const 4 ideal) [ideal])
-  | *#
+  | * /
 
 */
 #include "co/common.h"
@@ -89,9 +89,9 @@ static bool run_parse_test(Str cofile) {
 
   // if there's an expected AST defined, compare that to the actual AST
   if (expectlen == 0) {
-    dlog("warning: skipping verififcation of %s as no #*!AST...*# comment found", cofile);
+    dlog("warning: skipping verififcation of %s as no /*!AST...*/ comment found", cofile);
   } else {
-    // parse any repr flags following "#*!AST ..."
+    // parse any repr flags following "/*!AST ..."
     // find end of first line
     const char* ln = memchr(expectstr, '\n', (size_t)expectlen);
     u32 line1len = expectlen;
@@ -206,20 +206,20 @@ static bool diff_ast(
 // ------------------------------------------------------------------------------------------
 
 
-// extract_src_ast_comment finds and returns a "#*!AST ... *#" comment in src.
+// extract_src_ast_comment finds and returns a "/*!AST ... * /" comment in src.
 // This intentionally does not use scanner or parser to extract the comment,
 // but instead uses a stand-alone implementation to reduce the test surface
 // (i.e. if there's a bug in the parser with scanning comments, we could get
 // false positive test results.)
 static const char* extract_src_ast_comment(Source* nullable src, u32* len_out) {
   if (src) {
-    const char* startstr = "#*!AST";
+    const char* startstr = "/*!AST";
     auto startp = (const u8*)strnstr((const char*)src->body, startstr, (size_t)src->len);
     if (startp) {
       u32 start = (u32)(uintptr_t)(startp - src->body) + strlen(startstr);
       u32 end = src->len;
       for (u32 i = src->len; --i > start; ) {
-        if (src->body[i] == '#' && src->body[i - 1] == '*') {
+        if (src->body[i] == '/' && src->body[i - 1] == '*') {
           end = i - 1;
           break;
         }

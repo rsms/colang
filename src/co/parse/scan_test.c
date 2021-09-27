@@ -59,9 +59,9 @@ R_TEST(scan_basics) {
 
 R_TEST(scan_comments) {
   auto source =
-    "hello # trailing\n"
-    "# leading1\n"
-    "# leading2\n"
+    "hello // trailing\n"
+    "// leading1\n"
+    "// leading2\n"
     "123";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
@@ -88,10 +88,10 @@ R_TEST(scan_comments) {
 
 
 R_TEST(scan_comment_blocks) {
-  auto source = "hello #* line1\n# line2\n*# line3\n#**#\n";
+  auto source = "hello /* line1\n// line2\n*/ line3\n/**/\n";
   u32 nerrors = testscan(ParseComments, source,
     TId,      "hello",
-    TComment, " line1\n# line2\n",
+    TComment, " line1\n// line2\n",
     TId,      "line3",
     TSemi,    "",
     TComment, "",
@@ -155,7 +155,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseFlagsDefault,
     "A\n"
     "  B\n"
-    "    # comment\n"
+    "    // comment\n"
     "    C\n"
     "D\n" // should drop 2 levels ('}', '}')
     "\n",
@@ -169,7 +169,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseFlagsDefault,
     "A\n"
     "  B\n"
-    "  # comment\n"
+    "  // comment\n"
     "    C\n"
     "D\n" // should drop 2 levels ('}', '}')
     "\n",
@@ -184,7 +184,7 @@ R_TEST(scan_indent) {
   asserteq(noerrors, testscan(ParseComments,
     "A\n"
     "  B\n"
-    "    # comment\n"
+    "    // comment\n"
     "    C\n"
     "D\n" // should drop 2 levels ('}', '}')
     "\n",

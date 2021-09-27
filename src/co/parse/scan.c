@@ -156,15 +156,16 @@ static void comments_push_back(Scanner* s) {
 
 
 static void scomment_block(Scanner* s) {
-  s->tokstart++; // exclude "*" after "#"
-  s->inp++; // consume '*'
+  s->tokstart += 2; // exclude "/*"
   u8 prevc = 0;
   while (s->inp < s->inend) {
     switch (*s->inp) {
-      case '#':
+      case '/':
         if (prevc == '*') {
           s->tokend = s->inp - 1; // -1 to skip '*'
           s->inp++; // consume '*'
+          if (s->flags & ParseComments)
+            comments_push_back(s);
           return;
         }
         break;
@@ -183,18 +184,13 @@ static void scomment_block(Scanner* s) {
 
 
 static void scomment(Scanner* s) {
-  s->tokstart++; // exclude "#"
-  if (*s->inp == '*') {
-    // block comment
-    scomment_block(s);
-  } else {
-    // line comment
-    // advance s->inp until next <LF> or EOF. Leave s->inp at \n or EOF.
-    while (s->inp < s->inend && *s->inp != '\n') {
-      s->inp++;
-    }
-    s->tokend = s->inp;
+  s->tokstart += 2; // exclude "//"
+  // line comment
+  // advance s->inp until next <LF> or EOF. Leave s->inp at \n or EOF.
+  while (s->inp < s->inend && *s->inp != '\n') {
+    s->inp++;
   }
+  s->tokend = s->inp;
   if (s->flags & ParseComments)
     comments_push_back(s);
 }
@@ -467,13 +463,21 @@ Tok ScannerNext(Scanner* s) {
     }
     break;
 
+  case '/': // "/" | "/=" | "//" | "/*"
+    switch (nextc) {
+      case '=': CONSUME_CHAR(); s->tok = TSlashAssign; break;       // "/="
+      case '/': CONSUME_CHAR(); scomment(s);       goto scan_again; // "//"
+      case '*': CONSUME_CHAR(); scomment_block(s); goto scan_again; // "/*"
+      default:  s->tok = TSlash;
+    }
+    break;
+
   case '!': s->tok = COND_CHAR('=', TExcalm,  TNEq);           break; // "!" | "!="
   case '%': s->tok = COND_CHAR('=', TPercent, TPercentAssign); break; // "%" | "%="
   case '*': s->tok = COND_CHAR('=', TStar,    TStarAssign);    break; // "*" | "*="
   case '=': s->tok = COND_CHAR('=', TAssign,  TEq);            break; // "=" | "=="
   case '^': s->tok = COND_CHAR('=', THat,     THatAssign);     break; // "^" | "^="
   case '~': s->tok = COND_CHAR('=', TTilde,   TTildeAssign);   break; // "~" | "~="
-  case '/': s->tok = COND_CHAR('=', TSlash,   TSlashAssign);   break; // "/" | "/="
 
   case '<': // "<" | "<=" | "<<" | "<<="
     switch (nextc) {
@@ -514,11 +518,6 @@ Tok ScannerNext(Scanner* s) {
   case ';': s->tok = TSemi;                      break;
   case ',': s->tok = TComma;                     break;
   case '.': s->tok = TDot;                       break;
-
-  case '#': // line comment
-    scomment(s);
-    goto scan_again;
-    break;
 
   case '0'...'9':
     snumber(s);

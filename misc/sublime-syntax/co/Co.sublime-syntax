@@ -158,34 +158,22 @@ contexts:
           pop: true
         - include: statements
 
-  # comments:
-  #   - match: ^/\* =(\s*.*?)\s*= \*/$\n?
-  #     scope: comment.block.co
-  #     captures:
-  #       1: meta.toc-list.banner.block.co
-  #   - match: /\*
-  #     scope: punctuation.definition.comment.co
-  #     push:
-  #       - meta_scope: comment.block.co
-  #       - match: \*/
-  #         scope: punctuation.definition.comment.co
-  #         pop: true
-  #   - match: \*/
-  #     scope: invalid.illegal.stray-comment-end.co
-  #   - match: ^// =(\s*.*?)\s*=\s*$\n?
-  #     scope: comment.line.double-slash.banner.co
-  #     captures:
-  #       1: meta.toc-list.banner.line.co
-  #   - match: //
-  #     scope: punctuation.definition.comment.co
-  #     push:
-  #       - meta_scope: comment.line.double-slash.co
-  #       - match: \n
-  #         pop: true
-
   comments:
-    # Special comment e.g. "#!name ..."
-    - match: (#)(\!{{identifier}})
+    # Special AST block comment e.g. "/*!AST flag flag \n lisp */"
+    - match: (/\*)(\!AST)((\s+(?i:types|usecount|refs|attrs))*)
+      captures:
+        1: comment.block.co
+        2: keyword.control.co
+        3: meta.variable.function.co
+      push:
+        - include: scope:source.lisp
+        - meta_scope: source.lisp
+        - match: \*/
+          scope: comment.block.co punctuation.definition.comment.end.co
+          pop: true
+
+    # Special line comment e.g. "//!name ..."
+    - match: (//)(\!{{identifier}})
       captures:
         1: punctuation.definition.comment.co
         2: meta.keyword.annotation.co
@@ -198,53 +186,87 @@ contexts:
         - match: $
           set: pop-line-comment
 
-    # Special AST comment e.g. "#*!AST flag flag \n lisp *#"
-    - match: (#\*)(\!AST)((\s+(?i:types|usecount|refs|attrs))*)
-      captures:
-        1: comment.block.co
-        2: keyword.control.co
-        3: meta.variable.function.co
-      push:
-        - include: scope:source.lisp
-        - meta_scope: source.lisp
-        - match: \*#
-          scope: comment.block.co punctuation.definition.comment.end.co
-          pop: true
-
-    # Special comment e.g. "#*!name ... *#"
-    - match: (#\*)(\!{{identifier}})
-      captures:
-        1: punctuation.definition.comment.co
-        2: meta.keyword.annotation.co
+    # Block comment
+    - match: /\*
+      scope: punctuation.definition.comment.co
       push:
         - meta_scope: comment.block.co
-        - match: \*#
-          scope: punctuation.definition.comment.end.co
+        - match: \*/
+          scope: punctuation.definition.comment.co
           pop: true
-        - match: \!AST
-          scope: keyword.control.co
-        - match: \S+
-          scope: meta.annotation.co
-        - match: ^\s*(\*)(?!#)
-          captures:
-            1: punctuation.definition.comment.co
+    - match: \*/
+      scope: invalid.illegal.stray-comment-end.co
 
     # Line comment
-    - match: \#(?:[^\*]|$)
+    - match: //
       scope: punctuation.definition.comment.co
-      push: pop-line-comment
-
-    # General comment
-    - match: \#\*
-      scope: punctuation.definition.comment.begin.co
       push:
-        - meta_scope: comment.block.co
-        - match: \*#
-          scope: punctuation.definition.comment.end.co
+        - meta_scope: comment.line.double-slash.co
+        - match: \n
           pop: true
-        - match: ^\s*(\*)(?!#)
-          captures:
-            1: punctuation.definition.comment.co
+
+  # comments:
+  #   # Special comment e.g. "#!name ..."
+  #   - match: (#)(\!{{identifier}})
+  #     captures:
+  #       1: punctuation.definition.comment.co
+  #       2: meta.keyword.annotation.co
+  #     push:
+  #       - meta_scope: comment.line.co
+  #       - match: \S+
+  #         scope: meta.annotation.co
+  #       # End the annotation scope at EOL, but stretch the comment scope
+  #       # indefinitely to the right.
+  #       - match: $
+  #         set: pop-line-comment
+
+  #   # Special AST comment e.g. "#*!AST flag flag \n lisp *#"
+  #   - match: (#\*)(\!AST)((\s+(?i:types|usecount|refs|attrs))*)
+  #     captures:
+  #       1: comment.block.co
+  #       2: keyword.control.co
+  #       3: meta.variable.function.co
+  #     push:
+  #       - include: scope:source.lisp
+  #       - meta_scope: source.lisp
+  #       - match: \*#
+  #         scope: comment.block.co punctuation.definition.comment.end.co
+  #         pop: true
+
+  #   # Special comment e.g. "#*!name ... *#"
+  #   - match: (#\*)(\!{{identifier}})
+  #     captures:
+  #       1: punctuation.definition.comment.co
+  #       2: meta.keyword.annotation.co
+  #     push:
+  #       - meta_scope: comment.block.co
+  #       - match: \*#
+  #         scope: punctuation.definition.comment.end.co
+  #         pop: true
+  #       - match: \!AST
+  #         scope: keyword.control.co
+  #       - match: \S+
+  #         scope: meta.annotation.co
+  #       - match: ^\s*(\*)(?!#)
+  #         captures:
+  #           1: punctuation.definition.comment.co
+
+  #   # Line comment
+  #   - match: \#(?:[^\*]|$)
+  #     scope: punctuation.definition.comment.co
+  #     push: pop-line-comment
+
+  #   # General comment
+  #   - match: \#\*
+  #     scope: punctuation.definition.comment.begin.co
+  #     push:
+  #       - meta_scope: comment.block.co
+  #       - match: \*#
+  #         scope: punctuation.definition.comment.end.co
+  #         pop: true
+  #       - match: ^\s*(\*)(?!#)
+  #         captures:
+  #           1: punctuation.definition.comment.co
 
   pop-line-comment:
     - meta_scope: comment.line.co
@@ -366,7 +388,7 @@ contexts:
           pop: true
 
   keywords:
-    - match: \b(select|switch|continue|case|if|import|defer|default|package|else|for|fallthrough|return|range|goto|break|while)\b
+    - match: \b(as|switch|continue|case|if|import|default|else|for|fallthrough|return|goto|break|while)\b
       scope: keyword.control.co
     - match: \b(nil|true|false|iota)\b
       scope: constant.language.co

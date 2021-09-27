@@ -2,18 +2,18 @@ fun add(x, y int) auto {
   x + y
 }
 
-# fun print_i32(x int)
+// fun print_i32(x int)
 
 fun main() {
-  # a = 12 # equivalent to var a = 12
-  # b = a
-  # if a > 5 {
-  #   b = 3
-  #   var a int # explicitly use var to declare new instead of storing to outer a
-  # }
+  // a = 12 // equivalent to var a = 12
+  // b = a
+  // if a > 5 {
+  //   b = 3
+  //   var a int // explicitly use var to declare new instead of storing to outer a
+  // }
   a = 3
   b = 4
   r = add(a, b)
   r + b
-  # print_i32(r)
+  // print_i32(r)
 }

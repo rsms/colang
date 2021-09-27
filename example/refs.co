@@ -1,43 +1,43 @@
-# Questions
-#
-# Q: How is ownership managed?
-#
-# Q: When is something allocated on the heap?
-# A: Explicitly with "allocate(T(1,2))"
-#
-# Q: How do you declare data immutable/read-only?
-#
-# Q: Is immutability of storage "infectious" on its data?
-#    i.e. is the returned slice editable? "fun get_buf() &[]u8"
-# A: Yes. It works for C, Rust, et al.
-#
+// Questions
+//
+// Q: How is ownership managed?
+//
+// Q: When is something allocated on the heap?
+// A: Explicitly with "allocate(T(1,2))"
+//
+// Q: How do you declare data immutable/read-only?
+//
+// Q: Is immutability of storage "infectious" on its data?
+//    i.e. is the returned slice editable? "fun get_buf() &[]u8"
+// A: Yes. It works for C, Rust, et al.
+//
 
 type IVec3
   x, y, z int
 
 fun main() int
   fun volume(v &IVec3) int -> v.x * v.y * v.z
-  a = IVec3(1, 2, 3) # allocated on stack; "a" is current owner
-  b = &a             # "b" has a ref to "a"; type of "b" is "mut &IVec3" since "a" is mutable
-  c = a              # ownership transfers to "c" (TODO: is "a" invalid now? or a ref?)
-  d = volume(c)      # automatic referencing "&c" of argument
+  a = IVec3(1, 2, 3) // allocated on stack; "a" is current owner
+  b = &a             // "b" has a ref to "a"; type of "b" is "mut &IVec3" since "a" is mutable
+  c = a              // ownership transfers to "c" (TODO: is "a" invalid now? or a ref?)
+  d = volume(c)      // automatic referencing "&c" of argument
   return d
-  # "c" goes out of scope; implicit "drop(c)" freeing the IVec3 since "c" is its owner
-  # "b" goes out of scope
-  # "a" goes out of scope
+  // "c" goes out of scope; implicit "drop(c)" freeing the IVec3 since "c" is its owner
+  // "b" goes out of scope
+  // "a" goes out of scope
 
-# examples from real code
-fun resolve(n Node) Node     # takes over n, gives ownership of Node
-fun set_const(n &mut Node)   # borrows n read-write, mutates n
-fun fmt_node(n &Node) str    # borrows n read-only, gives ownership of str
-fun get_name(n &Node) &str   # borrows n read-only, returns read-only ref to str
+// examples from real code
+fun resolve(n Node) Node     // takes over n, gives ownership of Node
+fun set_const(n &mut Node)   // borrows n read-write, mutates n
+fun fmt_node(n &Node) str    // borrows n read-only, gives ownership of str
+fun get_name(n &Node) &str   // borrows n read-only, returns read-only ref to str
 fun get_buf(n &mut Node) &mut []u8
 
-# signatures
-fun i1(v IVec3)      # callee is given ownership
-fun i2(v &IVec3)     # callee is lent a read-only reference
-fun i3(v &mut IVec3) # callee is lent a mutable reference
+// signatures
+fun i1(v IVec3)      // callee is given ownership
+fun i2(v &IVec3)     // callee is lent a read-only reference
+fun i3(v &mut IVec3) // callee is lent a mutable reference
 
-fun o1() IVec3       # caller is given ownership
-fun o2() &IVec3      # caller is lent a read-only reference
-fun o3() &mut IVec3  # caller is lent a mutable reference
+fun o1() IVec3       // caller is given ownership
+fun o2() &IVec3      // caller is lent a read-only reference
+fun o3() &mut IVec3  // caller is lent a mutable reference

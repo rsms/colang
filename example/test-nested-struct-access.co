@@ -9,4 +9,4 @@ B = Spaceship()
 fun main() int
   B.engine.output
 
-# expected_exit_status 0
+// expected_exit_status 0

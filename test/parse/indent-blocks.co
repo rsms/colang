@@ -24,7 +24,12 @@ fun D()
   }
   a
 
-#*!AST
+// line comment
+//!special
+/* block
+   comment */
+
+/*!AST
 ; should all parse identically
 (Fun A (params nil) <nil> (body (Block
   (Var a (IntLit 1))
@@ -51,4 +56,4 @@ fun D()
   (Id a (Var a)) )))
 
 
-*#
+*/

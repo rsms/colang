@@ -1,6 +1,6 @@
 fun foo() int
-  z = { a, b = u8(1), 2 } # constant tuple of type "(i8 i32)"
-  z[1] # => 2
+  z = { a, b = u8(1), 2 } // constant tuple of type "(i8 i32)"
+  z[1] // => 2
 
 fun main() int
-  foo() # => 2
+  foo() // => 2

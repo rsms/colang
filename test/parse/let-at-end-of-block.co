@@ -7,9 +7,9 @@ fun b() {
 }
 fun c() -> x = 4
 fun d() -> var x int
-# fun d() -> x int  # error since x is in rvalue position
+// fun d() -> x int  // error since x is in rvalue position
 
-#*!AST
+/*!AST
 (Fun a (params nil) <nil> (body
   (Block
     (Call (Id b nil) nil)
@@ -18,4 +18,4 @@ fun d() -> var x int
 (Fun c (params nil) <auto> (body (Var x (IntLit 4))))
 (Fun d (params nil) <auto> (body (Var x nil)))
 
-*#
+*/
