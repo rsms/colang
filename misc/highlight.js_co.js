@@ -6,11 +6,7 @@ module.exports = function(hljs) {
     "nil"
   ];
   const BUILT_INS = [
-    "append",
-    "cap",
     "copy",
-    "len",
-    "make",
     "panic",
     "print",
   ];
@@ -35,6 +31,8 @@ module.exports = function(hljs) {
     "import",
     "return",
     "var",
+  ];
+  const TYPES = [
     "bool",
     "i8",  "i16", "i32", "i64", "isize", "int",
     "u8",  "u16", "u32", "u64", "usize", "uint",
@@ -44,9 +42,10 @@ module.exports = function(hljs) {
     "str",
   ];
   const KEYWORDS = {
-    keyword: KWS,
-    literal: LITERALS,
-    built_in: BUILT_INS
+    keyword:  KWS,
+    literal:  LITERALS,
+    built_in: BUILT_INS,
+    type:     TYPES,
   };
   const COMMENTS = [
     hljs.COMMENT('#', '$'),
@@ -92,6 +91,16 @@ module.exports = function(hljs) {
               ...COMMENTS,
             ],
           },
+          ...COMMENTS,
+        ]
+      },
+
+      { className: 'typedef',
+        beginKeywords: 'type',
+        end: '\\s*$',
+        excludeEnd: true,
+        contains: [
+          hljs.TITLE_MODE,
           ...COMMENTS,
         ]
       },
