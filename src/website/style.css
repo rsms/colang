@@ -5,8 +5,34 @@
 
 :root {
   --fontSize: 16px;
-  --monoFont: ui-monospace, SFMono-Regular, SF Mono, Consolas, Liberation Mono, Menlo, monospace;
+  --monoFont: ui-monospace, SFMono-Regular, SF Mono,
+              Consolas, Liberation Mono, Menlo, monospace;
+  font-weight: 450;
+  color-scheme: light dark;
+
+  --background-color: white;
+  --foreground-color-rgb: 0,0,0;
+  --bgcolor-level1: rgba(0,0,0,0.1);
+
+  @media (prefers-color-scheme: dark) {
+    /* cold: */
+    /* --background-color: rgb(13, 17, 23);
+    --foreground-color-rgb: 201,209,217; */
+    /* warm: */
+    --background-color: rgb(25, 22, 20);
+    --foreground-color-rgb: 217,209,201;
+
+    --bgcolor-level1: rgba(0,0,0,0.3);
+
+    --link-color: #70CAFC;
+    --link-visited-color: #B79EFF;
+
+    font-weight: 400;
+
+    /* filter: invert() hue-rotate(180deg); */
+  }
 }
+
 @supports (font-variation-settings: normal) {
   :root {
     --monoFont: jbmono, ui-monospace, SFMono-Regular, SF Mono, Consolas, Liberation Mono, Menlo, monospace;
@@ -27,24 +53,27 @@ ol > li {
   margin-bottom: 0;
 }
 
-h2 > a.anchor {
-  position: relative;
-  display: block;
-  height: 0;
-  background: lightpink;
-  visibility: hidden;
-}
-h2 > a.anchor::after {
-  position: absolute;
-  opacity: 0.3;
-  right: 0;
-  content: "#";
-  font-weight: 500;
-  padding: 0 0.3em;
-}
-h2:hover > a.anchor {
-  visibility: visible;
-}
-h2 > a.anchor:hover::after {
-  opacity: 1;
+h2, h3, h4, h5, h6 {
+  & > a.anchor {
+    position: relative;
+    display: block;
+    height: 0;
+    background: lightpink;
+    visibility: hidden;
+
+    &::after {
+      position: absolute;
+      opacity: 0.3;
+      right: 0;
+      content: "#";
+      font-weight: 500;
+      padding: 0 0.3em;
+    }
+    &:hover::after {
+      opacity: 1;
+    }
+  }
+  &:hover > a.anchor {
+    visibility: visible;
+  }
 }

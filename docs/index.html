@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <title>The Co programming language</title>
-  <link rel="stylesheet" type="text/css" href="/style.css?ku1p30ec">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?ku1yka8j">
 </head>
 <body>
 <h1><a id="the-co-programming-language" class="anchor" aria-hidden="true" href="#the-co-programming-language"></a>The Co programming language</h1>
 <p>Co is a simple programming language developed as a hobby.
 Co programs can be compiled to native executables and WebAssembly modules,
-or run directly in its JIT.</p>
+or run directly through its JIT compiler.</p>
 <h2><a id="syntax" class="anchor" aria-hidden="true" href="#syntax"></a>Syntax</h2>
 <p>The language looks similar to Python and Go.
 Its formal grammar uses semicolons to terminate expressions and curly braces
@@ -20,20 +22,24 @@ and curly-braces &quot;push and pop&quot;.</p>
   shields <span /class="hl-keyword"/g>u8</span> = <span /class="hl-number"/g>10</span>
   engine
     fuel   <span /class="hl-keyword"/g>u64</span> = <span /class="hl-number"/g>1000</span>
-    output <span /class="hl-keyword"/g>int</span>
+    output <span /class="hl-keyword"/g>int</span> = <span /class="hl-keyword"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>)
 
 B = Spaceship()
 
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span> <span /class="hl-title"/g>int</span></span>
-  B.engine.output
+  B.engine.output <span /class="hl-comment"/g># =&gt; 500</span>
 </code></pre>
 <pre><code class="language-co"><span /class="hl-keyword"/g>type</span> Spaceship {
   shields <span /class="hl-keyword"/g>u8</span> = <span /class="hl-number"/g>10</span>;
-  engine { fuel <span /class="hl-keyword"/g>u64</span> = <span /class="hl-number"/g>1000</span>; output <span /class="hl-keyword"/g>int</span>; }
+  engine {
+    fuel <span /class="hl-keyword"/g>u64</span> = <span /class="hl-number"/g>1000</span>;
+    output <span /class="hl-keyword"/g>int</span> = <span /class="hl-keyword"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>);
+  }
 }
 B = Spaceship();
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span> <span /class="hl-title"/g>int</span></span> {
-  B.engine.output;
+  s = <span /class="hl-string"/g>&quot;thi\ng&quot;</span>
+  B.engine.output; <span /class="hl-comment"/g># =&gt; 500</span>
 }
 </code></pre>
 <p>Semicolons can be omitted using the following two rules:</p>

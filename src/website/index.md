@@ -6,7 +6,7 @@ title: The Co programming language
 
 Co is a simple programming language developed as a hobby.
 Co programs can be compiled to native executables and WebAssembly modules,
-or run directly in its JIT.
+or run directly through its JIT compiler.
 
 
 ## Syntax
@@ -23,22 +23,26 @@ type Spaceship
   shields u8 = 10
   engine
     fuel   u64 = 1000
-    output int
+    output int = int(fuel / 2)
 
 B = Spaceship()
 
 fun main() int
-  B.engine.output
+  B.engine.output # => 500
 ```
 
 ```co
 type Spaceship {
   shields u8 = 10;
-  engine { fuel u64 = 1000; output int; }
+  engine {
+    fuel u64 = 1000;
+    output int = int(fuel / 2);
+  }
 }
 B = Spaceship();
 fun main() int {
-  B.engine.output;
+  s = "thi\ng"
+  B.engine.output; # => 500
 }
 ```
 

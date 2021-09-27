@@ -1,7 +1,28 @@
 pre {
-  /* background:    #efefef; */
-  /* border: 1px solid #ddd; */
-  background:    #f6f8fa;
+  --bg:          #f6f8fa;
+  --fg-comment:  rgba(var(--foreground-color-rgb),0.5);
+  --fg-keyword:  #d73a49;
+  --fg-data:     #333377;
+  --fg-string:   #333377;
+  --fg-diff-add: #55a532;
+  --bg-diff-add: #eaffea;
+  --fg-diff-rem: #bd2c00;
+  --bg-diff-rem: #ffecec;
+
+  @media (prefers-color-scheme: dark) {
+    /* --bg:          rgb(22, 27, 34); */
+    --bg:          rgb(30, 27, 26);
+    --fg-comment:  rgba(var(--foreground-color-rgb),0.4);
+    --fg-keyword:  #ff7b72;
+    --fg-data:     #0ff;
+    --fg-string:   rgb(165, 214, 255);
+    --fg-diff-add: #55a532;
+    --bg-diff-add: #eaffea;
+    --fg-diff-rem: #bd2c00;
+    --bg-diff-rem: #ffecec;
+  }
+
+  background:    var(--bg);
   font-size:     0.875rem;  /* 14dp @ font-size 16 */
   padding:       0.625rem;  /* 10dp @ font-size 16 */
   border-radius: 0.3125rem; /* 5dp @ font-size 16 */
@@ -11,17 +32,17 @@ pre {
 /* comments  */
 .hl-comment,
 .hl-meta {
-  color: rgba(0,0,0,0.6);
-  display: inline-block;
-  background: #e7f3f4;
+  color: var(--fg-comment);
+  /* display: inline-block;
+  background: var(--bg-comment);
   padding: 0 0.2857em;
-  border-radius: 2px;
+  border-radius: 2px; */
 }
 
 /* variable */
 .hl-variable,
 .hl-template-variable {
-  color: rgba(0,0,0,0.6);
+  color: rgba(var(--foreground-color-rgb),0.6);
 }
 
 /* keywords */
@@ -37,25 +58,25 @@ pre {
 .hl-selector-pseudo,
 .hl-type,
 .hl-built_in {
-  color: #d73a49;
-  /* color: #8c007e; */
-  /* color: #d63712; */
-  /* color: #773333; */
-  /* color: rgba(0,0,0,0.6); */
+  color: var(--fg-keyword);
 }
 
 /* data  */
-.hl-string,
 .hl-strong,
 .hl-emphasis,
-.hl-quote,
 .hl-number,
 .hl-literal,
 .hl-symbol,
 .hl-bullet,
 .hl-attribute,
 .hl span.n + span.o + span.n {
-  color: #333377;
+  color: var(--fg-data);
+}
+
+/* string literal data */
+.hl-string,
+.hl-quote {
+  color: var(--fg-string);
 }
 
 .hl-function {
@@ -67,8 +88,8 @@ pre {
 }
 
 /* diff */
-.hl-addition { color:#55a532; background-color:#eaffea; }
-.hl-deletion { color:#bd2c00; background-color:#ffecec; }
+.hl-addition { color:var(--fg-diff-add); background-color:var(--bg-diff-add); }
+.hl-deletion { color:var(--fg-diff-rem); background-color:var(--bg-diff-rem); }
 
 /* hyperlink..? */
 .hl-link {}
