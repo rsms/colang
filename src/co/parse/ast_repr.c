@@ -457,11 +457,11 @@ static bool l_collapse_field(LReprCtx* c, NodeList* nl) {
     case NVar:
        return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init);
 
-    case NId:
-    case NReturn:
     case NBoolLit:
     case NFloatLit:
+    case NId:
     case NIntLit:
+    case NReturn:
     case NStrLit:
     case NTypeType:
       return true;
@@ -482,12 +482,13 @@ static bool l_show_field(NodeList* nl) {
     return true;
   switch (nl->parent->n->kind) {
     case NBinOp:
+    case NCall:
+    case NIndex:
     case NPostfixOp:
     case NPrefixOp:
-    case NVar:
-    case NTypeCast:
     case NSelector:
-    case NIndex:
+    case NTypeCast:
+    case NVar:
       return false;
 
     case NFun:
@@ -729,12 +730,6 @@ static bool l_visit(NodeList* nl, void* cp) {
     if (c->fl & NodeReprRefs) {
       s = style_push(&c->style, s, ref_color);
       s = str_appendfmt(s, " #%zu", (size_t)id);
-      s = style_pop(&c->style, s);
-    }
-
-    if (!n->var.init && !NodeIsMacroParam(n)) {
-      s = style_push(&c->style, s, lit_color);
-      s = str_appendcstr(s, " :definit");
       s = style_pop(&c->style, s);
     }
     break;
