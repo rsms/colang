@@ -2,6 +2,7 @@ pre {
   --bg:          #f6f8fa;
   --fg-comment:  rgba(var(--foreground-color-rgb),0.5);
   --fg-keyword:  #d73a49;
+  --fg-type:     var(--fg-keyword);
   --fg-data:     #333377;
   --fg-string:   #333377;
   --fg-diff-add: #55a532;
@@ -33,16 +34,17 @@ pre {
 .hl-comment,
 .hl-meta {
   color: var(--fg-comment);
-  /* display: inline-block;
-  background: var(--bg-comment);
-  padding: 0 0.2857em;
-  border-radius: 2px; */
 }
 
 /* variable */
 .hl-variable,
 .hl-template-variable {
   color: rgba(var(--foreground-color-rgb),0.6);
+}
+
+/* type */
+.hl-type {
+  color: var(--fg-type);
 }
 
 /* keywords */
@@ -56,7 +58,6 @@ pre {
 .hl-selector-class,
 .hl-selector-attr,
 .hl-selector-pseudo,
-.hl-type,
 .hl-built_in {
   color: var(--fg-keyword);
 }
@@ -79,12 +80,21 @@ pre {
   color: var(--fg-string);
 }
 
+.hl-typedef {
+  .hl-title {
+    font-weight: 600;
+  }
+}
+
 .hl-function {
-  /* .hl-keyword {} "fun" */
-  .hl-title { /* function's name */
+  .hl-title {
     font-weight: 600;
   }
   .hl-params {}
+  .hl-params + .hl-title {
+    color: var(--fg-type);
+    font-weight: initial;
+  }
 }
 
 /* diff */

@@ -1,12 +1,29 @@
 @import url('https://rsms.me/inter/inter.css');
+@import url('https://rsms.me/inter/inter-display.css');
 @import url("_css/jbm.css");
 @import url("_css/raster.css");
 @import url("_css/code.css");
 
 :root {
-  --fontSize: 16px;
+  --titleFont: "InterDisplay";
   --monoFont: ui-monospace, SFMono-Regular, SF Mono,
               Consolas, Liberation Mono, Menlo, monospace;
+  @supports (font-variation-settings: normal) {
+    --titleFont: "InterDisplay var";
+    --monoFont: jbmono,
+                ui-monospace, SFMono-Regular, SF Mono,
+                Consolas, Liberation Mono, Menlo, monospace;
+  }
+
+  /* base font size */
+  --fontSize: 16px;
+
+  /* heading size */
+  --h1-size: 2.25rem;
+  --h2-size: 1.5rem;
+  --h3-size: 1.25rem;
+  --h4-size: 1.1rem;
+
   font-weight: 450;
   color-scheme: light dark;
 
@@ -33,12 +50,6 @@
   }
 }
 
-@supports (font-variation-settings: normal) {
-  :root {
-    --monoFont: jbmono, ui-monospace, SFMono-Regular, SF Mono, Consolas, Liberation Mono, Menlo, monospace;
-  }
-}
-
 body {
   max-width: 800px;
   margin: 0 auto;
@@ -53,27 +64,40 @@ ol > li {
   margin-bottom: 0;
 }
 
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--titleFont);
+  font-weight: 600;
+}
+h1 { font-weight: 650; letter-spacing: -0.02em; }
+h2, h3, h4, h5, h6 { letter-spacing: 0em; }
+h3 { font-weight: 650; letter-spacing: 0.01em; }
+h4, h5, h6 { font-weight: 700; letter-spacing: 0.015em; }
+
 h2, h3, h4, h5, h6 {
   & > a.anchor {
     position: relative;
-    display: block;
+    opacity: 0.5;
     height: 0;
-    background: lightpink;
-    visibility: hidden;
+    outline: none;
 
     &::after {
       position: absolute;
       opacity: 0.3;
-      right: 0;
+      right: 0.0rem;
       content: "#";
       font-weight: 500;
-      padding: 0 0.3em;
+      padding: 0 0.5em;
+      text-align: center;
     }
     &:hover::after {
       opacity: 1;
     }
+    /* no hover interaction? disable "hide until hover" */
+    @media (hover: none) { opacity: 1; }
+    /* reduced gutters? put anchor on the right side */
+    @media only screen and (max-width: 600px) { display: block; }
   }
   &:hover > a.anchor {
-    visibility: visible;
+    opacity: 1;
   }
 }

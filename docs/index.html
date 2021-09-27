@@ -5,7 +5,7 @@
   <title>The Co programming language</title>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/style.css?ku1yka8j">
+  <link rel="stylesheet" type="text/css" href="/style.css?ku2w4i5k">
 </head>
 <body>
 <h1><a id="the-co-programming-language" class="anchor" aria-hidden="true" href="#the-co-programming-language"></a>The Co programming language</h1>
@@ -18,22 +18,22 @@ Its formal grammar uses semicolons to terminate expressions and curly braces
 to delimit scope along with a set of rules for automatic semicolon insertion
 and curly-braces &quot;push and pop&quot;.</p>
 <p>The following are equivalent:</p>
-<pre><code class="language-co"><span /class="hl-keyword"/g>type</span> Spaceship
-  shields <span /class="hl-keyword"/g>u8</span> = <span /class="hl-number"/g>10</span>
+<pre><code class="language-co"><span /class="hl-typedef"/g><span /class="hl-keyword"/g>type</span> <span /class="hl-title"/g>Spaceship</span></span>
+  shields <span /class="hl-type"/g>u8</span> = <span /class="hl-number"/g>10</span>
   engine
-    fuel   <span /class="hl-keyword"/g>u64</span> = <span /class="hl-number"/g>1000</span>
-    output <span /class="hl-keyword"/g>int</span> = <span /class="hl-keyword"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>)
+    fuel   <span /class="hl-type"/g>u64</span> = <span /class="hl-number"/g>1000</span>
+    output <span /class="hl-type"/g>int</span> = <span /class="hl-type"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>)
 
 B = Spaceship()
 
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span> <span /class="hl-title"/g>int</span></span>
   B.engine.output <span /class="hl-comment"/g># =&gt; 500</span>
 </code></pre>
-<pre><code class="language-co"><span /class="hl-keyword"/g>type</span> Spaceship {
-  shields <span /class="hl-keyword"/g>u8</span> = <span /class="hl-number"/g>10</span>;
+<pre><code class="language-co"><span /class="hl-typedef"/g><span /class="hl-keyword"/g>type</span> <span /class="hl-title"/g>Spaceship</span> {</span>
+  shields <span /class="hl-type"/g>u8</span> = <span /class="hl-number"/g>10</span>;
   engine {
-    fuel <span /class="hl-keyword"/g>u64</span> = <span /class="hl-number"/g>1000</span>;
-    output <span /class="hl-keyword"/g>int</span> = <span /class="hl-keyword"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>);
+    fuel   <span /class="hl-type"/g>u64</span> = <span /class="hl-number"/g>1000</span>;
+    output <span /class="hl-type"/g>int</span> = <span /class="hl-type"/g>int</span>(fuel / <span /class="hl-number"/g>2</span>);
   }
 }
 B = Spaceship();
@@ -44,16 +44,32 @@ B = Spaceship();
 </code></pre>
 <p>Semicolons can be omitted using the following two rules:</p>
 <ol>
-<li>When the input is broken into tokens, a semicolon is automatically inserted
-into the token stream immediately after a line's final token if that token is<ul>
+<li><p>When the input is broken into tokens, a semicolon is automatically inserted
+into the token stream immediately after a line's final token if that token is</p>
+<ul>
 <li>an identifier</li>
 <li>an integer, floating-point, char or string literal</li>
 <li>one of the keywords <code>break</code>, <code>continue</code>, <code>fallthrough</code>, or <code>return</code></li>
 <li>one of the operators and delimiters <code>++</code>, <code>--</code>, <code>)</code>, <code>]</code>, or <code>}</code></li>
 </ul>
 </li>
-<li>To allow complex statements to occupy a single line, a semicolon may be
-omitted before a closing <code>)</code> or <code>}</code>.</li>
+<li><p>To allow complex statements to occupy a single line, a semicolon may be
+omitted before a closing <code>)</code> or <code>}</code>.</p>
+</li>
+</ol>
+<p>Curly braces can be omitted using the following two rules:</p>
+<ol>
+<li><p>After a line break where an automatic semicolon would be inserted, if the
+indentation of the following line is <em>greater</em> than the preceding line then
+a opening curly brace <code>{</code> is automatically inserted into the token stream.
+The automatic block is recorded on a stack.</p>
+</li>
+<li><p>After a line break where an automatic semicolon would be inserted, if the
+indentation of the following line is <em>less</em> than the preceding line and the
+the preceding line is subject to rule 1, then
+a closing curly brace <code>}</code> is automatically inserted into the token stream
+for each recorded &quot;automatic&quot; block on a stack.</p>
+</li>
 </ol>
 <h2><a id="open-source" class="anchor" aria-hidden="true" href="#open-source"></a>Open Source</h2>
 <p><a href="https://github.com/rsms/co2">https://github.com/rsms/co2</a></p>

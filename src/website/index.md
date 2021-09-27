@@ -35,7 +35,7 @@ fun main() int
 type Spaceship {
   shields u8 = 10;
   engine {
-    fuel u64 = 1000;
+    fuel   u64 = 1000;
     output int = int(fuel / 2);
   }
 }
@@ -54,8 +54,23 @@ Semicolons can be omitted using the following two rules:
     - an integer, floating-point, char or string literal
     - one of the keywords `break`, `continue`, `fallthrough`, or `return`
     - one of the operators and delimiters `++`, `--`, `)`, `]`, or `}`
+
 2. To allow complex statements to occupy a single line, a semicolon may be
    omitted before a closing `)` or `}`.
+
+Curly braces can be omitted using the following two rules:
+
+1. After a line break where an automatic semicolon would be inserted, if the
+   indentation of the following line is _greater_ than the preceding line then
+   a opening curly brace `{` is automatically inserted into the token stream.
+   The automatic block is recorded on a stack.
+
+2. After a line break where an automatic semicolon would be inserted, if the
+   indentation of the following line is _less_ than the preceding line and the
+   the preceding line is subject to rule 1, then
+   a closing curly brace `}` is automatically inserted into the token stream
+   for each recorded "automatic" block on a stack.
+
 
 ## Open Source
 
