@@ -18,8 +18,8 @@ typedef struct Array {
 #define Array_INIT { NULL, 0, 0, false }
 #define Array_INIT_WITH_STORAGE(storage, initcap) { (storage), (initcap), 0, true }
 
-#define Array_INIT_ON_STACK(initcap) \
-  ((Array){ alloca(initcap * sizeof(void*)), initcap, 0, true })
+// #define Array_INIT_ON_STACK(initcap) \
+//   ((Array){ alloca(initcap * sizeof(void*)), initcap, 0, true })
 
 static void  ArrayInit(Array* a);
 static void  ArrayInitWithStorage(Array* a, void* storage, u32 storagecap);

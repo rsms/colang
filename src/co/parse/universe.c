@@ -29,11 +29,11 @@ const Sym sym_import = &"\xF8\xA4\x4A\xF8\x06\x00\x00\x58""import\0"[8];
 const Sym sym_in = &"\x74\x9A\xDF\xDD\x02\x00\x00\x60""in\0"[8];
 const Sym sym_nil = &"\x8F\x7E\x4F\xEF\x03\x00\x00\x68""nil\0"[8];
 const Sym sym_return = &"\xEB\xA6\x08\xA3\x06\x00\x00\x70""return\0"[8];
-const Sym sym_select = &"\x3F\x03\x09\xBC\x06\x00\x00\x78""select\0"[8];
-const Sym sym_struct = &"\x97\xFC\x80\x50\x06\x00\x00\x80""struct\0"[8];
-const Sym sym_switch = &"\x37\xE0\x68\x4B\x06\x00\x00\x88""switch\0"[8];
-const Sym sym_type = &"\x52\x1E\xB2\xD6\x04\x00\x00\x90""type\0"[8];
-const Sym sym_var = &"\x27\xBE\x0A\xFD\x03\x00\x00\x98""var\0"[8];
+const Sym sym_struct = &"\x97\xFC\x80\x50\x06\x00\x00\x78""struct\0"[8];
+const Sym sym_switch = &"\x37\xE0\x68\x4B\x06\x00\x00\x80""switch\0"[8];
+const Sym sym_type = &"\x52\x1E\xB2\xD6\x04\x00\x00\x88""type\0"[8];
+const Sym sym_var = &"\x27\xBE\x0A\xFD\x03\x00\x00\x90""var\0"[8];
+const Sym sym_const = &"\x0A\x54\xDC\xAD\x05\x00\x00\x98""const\0"[8];
 
 const Sym sym_bool = &"\x70\x6D\x7D\x3D\x04\x00\x00\x00""bool\0"[8];
 const Sym sym_i8 = &"\x9D\xE2\x63\xDB\x02\x00\x00\x00""i8\0"[8];
@@ -158,9 +158,9 @@ static SymRBNode n_usize = { sym_usize, false, &n_u8, NULL };
 static SymRBNode n_f64 = { sym_f64, false, NULL, NULL };
 static SymRBNode n_fun = { sym_fun, true, &n_usize, &n_f64 };
 static SymRBNode n_int = { sym_int, true, NULL, NULL };
-static SymRBNode n_select = { sym_select, true, NULL, NULL };
-static SymRBNode n_isize = { sym_isize, false, &n_int, &n_select };
-static SymRBNode n_return = { sym_return, false, &n_fun, &n_isize };
+static SymRBNode n_isize = { sym_isize, true, NULL, NULL };
+static SymRBNode n_const = { sym_const, false, &n_int, &n_isize };
+static SymRBNode n_return = { sym_return, false, &n_fun, &n_const };
 static SymRBNode n_defer = { sym_defer, false, &n_struct, &n_return };
 static SymRBNode n_enum = { sym_enum, false, NULL, NULL };
 static SymRBNode n__ = { sym__, true, NULL, NULL };
@@ -209,8 +209,8 @@ Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
   "as#101 auto#102 break#103 continue#104 defer#105 else#106 enum#107 "
-  "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e select#10f "
-  "struct#110 switch#111 type#112 var#113 bool i8 u8 i16 u16 i32 u32 i64 "
+  "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e struct#10f "
+  "switch#110 type#111 var#112 const#113 bool i8 u8 i16 u16 i32 u32 i64 "
   "u64 f32 f64 int uint isize usize str auto ideal nil true:bool=1 false:bool=0 "
   "nil:nil=0 _ ";
 #endif

@@ -323,7 +323,7 @@ int cmd_build(int argc, const char** argv) {
     dlog("AST validated OK");
   #endif
 
-  //goto end; // XXX
+  goto end; // XXX
 
   // build Co IR
   #ifdef ENABLE_CO_IR

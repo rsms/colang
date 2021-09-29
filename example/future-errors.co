@@ -1,0 +1,16 @@
+fun read_text_file1() str
+  f = fs.open("file")           // forward error (return imm)
+  f = fs.open("file") else nil  // ignore error
+  f = fs.open("file") else(err) // handle error
+    if err == ErrNotFound
+      return ""
+    return err
+
+fun read_text_file2() (str, error)
+  f = fs.open("file")             // forward error (return imm)
+  f, _ = fs.open("file") else nil // ignore error
+  f, err = fs.open("file")        // handle error
+    if err == ErrNotFound
+      return ""
+    return "", err
+

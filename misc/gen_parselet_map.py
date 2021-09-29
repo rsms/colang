@@ -21,9 +21,9 @@ with open(sourcefilename, "r") as f:
 # //!Parselet (TPlusPlus UNARY_POSTFIX) (TMinusMinus UNARY_POSTFIX)
 # //!PrefixParselet TPlus TMinus TStar TSlash
 parseletp = re.compile(
-  r'\n//\s*\!Parselet\s+(?P<m>(?:\([^\)]+\)[\s\r\n\/\/]*)+)\n\s*(?:static|)\s*Node\*\s*(?P<fun>\w+)')
+  r'\n//\s*\!Parselet\s+(?P<m>(?:\([^\)]+\)[\s\r\n\/\/]*)+)\n\s*(?:static|)\s*Node\*\s*(?:nullable\s*|)(?P<fun>\w+)')
 prefixparseletp = re.compile(
-  r'\n//\s*\!PrefixParselet\s+([^\n]+)\n\s*(?:static|)\s*Node\*\s*(\w+)')
+  r'\n//\s*\!PrefixParselet\s+([^\n]+)\n\s*(?:static|)\s*Node\*\s*(?:nullable\s*|)(\w+)')
 splitspecs = re.compile(r'\)[\s\r\n\/\/]*\(')
 splitsep = re.compile(r'[\s,]+')
 parselets = dict()  # keyed by token, e.g. "TPlus"

@@ -37,6 +37,18 @@
 } while(0)
 
 
+#define assert_llvm_type_iskind(llvmtype, expect_typekind) \
+  asserteq_debug(LLVMGetTypeKind(llvmtype), (expect_typekind))
+
+#define assert_llvm_type_isptrkind(llvmtype, expect_typekind) do { \
+  asserteq_debug(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind); \
+  asserteq_debug(LLVMGetTypeKind(LLVMGetElementType(llvmtype)), (expect_typekind)); \
+} while(0)
+
+#define assert_llvm_type_isptr(llvmtype) \
+  assert_llvm_type_iskind((llvmtype), LLVMPointerTypeKind)
+
+
 // make the code more readable by using short name aliases
 typedef LLVMValueRef  Value;
 
@@ -51,7 +63,9 @@ typedef struct B {
   bool prettyIR; // if true, include names in the IR (function params, variables, etc)
   //std::unique_ptr<DIBuilder>   DBuilder;
   //DebugInfo                    debug;
-  bool noload; // for NVar
+  bool noload;  // for NVar
+  bool mutable; // true if inside mutable data context
+  u32  fnest;   // function nest depth
 
   // optimization
   LLVMPassManagerRef FPM; // function pass manager
@@ -341,6 +355,8 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
     return fn;
   }
 
+  b->fnest++;
+
   // save any current builder position
   LLVMBasicBlockRef prevb = get_current_block(b);
 
@@ -385,6 +401,8 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
   // restore any current builder position
   if (prevb)
     LLVMPositionBuilderAtEnd(b->builder, prevb);
+
+  b->fnest--;
 
   return fn;
 }
@@ -439,13 +457,12 @@ static Value build_fun_call(B* b, Node* n, const char* debugname) {
   // arguments
   Value* argv = NULL;
   u32 argc = 0;
-  auto args = assertnotnull_debug(n->call.args);
-  if (args != Const_nil) {
-    asserteq(args->kind, NTuple);
-    argc = args->array.a.len;
+  if (n->call.args) {
+    asserteq(n->call.args->kind, NTuple);
+    argc = n->call.args->array.a.len;
     argv = memalloc(b->build->mem, sizeof(void*) * argc);
     for (u32 i = 0; i < argc; i++) {
-      argv[i] = build_expr(b, args->array.a.v[i], "arg");
+      argv[i] = build_expr(b, n->call.args->array.a.v[i], "arg");
     }
   }
 
@@ -483,6 +500,9 @@ static Value build_call(B* b, Node* n, const char* debugname) {
 static Value build_typecast(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NTypeCast);
   assertnotnull_debug(n->type);
+  assertnotnull_debug(n->call.args);
+
+  dlog("TODO");
 
   LLVMBool isSigned = false;
   LLVMTypeRef dsttype = b->t_i32;
@@ -651,12 +671,22 @@ static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef 
     dlog("TODO: use args as initializers %s", fmtnode(args));
 
   u32 numvalues = tn->t.struc.a.len;
+  u32 numerrors = 0;
   STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
 
   for (u32 i = 0; i < numvalues; i++) {
     Node* field = tn->t.struc.a.v[i];
     Node* initexpr = field->field.init; // TODO: use constructor value if present
     values[i] = build_initializer(b, field->type, initexpr, field->field.name);
+
+    dlog("values[%u] %s", i, fmtvalue(values[i]));
+
+    if (R_UNLIKELY(initexpr == field->field.init && !LLVMIsConstant(values[i]))) {
+      // field's default initializer is not a constant (e.g. may be var load instead)
+      build_errf(b->build, NodePosSpan(initexpr),
+        "non-constant field initializer %s", fmtnode(initexpr));
+      node_diag_trailn(b->build, DiagNote, field->field.init, 1);
+    }
   }
 
   // if all inits are zero, use LLVMConstNull
@@ -664,16 +694,15 @@ static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef 
   u32 nconst = 0;
   for (u32 i = 0; i < numvalues; i++)
     nzero += (u32)LLVMIsNull(values[i]);
-  if (nzero == numvalues) {
+  if (numerrors != 0 || nzero == numvalues) {
     v = LLVMConstNull(ty);
     nconst = numvalues;
     goto end;
   }
 
-  // check if all initializers are constant
+  // if all initializers are constant, use constant initializer
   for (u32 i = 0; i < numvalues; i++)
     nconst += (u32)LLVMIsConstant(values[i]);
-
   if (nconst == numvalues) {
     const char* structName = LLVMGetStructName(ty);
     if (structName) {
@@ -683,9 +712,11 @@ static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef 
     } else {
       v = LLVMConstStructInContext(b->ctx, values, numvalues, /*packed*/false);
     }
-  } else {
-    panic("TODO: non-const struct initializer");
+    goto end;
   }
+
+  panic("TODO: non-const struct initializer");
+
 
 end:
   STK_ARRAY_DISPOSE(b, values);
@@ -707,21 +738,24 @@ static Value build_struct_cons(B* b, Node* n, const char* debugname) {
 
   LLVMTypeRef ty = get_struct_type(b, structType);
 
-  Node* args = n->call.args == Const_nil ? NULL : n->call.args;
-  Value init = build_struct_init(b, structType, args, ty);
+  Value init = build_struct_init(b, structType, n->call.args, ty);
+  Value ptr;
 
-  if (!LLVMGetInsertBlock(b->builder)) {
+  if (!LLVMGetInsertBlock(b->builder) /*|| !b->mutable*/) {
     // global
-    LLVMValueRef ptr = LLVMAddGlobal(b->mod, ty, debugname);
+    ptr = LLVMAddGlobal(b->mod, ty, debugname);
     LLVMSetLinkage(ptr, LLVMPrivateLinkage);
     LLVMSetInitializer(ptr, init);
     LLVMSetGlobalConstant(ptr, LLVMIsConstant(init));
     // LLVMSetUnnamedAddr(ptr, true);
-    return ptr;
+  } else {
+    // mutable, on stack
+    ptr = LLVMBuildAlloca(b->builder, ty, debugname);
+    LLVMBuildStore(b->builder, init, ptr);
   }
 
-  panic("TODO: build struct on stack or on heap");
-  return NULL;
+  n->irval = ptr;
+  return ptr;
 }
 
 
@@ -842,12 +876,19 @@ static Value load_var(B* b, Node* n, const char* debugname) {
     return v;
   }
 
+  assert_llvm_type_isptr(LLVMTypeOf(v));
+
+  if (R_UNLIKELY(b->fnest == 0)) {
+    // var load in global scope is the same as using its initializer
+    return LLVMGetInitializer(v);
+  }
+
   if (debugname[0] == 0)
-    debugname = n->var.name;
+    debugname = assertnotnull_debug(n->var.name);
 
   LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
-  // dlog(">> load_var load ptr (type %s => %s): %s",
-  //   fmttype(LLVMTypeOf(v)), fmttype(ty), fmtvalue(v));
+  dlog(">> load_var load ptr (type %s => %s): %s",
+    fmttype(LLVMTypeOf(v)), fmttype(ty), fmtvalue(v));
   return LLVMBuildLoad2(b->builder, ty, v, debugname);
 }
 
@@ -900,10 +941,13 @@ static Value build_var(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NVar);
 
   // build var if needed
-  if (!n->irval)
+  if (!n->irval) {
+    bool mutable = b->mutable; b->mutable = !NodeIsConst(n); // push "mutable"
     build_var_def(b, n, debugname, NULL);
+    b->mutable = mutable; // pop "mutable"
+  }
 
-  R_MUSTTAIL return load_var(b, n, debugname);
+  return load_var(b, n, debugname);
 }
 
 
@@ -1246,6 +1290,7 @@ static Value build_floatlit(B* b, Node* n, const char* debugname) {
 
 
 static Value build_expr(B* b, Node* n, const char* debugname) {
+  assertnotnull_debug(n);
 
   #ifdef DEBUG_BUILD_EXPR
     static int indent = -1;

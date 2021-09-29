@@ -170,7 +170,7 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     break;
 
   default:
-    n = ResolveConst(b, n);
+    n = NodeUnbox(n, /*unrefVars=*/true);
   }
 
   if (n->type == Type_ideal) {
@@ -193,8 +193,8 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
       n->kind = NIntLit;
     }
     break;
-    default:
-  break;
+  default:
+    break;
   }
 
   return n;

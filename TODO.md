@@ -50,6 +50,9 @@ Keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
         which may not be worth porting. Its ergonimics are not great.
 - [ ] Codegen tests.
       I.e. build & run programs and verify their output, like Go examples.
+- [ ] GitHub CI with builds
+      See lobster for example: https://github.com/aardappel/lobster/blob/
+      d8e2ce7f6ce2dd5b94e9bff92532c2e50c438582/.github/workflows/build.yml
 
 
 ## Misc

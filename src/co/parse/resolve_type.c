@@ -91,27 +91,17 @@ inline static Node* nullable curr_fun(ResCtx* ctx) {
 }
 
 
-static Node* resolve_const(Build* b, Node* n) {
-  switch (n->kind) {
-    case NVar: {
-      assert(n->var.nrefs > 0);
-      assert(n->var.init != NULL);
-      // visit initializer node
-      return resolve_const(b, n->var.init);
-    }
+ATTR_FORMAT(printf,4,5)
+static Node* resolve_failed(ResCtx* ctx, Node* n, PosSpan pos, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  build_diagv(ctx->build, DiagError, pos, fmt, ap);
+  va_end(ap);
 
-    case NId:
-      assert(n->ref.target != NULL);
-      return resolve_const(b, n->ref.target);
+  if (n->type == NULL)
+    n->type = Type_nil;
 
-    default:
-      return n;
-  }
-}
-
-// ResolveConst resolves n to its constant value
-Node* ResolveConst(Build* b, Node* n) {
-  return NodeIsConst(n) && !NodeIsParam(n) ? resolve_const(b, n) : n;
+  return n;
 }
 
 
@@ -199,7 +189,7 @@ inline static Node* resolve_ideal_type(
   Node*   nullable typecontext,
   RFlag            fl
 ) {
-  n = ResolveConst(ctx->build, n);
+  n = NodeUnbox(n, /*unrefVars=*/true);
   return resolve_ideal_type1(ctx, n, typecontext, fl);
 }
 
@@ -369,59 +359,6 @@ static Node* resolve_array(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
-  asserteq_debug(n->kind, NTuple);
-
-  auto typecontext = ctx->typecontext; // save typecontext
-  fl |= RFlagResolveIdeal;
-
-  Type* tupleType = typecontext;
-  u32 ctindex = 0;
-  if (tupleType) {
-    if (R_UNLIKELY(tupleType->kind != NTupleType)) {
-      build_errf(ctx->build, NodePosSpan(tupleType),
-        "outer type %s where tuple is expected", fmtnode(tupleType));
-      tupleType = NULL;
-    } else if (R_UNLIKELY(tupleType->t.tuple.a.len != n->array.a.len)) {
-      build_errf(ctx->build, NodePosSpan(n),
-        "%u expressions where %u expressions are expected %s",
-        n->array.a.len, tupleType->t.tuple.a.len, fmtnode(tupleType));
-      tupleType = NULL;
-    } else {
-      assert(tupleType->t.tuple.a.len > 0); // tuples should never be empty
-      typecontext_set(ctx, tupleType->t.tuple.a.v[ctindex++]);
-    }
-  }
-
-  Type* tt = NewNode(ctx->build->mem, NTupleType);
-
-  // for each tuple entry
-  for (u32 i = 0; i < n->array.a.len; i++) {
-    if (!n->array.a.v[i]) {
-      if (ctx->typecontext) {
-        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, ctx->typecontext);
-      } else {
-        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, (Node*)NodeBad);
-        build_errf(ctx->build, NodePosSpan(n), "unable to infer type of tuple element %u", i);
-      }
-    } else {
-      Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
-      if (R_UNLIKELY(!cn->type)) {
-        cn->type = (Node*)NodeBad;
-        build_errf(ctx->build, NodePosSpan(cn), "unknown type");
-      }
-      NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, cn->type);
-    }
-    if (tupleType)
-      typecontext_set(ctx, tupleType->t.tuple.a.v[ctindex++]);
-  }
-
-  ctx->typecontext = typecontext; // restore typecontext
-  n->type = tt;
-  return n;
-}
-
-
 static Node* finalize_binop(ResCtx* ctx, Node* n) {
   switch (n->op.op) {
     // comparison operators have boolean value
@@ -547,16 +484,201 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NTuple);
+
+  Type* typecontext = ctx->typecontext; // save typecontext
+  fl |= RFlagResolveIdeal;
+
+  const NodeArray* ctlist = NULL;
+  u32 ctindex = 0;
+
+  if (typecontext) {
+    switch (typecontext->kind) {
+      case NTupleType:
+        ctlist = &typecontext->t.tuple.a;
+        assert(ctlist->len > 0); // tuples should never be empty
+        break;
+      case NStructType:
+        ctlist = &typecontext->t.struc.a;
+        break;
+      default:
+        build_errf(ctx->build, NodePosSpan(typecontext),
+          "unexpected context type %s", fmtnode(typecontext));
+        goto end;
+    }
+
+    if (R_UNLIKELY(ctlist->len != n->array.a.len)) {
+      build_errf(ctx->build, NodePosSpan(n),
+        "%u expressions where %u expressions are expected %s",
+        n->array.a.len, ctlist->len, fmtnode(typecontext));
+      goto end;
+    }
+  }
+
+  Type* tt = NewNode(ctx->build->mem, NTupleType);
+
+  // for each tuple entry
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    if (ctlist) {
+      assert_debug(ctindex < ctlist->len);
+      Node* ct = ctlist->v[ctindex++];
+      typecontext_set(ctx, NodeIsType(ct) ? ct : assertnotnull_debug(ct->type));
+    }
+    if (!n->array.a.v[i]) {
+      if (ctx->typecontext) {
+        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, ctx->typecontext);
+      } else {
+        NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, (Node*)NodeBad);
+        build_errf(ctx->build, NodePosSpan(n),
+          "unable to infer type of tuple element %u", i);
+      }
+    } else {
+      Node* cn = RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
+      if (R_UNLIKELY(!cn->type)) {
+        cn->type = (Node*)NodeBad;
+        build_errf(ctx->build, NodePosSpan(cn), "unknown type");
+      }
+      NodeArrayAppend(ctx->build->mem, &tt->t.tuple.a, cn->type);
+    }
+  }
+
+  n->type = tt;
+
+end:
+  ctx->typecontext = typecontext; // restore typecontext
+  return n;
+}
+
+
+static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NCall);
+  Node* recv = assertnotnull_debug(n->call.receiver);
+  Type* recvt = assertnotnull_debug(recv->type);
+  asserteq_debug(recvt->kind, NFunType);
+
+  n->type = assertnotnull_debug(recvt->t.fun.result);
+
+  Type* nullable paramst = recvt->t.fun.params;
+
+  // check input-output cardinality
+  if (paramst) asserteq_debug(paramst->kind, NTupleType);
+  if (n->call.args) asserteq_debug(n->call.args->kind, NTuple);
+  u32 nparams = paramst ? paramst->t.tuple.a.len : 0;
+  u32 nargs = n->call.args ? n->call.args->array.a.len : 0;
+  if (R_UNLIKELY(nparams != nargs)) {
+    return resolve_failed(ctx, n, NodePosSpan(n),
+      "%u arguments where %u arguments are expected %s",
+      nargs, nparams, fmtnode(recvt));
+  }
+
+  dlog_mod("%s recvt: %s", __func__, fmtnode(recvt));
+
+  // resolve input arguments
+  if (n->call.args) {
+    // add parameter types to the "requested type" stack
+    assertnotnull_debug(paramst); // earlier cardinality guards this case
+    auto typecontext = typecontext_set(ctx, paramst);
+
+    // input arguments, in context of receiver parameters
+    asserteq_debug(n->call.args->kind, NTuple);
+    // n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal);
+    n->call.args = resolve_tuple(ctx, n->call.args, fl | RFlagResolveIdeal);
+    dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
+
+    // pop parameter types off of the "requested type" stack
+    ctx->typecontext = typecontext;
+  }
+
+  // verify arguments
+  bool fail = false;
+  if (paramst) {
+    fail = !TypeEquals(ctx->build, paramst, n->call.args->type);
+  } else { // no parameters
+    fail = n->call.args && n->call.args != Const_nil;
+  }
+
+  if (R_UNLIKELY(fail)) {
+    auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
+    const char* argtypes = "()";
+    if (n->call.args != Const_nil) {
+      if (!n->call.args->type) {
+        n->call.args = resolve_type(
+          ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
+      }
+      argtypes = (const char*)fmtnode(n->call.args->type);
+    }
+    build_errf(ctx->build, posSpan,
+      "cannot call %s %s with arguments of type %s",
+      fmtnode(recv), fmtnode(recvt), argtypes);
+  }
+
+  return n;
+}
+
+
+static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NCall);
+  Node* recv = assertnotnull_debug(n->call.receiver);
+  asserteq_debug(assertnotnull_debug(recv->type)->kind, NTypeType);
+
+  Type* ty = assertnotnull_debug(recv->type->t.type);
+
+  Node* nullable args = n->call.args;
+  n->type = ty; // result of the type constructor call is the type
+
+  // disallow mixed positional and named arguments in type constructors
+  if (R_UNLIKELY(
+    args &&
+    (args->flags & NodeFlagNamed) &&
+    args->array.a.len > 0 &&
+    assertnotnull_debug((Node*)args->array.a.v[0])->kind != NNamedVal ))
+  {
+    return resolve_failed(ctx, n, NodePosSpan(args),
+      "mixed positional and named initializer values");
+  }
+
+  panic("TODO");
+
+  return n;
+}
+
+
+static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NCall);
+
+  // Note: resolve_fun breaks handles cycles where a function calls itself,
+  // making this safe (i.e. will not cause an infinite loop.)
+  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
+
+  // dlog("call (N%s) %s (type %s)",
+  //   NodeKindName(n->call.receiver->kind), fmtnode(n->call.receiver),
+  //   fmtnode(n->call.receiver->type));
+
+  // Node* recv = unbox(n->call.receiver);
+  Node* recv = assertnotnull_debug(n->call.receiver);
+  Type* recvt = assertnotnull_debug(recv->type);
+  switch (recvt->kind) {
+    case NTypeType: // type constructor call
+      R_MUSTTAIL return resolve_call_type(ctx, n, fl | RFlagExplicitTypeCast);
+    case NFunType: // function call
+      R_MUSTTAIL return resolve_call_fun(ctx, n, fl);
+    default:
+      return resolve_failed(ctx, n, NodePosSpan(n->call.receiver),
+        "cannot call %s %s of type %s",
+        TypeKindName(recvt->t.kind), fmtnode(NodeUnbox(recv, false)), fmtnode(recvt));
+  }
+}
+
+
 static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTypeCast);
   assertnotnull_debug(n->call.receiver);
-  assertnotnull_debug(n->call.args);
+  assertnotnull_debug(n->call.args); // note: "T()" w/o args is a call, not a cast
 
   if (R_UNLIKELY(!NodeIsType(n->call.receiver))) {
-    build_errf(ctx->build, NodePosSpan(n),
+    return resolve_failed(ctx, n, NodePosSpan(n),
       "invalid conversion to non-type %s", fmtnode(n->call.receiver));
-    n->type = Type_nil;
-    return n;
   }
 
   // Note: n->call.receiver is a Type, not a regular Node (see check above)
@@ -583,92 +705,6 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   ctx->typecontext = typecontext; // restore typecontext
-  return n;
-}
-
-
-static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
-  asserteq_debug(n->kind, NCall);
-
-  // Note: resolve_fun breaks handles cycles where a function calls itself,
-  // making this safe (i.e. will not cause an infinite loop.)
-  n->call.receiver = resolve_type(ctx, n->call.receiver, fl);
-
-  // dlog("call (N%s) %s (type %s)",
-  //   NodeKindName(n->call.receiver->kind), fmtnode(n->call.receiver),
-  //   fmtnode(n->call.receiver->type));
-
-  // Node* recv = unbox(n->call.receiver);
-  Node* recv = n->call.receiver;
-
-  // expected input type
-  Type* intype = NULL;
-  Type* outtype = NULL;
-  Type* recvt = assertnotnull_debug(recv->type);
-  switch (recvt->kind) {
-    case NTypeType: // type constructor call
-      intype = recvt->t.type;
-      outtype = recvt->t.type;
-      fl |= RFlagExplicitTypeCast;
-      break;
-    case NFunType: // function call
-      intype = recvt->t.fun.params;
-      outtype = recvt->t.fun.result;
-      break;
-    default:
-      build_errf(ctx->build, NodePosSpan(n->call.receiver),
-        "cannot call %s %s (%s)",
-        TypeKindName(recvt->t.kind), fmtnode(recv), fmtnode(recvt));
-      n->type = Type_nil;
-      return n;
-  }
-
-  dlog_mod("%s recvt: %s", __func__, fmtnode(recvt));
-
-
-  if (intype) {
-    // add parameter types to the "requested type" stack
-    auto typecontext = typecontext_set(ctx, intype);
-
-    // input arguments, in context of receiver parameters
-    assertnotnull(n->call.args);
-    n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal);
-    dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
-
-    // pop parameter types off of the "requested type" stack
-    ctx->typecontext = typecontext;
-
-    // TODO: Consider arguments with defaults:
-    // fun foo(a, b int, c int = 0)
-    // foo(1, 2) == foo(1, 2, 0)
-  }
-
-  // verify arguments
-  if (recvt->kind == NFunType) {
-    bool fail = false;
-    if (intype) {
-      fail = !TypeEquals(ctx->build, intype, n->call.args->type);
-    } else { // no parameters
-      fail = n->call.args && n->call.args != Const_nil;
-    }
-
-    if (R_UNLIKELY(fail)) {
-      auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
-      const char* argtypes = "()";
-      if (n->call.args != Const_nil) {
-        if (!n->call.args->type) {
-          n->call.args = resolve_type(
-            ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
-        }
-        argtypes = (const char*)fmtnode(n->call.args->type);
-      }
-      build_errf(ctx->build, posSpan,
-        "cannot call %s %s (%s) with arguments of type %s",
-        TypeKindName(recvt->t.kind), fmtnode(recv), fmtnode(recvt), argtypes);
-    }
-  }
-
-  n->type = outtype;
   return n;
 }
 
@@ -987,6 +1023,7 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NField);
+  assertnotnull_debug(n->type);
 
   if (n->field.init) {
     n->flags &= ~NodeFlagCustomInit;
@@ -995,7 +1032,7 @@ static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
 
     n->field.init = resolve_type(ctx, n->field.init, fl);
 
-    if (n->field.init->type != n->type) {
+    if (R_UNLIKELY(n->field.init->type != n->type)) {
       build_errf(ctx->build, NodePosSpan(n->field.init),
         "value of type %s where type %s is expected",
         fmtnode(n->field.init->type), fmtnode(n->type));
@@ -1009,6 +1046,15 @@ static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
     ctx->typecontext = typecontext; // restore typecontext
   }
 
+  return n;
+}
+
+
+static Node* resolve_namedval(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NNamedVal);
+  assertnotnull_debug(n->namedval.value);
+  n->namedval.value = resolve_type(ctx, n->namedval.value, fl);
+  n->type = assertnotnull_debug(n->namedval.value->type);
   return n;
 }
 
@@ -1060,8 +1106,8 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
         if ((fl & RFlagResolveIdeal) && ((fl & RFlagEager) || ctx->typecontext)) {
           if (ctx->typecontext)
             return resolve_ideal_type(ctx, n, ctx->typecontext, fl);
-          n = NodeCopy(ctx->build->mem, n);
-          assert_debug(NodeHasNVal(n));
+          n = NodeCopy(ctx->build->mem, NodeUnbox(n, false));
+          assert_debug(NodeHasNVal(n)); // expected to be a primitive value (e.g. int)
           n->type = IdealType(n->val.ct);
         }
         // else: leave as ideal, for now
@@ -1129,6 +1175,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NField:
     R_MUSTTAIL return resolve_field(ctx, n, fl);
+
+  case NNamedVal:
+    R_MUSTTAIL return resolve_namedval(ctx, n, fl);
 
   case NIf:
     R_MUSTTAIL return resolve_if(ctx, n, fl);

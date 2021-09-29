@@ -248,6 +248,11 @@ Str NodeStr(Str s, const Node* n) {
     s = str_appendc(s, ' ');
     return NodeStr(s, n->type);
 
+  case NNamedVal:
+    s = str_append(s, n->namedval.name, symlen(n->namedval.name));
+    s = str_appendc(s, '=');
+    return NodeStr(s, n->namedval.value);
+
   case NFunType: // (int int)->bool
     if (n->t.fun.params == NULL) {
       s = str_appendcstr(s, "()");
@@ -463,6 +468,7 @@ static bool l_collapse_field(LReprCtx* c, NodeList* nl) {
     case NIntLit:
     case NReturn:
     case NStrLit:
+    case NNamedVal:
     case NTypeType:
       return true;
 
@@ -522,6 +528,8 @@ static const char* l_listname(NodeList* nl) {
       return "type";
     case NFunType:
       return "fun";
+    case NVar:
+      return n->var.isconst ? "const" : "var";
     default:
       return NodeKindName(n->kind);
   }
@@ -735,6 +743,14 @@ static bool l_visit(NodeList* nl, void* cp) {
     break;
   }
 
+  case NNamedVal: {
+    s = str_appendc(s, ' ');
+    s = style_push(&c->style, s, id_color);
+    s = str_append(s, n->namedval.name, symlen(n->namedval.name));
+    s = style_pop(&c->style, s);
+    break;
+  }
+
   case NPkg:
   case NFile: {
     if (n->cunit.name) {
@@ -804,6 +820,8 @@ static bool l_visit(NodeList* nl, void* cp) {
         s = str_appendcstr(s, " @unused");
       if ((n->flags & NodeFlagPublic))
         s = str_appendcstr(s, " @pub");
+      // if ((n->flags & NodeFlagHasConstVar))
+      //   s = str_appendcstr(s, " @hascvar");
       s = style_pop(&c->style, s);
     }
     // pointer attr

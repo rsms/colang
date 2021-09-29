@@ -82,11 +82,11 @@ typedef Node Type;
   _( in,          TIn)          \
   _( nil,         TNil)         \
   _( return,      TReturn)      \
-  _( select,      TSelect)      \
   _( struct,      TStruct)      \
   _( switch,      TSwitch)      \
   _( type,        TType)        \
   _( var,         TVar)         \
+  _( const,       TConst)       \
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
 
@@ -249,10 +249,6 @@ Node* ResolveSym(Build*, ParseFlags, Node*, Scope*);
 
 // ResolveType resolves unresolved types in an AST. May return a new version of n.
 Node* ResolveType(Build* b, Node* n);
-
-// ResolveConst resolves n to its constant value.
-// This decrements Var refs and the result is expected to replace n.
-Node* ResolveConst(Build* b, Node* n);
 
 // GetTypeID retrieves the TypeID for the type node n.
 // This function may mutate n by computing and storing id to n.t.id.

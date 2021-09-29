@@ -16,12 +16,10 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   auto n = parent->n;
   switch (n->kind) {
 
-  // ref
   case NId:
     return CALLBACK(n->ref.target, "target");
     break;
 
-  // op
   case NBinOp:
   case NPostfixOp:
   case NPrefixOp:
@@ -33,7 +31,6 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->op.right, "right");
     break;
 
-  // cunit
   case NFile:
   case NPkg: {
     NodeList nl = (NodeList){ .parent = parent };
@@ -46,7 +43,6 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
-  // array
   case NBlock:
   case NArray:
   case NTuple: {
@@ -62,31 +58,28 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
-  // var
   case NVar:
     return CALLBACK(n->var.init, "init");
 
-  // field
   case NField:
     return CALLBACK(n->field.init, "init");
 
-  // fun
+  case NNamedVal:
+    return CALLBACK(n->namedval.value, "value");
+
   case NFun:
     return (
       CALLBACK(n->fun.params, "params") &&
       CALLBACK(n->fun.result, "result") &&
       CALLBACK(n->fun.body, "body") );
 
-  // macro
   case NMacro:
     return CALLBACK(n->macro.params, "params") && CALLBACK(n->macro.template, "template");
 
-  // call
   case NTypeCast:
   case NCall:
     return CALLBACK(n->call.receiver, "recv") && CALLBACK(n->call.args, "args");
 
-  // cond
   case NIf:
     if (!CALLBACK(n->cond.cond, "cond") || !CALLBACK(n->cond.thenb, "then"))
       return false;
@@ -106,11 +99,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       CALLBACK(n->slice.start, "start") &&
       CALLBACK(n->slice.end, "end") );
 
-  // uses t.fun
   case NFunType:
     return CALLBACK(n->t.fun.params, "params") && CALLBACK(n->t.fun.result, "result");
 
-  // uses t.tuple
   case NTupleType: {
     NodeList nl = (NodeList){ .parent = parent };
     for (u32 i = 0; i < n->t.tuple.a.len; i++) {
@@ -122,7 +113,6 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     break;
   }
 
-  // uses t.array
   case NArrayType:
     if (n->t.array.size == 0 && n->t.array.sizeExpr &&
         !CALLBACK(n->t.array.sizeExpr, "sizeexpr"))
@@ -131,7 +121,6 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     }
     return CALLBACK(n->t.array.subtype, "subtype");
 
-  // uses t.struc
   case NStructType: {
     NodeList nl = (NodeList){ .parent = parent };
     for (u32 i = 0; i < n->t.struc.a.len; i++) {

@@ -1,0 +1,7 @@
+fun a() int
+  const z = 1
+  z = 2  // implicit definition shadows previous z (warning issued)
+
+fun b() int
+  const z = 1
+  var z = 2  // explicit definition shadows previous z (no warning)

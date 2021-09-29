@@ -1,0 +1,16 @@
+fun add(x, y auto) typeof(x)
+  x + y
+
+fun push(xs []auto, elements ...auto) typeof(xs)
+  append(xs, elements...)
+
+fun main
+  add(u32(4), u32(6)) // => u32 10
+  add(4.0, 6.0)       // => f32 10.0
+  xs = [3]u16(1, 2, 3)
+  xs = push(xs, 4, 5)
+
+// generated function instances:
+// fun add(x, y u32) u32 -> x + y
+// fun add(x, y f32) f32 -> x + y
+// fun push(xs []u16, elements ...u16) []u16 -> append(xs, elements...)

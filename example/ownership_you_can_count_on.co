@@ -1,0 +1,21 @@
+// https://researcher.watson.ibm.com/researcher/files/us-bacon/Dingle07Ownership.pdf
+// https://vale.dev/blog/generational-references
+
+fun make_nstr(pattern str, n int) str {
+  s = ""  // s owns str
+  for i = 0; i < n; i++ {
+    s += pattern
+  }
+  return s  // ownership of str transfers to caller
+}
+
+fun count_chars(s str) {  // s is borrowed
+  i = 0
+  for ; i < len(s); i++ {}
+  return i
+}
+
+fun main() int {
+  msg = make_nstr("ha ", 3)  // ownership of str transferred to msg
+  count_chars(msg)           // lends a reference of str to callee
+}

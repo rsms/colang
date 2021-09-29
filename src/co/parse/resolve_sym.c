@@ -216,6 +216,10 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n->field.init = resolve_sym(ctx, n->field.init);
     break;
 
+  case NNamedVal:
+    n->namedval.value = resolve_sym(ctx, n->namedval.value);
+    break;
+
   case NSelector:
     n->sel.operand = resolve_sym(ctx, n->sel.operand);
     break;

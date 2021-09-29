@@ -1,0 +1,11 @@
+fun foo
+  x = allocate([512]u8) // allocated in the ArenaAllocator
+  x[400] = 4
+  // drop(x), ArenaAllocator does nothing (no free/reclaim)
+
+fun main
+  x = allocate("hello") // allocated in the default heap allocator
+  context.allocator = ArenaAllocator()
+  foo()
+  // drop(x), free memory x points to
+  // drop(context.allocator), frees all memory of our ArenaAllocator

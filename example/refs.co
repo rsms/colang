@@ -1,11 +1,17 @@
 // Questions
 //
 // Q: How is ownership managed?
+// A: Single-owner by var
 //
-// Q: When is something allocated on the heap?
-// A: Explicitly with "allocate(T(1,2))"
+// Q: How is something allocated on the heap?
+// A1: Explicitly with "Box(T(1,2)) -> Box<T>" (using context.allocator, Box approach)
+// A2: Explicitly with "allocate(T(1,2)) -> *T" (using context.allocator, pointer approach)
 //
 // Q: How do you declare data immutable/read-only?
+// A: With "const" keyword on var definition
+//      Q: What about return values?
+//      A: Function should return a ref ("&T") if the data can't be mutated.
+//    +Implicitly by use (really just an optimization w/ no semantic impact.)
 //
 // Q: Is immutability of storage "infectious" on its data?
 //    i.e. is the returned slice editable? "fun get_buf() &[]u8"
@@ -26,11 +32,11 @@ fun main() int
   // "b" goes out of scope
   // "a" goes out of scope
 
-// examples from real code
-fun resolve(n Node) Node     // takes over n, gives ownership of Node
-fun set_const(n &mut Node)   // borrows n read-write, mutates n
-fun fmt_node(n &Node) str    // borrows n read-only, gives ownership of str
-fun get_name(n &Node) &str   // borrows n read-only, returns read-only ref to str
+// examples
+fun resolve(n Node) Node   // takes ownership of n, gives ownership of Node
+fun set_const(n &mut Node) // borrows n read-write, mutates n
+fun fmt_node(n &Node) str  // borrows n read-only, gives ownership of str
+fun get_name(n &Node) &str // borrows n read-only, returns read-only ref to str
 fun get_buf(n &mut Node) &mut []u8
 
 // signatures
@@ -41,3 +47,14 @@ fun i3(v &mut IVec3) // callee is lent a mutable reference
 fun o1() IVec3       // caller is given ownership
 fun o2() &IVec3      // caller is lent a read-only reference
 fun o3() &mut IVec3  // caller is lent a mutable reference
+
+// What about strings?
+// A string literal is of what type?
+s = "foo" // "str" or "&str"?
+// It would be nice to support mutable strings.
+// Maybe "str" is an alias for "[]u8"
+// and string literals become eg "[3]u8('f','o','o')",
+// then the same mutability rules can be applied as for arrays.
+const s2 = "foo" // immutable == const s2 = [3]u8('f','o','o')
+s3 = "foo"       // mutable   == s3 = [3]u8('f','o','o')
+print("hello")   // const tmp = "[5]u8('h','e'...)" passed as "&[]u8" aka "&str"

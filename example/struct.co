@@ -1,4 +1,35 @@
-// // Bridge = struct { occupants int }
+fun foo(a, b int, c uint) int
+  a + b + int(c)
+
+fun main() int
+  // foo(1, 2, 3)
+  // foo(1, 2)
+  // foo(1, 2, 3, 4)
+  // foo(1, c=3, b=2)
+  foo(1, c=3, c=2)
+
+// ———————————————————————————————————————————————————————
+// x int = 3
+
+// type Spaceship
+//   a int = x
+//   b uint
+//   c i64
+
+// // A = Spaceship()
+
+// fun foo(
+//   a int
+//   b uint
+//   c i64
+// ) int
+//   x = 4
+//   B = Spaceship(2, c = 5)
+//   B.a
+
+// ———————————————————————————————————————————————————————
+
+/*// // Bridge = struct { occupants int }
 // type Bridge
 //   r int
 //   v int
@@ -18,13 +49,15 @@ type Spaceship
 //   s.occupants
 
 A = Spaceship()
-B = Spaceship()
+// B = Spaceship()
 
 fun main() int
+  B = Spaceship()
+  B.engine.output
   // b = Bridge()
   // B.engine.output = 3
-  B.engine.output
   // s = Spaceship()
   // s.engine.fuel
   // s.occupants
   // s.len // WIP
+*/

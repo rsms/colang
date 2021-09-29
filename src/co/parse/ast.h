@@ -22,7 +22,6 @@ typedef enum {
   _(Bad,         NodeClassNone) /* substitute "filler node" for invalid syntax */ \
   _(Pkg,         NodeClassMeta) \
   _(File,        NodeClassMeta) \
-  \
   _(BoolLit,     NodeClassLit) /* boolean literal */ \
   _(IntLit,      NodeClassLit) /* integer literal */ \
   _(FloatLit,    NodeClassLit) /* floating-point literal */ \
@@ -39,6 +38,7 @@ typedef enum {
   _(Id,          NodeClassExpr) \
   _(If,          NodeClassExpr) \
   _(Var,         NodeClassExpr) \
+  _(NamedVal,    NodeClassExpr) \
   _(BinOp,       NodeClassExpr) \
   _(PrefixOp,    NodeClassExpr) \
   _(PostfixOp,   NodeClassExpr) \
@@ -110,16 +110,17 @@ typedef enum {
 
 // NodeFlags
 typedef enum {
-  NodeFlagsNone      = 0,
-  NodeFlagUnresolved = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
-  NodeFlagConst      = 1 << 1, // constant; value known at compile time (comptime)
-  NodeFlagBase       = 1 << 2, // [struct field] the field is a base of the struct
-  NodeFlagRValue     = 1 << 4, // resolved as rvalue
-  NodeFlagParam      = 1 << 5, // [Var] function parameter
-  NodeFlagMacroParam = 1 << 6, // [Var] macro parameter
-  NodeFlagCustomInit = 1 << 7, // [StructType] has fields w/ non-zero initializer
-  NodeFlagUnused     = 1 << 8, // [Var] never referenced
-  NodeFlagPublic     = 1 << 9, // [Var|Fun] public visibility (aka published, exported)
+  NodeFlagsNone       = 0,
+  NodeFlagUnresolved  = 1 << 0,  // contains unresolved references. MUST BE VALUE 1!
+  NodeFlagConst       = 1 << 1,  // constant; value known at compile time (comptime)
+  NodeFlagBase        = 1 << 2,  // [struct field] the field is a base of the struct
+  NodeFlagRValue      = 1 << 4,  // resolved as rvalue
+  NodeFlagParam       = 1 << 5,  // [Var] function parameter
+  NodeFlagMacroParam  = 1 << 6,  // [Var] macro parameter
+  NodeFlagCustomInit  = 1 << 7,  // [StructType] has fields w/ non-zero initializer
+  NodeFlagUnused      = 1 << 8,  // [Var] never referenced
+  NodeFlagPublic      = 1 << 9,  // [Var|Fun] public visibility (aka published, exported)
+  NodeFlagNamed       = 1 << 11, // [Tuple when used as args] has named argument
 } NodeFlags; // remember to update NodeFlagsStr impl
 
 typedef struct Node {
@@ -149,11 +150,11 @@ typedef struct Node {
       ConstStr        name;         // reference to str in corresponding Source/Pkg struct
       Scope* nullable scope;
       NodeArray       a;            // array of nodes
-      Node*           a_storage[3]; // in-struct storage for the first few entries of a
+      Node*           a_storage[4]; // in-struct storage for the first few entries of a
     } cunit;
     /* array */ struct { // Tuple, Block, Array
       NodeArray a;            // array of nodes
-      Node*     a_storage[4]; // in-struct storage for the first few entries of a
+      Node*     a_storage[6]; // in-struct storage for the first few entries of a
     } array;
     /* fun */ struct { // Fun
       Node* nullable params;  // input params (NTuple or NULL if none)
@@ -178,10 +179,15 @@ typedef struct Node {
     } field;
     /* var */ struct { // Var
       Sym            name;
-      Node* nullable init;  // initial/default value
-      u32            nrefs; // reference count
-      u32            index; // argument index (used by function parameters)
+      Node* nullable init;    // initial/default value
+      u32            nrefs;   // reference count
+      u32            index;   // argument index (used by function parameters)
+      bool           isconst; // immutable storage? (true for "const x" vars)
     } var;
+    /* namedval */ struct { // NamedVal
+      Sym   name;
+      Node* value;
+    } namedval;
     /* sel */ struct { // Selector = Expr "." ( Ident | Selector )
       Node*               operand;
       Sym                 member;  // id
@@ -358,7 +364,8 @@ static u32 NodeUnrefVar(Node* n); // NVar
 
 // NodeUnbox returns the effective value of n by unboxing NId to its target
 // and immutable variables to their initializer.
-Node* NodeUnbox(Node* n);
+// If unrefVars is true, NodeUnrefVar is called on each constant var that's unboxed.
+Node* NodeUnbox(Node* n, bool unrefVars);
 
 // NodeFlagsStr appends a printable description of fl to s
 Str NodeFlagsStr(NodeFlags fl, Str s);
@@ -409,7 +416,10 @@ static Node* NodeCopy(Mem mem, const Node* n);
 // trail to the provided node n. For example, if n is a call the trail will report on the
 // function that is called along with any identifier indirections.
 // Note: The output does NOT include n itself.
-void node_diag_trail(Build* b, DiagLevel dlevel, Node* n);
+void node_diag_trailn(Build* b, DiagLevel dlevel, Node* n, u32 limit);
+inline static void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
+  return node_diag_trailn(b, dlevel, n, 0xffffffff);
+}
 
 // -----------------------
 // AST visitor

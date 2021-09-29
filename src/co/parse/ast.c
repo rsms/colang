@@ -84,16 +84,21 @@ Type* NewTypeType(Mem mem, Type* tn) {
 }
 
 
-Node* NodeUnbox(Node* n) {
+Node* NodeUnbox(Node* n, bool unrefVars) {
+  assertnotnull_debug(n);
   while (1) switch (n->kind) {
-    case NId:
-      n = assertnotnull_debug(n->ref.target);
-      break;
     case NVar:
       if (!NodeIsConst(n) || !n->var.init)
         return n;
-      n = assertnotnull_debug(n->var.init);
+      if (unrefVars)
+        NodeUnrefVar(n);
+      n = n->var.init;
       break;
+
+    case NId:
+      n = assertnotnull_debug(n->ref.target);
+      break;
+
     default:
       return n;
   }
@@ -403,10 +408,11 @@ static void diag_trail(Build* b, DiagLevel dlevel, const char* nullable msg, Nod
 }
 
 
-void node_diag_trail(Build* b, DiagLevel dlevel, Node* n) {
+void node_diag_trailn(Build* b, DiagLevel dlevel, Node* n, u32 limit) {
   const char* msg = NULL;
-  while ((n = diag_trail_next(n, &msg))) {
+  while ((n = diag_trail_next(n, &msg)) && limit != 0) {
     diag_trail(b, dlevel, msg, n, 1);
+    limit--;
   }
 }
 
@@ -415,15 +421,16 @@ Str NodeFlagsStr(NodeFlags fl, Str s) {
   if (fl == NodeFlagsNone)
     return str_appendcstr(s, "0");
 
-  if (fl & NodeFlagUnresolved) { s = str_appendcstr(s, "Unresolved"); }
-  if (fl & NodeFlagConst)      { s = str_appendcstr(s, "Const"); }
-  if (fl & NodeFlagBase)       { s = str_appendcstr(s, "Base"); }
-  if (fl & NodeFlagRValue)     { s = str_appendcstr(s, "RValue"); }
-  if (fl & NodeFlagParam)      { s = str_appendcstr(s, "Param"); }
-  if (fl & NodeFlagMacroParam) { s = str_appendcstr(s, "MacroParam"); }
-  if (fl & NodeFlagCustomInit) { s = str_appendcstr(s, "CustomInit"); }
-  if (fl & NodeFlagUnused)     { s = str_appendcstr(s, "Unused"); }
-  if (fl & NodeFlagPublic)     { s = str_appendcstr(s, "Public"); }
+  if (fl & NodeFlagUnresolved)  { s = str_appendcstr(s, "Unresolved"); }
+  if (fl & NodeFlagConst)       { s = str_appendcstr(s, "Const"); }
+  if (fl & NodeFlagBase)        { s = str_appendcstr(s, "Base"); }
+  if (fl & NodeFlagRValue)      { s = str_appendcstr(s, "RValue"); }
+  if (fl & NodeFlagParam)       { s = str_appendcstr(s, "Param"); }
+  if (fl & NodeFlagMacroParam)  { s = str_appendcstr(s, "MacroParam"); }
+  if (fl & NodeFlagCustomInit)  { s = str_appendcstr(s, "CustomInit"); }
+  if (fl & NodeFlagUnused)      { s = str_appendcstr(s, "Unused"); }
+  if (fl & NodeFlagPublic)      { s = str_appendcstr(s, "Public"); }
+  if (fl & NodeFlagNamed)       { s = str_appendcstr(s, "Named"); }
 
   return s;
 }
