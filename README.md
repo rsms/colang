@@ -1,4 +1,4 @@
-# co2
+# Co programming language
 
 ## Building
 
@@ -16,10 +16,12 @@ Build:
 - Verbose build:                       `ckit build -v`
 - Build everything:                    `ckit build`
 
-Development:
-- Live main program:               `ckit watch -rsh="{BUILD}/co build example/hello.co" co`
-- Live testing:                    `ckit watch test`
-- Live testing of a specific test: `ckit watch test scan`
+Development and testing:
+- Run all tests:            `./test.sh`
+- Run all tests live:       `./test.sh -w`
+- Run unit test with prefix "scan":      `ckit test scan`
+- Run unit test with prefix "scan" live: `ckit watch test scan`
+- Live main program:        `ckit watch -rsh="{BUILD}/co build example/hello.co" co`
 
 Note: debug builds have the following checks and features enabled:
 - All assertions (both "safe" and "debug")
