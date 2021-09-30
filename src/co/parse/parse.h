@@ -262,7 +262,7 @@ Type* InternASTType(Build* b, Type* t);
 
 // TypeEquals returns true if x and y are equivalent types (i.e. identical).
 // This function may call GetTypeID which may update b->syms, may mutate x and y.
-bool TypeEquals(Build* b, Type* x, Type* y);
+static bool TypeEquals(Build* b, Type* x, Type* y);
 
 // // TypeConv describes the effect of converting one type to another
 // typedef enum TypeConv {
@@ -307,6 +307,12 @@ inline static Pos ScannerPos(const Scanner* s) {
   u32 col = 1 + (u32)((uintptr_t)s->tokstart - (uintptr_t)s->linestart);
   u32 span = s->tokend - s->tokstart;
   return pos_make(s->srcposorigin, s->lineno, col, span);
+}
+
+bool _TypeEquals(Build* b, Type* x, Type* y); // impl typeid.c
+
+inline static bool TypeEquals(Build* b, Type* x, Type* y) {
+  return x == y || _TypeEquals(b, x, y);
 }
 
 ASSUME_NONNULL_END

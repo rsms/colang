@@ -39,18 +39,6 @@
 ASSUME_NONNULL_BEGIN
 
 
-#define STK_ARRAY_MAKE(Parser,NAME,T,STKCAP,LEN)              \
-  T NAME##_stk[STKCAP];                                       \
-  T* NAME = NAME##_stk;                                       \
-  if ((LEN) > countof(NAME##_stk)) {                          \
-    NAME = memalloc((Parser)->build->mem, sizeof(T) * (LEN)); \
-  }
-
-#define STK_ARRAY_DISPOSE(Parser,NAME) do {                        \
-  if (NAME != NAME##_stk) { memfree((Parser)->build->mem, NAME); } \
-} while(0)
-
-
 // Operator precedence
 // Precedence    Operator
 //     5             *  /  %  <<  >>  &  &^
@@ -1659,9 +1647,9 @@ finish:
       if (!cn->type) {
         auto t = mknode(p, NId);
         t->ref.name = cn->var.name;
-        cn->type = t;
         cn->var.name = sym__;
         cn->var.index = index++;
+        cn->type = useAsRValue(p, t);
       }
       NodeTransferUnresolved(cn, cn->type);
       NodeTransferUnresolved(n, cn->type);

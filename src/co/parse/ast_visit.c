@@ -59,7 +59,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   }
 
   case NVar:
-    return CALLBACK(n->var.init, "init");
+    if (!NodeIsParam(n) || n->var.init)
+      return CALLBACK(n->var.init, "init");
+    break;
 
   case NField:
     return CALLBACK(n->field.init, "init");
@@ -100,7 +102,8 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       CALLBACK(n->slice.end, "end") );
 
   case NFunType:
-    return CALLBACK(n->t.fun.params, "params") && CALLBACK(n->t.fun.result, "result");
+    return CALLBACK(n->t.fun.params ? n->t.fun.params->type : NULL, "params") &&
+           CALLBACK(n->t.fun.result, "result");
 
   case NTupleType: {
     NodeList nl = (NodeList){ .parent = parent };

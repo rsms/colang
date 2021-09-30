@@ -2,6 +2,7 @@
 #include "../parse/parse.h"
 #include "../util/rtimer.h"
 #include "../util/ptrmap.h"
+#include "../util/stk_array.h"
 #include "llvm.h"
 
 #include <llvm-c/Transforms/AggressiveInstCombine.h>
@@ -24,17 +25,6 @@
   #define RTIMER_LOG(fmt, ...) do{}while(0)
 #endif
 
-
-#define STK_ARRAY_MAKE(b,NAME,T,STKCAP,LEN)              \
-  T NAME##_stk[STKCAP];                                  \
-  T* NAME = NAME##_stk;                                  \
-  if ((LEN) > countof(NAME##_stk)) {                     \
-    NAME = memalloc((b)->build->mem, sizeof(T) * (LEN)); \
-  }
-
-#define STK_ARRAY_DISPOSE(b,NAME) do {                        \
-  if (NAME != NAME##_stk) { memfree((b)->build->mem, NAME); } \
-} while(0)
 
 
 #define assert_llvm_type_iskind(llvmtype, expect_typekind) \
@@ -271,19 +261,22 @@ inline static void add_default_init(B* b, LLVMTypeRef ty, Value v) {
 
 static LLVMTypeRef build_funtype(B* b, Node* nullable params, Node* nullable result) {
   LLVMTypeRef returnType = get_type(b, result);
-  LLVMTypeRef* paramsv = NULL;
+
   u32 paramsc = 0;
+  STK_ARRAY_DEFINE(paramsv, LLVMTypeRef, 16);
+
   if (params) {
-    asserteq(params->kind, NTupleType);
-    paramsc = params->t.tuple.a.len;
-    paramsv = memalloc(b->build->mem, sizeof(void*) * paramsc);
+    Type* paramst = params->type;
+    asserteq(paramst->kind, NTupleType);
+    paramsc = paramst->t.tuple.a.len;
+    STK_ARRAY_INIT(paramsv, b->build->mem, paramsc);
     for (u32 i = 0; i < paramsc; i++) {
-      paramsv[i] = get_type(b, params->t.tuple.a.v[i]);
+      paramsv[i] = get_type(b, paramst->t.tuple.a.v[i]);
     }
   }
+
   auto ft = LLVMFunctionType(returnType, paramsv, paramsc, /*isVarArg*/false);
-  if (paramsv)
-    memfree(b->build->mem, paramsv);
+  STK_ARRAY_DISPOSE(paramsv);
   return ft;
 }
 
@@ -455,27 +448,23 @@ static Value build_fun_call(B* b, Node* n, const char* debugname) {
   }
 
   // arguments
-  Value* argv = NULL;
   u32 argc = 0;
+  STK_ARRAY_DEFINE(argv, Value, 16);
   if (n->call.args) {
     asserteq(n->call.args->kind, NTuple);
     argc = n->call.args->array.a.len;
-    argv = memalloc(b->build->mem, sizeof(void*) * argc);
+    STK_ARRAY_INIT(argv, b->build->mem, argc);
     for (u32 i = 0; i < argc; i++) {
       argv[i] = build_expr(b, n->call.args->array.a.v[i], "arg");
     }
   }
 
-  // check argument count
-  if (LLVMCountParams(callee) != argc) {
-    errlog("wrong number of arguments: %u (expected %u)", argc, LLVMCountParams(callee));
-    return NULL;
-  }
-
+  asserteq(LLVMCountParams(callee), argc);
   Value v = LLVMBuildCall(b->builder, callee, argv, argc, "");
+
   // LLVMSetTailCall(v, true); // set tail call when we know it for sure
-  if (argv)
-    memfree(b->build->mem, argv);
+
+  STK_ARRAY_DISPOSE(argv);
   return v;
 }
 
@@ -526,7 +515,7 @@ static LLVMTypeRef build_struct_type(B* b, Type* n) {
   asserteq_debug(n->kind, NStructType);
 
   u32 elemc = n->t.struc.a.len;
-  STK_ARRAY_MAKE(b, elemv, LLVMTypeRef, 16, n->t.struc.a.len);
+  STK_ARRAY_MAKE(elemv, b->build->mem, LLVMTypeRef, 16, n->t.struc.a.len);
 
   for (u32 i = 0; i < n->t.struc.a.len; i++) {
     Node* field = n->t.struc.a.v[i];
@@ -542,7 +531,7 @@ static LLVMTypeRef build_struct_type(B* b, Type* n) {
     ty = LLVMStructTypeInContext(b->ctx, elemv, elemc, /*packed*/false);
   }
 
-  STK_ARRAY_DISPOSE(b, elemv);
+  STK_ARRAY_DISPOSE(elemv);
 
   return ty;
 }
@@ -608,26 +597,21 @@ static Value build_anon_struct(
     }
   }
 
-  LLVMTypeRef typesv[32];
-  LLVMTypeRef* types = typesv;
-  if (R_UNLIKELY(countof(typesv) < numvalues))
-    types = memalloc(b->build->mem, numvalues * sizeof(LLVMTypeRef));
+  STK_ARRAY_DEFINE(typesv, LLVMTypeRef, 16);
+  STK_ARRAY_INIT(typesv, b->build->mem, numvalues);
+  for (u32 i = 0; i < numvalues; i++) {
+    typesv[i] = LLVMTypeOf(values[i]);
+  }
 
-  for (u32 i = 0; i < numvalues; i++)
-    types[i] = LLVMTypeOf(values[i]);
-
-  LLVMTypeRef ty = LLVMStructTypeInContext(b->ctx, types, numvalues, /*packed*/false);
+  LLVMTypeRef ty = LLVMStructTypeInContext(b->ctx, typesv, numvalues, /*packed*/false);
   Value ptr = LLVMBuildAlloca(b->builder, ty, debugname);
-
-  if (types != typesv)
-    memfree(b->build->mem, types);
 
   for (u32 i = 0; i < numvalues; i++) {
     LLVMValueRef fieldptr = LLVMBuildStructGEP2(b->builder, ty, ptr, i, "");
     LLVMBuildStore(b->builder, values[i], fieldptr);
   }
 
-  // return LLVMBuildLoad2(b->builder, ty, ptr, debugname);
+  STK_ARRAY_DISPOSE(typesv);
   return ptr;
 }
 
@@ -672,7 +656,7 @@ static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef 
 
   u32 numvalues = tn->t.struc.a.len;
   u32 numerrors = 0;
-  STK_ARRAY_MAKE(b, values, Value, 16, numvalues);
+  STK_ARRAY_MAKE(values, b->build->mem, Value, 16, numvalues);
 
   for (u32 i = 0; i < numvalues; i++) {
     Node* field = tn->t.struc.a.v[i];
@@ -719,7 +703,7 @@ static Value build_struct_init(B* b, Type* tn, Node* nullable args, LLVMTypeRef 
 
 
 end:
-  STK_ARRAY_DISPOSE(b, values);
+  STK_ARRAY_DISPOSE(values);
   if (args == NULL && nconst == numvalues)
     add_default_init(b, ty, v); // save as default constant initializer
   return v;
@@ -800,7 +784,7 @@ static Value build_selector(B* b, Node* n, const char* debugname) {
   LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
 
   u32 nindices = n->sel.indices.len + 1; // first index is for pointer array/offset
-  STK_ARRAY_MAKE(b, indices, LLVMValueRef, 16, nindices);
+  STK_ARRAY_MAKE(indices, b->build->mem, LLVMValueRef, 16, nindices);
   indices[0] = LLVMConstInt(b->t_i32, 0, /*signext*/false);
   for (u32 i = 0; i < n->sel.indices.len; i++) {
     indices[i + 1] = LLVMConstInt(b->t_i32, n->sel.indices.v[i], /*signext*/false);
@@ -812,7 +796,7 @@ static Value build_selector(B* b, Node* n, const char* debugname) {
   n->irval = LLVMBuildInBoundsGEP2(
     b->builder, st_ty, ptr, indices, nindices, debugname);
 
-  STK_ARRAY_DISPOSE(b, indices);
+  STK_ARRAY_DISPOSE(indices);
 
   if (b->noload)
     return n->irval;
@@ -1018,27 +1002,26 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
   asserteq_debug(sources->kind, NTuple);
   asserteq_debug(targets->array.a.len, sources->array.a.len);
 
-  Value srcvalsv[32];
-  Value* srcvals = srcvalsv;
-  if (R_UNLIKELY(countof(srcvalsv) < sources->array.a.len))
-    srcvals = memalloc(b->build->mem, sources->array.a.len * sizeof(Value));
+  u32 srcvalsc = sources->array.a.len;
+  STK_ARRAY_DEFINE(srcvalsv, Value, 16);
+  STK_ARRAY_INIT(srcvalsv, b->build->mem, srcvalsc);
 
   // first load all sources in case a source var is in targets
-  for (u32 i = 0; i < sources->array.a.len; i++) {
+  for (u32 i = 0; i < srcvalsc; i++) {
     Node* srcn = sources->array.a.v[i];
     Node* dstn = targets->array.a.v[i];
     if (srcn) {
-      srcvals[i] = build_expr_mustload(b, srcn, "");
+      srcvalsv[i] = build_expr_mustload(b, srcn, "");
     } else {
       // variable definition
       build_var_def(b, dstn, dstn->var.name, NULL);
-      srcvals[i] = load_var(b, dstn, dstn->var.name);
+      srcvalsv[i] = load_var(b, dstn, dstn->var.name);
     }
-    assertnotnull_debug(srcvals[i]);
+    assertnotnull_debug(srcvalsv[i]);
   }
 
   // now store
-  for (u32 i = 0; i < sources->array.a.len; i++) {
+  for (u32 i = 0; i < srcvalsc; i++) {
     Node* srcn = sources->array.a.v[i];
     Node* dstn = targets->array.a.v[i];
 
@@ -1047,7 +1030,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
       if (dstn->kind != NVar)
         panic("TODO: dstn %s", NodeKindName(dstn->kind));
       Value ptr = assertnotnull_debug(build_expr_noload(b, dstn, dstn->var.name));
-      LLVMBuildStore(b->builder, srcvals[i], ptr);
+      LLVMBuildStore(b->builder, srcvalsv[i], ptr);
     }
   }
 
@@ -1055,18 +1038,16 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
 
   // if the assignment is used as a value, make tuple val
   if ((n->flags & NodeFlagRValue) && !b->noload) {
-    for (u32 i = 0; i < sources->array.a.len; i++) {
+    for (u32 i = 0; i < srcvalsc; i++) {
       Node* dstn = targets->array.a.v[i];
       if (dstn->kind != NVar)
         panic("TODO: dstn %s", NodeKindName(dstn->kind));
-      srcvals[i] = load_var(b, dstn, dstn->var.name);
+      srcvalsv[i] = load_var(b, dstn, dstn->var.name);
     }
-    result = build_anon_struct(b, srcvals, sources->array.a.len, debugname, Immutable);
+    result = build_anon_struct(b, srcvalsv, srcvalsc, debugname, Immutable);
   }
 
-  if (srcvals != srcvalsv)
-    memfree(b->build->mem, srcvals);
-
+  STK_ARRAY_DISPOSE(srcvalsv);
   return result;
 }
 
@@ -1275,6 +1256,14 @@ static Value build_if(B* b, Node* n, const char* debugname) {
 }
 
 
+static Value build_namedval(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NNamedVal);
+  Value v = build_expr(b, n->namedval.value, n->namedval.name);
+  n->irval = n->namedval.value->irval;
+  return v;
+}
+
+
 static Value build_intlit(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NIntLit);
   assertnotnull_debug(n->type);
@@ -1324,6 +1313,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
     case NId:         RET(build_id_read(b, n, debugname));
     case NField:      RET(build_field(b, n, debugname));
     case NVar:        RET(build_var(b, n, debugname));
+    case NNamedVal:   RET(build_namedval(b, n, debugname));
     case NIntLit:     RET(build_intlit(b, n, debugname));
     case NFloatLit:   RET(build_floatlit(b, n, debugname));
     case NBlock:      RET(build_block(b, n, debugname));

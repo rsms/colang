@@ -1,6 +1,7 @@
 // Resolve types in an AST. Usuaully run after Parse() and ResolveSym()
 #include "../common.h"
 #include "../util/array.h"
+#include "../util/stk_array.h"
 #include "parse.h"
 
 ASSUME_NONNULL_BEGIN
@@ -249,7 +250,8 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
 
   if (n->fun.params) {
     n->fun.params = resolve_type(ctx, n->fun.params, fl);
-    ft->t.fun.params = (Type*)n->fun.params->type;
+    assertnotnull_debug(n->fun.params->type);
+    ft->t.fun.params = n->fun.params;
   }
 
   // return type
@@ -551,6 +553,136 @@ end:
 }
 
 
+static bool is_named_params(Node* collection) {
+  switch (collection->kind) {
+    case NTuple:
+      if (collection->array.a.len == 0)
+        return false;
+      Node* param0 = collection->array.a.v[0];
+      return param0->kind == NVar && param0->var.name != sym__;
+
+    case NStructType:
+      return collection->t.struc.a.len > 0;
+
+    default:
+      return false;
+  }
+}
+
+
+static Node* nullable find_named_param(Node* collection, Sym name, u32* index_out) {
+  asserteq_debug(collection->kind, NTuple); // TODO: add support for NStructType
+  Node** varsv = (Node**)collection->array.a.v;
+  u32 varsc = collection->array.a.len;
+
+  for (u32 i = 0; i < varsc; i++) {
+    Node* n = varsv[i];
+    asserteq_debug(n->kind, NVar);
+    if (n->var.name == name) {
+      *index_out = i;
+      return n;
+    }
+  }
+
+  return NULL;
+}
+
+
+static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params) {
+  asserteq_debug(call->kind, NCall);
+  asserteq_debug(args->kind, NTuple);
+  asserteq_debug(params->kind, NTuple);
+  bool hasNamedArgs = args->flags & NodeFlagNamed;
+
+  Node* recv = assertnotnull_debug(call->call.receiver);
+  Type* recvt = assertnotnull_debug(recv->type);
+
+  Type* paramst = assertnotnull_debug(params->type);
+  asserteq_debug(paramst->kind, NTupleType);
+  asserteq_debug(paramst->t.tuple.a.len, args->array.a.len); // len(args) == len(params)
+  Type** paramTypes = (Type**)paramst->t.tuple.a.v;
+
+  u32 argc = args->array.a.len;
+
+  // if there are named arguments, copy pointers so that we can sort them
+  STK_ARRAY_DEFINE(argv, Node*, 16);
+  if (hasNamedArgs) {
+    if (!is_named_params(params)) {
+      // no parameter names, eg "fun (int, bool) int"
+      return resolve_failed(ctx, args, NodePosSpan(args),
+        "cannot call %s %s with named parameters", fmtnode(recv), fmtnode(recvt));
+    }
+    STK_ARRAY_INIT(argv, ctx->build->mem, argc);
+    memcpy(argv, args->array.a.v, sizeof(void*) * argc);
+    memset(args->array.a.v, 0, sizeof(void*) * argc); // NULL all
+  } else {
+    argv = (Node**)args->array.a.v;
+  }
+
+  Type* typecontext = ctx->typecontext; // save typecontext
+
+  // resolve arguments
+  u32 i = 0;
+  for (; i < argc; i++) {
+    Node* arg = argv[i];
+    if (arg->kind == NNamedVal)
+      break;
+    // positional argument
+    Type* paramt = assertnotnull_debug(paramTypes[i]);
+    assert_debug(NodeIsType(paramt));
+    ctx->typecontext = paramt;
+    args->array.a.v[i] = resolve_type(ctx, arg, RFlagResolveIdeal);
+  }
+
+  // resolve named arguments (remaining args are named)
+  for (; i < argc; i++) {
+    Node* arg = argv[i];
+    asserteq_debug(arg->kind, NNamedVal);
+    Sym name = arg->namedval.name;
+
+    u32 argi = 0;
+    Node* param = find_named_param(params, name, &argi);
+
+    if (R_UNLIKELY(param == NULL)) {
+      build_errf(ctx->build, NodePosSpan(arg),
+        "no parameter named \"%s\" in %s %s", name, fmtnode(recv), fmtnode(recvt));
+      arg->type = Type_nil;
+      goto end;
+    }
+
+    if (R_UNLIKELY(args->array.a.v[argi] != NULL)) {
+      build_errf(ctx->build, NodePosSpan(arg),
+        "duplicate argument %s %s in call to %s %s",
+        name, fmtnode(arg), fmtnode(recv), fmtnode(recvt));
+      arg->type = Type_nil;
+      goto end;
+    }
+
+    ctx->typecontext = assertnotnull_debug(param->type);
+    arg = resolve_type(ctx, arg, RFlagResolveIdeal);
+    args->array.a.v[argi] = arg;
+  }
+
+  // check types
+  for (u32 i = 0; i < argc; i++) {
+    Type* paramt = paramTypes[i];
+    Node* arg = assertnotnull_debug(args->array.a.v[i]);
+    Type* argt = assertnotnull_debug(arg->type);
+    if (R_UNLIKELY(!TypeEquals(ctx->build, paramt, argt))) {
+      build_errf(ctx->build, NodePosSpan(arg),
+        "incompatible argument type %s, expecting %s in call to %s %s",
+        fmtnode(argt), fmtnode(paramt), fmtnode(recv), fmtnode(recvt));
+    }
+  }
+
+end:
+  STK_ARRAY_DISPOSE(argv);
+  args->type = paramst;
+  ctx->typecontext = typecontext; // restore typecontext
+  return args;
+}
+
+
 static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
   Node* recv = assertnotnull_debug(n->call.receiver);
@@ -559,58 +691,29 @@ static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
 
   n->type = assertnotnull_debug(recvt->t.fun.result);
 
-  Type* nullable paramst = recvt->t.fun.params;
+  Node* nullable params = recvt->t.fun.params;
 
   // check input-output cardinality
-  if (paramst) asserteq_debug(paramst->kind, NTupleType);
-  if (n->call.args) asserteq_debug(n->call.args->kind, NTuple);
-  u32 nparams = paramst ? paramst->t.tuple.a.len : 0;
-  u32 nargs = n->call.args ? n->call.args->array.a.len : 0;
-  if (R_UNLIKELY(nparams != nargs)) {
-    return resolve_failed(ctx, n, NodePosSpan(n),
-      "%u arguments where %u arguments are expected %s",
-      nargs, nparams, fmtnode(recvt));
+  if (params) {
+    assertnotnull_debug(params->type);
+    asserteq_debug(params->type->kind, NTupleType);
   }
+  if (n->call.args)
+    asserteq_debug(n->call.args->kind, NTuple);
+  u32 nparams = params ? params->type->t.tuple.a.len : 0;
+  u32 nargs = n->call.args ? n->call.args->array.a.len : 0;
 
-  dlog_mod("%s recvt: %s", __func__, fmtnode(recvt));
+  if (R_UNLIKELY(nparams != nargs)) {
+    const char* msgfmt = (
+      nargs < nparams ? "missing argument in call to %s %s" :
+                        "extra argument in call to %s %s" );
+    return resolve_failed(ctx, n, NodePosSpan(n), msgfmt, fmtnode(recv), fmtnode(recvt));
+  }
 
   // resolve input arguments
   if (n->call.args) {
-    // add parameter types to the "requested type" stack
-    assertnotnull_debug(paramst); // earlier cardinality guards this case
-    auto typecontext = typecontext_set(ctx, paramst);
-
-    // input arguments, in context of receiver parameters
-    asserteq_debug(n->call.args->kind, NTuple);
-    // n->call.args = resolve_type(ctx, n->call.args, fl | RFlagResolveIdeal);
-    n->call.args = resolve_tuple(ctx, n->call.args, fl | RFlagResolveIdeal);
-    dlog_mod("%s argstype: %s", __func__, fmtnode(n->call.args->type));
-
-    // pop parameter types off of the "requested type" stack
-    ctx->typecontext = typecontext;
-  }
-
-  // verify arguments
-  bool fail = false;
-  if (paramst) {
-    fail = !TypeEquals(ctx->build, paramst, n->call.args->type);
-  } else { // no parameters
-    fail = n->call.args && n->call.args != Const_nil;
-  }
-
-  if (R_UNLIKELY(fail)) {
-    auto posSpan = NodePosSpan(n->call.args->pos != NoPos ? n->call.args : n);
-    const char* argtypes = "()";
-    if (n->call.args != Const_nil) {
-      if (!n->call.args->type) {
-        n->call.args = resolve_type(
-          ctx, n->call.args, fl | RFlagResolveIdeal | RFlagEager);
-      }
-      argtypes = (const char*)fmtnode(n->call.args->type);
-    }
-    build_errf(ctx->build, posSpan,
-      "cannot call %s %s with arguments of type %s",
-      fmtnode(recv), fmtnode(recvt), argtypes);
+    assertnotnull_debug(params); // earlier cardinality guards this case
+    n->call.args = resolve_call_args(ctx, n, n->call.args, params);
   }
 
   return n;

@@ -232,8 +232,8 @@ typedef struct Node {
           Node*        a_storage[3]; // in-struct storage for the first few fields
         } struc;
         /* fun */ struct { // FunType
-          Node* nullable params; // kind==NTupleType
-          Node* nullable result; // tuple or single type
+          Node* nullable params; // NTuple of NVar or null if no params
+          Type* nullable result; // NTupleType of types or single type
         } fun;
         Type* type; // TypeType
       };

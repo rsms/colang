@@ -184,7 +184,11 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendc(s, '"');
 
   case NVar: // var x | param x
-    return str_appendfmt(s, "%s %s", NodeIsParam(n) ? "param" : "var", n->var.name);
+    return str_appendfmt(s, "%s %s",
+      (n->var.isconst ? "const" :
+       NodeIsParam(n) ? "param" :
+                        "var"),
+      n->var.name);
 
   case NFun: // fun foo
     s = str_appendcstr(s, "function");
@@ -257,7 +261,8 @@ Str NodeStr(Str s, const Node* n) {
     if (n->t.fun.params == NULL) {
       s = str_appendcstr(s, "()");
     } else {
-      s = NodeStr(s, n->t.fun.params);
+      // TODO: include names
+      s = NodeStr(s, n->t.fun.params->type);
     }
     s = str_appendcstr(s, "->");
     return NodeStr(s, n->t.fun.result); // ok if NULL
@@ -458,9 +463,12 @@ static bool l_collapse_field(LReprCtx* c, NodeList* nl) {
   switch (nl->parent->n->kind) {
 
     case NField:
-       return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->field.init);
+      return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->field.init);
     case NVar:
-       return l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init);
+      return (
+        NodeIsParam(nl->parent->n) ||
+        (l_is_compact(nl->parent->n->type) && l_is_compact(nl->parent->n->var.init))
+      );
 
     case NBoolLit:
     case NFloatLit:
@@ -529,7 +537,10 @@ static const char* l_listname(NodeList* nl) {
     case NFunType:
       return "fun";
     case NVar:
-      return n->var.isconst ? "const" : "var";
+      return (
+        n->var.isconst ? "const" :
+        NodeIsParam(n) ? "param" :
+                         "var");
     default:
       return NodeKindName(n->kind);
   }

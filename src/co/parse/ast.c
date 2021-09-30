@@ -321,6 +321,10 @@ PosSpan NodePosSpan(const Node* n) {
       span.start = pos_with_adjusted_start(span.start, -1);
       break;
 
+    case NNamedVal:
+      span.end = NodePosSpan(n->namedval.value).end;
+      break;
+
     // case NVar:
     //   if (n->var.init)
     //     span.end = n->var.init->pos;

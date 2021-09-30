@@ -85,7 +85,7 @@ static Str mktypestr(Str s, const Node* n) {
     case NFunType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_fun));
       if (n->t.fun.params) {
-        s = mktypestr(s, n->t.fun.params);
+        s = mktypestr(s, n->t.fun.params->type);
       } else {
         s = str_appendc(s, TypeCodeEncoding(TypeCode_nil));
       }
@@ -125,15 +125,14 @@ Sym GetTypeID(Build* b, Type* n) {
 }
 
 
-bool TypeEquals(Build* b, Type* x, Type* y) {
-  assert(x != NULL);
-  assert(y != NULL);
+bool _TypeEquals(Build* b, Type* x, Type* y) {
+  assertnotnull(x);
+  assertnotnull(y);
   assertf(NodeIsType(x) || NodeIsMacroParam(x),
     "x is not a type but %s.", NodeKindName(x->kind));
   assertf(NodeIsType(y) || NodeIsMacroParam(y),
     "y is not a type but %s.", NodeKindName(x->kind));
-  if (x == y)
-    return true;
+  assert(x != y); // inline TypeEquals func avoids this
   if (x->kind != y->kind)
     return false;
   if (x->kind == NBasicType)
@@ -246,7 +245,7 @@ R_TEST(typeid) {
     NodeArrayAppend(mem, &tupleType->t.tuple.a, Type_bool);
     auto id = GetTypeID(build, tupleType);
     // dlog("tuple (int, int, bool) id: %p %s", id, strrepr(id));
-    assert(strcmp(id, "(iib)") == 0);
+    assertcstreq(id, "(iib)");
   }
 
   { // ((int, int), (bool, int), int) => "((ii)(bi)i)"
@@ -264,7 +263,7 @@ R_TEST(typeid) {
     NodeArrayAppend(mem, &t0->t.tuple.a, Type_int);
 
     auto id = GetTypeID(build, t0);
-    assert(strcmp(id, "((ii)(bi)i)") == 0);
+    assertcstreq(id, "((ii)(bi)i)");
 
     // create second one that has the same shape
     Node* t2b = mknode(NTupleType);
@@ -303,9 +302,10 @@ R_TEST(typeid) {
 
 
   { // fun (int,bool) -> int
-    Node* params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
-    NodeArrayAppend(mem, &params->t.tuple.a, Type_bool);
+    Node* params = mknode(NTuple);
+    Node* paramst = params->type = mknode(NTupleType);
+    NodeArrayAppend(mem, &paramst->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &paramst->t.tuple.a, Type_bool);
 
     Node* result = Type_int;
 
@@ -315,7 +315,7 @@ R_TEST(typeid) {
 
     auto id = GetTypeID(build, f);
     // dlog("fun (int,bool) -> int id: %p %s", id, strrepr(id));
-    assert(strcmp(id, "^(ib)i") == 0);
+    assertcstreq(id, "^(ib)i");
   }
 
 
@@ -323,22 +323,24 @@ R_TEST(typeid) {
     Node* f = mknode(NFunType);
     auto id = GetTypeID(build, f);
     // dlog("fun () -> () id: %p %s", id, strrepr(id));
-    assert(strcmp(id, "^00") == 0);
+    assertcstreq(id, "^00");
   }
 
 
   { // ( fun(int,bool)->int, fun(int)->bool, fun()->(int,bool) )
-    Node* params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
-    NodeArrayAppend(mem, &params->t.tuple.a, Type_bool);
+    Node* params = mknode(NTuple);
+    Node* paramst = params->type = mknode(NTupleType);
+    NodeArrayAppend(mem, &paramst->t.tuple.a, Type_int);
+    NodeArrayAppend(mem, &paramst->t.tuple.a, Type_bool);
     Node* f1 = mknode(NFunType);
     f1->t.fun.params = params;
     f1->t.fun.result = Type_int;
 
-    params = mknode(NTupleType);
-    NodeArrayAppend(mem, &params->t.tuple.a, Type_int);
+    Node* params2 = mknode(NTuple);
+    Node* paramst2 = params2->type = mknode(NTupleType);
+    NodeArrayAppend(mem, &paramst2->t.tuple.a, Type_int);
     Node* f2 = mknode(NFunType);
-    f2->t.fun.params = params;
+    f2->t.fun.params = params2;
     f2->t.fun.result = Type_bool;
 
     auto result = mknode(NTupleType);
@@ -354,7 +356,7 @@ R_TEST(typeid) {
 
     auto id = GetTypeID(build, t1);
     // dlog("t1 id: %p %s", id, strrepr(id));
-    assert(strcmp(id, "(^(ib)i^(i)b^0(ib))") == 0);
+    assertcstreq(id, "(^(ib)i^(i)b^0(ib))");
   }
 
   test_build_free(build);
