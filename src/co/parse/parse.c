@@ -314,13 +314,14 @@ static void scopestackCheckUnused(Parser* p) {
 
 
 // pushScope adds a new scope to the stack. Returns the new scope.
-inline static void pushScope(Parser* p) {
+static void pushScope(Parser* p) {
   // add "scope starts here" to scopestack
   if (R_UNLIKELY(p->scopestack.cap - p->scopestack.len == 0))
     scopestackGrow(p);
 
   #ifdef DEBUG_SCOPE_PUSH_POP
-    dlog("push scope; base %zu -> %zu", (size_t)p->scopestack.base, (size_t)p->scopestack.len);
+    dlog("push scope; base %zu -> %zu",
+      (size_t)p->scopestack.base, (size_t)p->scopestack.len);
   #endif
 
   p->scopestack.ptr[p->scopestack.len++] = (void*)p->scopestack.base;
@@ -329,7 +330,7 @@ inline static void pushScope(Parser* p) {
 
 
 // popScope removes the topmost scope
-inline static void popScope(Parser* p) {
+static void popScope(Parser* p) {
   #ifdef DEBUG_SCOPE_PUSH_POP
   {
     size_t nbindings = (size_t)(p->scopestack.len - p->scopestack.base) / 2;
@@ -344,13 +345,17 @@ inline static void popScope(Parser* p) {
     scopestackDebugDump(p);
   #endif
 
-  // check for unused variables and parameters
-  if (p->build->debug && p->scopestack.len - p->scopestack.base > 1)
-    scopestackCheckUnused(p);
-
   // rewind and restore base of parent scope
   p->scopestack.len = p->scopestack.base;
   p->scopestack.base = (uintptr_t)p->scopestack.ptr[p->scopestack.len];
+}
+
+
+inline static void popScopeAndCheckUnused(Parser* p) {
+  // check for unused variables and parameters
+  if (p->build->debug && p->scopestack.len - p->scopestack.base > 1)
+    scopestackCheckUnused(p);
+  popScope(p);
 }
 
 
@@ -481,20 +486,6 @@ static bool name_is_pub(Sym name) {
 }
 
 
-// // tupleTrailingComma = Expr ("," Expr)* ","?
-// // Used for call arguments.
-// static Node* tupleTrailingComma(Parser* p, int precedence, PFlag fl, Tok stoptok) {
-//   auto tuple = mknode(p, NTuple);
-//   NodeSetConst(tuple);
-//   do {
-//     Node* cn = expr(p, precedence, fl);
-//     NodeArrayAppend(p->build->mem, &tuple->array.a, cn);
-//     NodeTransferConst(tuple, cn);
-//   } while (got(p, TComma) && p->s.tok != stoptok);
-//   return set_endpos(p, tuple);
-// }
-
-
 static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   asserteq_debug(id->kind, NId);
   assertnotnull_debug(id->ref.target);
@@ -585,7 +576,8 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
       NodeTransferUnresolved(id, id->ref.target);
   }
 
-  NodeTransferConst(id, id->ref.target);
+  // NodeTransferConst(id, id->ref.target);
+  id->flags = (id->flags & ~NodeFlagConst) | (id->ref.target->flags & NodeFlagConst);
 
   R_MUSTTAIL return simplify_id(p, id, fl);
 }
@@ -653,7 +645,6 @@ inline static Node* pId(Parser* p) {
   asserteq_debug(p->s.tok, TId);
   auto n = mknode(p, NId);
   n->ref.name = p->s.name;
-  NodeSetConst(n);
   nexttok(p);
   return n;
 }
@@ -699,7 +690,6 @@ static Node* make_var(Parser* p, const Node* name, Node* nullable init) {
     if (init->type != Type_ideal)
       n->type = init->type;
     NodeTransferUnresolved(n, init);
-    // NodeTransferConst(n, init);
   }
   defsym(p, name->ref.name, n);
   return n;
@@ -938,7 +928,6 @@ static Node* PArrayPrefix(Parser* p, PFlag fl) {
 static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   assert_debug((fl & PFlagType) == 0); // indexing is not valid in type context
   auto n = mknode(p, NIndex);
-  NodeSetConst(n);
   nexttok(p); // consume "["
   n->index.operand = useAsRValue(p, left);
   if (R_UNLIKELY(p->s.tok == TRBrack)) {
@@ -948,7 +937,6 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     n->index.index = expr(p, PREC_LOWEST, fl | PFlagRValue);
     want(p, TRBrack);
     nodeTransferUnresolved2(n, n->index.operand, n->index.index);
-    NodeTransferConst2(n, n->index.operand, n->index.index);
   }
   return n;
 }
@@ -1051,7 +1039,6 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 static Node* pArgs(Parser* p, PFlag fl) { // => NTuple
   fl |= PFlagRValue;
   Node* tuple = mknode(p, NTuple);
-  NodeSetConst(tuple);
   u32 index = 0;
   Node* arg;
 
@@ -1079,7 +1066,6 @@ static Node* pArgs(Parser* p, PFlag fl) { // => NTuple
     }
 
     NodeArrayAppend(p->build->mem, &tuple->array.a, arg);
-    NodeTransferConst(tuple, arg);
 
     switch (p->s.tok) {
       case TComma:
@@ -1111,14 +1097,12 @@ err_pos_after_named:
 //!Parselet (TLParen MEMBER)
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   auto n = mknode(p, NCall);
-  NodeSetConst(n);
   nexttok(p); // consume "("
   auto ctxtype = p->ctxtype; // save ctxtype
 
   // receiver
   n->call.receiver = useAsRValue(p, receiver);
   NodeTransferUnresolved(n, n->call.receiver);
-  NodeTransferConst(n, n->call.receiver);
 
   // args
   n->call.args = NULL;
@@ -1138,7 +1122,6 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
       if (args->array.a.len > 0) {
         n->call.args = args;
         NodeTransferUnresolved(n, args);
-        NodeTransferConst(n, args);
       }
     }
     want(p, TRParen);
@@ -1155,13 +1138,11 @@ static Node* pField(Parser* p) {
   auto n = mknode(p, NField);
   n->field.name = p->s.name;
   nexttok(p); // consume name
-  NodeSetConst(n);
 
   if (R_UNLIKELY(p->s.tok == TSemi)) {
     // e.g. "type" (implicit name)
     auto typename = mknode(p, NId);
     typename->ref.name = n->field.name;
-    NodeSetConst(typename);
     n->type = resolve_id(p, typename, PFlagType);
     n->flags |= NodeFlagBase;
   } else {
@@ -1223,7 +1204,6 @@ static bool end_block(Parser* p) {
 static Node* pStructType(Parser* p, PFlag fl, Node* n) {
   asserteq_debug(p->s.tok, TLBrace);
   nexttok(p); // consume "{"
-  NodeSetConst(n);
 
   n->t.kind = TypeKindStruct;
   n->t.struc.name = p->typename;
@@ -1332,14 +1312,12 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   auto n = mknode(p, NBlock);
   nexttok(p); // consume "{"
   pushScope(p);
-  NodeSetConst(n);
 
   Node* cn = NULL;
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
     cn = exprOrTuple(p, PREC_LOWEST, fl & ~PFlagRValue);
     NodeArrayAppend(p->build->mem, &n->array.a, cn);
     NodeTransferUnresolved(n, cn);
-    NodeTransferConst(n, cn);
     if (!got(p, TSemi))
       break;
   }
@@ -1359,55 +1337,13 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   }
 
   set_endpos(p, n);
-  popScope(p);
+  popScopeAndCheckUnused(p);
 
   if (n->array.a.len == 1)
     return n->array.a.v[0];
 
   return n;
 }
-
-
-// // StructInitializer = Block
-// // Block = "{" Expr* "}"
-// //!Parselet (TLBrace MEMBER)
-// static Node* nullable PStructInit(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-//   if (fl & PFlagType) // does not apply to types
-//     return NULL; // cancel infix; end parse branch with "receiver" as result
-
-//   auto n = mknode(p, NCall);
-//   NodeSetConst(n);
-//   nexttok(p); // consume "{"
-
-//   // receiver
-//   n->call.receiver = useAsRValue(p, left);
-//   NodeTransferUnresolved(n, n->call.receiver);
-//   NodeTransferConst(n, n->call.receiver);
-
-//   if (R_UNLIKELY(
-//     n->call.receiver->type && n->call.receiver->type->t.kind != TypeKindStruct))
-//   {
-//     syntaxerrp(p, n->pos, "cannot struct-initialize %s",
-//       TypeKindName(n->call.receiver->type->t.kind));
-//     return n;
-//   }
-
-//   auto ctxtype = p->ctxtype; // save ctxtype
-//   n->call.args = Const_nil;
-
-//   if (!got(p, TRBrace)) {
-//     auto args = pArgs(p, fl, TRBrace);
-//     assert_debug(args->kind == NTuple);
-//     assert_debug(args->array.a.len > 0);
-//     n->call.args = args;
-//     NodeTransferUnresolved(n, args);
-//     NodeTransferConst(n, args);
-//     want(p, TRBrace);
-//   }
-
-//   p->ctxtype = ctxtype; // restore ctxtype
-//   return n;
-// }
 
 
 // PrefixOp = ( "+" | "-" | "!" ) Expr
@@ -1428,7 +1364,6 @@ static Node* PPrefixOp(Parser* p, PFlag fl) {
 //          (TEq EQUAL) (TNEq EQUAL) (TLEq EQUAL) (TGEq EQUAL)
 static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NBinOp);
-  NodeSetConst(n);
   n->op.op = p->s.tok;
   nexttok(p);
   n->op.left = useAsRValue(p, left);
@@ -1436,8 +1371,6 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   p->ctxtype = n->op.left->type;
   n->op.right = expr(p, e->prec, fl | PFlagRValue);
   p->ctxtype = ctxtype; // restore ctxtype
-  // Specialization of NodeTransferConst2:
-  n->flags = ((left->flags & NodeFlagConst) & (n->op.right->flags & NodeFlagConst));
   nodeTransferUnresolved2(n, left, n->op.right);
   return n;
 }
@@ -1449,7 +1382,6 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
   n->op.op = p->s.tok;
   n->op.left = useAsRValue(p, operand);
   nexttok(p); // consume "+"
-  n->flags = (n->op.left->flags & NodeFlagConst);
   NodeTransferUnresolved(n, n->op.left);
   return n;
 }
@@ -1479,7 +1411,6 @@ static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 //!PrefixParselet TIntLit
 static Node* PIntLit(Parser* p, PFlag fl) {
   auto n = mknode(p, NIntLit);
-  NodeSetConst(n);
   size_t len = p->s.tokend - p->s.tokstart;
   if (!parseu64((const char*)p->s.tokstart, len, /*base*/10, &n->val.i)) {
     n->val.i = 0;
@@ -1497,12 +1428,10 @@ static Node* PIntLit(Parser* p, PFlag fl) {
 //!PrefixParselet TIf
 static Node* PIf(Parser* p, PFlag fl) {
   auto n = mknode(p, NIf);
-  NodeSetConst(n);
   nexttok(p);
   n->cond.cond = expr(p, PREC_LOWEST, fl | PFlagRValue);
   n->cond.thenb = expr(p, PREC_LOWEST, fl | PFlagRValue);
   nodeTransferUnresolved2(n, n->cond.cond, n->cond.thenb);
-  NodeTransferConst2(n, n->cond.cond, n->cond.thenb);
 
   if (fl & PFlagRValue)
     n->flags |= NodeFlagRValue;
@@ -1511,7 +1440,6 @@ static Node* PIf(Parser* p, PFlag fl) {
     nexttok(p);
     n->cond.elseb = expr(p, PREC_LOWEST, fl);
     NodeTransferUnresolved(n, n->cond.elseb);
-    NodeTransferConst(n, n->cond.elseb);
   }
 
   return n;
@@ -1521,7 +1449,6 @@ static Node* PIf(Parser* p, PFlag fl) {
 //!PrefixParselet TReturn
 static Node* PReturn(Parser* p, PFlag fl) {
   auto n = mknode(p, NReturn);
-  NodeSetConst(n);
   if (R_UNLIKELY(p->fnest == 0)) {
     // return outside a function
     syntaxerrp(p, n->pos, "return outside function body");
@@ -1530,7 +1457,6 @@ static Node* PReturn(Parser* p, PFlag fl) {
   if (p->s.tok != TSemi && p->s.tok != TRBrace) {
     n->op.left = exprOrTuple(p, PREC_LOWEST, fl | PFlagRValue);
     NodeTransferUnresolved(n, n->op.left);
-    NodeTransferConst(n, n->op.left);
   }
   return n;
 }
@@ -1720,15 +1646,12 @@ static Node* PFun(Parser* p, PFlag fl) {
   Node* macro = NULL;
   if (p->s.tok == TLt) {
     macro = mknode(p, NMacro);
-    NodeSetConst(macro);
     if (n->fun.name)
       defsym(p, n->fun.name, macro);
     pushScope(p);
     macro->macro.name = n->fun.name;
     macro->macro.params = templateParams(p);
     // Note: no NodeTransferUnresolved for params
-  } else {
-    NodeSetConst(n);
   }
 
   if (n->fun.name)
@@ -1783,13 +1706,13 @@ static Node* PFun(Parser* p, PFlag fl) {
 
   if (n->fun.body) {
     NodeTransferUnresolved(n, n->fun.body);
-    // Note: no NodeTransferConst(n, n->fun.body) here
+    popScopeAndCheckUnused(p); // function parameter scope
+  } else {
+    popScope(p);
   }
 
-  popScope(p); // function parameter scope
-
   if (macro) {
-    popScope(p); // template parameter scope
+    popScopeAndCheckUnused(p); // template parameter scope
     macro->macro.template = n;
     return macro;
   }
@@ -1948,20 +1871,17 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
     NodeArray* array = fl & PFlagType ? &g->t.tuple.a : &g->array.a;
     NodeArrayAppend(p->build->mem, array, left);
     NodeTransferUnresolved(g, left);
-    g->flags = left->flags & NodeFlagConst;
     if (fl & PFlagRValue) {
       do {
         Node* cn = expr(p, precedence, fl);
         NodeArrayAppend(p->build->mem, array, cn);
         NodeTransferUnresolved(g, cn);
-        NodeTransferConst(g, cn);
       } while (got(p, TComma));
     } else {
       do {
         Node* cn = prefixExpr(p, fl);
         NodeArrayAppend(p->build->mem, array, cn);
         NodeTransferUnresolved(g, cn);
-        NodeTransferConst(g, cn);
       } while (got(p, TComma));
     }
     set_endpos(p, g);

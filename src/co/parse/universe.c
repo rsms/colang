@@ -6,10 +6,11 @@
 // TODO: Move this generator to a script.
 //       Currently it is really hard to use when e.g. changing types (TypeCode_*).
 // Define to run the generator during program initialization:
-//#define RUN_GENERATOR
+//
+// #define RUN_GENERATOR
 
 
-static const Node _Type_type = {.kind=NTypeType, .flags=NodeFlagConst};
+static const Node _Type_type = {.kind=NTypeType};
 Node* Type_type = (Node*)&_Type_type;
 
 
@@ -75,51 +76,51 @@ const Sym sym_a = &"\x60\xE5\x1B\x67\x01\x00\x00\x00""a\0"[8];
 const Sym sym_$x2a = &"\x9C\x1C\x9F\x3C\x01\x00\x00\x00""*\0"[8];
 const Sym sym_0 = &"\xFE\xED\xFA\xA1\x01\x00\x00\x00""0\0"[8];
 
-static const Node _Type_bool = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_bool = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_b,TypeKindInteger,.basic={TypeCode_bool,sym_bool}}} };
-static const Node _Type_i8 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_i8 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_1,TypeKindInteger,.basic={TypeCode_i8,sym_i8}}} };
-static const Node _Type_u8 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_u8 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_2,TypeKindInteger,.basic={TypeCode_u8,sym_u8}}} };
-static const Node _Type_i16 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_i16 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_3,TypeKindInteger,.basic={TypeCode_i16,sym_i16}}} };
-static const Node _Type_u16 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_u16 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_4,TypeKindInteger,.basic={TypeCode_u16,sym_u16}}} };
-static const Node _Type_i32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_i32 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_5,TypeKindInteger,.basic={TypeCode_i32,sym_i32}}} };
-static const Node _Type_u32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_u32 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_6,TypeKindInteger,.basic={TypeCode_u32,sym_u32}}} };
-static const Node _Type_i64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_i64 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_7,TypeKindInteger,.basic={TypeCode_i64,sym_i64}}} };
-static const Node _Type_u64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_u64 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_8,TypeKindInteger,.basic={TypeCode_u64,sym_u64}}} };
-static const Node _Type_f32 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_f32 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_f,TypeKindF32,.basic={TypeCode_f32,sym_f32}}} };
-static const Node _Type_f64 = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_f64 = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_F,TypeKindF64,.basic={TypeCode_f64,sym_f64}}} };
-static const Node _Type_int = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_int = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_i,TypeKindInteger,.basic={TypeCode_int,sym_int}}} };
-static const Node _Type_uint = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_uint = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_u,TypeKindInteger,.basic={TypeCode_uint,sym_uint}}} };
-static const Node _Type_isize = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_isize = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_I,TypeKindInteger,.basic={TypeCode_isize,sym_isize}}} };
-static const Node _Type_usize = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_usize = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_U,TypeKindInteger,.basic={TypeCode_usize,sym_usize}}} };
-static const Node _Type_str = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_str = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_s,TypeKindPointer,.basic={TypeCode_str,sym_str}}} };
-static const Node _Type_auto = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_auto = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_a,TypeKindVoid,.basic={TypeCode_auto,sym_auto}}} };
-static const Node _Type_ideal = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_ideal = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_$x2a,TypeKindVoid,.basic={TypeCode_ideal,sym_ideal}}} };
-static const Node _Type_nil = { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,
+static const Node _Type_nil = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_0,TypeKindVoid,.basic={TypeCode_nil,sym_nil}}} };
 
 static const Node _Const_true =
-  {NBoolLit,NodeFlagConst,0,0,(Node*)&_Type_bool,NULL,{.val={CType_bool,.i=1}}};
+  {NBoolLit,NodeFlagsNone,0,0,(Node*)&_Type_bool,NULL,{.val={CType_bool,.i=1}}};
 static const Node _Const_false =
-  {NBoolLit,NodeFlagConst,0,0,(Node*)&_Type_bool,NULL,{.val={CType_bool,.i=0}}};
+  {NBoolLit,NodeFlagsNone,0,0,(Node*)&_Type_bool,NULL,{.val={CType_bool,.i=0}}};
 static const Node _Const_nil =
-  {NNil,NodeFlagConst,0,0,(Node*)&_Type_nil,NULL,{.val={CType_nil,.i=0}}};
+  {NNil,NodeFlagsNone,0,0,(Node*)&_Type_nil,NULL,{.val={CType_nil,.i=0}}};
 
 Node* Type_bool = (Node*)&_Type_bool;
 Node* Type_i8 = (Node*)&_Type_i8;
@@ -442,7 +443,7 @@ __attribute__((constructor,used)) static void gen_constants() {
   #define NODE_GEN(name, typeKind)                                                       \
     printf(                                                                              \
       "static const Node _Type_%s ="                                                     \
-      " { NBasicType,NodeFlagConst,0,0,(Node*)&_Type_type,NULL,\n"                       \
+      " { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,\n"                       \
       "  {.t={sym_%s,%s,.basic={TypeCode_%s,sym_%s}}} };\n",                             \
       #name, typecode_cident(TypeCodeEncoding(TypeCode_##name)), #typeKind, #name, #name \
     );
@@ -456,7 +457,7 @@ __attribute__((constructor,used)) static void gen_constants() {
   #define NODE_GEN(name, type, value)                                \
     printf(                                                          \
       "static const Node _Const_%s =\n"                              \
-      "  {%s,NodeFlagConst,0,0,(Node*)&_Type_%s,NULL,{.val=%s}};\n", \
+      "  {%s,NodeFlagsNone,0,0,(Node*)&_Type_%s,NULL,{.val=%s}};\n", \
       #name,                                                         \
       strcmp(#type, "bool") == 0 ? "NBoolLit" :                      \
       strcmp(#type, "nil") == 0 ?  "NNil" :                          \
