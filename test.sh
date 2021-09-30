@@ -1,3 +1,6 @@
 #!/bin/sh
-[ "$1" == "-w" ] || exec ckit test
-exec ckit watch -wf=test/parse test
+if [ "$1" == "-w" ]; then
+  shift
+  exec ckit watch -wf=test/parse test "$@"
+fi
+exec ckit test "$@"
