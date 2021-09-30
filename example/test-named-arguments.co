@@ -9,3 +9,4 @@ fun main() int
   // foo(1, 2)        // error: missing argument
   // foo(1, 2, 3, 4)  // error: extra argument
   // foo(1, c=3, c=2) // error: duplicate arguments
+  // foo(1, c=3, x=2) // error: no parameter named "x"
