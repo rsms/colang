@@ -13,9 +13,9 @@ fun d() -> var x int
 (Fun a (params nil) <nil> (body
   (Block
     (Call (Id b nil) nil)
-    (Var x (IntLit 4)))))
-(Fun b (params nil) <nil>  (body (Var x nil)))
-(Fun c (params nil) <auto> (body (Var x (IntLit 4))))
-(Fun d (params nil) <auto> (body (Var x nil)))
+    (var x (IntLit 4)))))
+(Fun b (params nil) <nil>  (body (var x nil)))
+(Fun c (params nil) <auto> (body (var x (IntLit 4))))
+(Fun d (params nil) <auto> (body (var x nil)))
 
 */

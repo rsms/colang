@@ -32,28 +32,28 @@ fun D()
 /*!AST
 ; should all parse identically
 (Fun A (params nil) <nil> (body (Block
-  (Var a (IntLit 1))
-  (If (cond (BinOp < (Id a (Var a)) (IntLit 3)))
-      (then (Assign (left (Var a)) (right (IntLit 5))) ))
-  (Id a (Var a)) )))
+  (var a (IntLit 1))
+  (If (cond (BinOp < (Id a (var a)) (IntLit 3)))
+      (then (Assign (left (var a)) (right (IntLit 5))) ))
+  (Id a (var a)) )))
 
 (Fun B (params nil) <nil> (body (Block
-  (Var a (IntLit 1))
-  (If (cond (BinOp < (Id a (Var a)) (IntLit 3)))
-      (then (Assign (left (Var a)) (right (IntLit 5))) ))
-  (Id a (Var a)) )))
+  (var a (IntLit 1))
+  (If (cond (BinOp < (Id a (var a)) (IntLit 3)))
+      (then (Assign (left (var a)) (right (IntLit 5))) ))
+  (Id a (var a)) )))
 
 (Fun C (params nil) <nil> (body (Block
-  (Var a (IntLit 1))
-  (If (cond (BinOp < (Id a (Var a)) (IntLit 3)))
-      (then (Assign (left (Var a)) (right (IntLit 5))) ))
-  (Id a (Var a)) )))
+  (var a (IntLit 1))
+  (If (cond (BinOp < (Id a (var a)) (IntLit 3)))
+      (then (Assign (left (var a)) (right (IntLit 5))) ))
+  (Id a (var a)) )))
 
 (Fun D (params nil) <nil> (body (Block
-  (Var a (IntLit 1))
-  (If (cond (BinOp < (Id a (Var a)) (IntLit 3)))
-      (then (Assign (left (Var a)) (right (IntLit 5))) ))
-  (Id a (Var a)) )))
+  (var a (IntLit 1))
+  (If (cond (BinOp < (Id a (var a)) (IntLit 3)))
+      (then (Assign (left (var a)) (right (IntLit 5))) ))
+  (Id a (var a)) )))
 
 
 */

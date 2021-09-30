@@ -1,8 +1,8 @@
 x = 4
 
 /*!AST types usecount attrs
-(Var x @const @unused @pub
+(var x @const @unused @pub
   (0 refs)
-  (IntLit @const 4 <ideal>)
+  (IntLit 4 <ideal>)
   <?>)
 */
