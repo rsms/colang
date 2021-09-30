@@ -129,8 +129,11 @@ bool PkgScanSources(Pkg* pkg) {
       case DT_REG:
       case DT_LNK:
       case DT_UNKNOWN:
-        if (e.d_namlen > 3 && e.d_name[0] != '.' && strcmp(&e.d_name[e.d_namlen-2], ".w") == 0)
+        if (e.d_namlen > 3 && e.d_name[0] != '.' &&
+            strcmp(&e.d_name[e.d_namlen-2], ".co") == 0)
+        {
           ok = PkgAddFileSource(pkg, e.d_name) && ok;
+        }
         break;
       default:
         break;
