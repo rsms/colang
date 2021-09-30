@@ -157,17 +157,21 @@ bool parse_source1(const Pkg* pkg, Source* src) {
 #endif
 
 
-static void dump_ast(const char* message, Node* ast) {
-  Str* sp = tmpstr_get();
-  *sp = NodeRepr(
-    ast, *sp, NodeReprTypes
-            | NodeReprUseCount
-            | NodeReprRefs
-            | NodeReprAttrs
-  );
-  fprintf(stderr, "%s%s\n", message, *sp);
-  PRINT_BANNER();
-}
+#ifdef DEBUG
+  static void dump_ast(const char* message, Node* ast) {
+    Str* sp = tmpstr_get();
+    *sp = NodeRepr(
+      ast, *sp, NodeReprTypes
+              | NodeReprUseCount
+              | NodeReprRefs
+              | NodeReprAttrs
+    );
+    fprintf(stderr, "%s%s\n", message, *sp);
+    PRINT_BANNER();
+  }
+#else
+  #define dump_ast(...) do{}while(0)
+#endif
 
 
 #ifdef ENABLE_CO_IR
