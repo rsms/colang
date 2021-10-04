@@ -49,8 +49,6 @@ const Sym sym_f32 = &"\x9E\x9C\x5E\xFD\x03\x00\x00\x00""f32\0"[8];
 const Sym sym_f64 = &"\x90\x7B\xEB\x9C\x03\x00\x00\x00""f64\0"[8];
 const Sym sym_int = &"\xCD\x9E\x65\xA5\x03\x00\x00\x00""int\0"[8];
 const Sym sym_uint = &"\xFA\x0A\xDC\xFB\x04\x00\x00\x00""uint\0"[8];
-const Sym sym_isize = &"\x8E\x0D\x8E\xB3\x05\x00\x00\x00""isize\0"[8];
-const Sym sym_usize = &"\xBD\x68\xE2\x7D\x05\x00\x00\x00""usize\0"[8];
 const Sym sym_str = &"\x12\xAE\x4D\xED\x03\x00\x00\x00""str\0"[8];
 const Sym sym_ideal = &"\x5B\xB4\x1C\xC8\x05\x00\x00\x00""ideal\0"[8];
 const Sym sym__ = &"\xE7\x52\x89\xD0\x01\x00\x00\x00""_\0"[8];
@@ -69,8 +67,6 @@ const Sym sym_f = &"\xE9\x46\xFD\x9C\x01\x00\x00\x00""f\0"[8];
 const Sym sym_F = &"\x5C\x05\x48\xBA\x01\x00\x00\x00""F\0"[8];
 const Sym sym_i = &"\x3A\x16\x35\x80\x01\x00\x00\x00""i\0"[8];
 const Sym sym_u = &"\x32\x6A\x3E\x41\x01\x00\x00\x00""u\0"[8];
-const Sym sym_I = &"\xDA\x70\xE1\x33\x01\x00\x00\x00""I\0"[8];
-const Sym sym_U = &"\x4D\x07\x4A\xEB\x01\x00\x00\x00""U\0"[8];
 const Sym sym_s = &"\xC0\xB7\x96\x15\x01\x00\x00\x00""s\0"[8];
 const Sym sym_a = &"\x60\xE5\x1B\x67\x01\x00\x00\x00""a\0"[8];
 const Sym sym_$x2a = &"\x9C\x1C\x9F\x3C\x01\x00\x00\x00""*\0"[8];
@@ -102,10 +98,6 @@ static const Node _Type_int = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,
   {.t={sym_i,TypeKindInteger,.basic={TypeCode_int,sym_int}}} };
 static const Node _Type_uint = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_u,TypeKindInteger,.basic={TypeCode_uint,sym_uint}}} };
-static const Node _Type_isize = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
-  {.t={sym_I,TypeKindInteger,.basic={TypeCode_isize,sym_isize}}} };
-static const Node _Type_usize = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
-  {.t={sym_U,TypeKindInteger,.basic={TypeCode_usize,sym_usize}}} };
 static const Node _Type_str = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
   {.t={sym_s,TypeKindPointer,.basic={TypeCode_str,sym_str}}} };
 static const Node _Type_auto = { NBasicType,NodeFlagsNone,0,0,(Node*)&_Type_type,NULL,
@@ -135,8 +127,6 @@ Node* Type_f32 = (Node*)&_Type_f32;
 Node* Type_f64 = (Node*)&_Type_f64;
 Node* Type_int = (Node*)&_Type_int;
 Node* Type_uint = (Node*)&_Type_uint;
-Node* Type_isize = (Node*)&_Type_isize;
-Node* Type_usize = (Node*)&_Type_usize;
 Node* Type_str = (Node*)&_Type_str;
 Node* Type_auto = (Node*)&_Type_auto;
 Node* Type_ideal = (Node*)&_Type_ideal;
@@ -155,12 +145,10 @@ static SymRBNode n_i64 = { sym_i64, true, NULL, NULL };
 static SymRBNode n_else = { sym_else, false, &n_i16, &n_i64 };
 static SymRBNode n_struct = { sym_struct, false, &n_for, &n_else };
 static SymRBNode n_u8 = { sym_u8, true, NULL, NULL };
-static SymRBNode n_usize = { sym_usize, false, &n_u8, NULL };
-static SymRBNode n_f64 = { sym_f64, false, NULL, NULL };
-static SymRBNode n_fun = { sym_fun, true, &n_usize, &n_f64 };
+static SymRBNode n_f64 = { sym_f64, true, NULL, NULL };
+static SymRBNode n_fun = { sym_fun, false, &n_u8, &n_f64 };
 static SymRBNode n_int = { sym_int, true, NULL, NULL };
-static SymRBNode n_isize = { sym_isize, true, NULL, NULL };
-static SymRBNode n_const = { sym_const, false, &n_int, &n_isize };
+static SymRBNode n_const = { sym_const, false, &n_int, NULL };
 static SymRBNode n_return = { sym_return, false, &n_fun, &n_const };
 static SymRBNode n_defer = { sym_defer, false, &n_struct, &n_return };
 static SymRBNode n_enum = { sym_enum, false, NULL, NULL };
@@ -200,8 +188,6 @@ Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
   (Node*)&_Type_f64,     // TypeCode_f64
   (Node*)&_Type_int,     // TypeCode_int
   (Node*)&_Type_uint,    // TypeCode_uint
-  (Node*)&_Type_isize,   // TypeCode_isize
-  (Node*)&_Type_usize,   // TypeCode_usize
   NULL,                  // TypeCode_NUM_END
   (Node*)&_Type_str,     // TypeCode_str
   (Node*)&_Type_nil,     // TypeCode_nil
@@ -212,8 +198,8 @@ __attribute__((used)) static const char* const debugSymCheck =
   "as#101 auto#102 break#103 continue#104 defer#105 else#106 enum#107 "
   "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e struct#10f "
   "switch#110 type#111 var#112 const#113 bool i8 u8 i16 u16 i32 u32 i64 "
-  "u64 f32 f64 int uint isize usize str auto ideal nil true:bool=1 false:bool=0 "
-  "nil:nil=0 _ ";
+  "u64 f32 f64 int uint str auto ideal nil true:bool=1 false:bool=0 nil:nil=0 "
+  "_ ";
 #endif
 
 //-- END gen_constants()

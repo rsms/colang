@@ -1156,6 +1156,9 @@ static Node* pField(Parser* p) {
     }
   }
 
+  if (R_UNLIKELY(n->field.name == sym__))
+    syntaxerrp(p, n->pos, "invalid field name; all fields must be named");
+
   // check for duplicate names
   Node* existing = lookupsymShallow(p, n->field.name);
   if (existing) {

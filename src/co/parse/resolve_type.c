@@ -562,6 +562,7 @@ static bool is_named_params(Node* collection) {
       return param0->kind == NVar && param0->var.name != sym__;
 
     case NStructType:
+      // note: fields always has a name and are not permitted to be named "_"
       return collection->t.struc.a.len > 0;
 
     default:
@@ -570,20 +571,30 @@ static bool is_named_params(Node* collection) {
 }
 
 
-static Node* nullable find_named_param(Node* collection, Sym name, u32* index_out) {
-  asserteq_debug(collection->kind, NTuple); // TODO: add support for NStructType
-  Node** varsv = (Node**)collection->array.a.v;
-  u32 varsc = collection->array.a.len;
-
-  for (u32 i = 0; i < varsc; i++) {
-    Node* n = varsv[i];
-    asserteq_debug(n->kind, NVar);
-    if (n->var.name == name) {
+static Node* nullable find_named_param_tuple(Node* n, Sym name, u32* index_out) {
+  asserteq_debug(n->kind, NTuple);
+  for (u32 i = 0; i < n->array.a.len; i++) {
+    Node* cn = (Node*)n->array.a.v[i];
+    asserteq_debug(cn->kind, NVar);
+    if (cn->var.name == name) {
       *index_out = i;
-      return n;
+      return cn;
     }
   }
+  return NULL;
+}
 
+
+static Node* nullable find_named_param_struct(Node* n, Sym name, u32* index_out) {
+  asserteq_debug(n->kind, NStructType);
+  for (u32 i = 0; i < n->t.struc.a.len; i++) {
+    Node* field = (Node*)n->t.struc.a.v[i];
+    asserteq_debug(field->kind, NField);
+    if (field->field.name == name) {
+      *index_out = i;
+      return field;
+    }
+  }
   return NULL;
 }
 
@@ -591,52 +602,83 @@ static Node* nullable find_named_param(Node* collection, Sym name, u32* index_ou
 static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params) {
   asserteq_debug(call->kind, NCall);
   asserteq_debug(args->kind, NTuple);
-  asserteq_debug(params->kind, NTuple);
   bool hasNamedArgs = args->flags & NodeFlagNamed;
 
   Node* recv = assertnotnull_debug(call->call.receiver);
   Type* recvt = assertnotnull_debug(recv->type);
 
-  Type* paramst = assertnotnull_debug(params->type);
-  asserteq_debug(paramst->kind, NTupleType);
-  asserteq_debug(paramst->t.tuple.a.len, args->array.a.len); // len(args) == len(params)
-  Type** paramTypes = (Type**)paramst->t.tuple.a.v;
+  u32 argc;
+  STK_ARRAY_DEFINE(argv, Node*, 16); // len = argc
+  STK_ARRAY_DEFINE(typv, Type*, 16); // len = argc
+  __typeof__(find_named_param_tuple)* find_named_param;
 
-  u32 argc = args->array.a.len;
-
-  // if there are named arguments, copy pointers so that we can sort them
-  STK_ARRAY_DEFINE(argv, Node*, 16);
-  if (hasNamedArgs) {
-    if (!is_named_params(params)) {
-      // no parameter names, eg "fun (int, bool) int"
-      return resolve_failed(ctx, args, NodePosSpan(args),
-        "cannot call %s %s with named parameters", fmtnode(recv), fmtnode(recvt));
+  switch (params->kind) {
+    case NTuple: {
+      Type* paramst = assertnotnull_debug(params->type);
+      args->type = paramst;
+      asserteq_debug(paramst->kind, NTupleType);
+      asserteq_debug(paramst->t.tuple.a.len, args->array.a.len); // len(args) == len(params)
+      typv = (Type**)paramst->t.tuple.a.v;
+      argc = paramst->t.tuple.a.len;
+      find_named_param = find_named_param_tuple;
+      // if there are named arguments, copy pointers so that we can sort them
+      if (hasNamedArgs) {
+        if (!is_named_params(params)) {
+          // missing parameter names, eg "fun (int, bool) int"
+          return resolve_failed(ctx, args, NodePosSpan(args),
+            "cannot call %s %s with named parameters", fmtnode(recv), fmtnode(recvt));
+        }
+        STK_ARRAY_INIT(argv, ctx->build->mem, argc);
+        memset(argv, 0, sizeof(void*) * argc); // zero
+      } else {
+        argv = (Node**)args->array.a.v; // ok since len(args) == len(params)
+      }
+      break;
     }
-    STK_ARRAY_INIT(argv, ctx->build->mem, argc);
-    memcpy(argv, args->array.a.v, sizeof(void*) * argc);
-    memset(args->array.a.v, 0, sizeof(void*) * argc); // NULL all
-  } else {
-    argv = (Node**)args->array.a.v;
+    case NStructType: {
+      // struct field types are members of each field; extract them
+      args->type = Type_nil; // fulfill typechecker expectations
+      Node** fieldsv = (Node**)params->t.struc.a.v;
+      argc = params->t.struc.a.len;
+      if (R_UNLIKELY(args->array.a.len > argc)) {
+        return resolve_failed(ctx, args, NodePosSpan(args),
+          "extra argument in type constructor %s %s",
+          fmtnode(recv), fmtnode(recvt));
+      }
+      STK_ARRAY_INIT(argv, ctx->build->mem, argc);
+      STK_ARRAY_INIT(typv, ctx->build->mem, argc);
+      memset(argv, 0, sizeof(void*) * argc); // zero
+      for (u32 i = 0; i < argc; i++) {
+        typv[i] = fieldsv[i]->type;
+      }
+      find_named_param = find_named_param_struct;
+      break;
+    }
+    default:
+      panic("unexpected argument receiver kind %s", NodeKindName(params->kind));
   }
 
   Type* typecontext = ctx->typecontext; // save typecontext
+  u32 argsLen = args->array.a.len;
+  assert_debug(argsLen <= argc);
 
   // resolve arguments
   u32 i = 0;
-  for (; i < argc; i++) {
-    Node* arg = argv[i];
+  for (; i < argsLen; i++) {
+    Node* arg = (Node*)args->array.a.v[i];
     if (arg->kind == NNamedVal)
       break;
     // positional argument
-    Type* paramt = assertnotnull_debug(paramTypes[i]);
+    Type* paramt = assertnotnull_debug(typv[i]);
     assert_debug(NodeIsType(paramt));
     ctx->typecontext = paramt;
-    args->array.a.v[i] = resolve_type(ctx, arg, RFlagResolveIdeal);
+    arg = resolve_type(ctx, arg, RFlagResolveIdeal);
+    argv[i] = assertnotnull_debug(arg);
   }
 
   // resolve named arguments (remaining args are named)
-  for (; i < argc; i++) {
-    Node* arg = argv[i];
+  for (; i < argsLen; i++) {
+    Node* arg = (Node*)args->array.a.v[i];
     asserteq_debug(arg->kind, NNamedVal);
     Sym name = arg->namedval.name;
 
@@ -645,12 +687,13 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
 
     if (R_UNLIKELY(param == NULL)) {
       build_errf(ctx->build, NodePosSpan(arg),
-        "no parameter named \"%s\" in %s %s", name, fmtnode(recv), fmtnode(recvt));
+        "no parameter named \"%s\" in %s %s",
+        name, fmtnode(recv), fmtnode(recvt));
       arg->type = Type_nil;
       goto end;
     }
 
-    if (R_UNLIKELY(args->array.a.v[argi] != NULL)) {
+    if (R_UNLIKELY(argv[argi] != NULL)) {
       build_errf(ctx->build, NodePosSpan(arg),
         "duplicate argument %s %s in call to %s %s",
         name, fmtnode(arg), fmtnode(recv), fmtnode(recvt));
@@ -660,13 +703,15 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
 
     ctx->typecontext = assertnotnull_debug(param->type);
     arg = resolve_type(ctx, arg, RFlagResolveIdeal);
-    args->array.a.v[argi] = arg;
+    argv[argi] = assertnotnull_debug(arg);
   }
 
   // check types
   for (u32 i = 0; i < argc; i++) {
-    Type* paramt = paramTypes[i];
-    Node* arg = assertnotnull_debug(args->array.a.v[i]);
+    Type* paramt = typv[i];
+    Node* arg = argv[i];
+    if (!arg) // absent argument
+      continue;
     Type* argt = assertnotnull_debug(arg->type);
     if (R_UNLIKELY(!TypeEquals(ctx->build, paramt, argt))) {
       build_errf(ctx->build, NodePosSpan(arg),
@@ -675,9 +720,17 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
     }
   }
 
+  // copy argv to args if needed
+  if (argc != argsLen || hasNamedArgs) {
+    if (args->array.a.cap < argc)
+      ArrayGrow(&args->array.a, argc - args->array.a.cap, ctx->build->mem);
+    memcpy(args->array.a.v, argv, sizeof(void*) * argc);
+    args->array.a.len = argc;
+  }
+
 end:
   STK_ARRAY_DISPOSE(argv);
-  args->type = paramst;
+  STK_ARRAY_DISPOSE(typv);
   ctx->typecontext = typecontext; // restore typecontext
   return args;
 }
@@ -722,26 +775,25 @@ static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
-  Node* recv = assertnotnull_debug(n->call.receiver);
-  asserteq_debug(assertnotnull_debug(recv->type)->kind, NTypeType);
-
-  Type* ty = assertnotnull_debug(recv->type->t.type);
+  Node* recvt = assertnotnull_debug(n->call.receiver->type);
+  assert_debug(NodeIsType(recvt));
 
   Node* nullable args = n->call.args;
-  n->type = ty; // result of the type constructor call is the type
+  n->type = recvt; // result of the type constructor call is the type
 
-  // disallow mixed positional and named arguments in type constructors
-  if (R_UNLIKELY(
-    args &&
-    (args->flags & NodeFlagNamed) &&
-    args->array.a.len > 0 &&
-    assertnotnull_debug((Node*)args->array.a.v[0])->kind != NNamedVal ))
-  {
-    return resolve_failed(ctx, n, NodePosSpan(args),
-      "mixed positional and named initializer values");
+  if (args && args->array.a.len > 0) {
+    // disallow mixed positional and named arguments in type constructors
+    if (R_UNLIKELY(
+      (args->flags & NodeFlagNamed) &&
+      assertnotnull_debug((Node*)args->array.a.v[0])->kind != NNamedVal ))
+    {
+      return resolve_failed(ctx, n, NodePosSpan(args),
+        "mixed positional and named initializer values");
+    }
+
+    // resolve input arguments
+    n->call.args = resolve_call_args(ctx, n, n->call.args, recvt);
   }
-
-  panic("TODO");
 
   return n;
 }
@@ -762,10 +814,10 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   Node* recv = assertnotnull_debug(n->call.receiver);
   Type* recvt = assertnotnull_debug(recv->type);
   switch (recvt->kind) {
-    case NTypeType: // type constructor call
-      R_MUSTTAIL return resolve_call_type(ctx, n, fl | RFlagExplicitTypeCast);
     case NFunType: // function call
       R_MUSTTAIL return resolve_call_fun(ctx, n, fl);
+    case NStructType: // type constructor call
+      R_MUSTTAIL return resolve_call_type(ctx, n, fl | RFlagExplicitTypeCast);
     default:
       return resolve_failed(ctx, n, NodePosSpan(n->call.receiver),
         "cannot call %s %s of type %s",
@@ -872,10 +924,10 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
-static Node* nullable eval_usize(ResCtx* ctx, Node* sizeExpr) {
+static Node* nullable eval_uint(ResCtx* ctx, Node* sizeExpr) {
   assertnotnull_debug(sizeExpr); // must be array and not slice
 
-  auto zn = NodeEval(ctx->build, sizeExpr, Type_usize);
+  auto zn = NodeEval(ctx->build, sizeExpr, Type_uint);
 
   if (R_UNLIKELY(zn == NULL))
     return NULL;
@@ -895,7 +947,7 @@ static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
   // set temporary size so that we don't cause an infinite loop
   n->t.array.size = 0xFFFFFFFFFFFFFFFF;
 
-  Node* zn = eval_usize(ctx, n->t.array.sizeExpr);
+  Node* zn = eval_uint(ctx, n->t.array.sizeExpr);
 
   if (R_UNLIKELY(zn == NULL)) {
     // TODO: improve these error message to be more specific
@@ -1043,7 +1095,7 @@ static Node* resolve_index_tuple(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
   asserteq_debug(n->index.operand->type->kind, NTupleType);
 
-  Node* zn = eval_usize(ctx, n->index.index);
+  Node* zn = eval_uint(ctx, n->index.index);
 
   if (R_UNLIKELY(zn == NULL)) {
     build_errf(ctx->build, NodePosSpan(n->index.index),
@@ -1073,7 +1125,7 @@ static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
   n->index.operand = resolve_type(ctx, n->index.operand, fl);
 
-  auto typecontext = typecontext_set(ctx, Type_usize);
+  auto typecontext = typecontext_set(ctx, Type_uint);
   n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
   ctx->typecontext = typecontext; // restore
 

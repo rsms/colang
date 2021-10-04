@@ -1,33 +1,20 @@
-fun foo(a, b int, c uint) int
-fun bar(int, int, uint) int
+x int = 3
 
-fun main() int
-  foo(1, 2, 3)        // ok
-  foo(1, c=3, b=2)    // ok
-  bar(1, 2, 3)        // ok
-  // bar(1, c=3, b=2) // error: cannot call with named parameters
-  // foo(1, 2)        // error: missing argument
-  // foo(1, 2, 3, 4)  // error: extra argument
-  // foo(1, c=3, c=2) // error: duplicate arguments
+type Spaceship
+  a int //= x
+  b uint
+  c i64
 
-// ———————————————————————————————————————————————————————
-// x int = 3
+// A = Spaceship()
 
-// type Spaceship
-//   a int = x
-//   b uint
-//   c i64
-
-// // A = Spaceship()
-
-// fun foo(
-//   a int
-//   b uint
-//   c i64
-// ) int
-//   x = 4
-//   B = Spaceship(2, c = 5)
-//   B.a
+fun foo(
+  a int
+  b uint
+  c i64
+) int
+  x = 4
+  B = Spaceship(c = 1, a = 5)
+  B.a
 
 // ———————————————————————————————————————————————————————
 

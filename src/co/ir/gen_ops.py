@@ -74,8 +74,6 @@ typeCodeToIRType :{str:[str]} = {
 typeCodeAliases = {
   "int":   "i32",  # FIXME
   "uint":  "u32",  # FIXME
-  "isize": "i64",  # FIXME
-  "usize": "u64",  # FIXME
 }
 
 intTypes = set([

@@ -18,44 +18,42 @@ typedef enum TypeCodeFlag {
 
 // TypeCode with their string encoding. Becomes TypeCode_NAME
 // Note: ir/gen_ops.py relies on "#define TYPE_CODES" and "NUM_END".
-#define TYPE_CODES(_)                                                                          \
-  /* named types exported in the global scope. Names must match those of TYPE_SYMS.          */\
-  /* Note: numeric types are listed first as their enum value is used as dense indices.      */\
-  /* Note: order of intrinsic integer types must be signed,unsigned,signed,unsigned...       */\
-  /* Reordering these requires updating TypeCodeIsInt() below.                               */\
-  /*                                                                                         */\
-  /* name       encoding  flags                                                              */\
-  _( bool      , 'b', 0 )                                                                      \
-  _( i8        , '1', TypeCodeFlagSize1 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( u8        , '2', TypeCodeFlagSize1 | TypeCodeFlagInt )                                    \
-  _( i16       , '3', TypeCodeFlagSize2 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( u16       , '4', TypeCodeFlagSize2 | TypeCodeFlagInt )                                    \
-  _( i32       , '5', TypeCodeFlagSize4 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( u32       , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                    \
-  _( i64       , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )               \
-  _( u64       , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                    \
-  _( f32       , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
-  _( f64       , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )             \
-  _( int       , 'i', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
-  _( uint      , 'u', TypeCodeFlagInt )                                                        \
-  _( isize     , 'I', TypeCodeFlagInt | TypeCodeFlagSigned )                                   \
-  _( usize     , 'U', TypeCodeFlagInt )                                                        \
-  _( NUM_END, 0, 0 ) /* sentinel; not a TypeCode */                                            \
-  _( str       , 's', 0 )                                                                      \
-  _( nil       , '0', 0 )                                                                      \
-  _( auto      , 'a', 0 ) /* inferred */                                                       \
-  /*                                                                                         */\
-  _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                       \
-  /*                                                                                         */\
-  /* internal types not directly reachable by names in the language */                         \
-  _( ptr       , 'M', 0 ) /* pointer memory address */                                         \
-  _( fun       , '^', 0 )                                                                      \
-  _( array     , '[', 0 )                                                                      \
-  _( struct    , '{', 0 ) _( structEnd , '}', 0 )                                              \
-  _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                              \
-  /* special type codes used in IR */                                                          \
-  _( ideal     , '*', 0 ) /* untyped numeric constants */                                      \
-  _( param1    , 'P', 0 ) /* parameteric. For IR, matches other type, e.g. output == input */  \
+#define TYPE_CODES(_)                                                                      \
+  /* named types exported in the global scope. Names must match those of TYPE_SYMS.      */\
+  /* Note: numeric types are listed first as their enum value is used as dense indices.  */\
+  /* Note: order of intrinsic integer types must be signed,unsigned,signed,unsigned...   */\
+  /* Reordering these requires updating TypeCodeIsInt() below.                           */\
+  /*                                                                                     */\
+  /* name       encoding  flags                                                          */\
+  _( bool      , 'b', 0 )                                                                  \
+  _( i8        , '1', TypeCodeFlagSize1 | TypeCodeFlagInt | TypeCodeFlagSigned )           \
+  _( u8        , '2', TypeCodeFlagSize1 | TypeCodeFlagInt )                                \
+  _( i16       , '3', TypeCodeFlagSize2 | TypeCodeFlagInt | TypeCodeFlagSigned )           \
+  _( u16       , '4', TypeCodeFlagSize2 | TypeCodeFlagInt )                                \
+  _( i32       , '5', TypeCodeFlagSize4 | TypeCodeFlagInt | TypeCodeFlagSigned )           \
+  _( u32       , '6', TypeCodeFlagSize4 | TypeCodeFlagInt )                                \
+  _( i64       , '7', TypeCodeFlagSize8 | TypeCodeFlagInt | TypeCodeFlagSigned )           \
+  _( u64       , '8', TypeCodeFlagSize8 | TypeCodeFlagInt )                                \
+  _( f32       , 'f', TypeCodeFlagSize4 | TypeCodeFlagFloat | TypeCodeFlagSigned )         \
+  _( f64       , 'F', TypeCodeFlagSize8 | TypeCodeFlagFloat | TypeCodeFlagSigned )         \
+  _( int       , 'i', TypeCodeFlagInt | TypeCodeFlagSigned )                               \
+  _( uint      , 'u', TypeCodeFlagInt )                                                    \
+  _( NUM_END, 0, 0 ) /* sentinel; not a TypeCode */                                        \
+  _( str       , 's', 0 )                                                                  \
+  _( nil       , '0', 0 )                                                                  \
+  _( auto      , 'a', 0 ) /* inferred */                                                   \
+  /*                                                                                     */\
+  _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                   \
+  /*                                                                                     */\
+  /* internal types not directly reachable by names in the language */                     \
+  _( ptr       , 'M', 0 ) /* pointer memory address */                                     \
+  _( fun       , '^', 0 )                                                                  \
+  _( array     , '[', 0 )                                                                  \
+  _( struct    , '{', 0 ) _( structEnd , '}', 0 )                                          \
+  _( tuple     , '(', 0 ) _( tupleEnd  , ')', 0 )                                          \
+  /* special type codes used in IR */                                                      \
+  _( ideal     , '*', 0 ) /* untyped numeric constants */                                  \
+  _( param1    , 'P', 0 ) /* parameteric. For IR, matches other type (output==input)     */\
   _( param2    , 'P', 0 )
 /*END TYPE_CODES*/
 
@@ -78,7 +76,10 @@ static_assert(TypeCode_NUM_END <= 32, "there must be no more than 32 numeric typ
 // CType describes the constant kind of an "ideal" (untyped) constant.
 // These are ordered from less dominant to more dominant -- a CType with a higher value
 // takes precedence over a CType with a lower value in cases like untyped binary operations.
-typedef enum CType { // TODO: Rename to ConstType
+//
+// TODO: consider merging with TypeKind enum
+//
+typedef enum CType {
   CType_INVALID,
   CType_int,
   CType_rune,
@@ -94,23 +95,21 @@ const char* CTypeName(CType ct);
 // IMPORTANT: These must match the list of TypeCodes up until CONCRETE_END.
 // Looking for all type defs? universe.h puts it all together.
 #define TYPE_SYMS(_) \
-  _( bool  ,TypeKindInteger ) \
-  _( i8    ,TypeKindInteger ) \
-  _( u8    ,TypeKindInteger ) \
-  _( i16   ,TypeKindInteger ) \
-  _( u16   ,TypeKindInteger ) \
-  _( i32   ,TypeKindInteger ) \
-  _( u32   ,TypeKindInteger ) \
-  _( i64   ,TypeKindInteger ) \
-  _( u64   ,TypeKindInteger ) \
-  _( f32   ,TypeKindF32 ) \
-  _( f64   ,TypeKindF64 ) \
-  _( int   ,TypeKindInteger ) \
-  _( uint  ,TypeKindInteger ) \
-  _( isize ,TypeKindInteger ) \
-  _( usize ,TypeKindInteger ) \
-  _( str   ,TypeKindPointer ) \
-  _( auto  ,TypeKindVoid ) \
+  _( bool ,TypeKindInteger ) \
+  _( i8   ,TypeKindInteger ) \
+  _( u8   ,TypeKindInteger ) \
+  _( i16  ,TypeKindInteger ) \
+  _( u16  ,TypeKindInteger ) \
+  _( i32  ,TypeKindInteger ) \
+  _( u32  ,TypeKindInteger ) \
+  _( i64  ,TypeKindInteger ) \
+  _( u64  ,TypeKindInteger ) \
+  _( f32  ,TypeKindF32 ) \
+  _( f64  ,TypeKindF64 ) \
+  _( int  ,TypeKindInteger ) \
+  _( uint ,TypeKindInteger ) \
+  _( str  ,TypeKindPointer ) \
+  _( auto ,TypeKindVoid ) \
 /*END TYPE_SYMS*/
 
 // TYPE_SYMS_PRIVATE: named types like TYPE_SYMS but not exported in the global namespace.
@@ -136,7 +135,7 @@ static bool TypeCodeIsFloat(TypeCode t);  // check for flag TypeCodeFlagFloat
 static bool TypeCodeIsSigned(TypeCode t); // check for flag TypeCodeFlagSigned
 
 
-// -----------------------------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------
 // implementations
 
 // Lookup table TypeCode => string encoding char

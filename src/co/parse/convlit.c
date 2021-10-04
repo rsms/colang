@@ -26,8 +26,6 @@ static const i64 min_intval[TypeCode_NUM_END] = {
   (i64)0,                   // TODO f64
   (i32)-0x80000000,         // int == int32
   (i64)0,                   // uint == uint32
-  (i64)-0x8000000000000000, // isize
-  (i64)0,                   // usize
 };
 
 static const u64 max_intval[TypeCode_NUM_END] = {
@@ -44,8 +42,6 @@ static const u64 max_intval[TypeCode_NUM_END] = {
   0,                   // TODO f64
   0x7fffffff,          // int == int32
   0xffffffff,          // uint == uint32
-  0x7fffffffffffffff,  // isize
-  0xffffffffffffffff,  // usize
 };
 
 // convert an intrinsic numeric value v to an integer of type tc.

@@ -247,8 +247,6 @@ static const IRType* get_basic_type(IRBuilder* u, Type* ast_type) {
     // TODO: make this configurable
     case TypeCode_int:
     case TypeCode_uint:  return IRType_i32;
-    case TypeCode_isize:
-    case TypeCode_usize: return IRType_i64;
 
     default:
       assertf(0, "invalid TypeCode %s", TypeCodeName(ast_type->t.basic.typeCode));

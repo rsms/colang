@@ -18,6 +18,21 @@
 // A: Yes. It works for C, Rust, et al.
 //
 
+fun example
+  a = IVec3()          // mutable IVec3 because storage is mutable
+  const b = IVec3()    // immutable IVec3 because storage is immutable
+  c = b                // mutable IVec3; b copied to c
+  const d = [3](1,2,3) // immutable. array data stored in RO memory
+  e = d                // mutable; d copied to e (array data stored on stack)
+  //
+  // but what about slices?
+  const f = d[:]       // immutable slice pointing to RO memory
+                       // C equiv: static const Slice f = { .ptr=&d, .len=3 }
+  d[0] = 4             // invalid! can't modify RO memory! (C equiv: f.ptr[0]=4)
+  // idea: Slices work like structs: they inherit constness
+  //       i.e. C equiv of f's type is "struct { const int* ptr; uint len; }"
+
+
 type IVec3
   x, y, z int
 

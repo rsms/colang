@@ -1157,7 +1157,6 @@ static Value build_binop(B* b, Node* n, const char* debugname) {
   case TypeCode_i32:
   case TypeCode_i64:
   case TypeCode_int:
-  case TypeCode_isize:
     op = kOpTableSInt[n->op.op];
     break;
   case TypeCode_u8:
@@ -1165,7 +1164,6 @@ static Value build_binop(B* b, Node* n, const char* debugname) {
   case TypeCode_u32:
   case TypeCode_u64:
   case TypeCode_uint:
-  case TypeCode_usize:
     op = kOpTableUInt[n->op.op];
     break;
   case TypeCode_f32:
