@@ -135,7 +135,7 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendfmt(s, "%f", n->val.f);
 
   case NId: // foo
-    return str_append(s, n->ref.name, symlen(n->ref.name));
+    return str_append(s, n->id.name, symlen(n->id.name));
 
   case NBinOp: // foo + bar
     s = NodeStr(s, n->op.left);
@@ -189,6 +189,14 @@ Str NodeStr(Str s, const Node* n) {
        NodeIsParam(n) ? "param" :
                         "var"),
       n->var.name);
+
+  case NRef: // &x, mut&x
+    if (NodeIsConst(n)) {
+      s = str_appendc(s, '&');
+    } else {
+      s = str_appendcstr(s, "mut&");
+    }
+    return NodeStr(s, n->ref.target);
 
   case NFun: // fun foo
     s = str_appendcstr(s, "function");
@@ -246,6 +254,14 @@ Str NodeStr(Str s, const Node* n) {
       return str_appendcstr(s, "ideal");
     return str_append(s, n->t.basic.name, symlen(n->t.basic.name));
 
+  case NRefType: // &T, mut&T
+    if (NodeIsConst(n)) {
+      s = str_appendc(s, '&');
+    } else {
+      s = str_appendcstr(s, "mut&");
+    }
+    return NodeStr(s, n->t.ref);
+
   case NField:
     s = str_appendcstr(s, "field ");
     s = str_append(s, n->field.name, symlen(n->field.name));
@@ -272,13 +288,17 @@ Str NodeStr(Str s, const Node* n) {
     s = str_append_NodeArray(s, &n->t.tuple.a, " ", 1);
     return str_appendc(s, ')');
 
-  case NArrayType: // [4]int, []int
-    if (n->t.array.sizeExpr) {
-      if (n->t.array.size == 0)
-        return str_appendcstr(s, "array<?>");
-      return str_appendfmt(s, "array<" FMT_U64 ">", n->t.array.size);
+  case NArrayType: // [int 4], [int]
+    s = str_appendc(s, '[');
+    s = NodeStr(s, n->t.array.subtype);
+    if (n->t.array.size > 0) {
+      s = str_appendc(s, ' ');
+      s = str_appendu64(s, n->t.array.size, 10);
+    } else if (n->t.array.sizeexpr) {
+      s = str_appendc(s, ' ');
+      s = NodeStr(s, n->t.array.sizeexpr);
     }
-    return str_appendcstr(s, "slice");
+    return str_appendc(s, ']');
 
   case NStructType: { // "struct Name" or "struct {foo float; y bool}"
     s = str_appendcstr(s, "struct ");
@@ -382,7 +402,7 @@ Str NodeRepr(const Node* n, Str s, NodeReprFlags fl) {
   c.delim_open = c.lparen;
   c.delim_close = c.rparen;
 
-  NodeVisit(n, &c, l_visit);
+  NodeVisit(assertnotnull_debug(n), &c, l_visit);
 
   c.s = style_pop(&c.style, c.s);
   asserteq(c.style.stack.len, 0); // style_push/style_pop calls should be balanced
@@ -473,6 +493,7 @@ static bool l_collapse_field(LReprCtx* c, NodeList* nl) {
     case NBoolLit:
     case NFloatLit:
     case NId:
+    case NRef:
     case NIntLit:
     case NReturn:
     case NStrLit:
@@ -824,7 +845,7 @@ static bool l_visit(NodeList* nl, void* cp) {
         s = str_appendcstr(s, " @unres");
       if (NodeIsMacroParam(n)) {
         s = str_appendcstr(s, " @typeparam");
-      } else if (!NodeIsType(n) && NodeIsConst(n) && n->kind != NTuple) {
+      } else if (NodeIsConst(n)) {
         s = str_appendcstr(s, " @const");
       }
       if ((n->flags & NodeFlagUnused))
@@ -927,7 +948,7 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
 
   case NId:
     s = style_push(&c->style, s, id_color);
-    s = str_append(s, n->ref.name, symlen(n->ref.name));
+    s = str_append(s, n->id.name, symlen(n->id.name));
     s = style_pop(&c->style, s);
     break;
 
@@ -962,12 +983,11 @@ static void l_append_fields(const Node* n, LReprCtx* c) {
     break;
 
   case NArrayType:
-    if (n->t.array.size == 0) {
-      s = str_appendcstr(s, "(size ?)");
-    } else {
-      s = str_appendfmt(s, "(size " FMT_U64 ")", n->t.array.size);
+    if (n->t.array.size > 0) {
+      s = str_appendu64(s, n->t.array.size, 10);
+      break;
     }
-    break;
+    FALLTHROUGH;
 
   default:
     str_setlen(s, str_len(s) - 1); // undo ' '

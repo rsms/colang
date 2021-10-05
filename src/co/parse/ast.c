@@ -96,7 +96,7 @@ Node* NodeUnbox(Node* n, bool unrefVars) {
       break;
 
     case NId:
-      n = assertnotnull_debug(n->ref.target);
+      n = assertnotnull_debug(n->id.target);
       break;
 
     default:
@@ -268,7 +268,7 @@ CType NodeIdealCType(const Node* n) {
     return NodeIdealCType(n->op.left);
 
   case NId:
-    return NodeIdealCType(n->ref.target);
+    return NodeIdealCType(n->id.target);
 
   case NBinOp:
     switch (n->op.op) {
@@ -382,8 +382,8 @@ static Node* nullable diag_trail_next(Node* n, const char** msg) {
     switch (n->kind) {
 
       case NId:
-        *msg = n->ref.name;
-        n = n->ref.target;
+        *msg = n->id.name;
+        n = n->id.target;
         break;
 
       case NCall:

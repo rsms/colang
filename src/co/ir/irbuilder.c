@@ -318,14 +318,14 @@ static IRValue* ast_add_boolconst(IRBuilder* u, Node* n) { // n->kind==NBoolLit
 
 
 static IRValue* ast_add_id(IRBuilder* u, Node* n) { // n->kind==NId
-  assert(n->ref.target != NULL); // never unresolved
-  // dlog("ast_add_id \"%s\" target = %s", n->ref.name, fmtnode(n->ref.target));
-  if (n->ref.target->kind == NVar) {
+  assert(n->id.target != NULL); // never unresolved
+  // dlog("ast_add_id \"%s\" target = %s", n->id.name, fmtnode(n->id.target));
+  if (n->id.target->kind == NVar) {
     // variable
-    return var_read(u, n->ref.name, n->type, u->b);
+    return var_read(u, n->id.name, n->type, u->b);
   }
   // else: type or builtin etc
-  return ast_add_expr(u, (Node*)n->ref.target);
+  return ast_add_expr(u, (Node*)n->id.target);
 }
 
 
@@ -791,11 +791,11 @@ static IRValue* ast_add_call(IRBuilder* u, Node* n) {
     // target is function directly. e.g. from direct call on function value:
     //   (fun(x int) { ... })(123)
     fn = ast_add_fun(u, recv);
-  } else if (recv->kind == NId && recv->ref.target && recv->ref.target->kind == NFun) {
+  } else if (recv->kind == NId && recv->id.target && recv->id.target->kind == NFun) {
     // common case of function referenced by name. e.g.
     //   fun foo(x int) { ... }
     //   foo(123)
-    fn = ast_add_fun(u, recv->ref.target);
+    fn = ast_add_fun(u, recv->id.target);
   } else {
     // function is a value
     IRValue* fnval = ast_add_expr(u, recv);
@@ -895,6 +895,7 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NStrLit:
     case NNil:
     case NAssign:
+    case NRef:
     case NField:
     case NPrefixOp:
     case NPostfixOp:
@@ -903,11 +904,12 @@ static IRValue* ast_add_expr(IRBuilder* u, Node* n) {
     case NNamedVal:
     case NSlice:
     case NMacro:
-    case NFunType:
     case NBasicType:
+    case NRefType:
     case NTupleType:
     case NArrayType:
     case NStructType:
+    case NFunType:
     case NTypeType:
       panic("TODO ast_add_expr kind %s", NodeKindName(n->kind));
       break;

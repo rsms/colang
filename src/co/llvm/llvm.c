@@ -231,7 +231,7 @@ static Value build_default_value(B* b, Type* tn) {
 
 
 inline static Sym ntypeid(B* b, Type* tn) {
-  return tn->t.id ? tn->t.id : GetTypeID(b->build, tn);
+  return tn->t.id ? tn->t.id : (tn->t.id = GetTypeID(b->build, tn));
 }
 
 
@@ -969,10 +969,10 @@ static Value build_global_var(B* b, Node* n) {
 
 static Value build_id_read(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NId);
-  assertnotnull_debug(n->ref.target); // should be resolved
+  assertnotnull_debug(n->id.target); // should be resolved
 
-  Value v = build_expr(b, n->ref.target, n->ref.name);
-  n->irval = n->ref.target->irval;
+  Value v = build_expr(b, n->id.target, n->id.name);
+  n->irval = n->id.target->irval;
   return v;
 }
 

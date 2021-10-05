@@ -33,8 +33,8 @@ const Sym sym_return = &"\xEB\xA6\x08\xA3\x06\x00\x00\x70""return\0"[8];
 const Sym sym_struct = &"\x97\xFC\x80\x50\x06\x00\x00\x78""struct\0"[8];
 const Sym sym_switch = &"\x37\xE0\x68\x4B\x06\x00\x00\x80""switch\0"[8];
 const Sym sym_type = &"\x52\x1E\xB2\xD6\x04\x00\x00\x88""type\0"[8];
-const Sym sym_var = &"\x27\xBE\x0A\xFD\x03\x00\x00\x90""var\0"[8];
-const Sym sym_const = &"\x0A\x54\xDC\xAD\x05\x00\x00\x98""const\0"[8];
+const Sym sym_const = &"\x0A\x54\xDC\xAD\x05\x00\x00\x90""const\0"[8];
+const Sym sym_mut = &"\x7D\x83\xBC\x41\x03\x00\x00\x98""mut\0"[8];
 
 const Sym sym_bool = &"\x70\x6D\x7D\x3D\x04\x00\x00\x00""bool\0"[8];
 const Sym sym_i8 = &"\x9D\xE2\x63\xDB\x02\x00\x00\x00""i8\0"[8];
@@ -136,21 +136,22 @@ Node* Const_false = (Node*)&_Const_false;
 Node* Const_nil = (Node*)&_Const_nil;
 
 static SymRBNode n_u16 = { sym_u16, true, NULL, NULL };
-static SymRBNode n_bool = { sym_bool, true, NULL, NULL };
-static SymRBNode n_u64 = { sym_u64, false, &n_u16, &n_bool };
+static SymRBNode n_u64 = { sym_u64, false, &n_u16, NULL };
+static SymRBNode n_mut = { sym_mut, false, NULL, NULL };
+static SymRBNode n_bool = { sym_bool, true, &n_u64, &n_mut };
 static SymRBNode n_switch = { sym_switch, false, NULL, NULL };
-static SymRBNode n_for = { sym_for, true, &n_u64, &n_switch };
+static SymRBNode n_for = { sym_for, false, &n_bool, &n_switch };
 static SymRBNode n_i16 = { sym_i16, true, NULL, NULL };
 static SymRBNode n_i64 = { sym_i64, true, NULL, NULL };
 static SymRBNode n_else = { sym_else, false, &n_i16, &n_i64 };
-static SymRBNode n_struct = { sym_struct, false, &n_for, &n_else };
 static SymRBNode n_u8 = { sym_u8, true, NULL, NULL };
 static SymRBNode n_f64 = { sym_f64, true, NULL, NULL };
 static SymRBNode n_fun = { sym_fun, false, &n_u8, &n_f64 };
+static SymRBNode n_defer = { sym_defer, true, &n_else, &n_fun };
 static SymRBNode n_int = { sym_int, true, NULL, NULL };
 static SymRBNode n_const = { sym_const, false, &n_int, NULL };
-static SymRBNode n_return = { sym_return, false, &n_fun, &n_const };
-static SymRBNode n_defer = { sym_defer, false, &n_struct, &n_return };
+static SymRBNode n_return = { sym_return, false, &n_defer, &n_const };
+static SymRBNode n_struct = { sym_struct, false, &n_for, &n_return };
 static SymRBNode n_enum = { sym_enum, false, NULL, NULL };
 static SymRBNode n__ = { sym__, true, NULL, NULL };
 static SymRBNode n_u32 = { sym_u32, false, &n__, NULL };
@@ -165,12 +166,11 @@ static SymRBNode n_i32 = { sym_i32, false, &n_in, &n_str };
 static SymRBNode n_i8 = { sym_i8, true, &n_break, &n_i32 };
 static SymRBNode n_continue = { sym_continue, false, NULL, NULL };
 static SymRBNode n_import = { sym_import, true, NULL, NULL };
-static SymRBNode n_uint = { sym_uint, false, &n_import, NULL };
-static SymRBNode n_auto = { sym_auto, true, &n_continue, &n_uint };
-static SymRBNode n_f32 = { sym_f32, false, NULL, NULL };
-static SymRBNode n_var = { sym_var, false, &n_auto, &n_f32 };
-static SymRBNode n_nil = { sym_nil, false, &n_i8, &n_var };
-static SymRBNode n_as = { sym_as, false, &n_defer, &n_nil };
+static SymRBNode n_f32 = { sym_f32, true, NULL, NULL };
+static SymRBNode n_uint = { sym_uint, false, &n_import, &n_f32 };
+static SymRBNode n_auto = { sym_auto, false, &n_continue, &n_uint };
+static SymRBNode n_nil = { sym_nil, false, &n_i8, &n_auto };
+static SymRBNode n_as = { sym_as, false, &n_struct, &n_nil };
 
 static SymRBNode* _symroot = &n_as;
 
@@ -197,7 +197,7 @@ Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
 __attribute__((used)) static const char* const debugSymCheck =
   "as#101 auto#102 break#103 continue#104 defer#105 else#106 enum#107 "
   "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e struct#10f "
-  "switch#110 type#111 var#112 const#113 bool i8 u8 i16 u16 i32 u32 i64 "
+  "switch#110 type#111 const#112 mut#113 bool i8 u8 i16 u16 i32 u32 i64 "
   "u64 f32 f64 int uint str auto ideal nil true:bool=1 false:bool=0 nil:nil=0 "
   "_ ";
 #endif

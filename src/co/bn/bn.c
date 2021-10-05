@@ -374,11 +374,11 @@ static BinaryenExpressionRef bn_expr_call(BNBuilder* b, Node* n) {
     panic("TODO: type call");
 
   if (recv->kind != NFun) {
-    if (recv->kind == NId && recv->ref.target && recv->ref.target->kind == NFun) {
+    if (recv->kind == NId && recv->id.target && recv->id.target->kind == NFun) {
       // common case of function referenced by name. e.g.
       //   fun foo(x int) { ... }
       //   foo(123)
-      recv = recv->ref.target;
+      recv = recv->id.target;
     } else {
       // function is a value
       panic("TODO: BinaryenCallIndirect");
@@ -421,13 +421,13 @@ static BinaryenExpressionRef bn_expr_call(BNBuilder* b, Node* n) {
 static BinaryenExpressionRef bn_expr_id(BNBuilder* b, Node* n) {
   asserteq_debug(n->kind, NId);
 
-  if (n->ref.target->kind == NVar) {
+  if (n->id.target->kind == NVar) {
     // variable
     panic("TODO");
   }
 
   // else: type, builtin etc
-  return bn_expr(b, (Node*)n->ref.target);
+  return bn_expr(b, (Node*)n->id.target);
 }
 
 

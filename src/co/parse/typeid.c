@@ -66,6 +66,10 @@ static Str mktypestr(Str s, const Node* n) {
     case NBasicType:
       return str_appendc(s, TypeCodeEncoding(n->t.basic.typeCode));
 
+    case NRefType:
+      s = str_appendc(s, TypeCodeEncoding(TypeCode_ref));
+      return mktypestr(s, n->t.ref);
+
     case NArrayType:
       s = str_appendc(s, TypeCodeEncoding(TypeCode_array));
       return mktypestr(s, n->t.array.subtype);

@@ -1,14 +1,32 @@
-fun foo {
+fun bar(x &[int]) int
+
+fun foo() int
+  // a [int 3]
+  const b [int 3] = [0,1,2]
+  // r1 = &a // type: mut&[int] (since a is mutable)
+  // r2 = &b // type: &[int] (since b is immutable)
+  // // r3 [int] = &a // error: cannot use expression of type A; expected type B
+  // // r3 &[i8] = &a // error: cannot use expression of type A; expected type B
+  // r3 &[int] = &a
+  // r4 &[int] = &b
+  // r5 mut&[int] = &a
+  r6 mut&[int] = &b // error: b is not mutable  -- TODO --
+
+  // s [int]
+
+  //bad1 mut&[int] = a // error: cannot initialize reference with value of type [int]
+  //bad2 [int] = &a // error: cannot initialize variable with reference
+  0
   // x [3]int
-  x = [3]u16(0, 0, 0)
-  y = [3]u16(0, 0, 0)
-  x[1] + y[0]
+  // x = [u16 3](0, 0, 0)
+  // y = [u16 3](0, 0, 0)
+  // x[1] + y[0]
   // x
 
   // t = (1, 2, 3)
   // y = 3
   // // y
-}
+
 // one = 1
 
 

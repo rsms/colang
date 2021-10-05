@@ -17,7 +17,7 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   switch (n->kind) {
 
   case NId:
-    return CALLBACK(n->ref.target, "target");
+    return CALLBACK(n->id.target, "target");
     break;
 
   case NBinOp:
@@ -63,6 +63,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       return CALLBACK(n->var.init, "init");
     break;
 
+  case NRef:
+    return CALLBACK(n->ref.target, "target");
+
   case NField:
     return CALLBACK(n->field.init, "init");
 
@@ -101,6 +104,9 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
       CALLBACK(n->slice.start, "start") &&
       CALLBACK(n->slice.end, "end") );
 
+  case NRefType:
+    return CALLBACK(n->t.ref, "elem");
+
   case NFunType:
     return CALLBACK(n->t.fun.params ? n->t.fun.params->type : NULL, "params") &&
            CALLBACK(n->t.fun.result, "result");
@@ -117,11 +123,8 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
   }
 
   case NArrayType:
-    if (n->t.array.size == 0 && n->t.array.sizeExpr &&
-        !CALLBACK(n->t.array.sizeExpr, "sizeexpr"))
-    {
+    if (n->t.array.size == 0 && !CALLBACK(n->t.array.sizeexpr, "sizeexpr"))
       return false;
-    }
     return CALLBACK(n->t.array.subtype, "subtype");
 
   case NStructType: {

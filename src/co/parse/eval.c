@@ -119,7 +119,7 @@ static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable 
   switch (n->kind) {
 
     case NId:
-      return _eval(b, targetType, n->ref.target);
+      return _eval(b, targetType, n->id.target);
 
     case NVar:
       return _eval(b, targetType, n->var.init);

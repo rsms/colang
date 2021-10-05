@@ -46,7 +46,7 @@ typedef enum TypeCodeFlag {
   _( CONCRETE_END, 0, 0 ) /* sentinel; not a TypeCode */                                   \
   /*                                                                                     */\
   /* internal types not directly reachable by names in the language */                     \
-  _( ptr       , 'M', 0 ) /* pointer memory address */                                     \
+  _( ref       , '&', 0 ) /* pointer memory address */                                     \
   _( fun       , '^', 0 )                                                                  \
   _( array     , '[', 0 )                                                                  \
   _( struct    , '{', 0 ) _( structEnd , '}', 0 )                                          \

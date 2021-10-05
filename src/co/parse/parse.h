@@ -85,8 +85,8 @@ typedef Node Type;
   _( struct,      TStruct)      \
   _( switch,      TSwitch)      \
   _( type,        TType)        \
-  _( var,         TVar)         \
   _( const,       TConst)       \
+  _( mut,         TMut)         \
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
 

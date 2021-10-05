@@ -38,6 +38,7 @@ typedef enum {
   _(Id,          NodeClassExpr) \
   _(If,          NodeClassExpr) \
   _(Var,         NodeClassExpr) \
+  _(Ref,         NodeClassExpr) \
   _(NamedVal,    NodeClassExpr) \
   _(BinOp,       NodeClassExpr) \
   _(PrefixOp,    NodeClassExpr) \
@@ -49,6 +50,7 @@ typedef enum {
   _(Macro,       NodeClassExpr) /* TODO: different NodeClass */ \
   /* types */ \
   _(BasicType,   NodeClassType) /* int, bool, ... */ \
+  _(RefType,     NodeClassType) /* &T */ \
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
   _(TupleType,   NodeClassType) /* (float,bool,int) */ \
   _(StructType,  NodeClassType) /* struct{foo float; y bool} */ \
@@ -121,6 +123,7 @@ typedef enum {
   NodeFlagUnused      = 1 << 8,  // [Var] never referenced
   NodeFlagPublic      = 1 << 9,  // [Var|Fun] public visibility (aka published, exported)
   NodeFlagNamed       = 1 << 11, // [Tuple when used as args] has named argument
+  NodeFlagPartialType = 1 << 12, // Type resolver should visit even if the node is typed
 } NodeFlags; // remember to update NodeFlagsStr impl
 
 typedef struct Node {
@@ -137,10 +140,10 @@ typedef struct Node {
       const u8* ptr;
       size_t    len;
     } str;
-    /* ref */ struct { // Id
+    /* id */ struct { // Id
       Sym   name;
       Node* target;
-    } ref;
+    } id;
     /* op */ struct { // BinOp, PrefixOp, PostfixOp, Return, Assign
       Node*          left;
       Node* nullable right;  // NULL for PrefixOp & PostfixOp
@@ -184,6 +187,9 @@ typedef struct Node {
       u32            index;   // argument index (used by function parameters)
       bool           isconst; // immutable storage? (true for "const x" vars)
     } var;
+    /* ref */ struct { // Ref
+      Node* target;
+    } ref;
     /* namedval */ struct { // NamedVal
       Sym   name;
       Node* value;
@@ -218,8 +224,8 @@ typedef struct Node {
           Sym      name;
         } basic;
         /* array */ struct { // ArrayType
-          Node* nullable sizeExpr; // NULL==slice (language type: usize)
-          u64            size;     // used for array, not slice. 0 until sizeExpr is resolved
+          Node* nullable sizeexpr; // NULL==slice (language type: usize)
+          u64            size;     // used for array, not slice. 0 until sizeexpr is resolved
           Node*          subtype;
         } array;
         /* tuple */ struct { // TupleType
@@ -235,7 +241,8 @@ typedef struct Node {
           Node* nullable params; // NTuple of NVar or null if no params
           Type* nullable result; // NTupleType of types or single type
         } fun;
-        Type* type; // TypeType
+        Type* ref;  // RefType element
+        Type* type; // TypeType type
       };
     } t;
 

@@ -43,25 +43,25 @@ Node* ResolveSym(Build* build, ParseFlags fl, Node* n, Scope* scope) {
 static Node* resolve_id(ResCtx* ctx, Node* n) {
   assert(n->kind == NId);
 
-  Node* target = n->ref.target;
+  Node* target = n->id.target;
   if (target) {
-    n->ref.target = resolve_sym(ctx, target);
+    n->id.target = resolve_sym(ctx, target);
     NodeClearUnresolved(n);
     return n;
   }
 
   // lookup name
-  target = (Node*)ScopeLookup(ctx->lookupscope, n->ref.name);
+  target = (Node*)ScopeLookup(ctx->lookupscope, n->id.name);
 
   if (R_UNLIKELY(target == NULL)) {
-    dlog_mod("LOOKUP %s FAILED", n->ref.name);
-    build_errf(ctx->build, NodePosSpan(n), "undefined symbol %s", n->ref.name);
-    n->ref.target = (Node*)NodeBad;
+    dlog_mod("LOOKUP %s FAILED", n->id.name);
+    build_errf(ctx->build, NodePosSpan(n), "undefined symbol %s", n->id.name);
+    n->id.target = (Node*)NodeBad;
     return n;
   }
 
   NodeClearUnresolved(n);
-  n->ref.target = target = resolve_sym(ctx, target);
+  n->id.target = target = resolve_sym(ctx, target);
   n->type = target->type;
   NodeClearUnused(target);
 
@@ -69,7 +69,7 @@ static Node* resolve_id(ResCtx* ctx, Node* n) {
     NodeRefVar(target);
 
   dlog_mod("LOOKUP %s => (N%s) %s",
-    n->ref.name, NodeKindName(target->kind), fmtnode(target));
+    n->id.name, NodeKindName(target->kind), fmtnode(target));
 
   return n;
 }
@@ -220,6 +220,10 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
     n->namedval.value = resolve_sym(ctx, n->namedval.value);
     break;
 
+  case NRef:
+    n->ref.target = resolve_sym(ctx, n->ref.target);
+    break;
+
   case NSelector:
     n->sel.operand = resolve_sym(ctx, n->sel.operand);
     break;
@@ -244,9 +248,13 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
       n = ast_opt_ifcond(n);
     break;
 
+  case NRefType:
+    n->t.ref = resolve_sym(ctx, n->t.ref);
+    break;
+
   case NArrayType:
-    if (n->t.array.sizeExpr)
-      n->t.array.sizeExpr = resolve_sym(ctx, n->t.array.sizeExpr);
+    if (n->t.array.sizeexpr)
+      n->t.array.sizeexpr = resolve_sym(ctx, n->t.array.sizeexpr);
     n->t.array.subtype = resolve_sym(ctx, n->t.array.subtype);
     break;
 

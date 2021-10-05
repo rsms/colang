@@ -71,6 +71,7 @@ typedef enum PFlag {
   PFlagNone   = 0,
   PFlagRValue = 1 << 0, // parsing an rvalue
   PFlagType   = 1 << 1, // parsing a type
+  PFlagMut    = 1 << 2, // "mut" outer
 } PFlag;
 
 
@@ -107,7 +108,8 @@ typedef struct Unresolved {
 // If n is not NULL, use source location of n instead of current location.
 //
 static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
-  if (pos == NoPos)
+  bool autopos = pos == NoPos;
+  if (autopos)
     pos = ScannerPos(&p->s);
 
   va_list ap;
@@ -124,14 +126,16 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
     // Implicit semicolon from linebreak
     tokname = "line break";
     // To improve the error message, find the pos of the linebreak
-    const u8* prevlinestart = p->s.prevtokend - 1;
-    while (prevlinestart > p->s.src->body) {
-      if (*prevlinestart == '\n')
-        break;
-      prevlinestart--;
+    if (autopos) {
+      const u8* prevlinestart = p->s.prevtokend - 1;
+      while (prevlinestart > p->s.src->body) {
+        if (*prevlinestart == '\n')
+          break;
+        prevlinestart--;
+      }
+      u32 col = (u32)(uintptr_t)(p->s.prevtokend - prevlinestart);
+      pos = pos_make(p->s.srcposorigin, p->s.lineno - 1, col, /*span*/0);
     }
-    u32 col = (u32)(uintptr_t)(p->s.prevtokend - prevlinestart);
-    pos = pos_make(p->s.srcposorigin, p->s.lineno - 1, col, /*span*/0);
   } else {
     tokname = TokName(p->s.tok);
   }
@@ -142,7 +146,7 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
     msg = str_fmt("unexpected %s", tokname);
   } else if (str_hasprefixcstr(msg, "expecting ")) {
     stmp = msg;
-    const char* sep = tokname[0] == ';' ? " " : ", "; // avoid ";,"
+    const char* sep = (tokname[0] == ';' || tokname[0] == ',') ? " " : ", ";
     msg = str_fmt("unexpected %s%s%s", tokname, sep, msg);
   } else if (
     str_hasprefixcstr(msg, "after ") ||
@@ -488,10 +492,10 @@ static bool name_is_pub(Sym name) {
 
 static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
   asserteq_debug(id->kind, NId);
-  assertnotnull_debug(id->ref.target);
-  assertnotnull_debug(id->ref.name);
+  assertnotnull_debug(id->id.target);
+  assertnotnull_debug(id->id.name);
 
-  Node* target = id->ref.target;
+  Node* target = id->id.target;
 
   // unwind var targeting a type
   Node* t = target;
@@ -539,45 +543,45 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 // Returns id or its target
 static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
   asserteq_debug(id->kind, NId);
-  assertnull_debug(id->ref.target);
-  assertnotnull_debug(id->ref.name);
+  assertnull_debug(id->id.target);
+  assertnotnull_debug(id->id.name);
 
-  id->ref.target = lookupsym(p, id->ref.name);
+  id->id.target = lookupsym(p, id->id.name);
 
   #ifdef DEBUG_LOOKUPSYM
-    if (id->ref.target == NULL) {
-      dlog("lookup %s => (not found; unresolved)", id->ref.name);
+    if (id->id.target == NULL) {
+      dlog("lookup %s => (not found; unresolved)", id->id.name);
     } else {
-      Node* n = id->ref.target;
-      dlog("lookup %s => %s %s", id->ref.name, NodeKindName(n->kind), fmtnode(n));
+      Node* n = id->id.target;
+      dlog("lookup %s => %s %s", id->id.name, NodeKindName(n->kind), fmtnode(n));
     }
   #endif
 
-  if (id->ref.target == NULL) {
+  if (id->id.target == NULL) {
     // not found
     NodeSetUnresolved(id);
     id->flags |= NodeFlagRValue;
     return id;
   }
 
-  id->type = id->ref.target->type;
-  NodeRefAny(id->ref.target);
+  id->type = id->id.target->type;
+  NodeRefAny(id->id.target);
 
-  switch (id->ref.target->kind) {
+  switch (id->id.target->kind) {
     case NMacro:
     case NFun:
       // Note: Don't transfer "unresolved" attribute of functions
       break;
     // case NVar:
-    //   if (NodeIsConst(id->ref.target))
+    //   if (NodeIsConst(id->id.target))
     //     NodeSetHasConstVar(id);
     //   FALLTHROUGH;
     default:
-      NodeTransferUnresolved(id, id->ref.target);
+      NodeTransferUnresolved(id, id->id.target);
   }
 
-  // NodeTransferConst(id, id->ref.target);
-  id->flags = (id->flags & ~NodeFlagConst) | (id->ref.target->flags & NodeFlagConst);
+  // NodeTransferConst(id, id->id.target);
+  id->flags = (id->flags & ~NodeFlagConst) | (id->id.target->flags & NodeFlagConst);
 
   R_MUSTTAIL return simplify_id(p, id, fl);
 }
@@ -601,7 +605,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
 static Node* useAsRValue(Parser* p, Node* expr) {
   switch (expr->kind) {
     case NId:
-      if (expr->ref.target)
+      if (expr->id.target)
         return simplify_id(p, expr, PFlagRValue);
       return resolve_id(p, expr, PFlagRValue);
 
@@ -644,7 +648,7 @@ inline static Type* pType(Parser* p, PFlag fl) {
 inline static Node* pId(Parser* p) {
   asserteq_debug(p->s.tok, TId);
   auto n = mknode(p, NId);
-  n->ref.name = p->s.name;
+  n->id.name = p->s.name;
   nexttok(p);
   return n;
 }
@@ -676,43 +680,92 @@ static Node* PId(Parser* p, PFlag fl) {
 }
 
 
+static void set_var_init(Parser* p, Node* n, Node* nullable init) {
+  n->var.init = init;
+  if (init) {
+    NodeTransferUnresolved(n, init);
+    if (!n->type && init->type != Type_ideal)
+      n->type = init->type;
+    // type resolver must visit vars even when they have explicit type.
+    if (!init->type || init->type == Type_ideal)
+      n->flags |= NodeFlagPartialType;
+  }
+}
+
+
 static Node* make_var(Parser* p, const Node* name, Node* nullable init) {
   asserteq_debug(name->kind, NId);
   auto n = NewNode(p->build->mem, NVar);
   NodeSetConst(n);
   NodeSetUnused(n);
   n->pos = name->pos; // TODO: expand pos span to include type?
-  n->var.name = name->ref.name;
+  n->var.name = name->id.name;
   if (p->fnest == 0 && name_is_pub(n->var.name))
     NodeSetPublic(n);
-  if (init) {
-    n->var.init = init;
-    if (init->type != Type_ideal)
-      n->type = init->type;
-    NodeTransferUnresolved(n, init);
-  }
-  defsym(p, name->ref.name, n);
+  set_var_init(p, n, init);
+  defsym(p, name->id.name, n);
   return n;
 }
 
 
-// VarDecl = "var" Id (Type | Type? "=" Expr)
-// ConstDecl = "const" Id Type? "=" Expr
+static Node* pRefType(Parser* p, PFlag fl) {
+  auto n = mknode(p, NRefType);
+  nexttok(p); // consume "&"
+  // TODO: parse optional trailing "mut" kw?
+  if ((fl & PFlagMut) == 0)
+    NodeSetConst(n);
+  n->t.ref = pType(p, fl | PFlagRValue);
+  // n->flags = n->t.ref->flags & NodeFlagConst;
+  n->pos = pos_union(n->pos, n->t.ref->pos);
+  NodeTransferUnresolved(n, n->t.ref);
+  return n;
+}
+
+
+static Type* pMut(Parser* p, PFlag fl) {
+  Pos mut_pos = ScannerPos(&p->s);
+  nexttok(p); // consume "mut"
+
+  // expect "&"
+  if (p->s.tok != TAnd) {
+    syntaxerr(p, "expecting &");
+    return bad(p);
+  }
+  Type* n = pRefType(p, fl | PFlagMut);
+  n->pos = pos_union(mut_pos, n->pos);
+  return n;
+}
+
+
+// ConstVarDecl | MutVarDecl | MutType
+// ConstVarDecl = "const" Id Type? "=" Expr
+// MutVarDecl   = "mut" Id (Type | Type? "=" Expr)
+// MutType      = "mut" Type
 //
-// e.g. "var x int", "var x = 4", "var x int = 4"
+// e.g. "mut x int", "mut x = 4", "mut x int = 4"
 // e.g. "const x int", "const x = 4", "const x int = 4"
 //
-//!PrefixParselet TVar TConst
-static Node* PVar(Parser* p, PFlag fl) {
+//!PrefixParselet TMut TConst
+static Node* PMutOrConst(Parser* p, PFlag fl) {
+  if (fl & PFlagType) {
+    if (R_LIKELY(p->s.tok == TMut))
+      return pMut(p, fl);
+    syntaxerr(p, "unexpected %s", TokName(p->s.tok));
+  }
+
   auto n = mknode(p, NVar);
-  NodeSetConst(n);
   NodeSetUnused(n);
-  n->var.isconst = p->s.tok == TConst;
+  NodeSetConst(n);
+  if (p->s.tok == TConst) {
+    n->var.isconst = true;
+  } else {
+    fl |= PFlagMut;
+  }
   // Sym defname = p->s.name;
-  nexttok(p); // consume "var" or "const"
+  nexttok(p); // consume "mut" or "const"
 
   // name
-  // TODO: multi-name e.g. "var x, y, z int", "var x, y, z = 1, 2, 3"
+  // TODO: multi-name e.g. "mut x, y, z int", "mut x, y, z = 1, 2, 3"
   if (R_UNLIKELY(p->s.tok != TId)) {
     syntaxerr(p, "expecting %s", TokName(TId));
   } else {
@@ -745,10 +798,11 @@ static Node* PVar(Parser* p, PFlag fl) {
   if (got(p, TAssign)) {
     // e.g. "var name = x" or "var name type = x"
     // TODO: if we have a known type, e.g. "var x int = 5" then use that in PIntLit()
-    n->var.init = expr(p, PREC_LOWEST, PFlagRValue);
-    if (!n->type && n->var.init->type != Type_ideal)
-      n->type = n->var.init->type;
-    NodeTransferUnresolved(n, n->var.init);
+    Node* init = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    set_var_init(p, n, init);
+    // if (!n->type && n->var.init->type != Type_ideal)
+    //   n->type = n->var.init->type;
+    // NodeTransferUnresolved(n, n->var.init);
   } else if (n->var.isconst) {
     syntaxerr(p, "expecting assignment of value");
   }
@@ -773,9 +827,9 @@ static Node* pAssignSelector(Parser* p, const Parselet* e, PFlag fl, Node* left)
 static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   asserteq_debug(left->kind, NId);
 
-  if (!left->ref.target)
+  if (!left->id.target)
     left = resolve_id(p, left, PFlagNone);
-  Node* target = left->ref.target;
+  Node* target = left->id.target;
 
   if (target && target->kind == NVar) {
     if (R_UNLIKELY(target->var.isconst)) {
@@ -803,8 +857,11 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
   // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
   nexttok(p); // consume '='
+  auto ctxtype = set_ctxtype(p, NULL);
   Node* init = expr(p, PREC_LOWEST, fl);
-  return make_var(p, left, init); // copies left->ref.name and left->pos
+  Node* n = make_var(p, left, init); // copies left->id.name and left->pos
+  p->ctxtype = ctxtype;
+  return n;
 }
 
 
@@ -846,7 +903,7 @@ static Node* pAssignTuple(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     }
 
     dst = resolve_id(p, dst, PFlagNone);
-    Node* target = dst->ref.target;
+    Node* target = dst->id.target;
     if (target) {
       NodeClearConst(target);
       if (target->kind == NVar)
@@ -872,7 +929,7 @@ static Node* PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     case NTuple:    R_MUSTTAIL return pAssignTuple(p, e, fl, left);
     case NSelector: R_MUSTTAIL return pAssignSelector(p, e, fl, left);
     default:
-      syntaxerrp(p, left->pos, "cannot assign to %s", fmtnode(left));
+      build_errf(p->build, NodePosSpan(left), "cannot assign to %s", fmtnode(left));
       return left;
   }
 }
@@ -889,38 +946,68 @@ static Node* PGroup(Parser* p, PFlag fl) {
 }
 
 
-// ArrayType = arrayType | sliceType
-// arrayType = "[" Expr "]" Type
-// sliceType = "[]" Type
+// ArrayType = "[" Type size? "]"
+// size      = Expr?
 static Node* pArrayType(Parser* p, PFlag fl) {
   fl |= PFlagType;
   auto n = mknode(p, NArrayType);
   nexttok(p); // consume "["
 
-  // array or slice?
-  if (!got(p, TRBrack)) {
-    n->t.array.sizeExpr = expr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
-    want(p, TRBrack);
-  } // else: slice, e.g. "[]int"
-
-  n->t.array.subtype = expr(p, PREC_MEMBER, fl | PFlagRValue);
+  // Type
+  n->t.array.subtype = pType(p, fl | PFlagRValue);
   NodeTransferUnresolved(n, n->t.array.subtype);
 
-  // if we are parsing in rvalue position it must be a parameter, else it's a var
-  if (fl & PFlagRValue) {
-    // e.g. fun foo(arg [4]int)
-    //              ~~~~~~~~~~
-    // TODO: is there anything we'd like to do here, like default value?
+  // size?
+  if (p->s.tok != TRBrack) {
+    n->t.array.sizeexpr = expr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
+    NodeTransferUnresolved(n, n->t.array.sizeexpr);
   }
 
-  return InternASTType(p->build, n);
+  want(p, TRBrack);
+  // return InternASTType(p->build, n);
+  return n;
+}
+
+
+// ArrayLit = "[" [ Expr (sep Expr)* sep? ] "]"
+// sep      = "," | ";"
+static Node* pArrayLit(Parser* p, PFlag fl) {
+  fl |= PFlagType;
+  auto n = mknode(p, NArray);
+  nexttok(p); // consume "["
+
+  while (1) {
+    Node* v = expr(p, PREC_LOWEST, fl);
+    NodeArrayAppend(p->build->mem, &n->array.a, v);
+    switch (p->s.tok) {
+      case TComma:
+      case TSemi:
+        if (nexttok(p) == TRBrack) // consume "," or ";"
+          goto end; // trailing "," or ";"
+        break; // continue reading more
+      case TRBrack:
+        goto end;
+      default:
+        syntaxerr(p, "expecting , ; or )");
+        Tok followlist[] = { TRBrack, 0 };
+        advance(p, followlist);
+        return n;
+    }
+  }
+
+end:
+  want(p, TRBrack);
+  return n;
 }
 
 
 //!PrefixParselet TLBrack
-static Node* PArrayPrefix(Parser* p, PFlag fl) {
-  // array type "x [3]int", "x = [3]int(1, 2, 3)"
-  return pArrayType(p, fl);
+static Node* PLBrackPrefix(Parser* p, PFlag fl) {
+  // array type "[T]"
+  if (fl & PFlagType)
+    return pArrayType(p, fl);
+  // array literal "[1, 2, 3]"
+  return pArrayLit(p, fl);
 }
 
 
@@ -942,48 +1029,129 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 }
 
 
-// ListType  = ArrayType | SliceType
-// ArrayType = "[" Expr "]" Type
-// SliceType = "[]" Type
-// #note: Expr must be of type usize
-//
-//!Parselet (TLBrack MEMBER)
-static Node* PArrayInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  // Two possibilities:
-  // x [3]int  -- array type
-  // x[3]      -- index (subscript) access
+// "name type"
+static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
+  asserteq_debug(name->kind, NId);
+  assert_debug(NodeIsType(type));
 
-  // if there's no space in between "left" and "[", treat it as index access
-  if (p->s.prevtokend == p->s.tokstart)
-    return pIndex(p, e, fl, left);
-
-  // else, treat it as an array type following an identifier e.g. "x [3]int"
-  if (left->kind != NId) {
-    syntaxerr(p, "unexpected array or slice type");
-    return left;
-  }
-
-  auto type = pArrayType(p, fl);
-
-  // e.g. "foo [4]int" =>
-  // (Var
-  //   (Id foo)
-  //   (ArrayType (IntLit 4) (BasicType int))
-  //   Initializer? )
-
-  // optional initializer expression e.g. "foo []int = [1, 2, 3]"
+  // optional initializer expression
   Node* init = NULL;
   if (got(p, TAssign)) {
-    auto ctxtype = set_ctxtype(p, type);
+    Type* ctxtype = set_ctxtype(p, type);
     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
     p->ctxtype = ctxtype;
   }
 
-  auto n = make_var(p, left, init);
-  // NodeFree(left); // make_var copies left->ref.name and left->pos
-  n->type = type;
+  Node* n = make_var(p, name, init);
 
-  // TODO: add check to PVarOrAssign and update n->var.init
+  if (init && init->type && init->type != Type_ideal) {
+    if (type->kind == NRefType) {
+      if (R_UNLIKELY(init->type->kind != NRefType)) {
+        // e.g. "x &Foo = a"  (fix: "x &Foo = &a")
+        syntaxerrp(p, init->pos, "cannot initialize reference with value");
+        build_notef(p->build, NodePosSpan(n->var.init),
+          "try referencing the value: &%s", fmtnode(n->var.init));
+      }
+    } else if (R_UNLIKELY(init->type->kind == NRefType)) {
+      syntaxerrp(p, init->pos, "cannot initialize value with reference");
+    }
+  }
+
+  // NodeFree(name); // make_var copies left->id.name and left->pos
+  n->type = type;
+  return n;
+}
+
+
+//!Parselet (TMut MEMBER)
+static Node* PMutInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  if (left->kind != NId) {
+    syntaxerr(p, "unexpected mut keyword");
+    return left;
+  }
+  fl |= PFlagMut;
+  Type* t = pType(p, fl);
+  return pTrailingVar(p, fl, left, t);
+}
+
+
+//!Parselet (TLBrack MEMBER)
+static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  // Two possibilities:
+  // x [T] -- array var
+  // x[3]  -- index (subscript) access
+  //
+  // if there's no space in between "left" and "[", treat it as index access
+  if (p->s.prevtokend == p->s.tokstart || left->kind != NId)
+    return pIndex(p, e, fl, left);
+  Type* t = pArrayType(p, fl);
+  return pTrailingVar(p, fl, left, t);
+}
+
+
+// Ref | RefType
+// Ref     = "&" Expr
+// RefType = "&" Type
+//!PrefixParselet TAnd
+static Node* PRefPrefix(Parser* p, PFlag fl) {
+  if (fl & PFlagType)
+    return pRefType(p, fl);
+
+  auto n = mknode(p, NRef);
+  nexttok(p); // consume "&"
+
+  n->ref.target = expr(p, PREC_LOWEST, PFlagRValue);
+  NodeTransferUnresolved(n, n->ref.target);
+
+  Node* target = n->ref.target;
+  if (target->kind == NId)
+    target = target->id.target;
+
+  // mutability
+  if (!p->ctxtype) {
+    // e.g. "x = &y"
+    if (NodeIsUnresolved(n->ref.target)) {
+      // target must be a global -- immutable ref
+      NodeSetConst(n);
+    } else if (target->kind == NVar) {
+      if (target->var.isconst)
+        NodeSetConst(n);
+    } else if (NodeIsConst(target)) {
+      NodeSetConst(n);
+    }
+  } else if ((fl & PFlagMut) == 0) {
+    NodeSetConst(n);
+  }
+
+  if (!NodeIsConst(n) && target->kind == NVar && !target->var.isconst) {
+    // since we're making a mutable ref, treat it as a var store
+    NodeClearConst(target);
+  }
+
+  dlog("p->ctxtype %s", fmtnode(p->ctxtype));
+  dlog("n %s", fmtnode(n));
+
+  if (target->type && target->type != Type_ideal) {
+    if (p->ctxtype) {
+      if (R_UNLIKELY(
+            p->ctxtype->kind != NRefType ||
+            !TypeEquals(p->build, p->ctxtype->t.ref, target->type)) )
+      {
+        syntaxerrp(p, n->pos,
+          "cannot use expression of type %s&%s; expected type %s",
+          NodeIsConst(n) ? "" : "mut", fmtnode(target->type), fmtnode(p->ctxtype) );
+      } else {
+        n->type = p->ctxtype;
+      }
+    } else {
+      // type from target
+      Type* t = NewNode(p->build->mem, NRefType);
+      t->t.ref = target->type;
+      NodeTransferUnresolved(t, t->t.ref);
+      t->flags = n->flags & NodeFlagConst;
+      n->type = t;
+    }
+  }
 
   return n;
 }
@@ -998,7 +1166,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   if (R_UNLIKELY((fl & PFlagRValue) || left->kind != NId)) {
     // (fl & PFlagRValue)   Occurs as an expression, e.g. "b" in "x = a b"
     // (left->kind != NId)  Identifier following some expression e.g. "b" in "3 b"
-    syntaxerrp(p, id->pos, "unexpected identifier %s", id->ref.name);
+    syntaxerrp(p, id->pos, "unexpected identifier %s", id->id.name);
     return id;
   }
 
@@ -1047,7 +1215,7 @@ static Node* pArgs(Parser* p, PFlag fl) { // => NTuple
       Node* id = pId(p);
       if (got(p, TAssign)) {
         // named argument
-        Sym name = id->ref.name; // tmp
+        Sym name = id->id.name; // tmp
         arg = id;
         arg->kind = NNamedVal;
         arg->namedval.name = name;
@@ -1104,6 +1272,8 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   n->call.receiver = useAsRValue(p, receiver);
   NodeTransferUnresolved(n, n->call.receiver);
 
+  dlog("n->call.receiver %s", fmtnode(n->call.receiver));
+
   // args
   n->call.args = NULL;
   if (!got(p, TRParen)) {
@@ -1142,7 +1312,7 @@ static Node* pField(Parser* p) {
   if (R_UNLIKELY(p->s.tok == TSemi)) {
     // e.g. "type" (implicit name)
     auto typename = mknode(p, NId);
-    typename->ref.name = n->field.name;
+    typename->id.name = n->field.name;
     n->type = resolve_id(p, typename, PFlagType);
     n->flags |= NodeFlagBase;
   } else {
@@ -1176,6 +1346,7 @@ static Node* pField(Parser* p) {
     p->ctxtype = ctxtype; // restore ctxtype
     NodeTransferUnresolved(n, n->field.init);
     n->flags |= NodeFlagCustomInit; // TODO: only set if n->field.init is not zero/default
+    n->flags |= NodeFlagPartialType;
   }
 
   NodeTransferCustomInit(n, n->type);
@@ -1361,10 +1532,14 @@ static Node* PPrefixOp(Parser* p, PFlag fl) {
 }
 
 // InfixOp = Expr ( "+" | "-" | "*" | "/" ) Expr
-//!Parselet (TPlus ADD) (TMinus ADD)
+//!Parselet (TPipePipe LOGICAL_OR)
+//          (TAndAnd LOGICAL_AND)
+//          (TPipe BITWISE_OR)
+//          (THat BITWISE_XOR)
+//          (TEq EQUAL) (TNEq EQUAL)
+//          (TLt COMPARE) (TGt COMPARE) (TLEq COMPARE) (TGEq COMPARE)
+//          (TPlus ADD) (TMinus ADD)
 //          (TStar MULTIPLY) (TSlash MULTIPLY)
-//          (TLt COMPARE) (TGt COMPARE)
-//          (TEq EQUAL) (TNEq EQUAL) (TLEq EQUAL) (TGEq EQUAL)
 static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, NBinOp);
   n->op.op = p->s.tok;
@@ -1376,6 +1551,17 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   p->ctxtype = ctxtype; // restore ctxtype
   nodeTransferUnresolved2(n, left, n->op.right);
   return n;
+}
+
+//!Parselet (TAnd BITWISE_AND)
+static Node* PInfixAnd(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  if ((fl & PFlagRValue) == 0 && left->kind == NId) {
+    // e.g. "x &T"
+    Type* t = pType(p, fl);
+    return pTrailingVar(p, fl, left, t);
+  }
+  return PInfixOp(p, e, fl, left);
+  // dlog("NBinOp %s", fmtast(left));
 }
 
 // PostfixOp = Expr ( "++" | "--" )
@@ -1575,7 +1761,7 @@ finish:
       Node* cn = (Node*)n->array.a.v[i];
       if (!cn->type) {
         auto t = mknode(p, NId);
-        t->ref.name = cn->var.name;
+        t->id.name = cn->var.name;
         cn->var.name = sym__;
         cn->var.index = index++;
         cn->type = useAsRValue(p, t);
@@ -1602,7 +1788,7 @@ static Node* templateParams(Parser* p) {
       break;
     }
     auto name = mknode(p, NId);
-    name->ref.name = p->s.name;
+    name->id.name = p->s.name;
     nexttok(p); // consume id
     Node* init = NULL;
     if (got(p, TAssign)) // T=something
@@ -1735,10 +1921,11 @@ static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TAuto] = {PAuto, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
-  [TVar] = {PVar, NULL, PREC_MEMBER},
-  [TConst] = {PVar, NULL, PREC_MEMBER},
+  [TMut] = {PMutOrConst, PMutInfix, PREC_MEMBER},
+  [TConst] = {PMutOrConst, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
-  [TLBrack] = {PArrayPrefix, PArrayInfix, PREC_MEMBER},
+  [TLBrack] = {PLBrackPrefix, PLBrackInfix, PREC_MEMBER},
+  [TAnd] = {PRefPrefix, PInfixAnd, PREC_BITWISE_AND},
   [TStruct] = {PStructType, NULL, PREC_MEMBER},
   [TType] = {PTypeDef, NULL, PREC_MEMBER},
   [TLBrace] = {PBlockOrStructType, NULL, PREC_MEMBER},
@@ -1751,14 +1938,18 @@ static const Parselet parselets[TMax] = {
   [TFun] = {PFun, NULL, PREC_MEMBER},
   [TAssign] = {NULL, PAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
-  [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
-  [TSlash] = {NULL, PInfixOp, PREC_MULTIPLY},
-  [TLt] = {NULL, PInfixOp, PREC_COMPARE},
-  [TGt] = {NULL, PInfixOp, PREC_COMPARE},
+  [TPipePipe] = {NULL, PInfixOp, PREC_LOGICAL_OR},
+  [TAndAnd] = {NULL, PInfixOp, PREC_LOGICAL_AND},
+  [TPipe] = {NULL, PInfixOp, PREC_BITWISE_OR},
+  [THat] = {NULL, PInfixOp, PREC_BITWISE_XOR},
   [TEq] = {NULL, PInfixOp, PREC_EQUAL},
   [TNEq] = {NULL, PInfixOp, PREC_EQUAL},
-  [TLEq] = {NULL, PInfixOp, PREC_EQUAL},
-  [TGEq] = {NULL, PInfixOp, PREC_EQUAL},
+  [TLt] = {NULL, PInfixOp, PREC_COMPARE},
+  [TGt] = {NULL, PInfixOp, PREC_COMPARE},
+  [TLEq] = {NULL, PInfixOp, PREC_COMPARE},
+  [TGEq] = {NULL, PInfixOp, PREC_COMPARE},
+  [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
+  [TSlash] = {NULL, PInfixOp, PREC_MULTIPLY},
   [TPlusPlus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},
   [TMinusMinus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},
   [TDot] = {NULL, PSelector, PREC_MEMBER},
@@ -1954,7 +2145,7 @@ Node* Parse(Parser* p, Build* build, Source* src, ParseFlags fl, Scope* pkgscope
     if (p->s.tok != TNone && !got(p, TSemi)) {
       syntaxerr(p, "after top level declaration");
       if (n && n->kind == NId) {
-        build_notef(p->build, (PosSpan){n->pos, NoPos}, "Did you mean \"var %s\"?", n->ref.name);
+        build_notef(p->build, (PosSpan){n->pos, NoPos}, "Did you mean \"var %s\"?", n->id.name);
       }
       Tok followlist[] = { TType, TFun, TSemi, 0 };
       advance(p, followlist);

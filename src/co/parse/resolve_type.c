@@ -7,7 +7,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -296,9 +296,9 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
     }
   }
 
-  // make sure its type id is set as codegen relies on this
-  if (!ft->t.id)
-    ft->t.id = GetTypeID(ctx->build, ft);
+  // // make sure its type id is set as codegen relies on this
+  // if (!ft->t.id)
+  //   ft->t.id = GetTypeID(ctx->build, ft);
 
   n->type = ft;
   funstack_pop(ctx);
@@ -913,21 +913,21 @@ static Node* resolve_if(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NId);
-  if (R_UNLIKELY(n->ref.target == NULL)) {
+  if (R_UNLIKELY(n->id.target == NULL)) {
     // identifier failed to resolve
     n->type = Type_nil;
     return n;
   }
-  n->ref.target = resolve_type(ctx, n->ref.target, fl);
-  n->type = n->ref.target->type;
+  n->id.target = resolve_type(ctx, n->id.target, fl);
+  n->type = n->id.target->type;
   return n;
 }
 
 
-static Node* nullable eval_uint(ResCtx* ctx, Node* sizeExpr) {
-  assertnotnull_debug(sizeExpr); // must be array and not slice
+static Node* nullable eval_uint(ResCtx* ctx, Node* sizeexpr) {
+  assertnotnull_debug(sizeexpr); // must be array and not slice
 
-  auto zn = NodeEval(ctx->build, sizeExpr, Type_uint);
+  auto zn = NodeEval(ctx->build, sizeexpr, Type_uint);
 
   if (R_UNLIKELY(zn == NULL))
     return NULL;
@@ -942,22 +942,22 @@ static Node* nullable eval_uint(ResCtx* ctx, Node* sizeExpr) {
 static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
   asserteq_debug(n->kind, NArrayType);
   asserteq_debug(n->t.array.size, 0); // must not be resolved already
-  assertnotnull_debug(n->t.array.sizeExpr); // must be array and not slice
+  assertnotnull_debug(n->t.array.sizeexpr); // must be array and not slice
 
   // set temporary size so that we don't cause an infinite loop
   n->t.array.size = 0xFFFFFFFFFFFFFFFF;
 
-  Node* zn = eval_uint(ctx, n->t.array.sizeExpr);
+  Node* zn = eval_uint(ctx, n->t.array.sizeexpr);
 
   if (R_UNLIKELY(zn == NULL)) {
     // TODO: improve these error message to be more specific
     n->t.array.size = 0;
-    zn = n->t.array.sizeExpr;
+    zn = n->t.array.sizeexpr;
     build_errf(ctx->build, NodePosSpan(zn), "invalid expression %s for array size", fmtnode(zn));
     node_diag_trail(ctx->build, DiagNote, zn);
   } else {
     n->t.array.size = zn->val.i;
-    n->t.array.sizeExpr = zn;
+    n->t.array.sizeexpr = zn;
   }
 }
 
@@ -965,7 +965,7 @@ static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
 static bool is_type_complete(Type* n) {
   switch (n->kind) {
     case NArrayType:
-      return !( (n->t.array.sizeExpr && n->t.array.size == 0) ||
+      return !( (n->t.array.sizeexpr && n->t.array.size == 0) ||
                 !is_type_complete(n->t.array.subtype) );
 
     case NStructType:
@@ -980,8 +980,8 @@ static bool is_type_complete(Type* n) {
 static Type* resolve_array_type(ResCtx* ctx, Type* n, RFlag fl) {
   asserteq_debug(n->kind, NArrayType);
 
-  if (n->t.array.sizeExpr && n->t.array.size == 0) {
-    n->t.array.sizeExpr = resolve_type(ctx, n->t.array.sizeExpr, fl);
+  if (n->t.array.sizeexpr && n->t.array.size == 0) {
+    n->t.array.sizeexpr = resolve_type(ctx, n->t.array.sizeexpr, fl);
     resolve_arraytype_size(ctx, n);
   }
 
@@ -1170,8 +1170,19 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   // if (n->var.nrefs == 0)
   //   return n;
 
+  dlog("var %s", fmtnode(n->type));
+
+  auto typecontext = typecontext_set(ctx, n->type);
+  if (n->type)
+    fl |= RFlagResolveIdeal | RFlagEager;
   n->var.init = resolve_type(ctx, n->var.init, fl);
-  n->type = assertnotnull_debug(n->var.init->type);
+  ctx->typecontext = typecontext; // restore
+
+  if (n->type) {
+    dlog("TODO: check type match %s", fmtnode(n));
+  } else {
+    n->type = assertnotnull_debug(n->var.init->type);
+  }
   return n;
 }
 
@@ -1210,6 +1221,18 @@ static Node* resolve_namedval(ResCtx* ctx, Node* n, RFlag fl) {
   assertnotnull_debug(n->namedval.value);
   n->namedval.value = resolve_type(ctx, n->namedval.value, fl);
   n->type = assertnotnull_debug(n->namedval.value->type);
+  return n;
+}
+
+
+static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NRef);
+  assertnotnull_debug(n->ref.target);
+  n->ref.target = resolve_type(ctx, n->ref.target, fl);
+  Type* t = NewNode(ctx->build->mem, NRefType);
+  t->flags = n->flags & NodeFlagConst;
+  t->t.ref = n->ref.target->type;
+  n->type = t;
   return n;
 }
 
@@ -1267,16 +1290,16 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
         }
         // else: leave as ideal, for now
         return n;
-      } else if (n->flags & NodeFlagCustomInit) {
-        // clear flag and continue
-        //n->flags &= ~NodeFlagCustomInit;
-      } else {
+      } else if ((n->flags & NodeFlagPartialType) == 0) {
         if (!is_type_complete(n->type))
           n->type = resolve_type(ctx, n->type, fl);
         return n;
       }
     }
   }
+
+  // clear NodeFlagPartialType
+  n->flags &= ~NodeFlagPartialType;
 
   // branch on node kind
   switch (n->kind) {
@@ -1328,6 +1351,9 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NVar:
     R_MUSTTAIL return resolve_var(ctx, n, fl);
 
+  case NRef:
+    R_MUSTTAIL return resolve_ref(ctx, n, fl);
+
   case NField:
     R_MUSTTAIL return resolve_field(ctx, n, fl);
 
@@ -1376,6 +1402,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NFunType:
   case NNone:
   case NBasicType:
+  case NRefType:
   case NTupleType:
   case NTypeType:
   case _NodeKindMax:
