@@ -286,6 +286,7 @@ add_library(colib
   src/co/util/sexpr.c
   src/co/util/sym.c
   src/co/util/symmap.c
+  src/co/util/str_extras.c
   src/co/util/tmpstr.c
   src/co/util/tstyle.c
 )

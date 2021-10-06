@@ -187,7 +187,7 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendfmt(s, "%s %s",
       (n->var.isconst ? "const" :
        NodeIsParam(n) ? "param" :
-                        "var"),
+                        "mut"),
       n->var.name);
 
   case NRef: // &x, mut&x
@@ -294,9 +294,6 @@ Str NodeStr(Str s, const Node* n) {
     if (n->t.array.size > 0) {
       s = str_appendc(s, ' ');
       s = str_appendu64(s, n->t.array.size, 10);
-    } else if (n->t.array.sizeexpr) {
-      s = str_appendc(s, ' ');
-      s = NodeStr(s, n->t.array.sizeexpr);
     }
     return str_appendc(s, ']');
 
@@ -561,7 +558,7 @@ static const char* l_listname(NodeList* nl) {
       return (
         n->var.isconst ? "const" :
         NodeIsParam(n) ? "param" :
-                         "var");
+                         "mut");
     default:
       return NodeKindName(n->kind);
   }

@@ -2,6 +2,14 @@
 #include "../util/array.h"
 #include "parse.h"
 
+static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable n);
+
+
+Node* nullable NodeEval(Build* b, Node* n, Type* nullable targetType) {
+  assertnotnull(n);
+  return _eval(b, targetType, n);
+}
+
 
 static bool _eval_binop_uint(Build* b, Node* n, Tok op, u64 x, u64 y, u64* res) {
   switch (op) {
@@ -151,10 +159,4 @@ static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable 
 
   } // switch (n->kind)
   UNREACHABLE;
-}
-
-
-Node* nullable NodeEval(Build* b, Node* n, Type* nullable targetType) {
-  assertnotnull(n);
-  return _eval(b, targetType, n);
 }

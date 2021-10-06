@@ -1,0 +1,4 @@
+fun foo() int
+  x i8 = 3
+  y int = x // error: incompatible initializer type i8 for var of type int
+  y

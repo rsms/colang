@@ -224,8 +224,8 @@ typedef struct Node {
           Sym      name;
         } basic;
         /* array */ struct { // ArrayType
-          Node* nullable sizeexpr; // NULL==slice (language type: usize)
-          u64            size;     // used for array, not slice. 0 until sizeexpr is resolved
+          Node* nullable sizeexpr; // NULL for inferred types
+          u32            size;     // used for array. 0 until sizeexpr is resolved
           Node*          subtype;
         } array;
         /* tuple */ struct { // TupleType
@@ -359,6 +359,10 @@ inline static void NodeClearPublic(Node* n) { n->flags &= ~NodeFlagPublic; }
 
 inline static void NodeTransferCustomInit(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagCustomInit;
+}
+inline static void NodeTransferPartialType2(Node* parent, Node* c1, Node* c2) {
+  parent->flags |= (c1->flags & NodeFlagPartialType) |
+                   (c2->flags & NodeFlagPartialType);
 }
 
 // NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.

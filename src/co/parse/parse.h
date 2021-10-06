@@ -288,10 +288,15 @@ typedef enum ConvlitFlags {
 // This function may call GetTypeID which may update b->syms and mutate n.
 Node* convlit(Build*, Node* n, Type* t, ConvlitFlags fl);
 
-// NodeEval attempts to evaluate expr. Returns NULL on failure or the resulting value on success.
+// NodeEval attempts to evaluate expr.
+// Returns NULL on failure or the resulting value on success.
 // If targetType is provided, the result is implicitly converted to that type.
 // In that case it is an error if the result can't be converted to targetType.
 Node* nullable NodeEval(Build* b, Node* expr, Type* nullable targetType);
+
+// NodeEvalUint calls NodeEval with Type_uint.
+// result u64 in returnvalue->val.i
+static Node* nullable NodeEvalUint(Build* b, Node* expr);
 
 
 // ---------------------------------------------------------------------------------
@@ -313,6 +318,20 @@ bool _TypeEquals(Build* b, Type* x, Type* y); // impl typeid.c
 
 inline static bool TypeEquals(Build* b, Type* x, Type* y) {
   return x == y || _TypeEquals(b, x, y);
+}
+
+inline static Node* nullable NodeEvalUint(Build* b, Node* expr) {
+  auto zn = NodeEval(b, expr, Type_uint);
+
+  #if DEBUG
+  if (zn) {
+    asserteq_debug(zn->kind, NIntLit);
+    asserteq_debug(zn->val.ct, CType_int);
+  }
+  #endif
+
+  // result in zn->val.i
+  return zn;
 }
 
 ASSUME_NONNULL_END

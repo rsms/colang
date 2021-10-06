@@ -71,7 +71,10 @@ static Str mktypestr(Str s, const Node* n) {
       return mktypestr(s, n->t.ref);
 
     case NArrayType:
+      // TypeCode_array size "x" element_typeid
       s = str_appendc(s, TypeCodeEncoding(TypeCode_array));
+      s = str_appendu64(s, (u64)n->t.array.size, 10);
+      s = str_appendc(s, 'x');
       return mktypestr(s, n->t.array.subtype);
 
     case NTupleType:
