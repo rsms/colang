@@ -1,0 +1,124 @@
+<html>
+<title>String Table</title><p>
+<h1>String Table</h1><p>
+String table sections hold null-terminated character sequences,
+commonly called strings.
+The object file uses these strings to represent symbol and section names.
+One references a string as an index into the
+string table section.
+The first byte, which is index zero, is defined to hold
+a null character.
+Likewise, a string table's last byte is defined to hold
+a null character, ensuring null termination for all strings.
+A string whose index is zero specifies
+either no name or a null name, depending on the context.
+An empty string table section is permitted; its section header's <code>sh_size</code>
+member would contain zero.
+Non-zero indexes are invalid for an empty string table.
+<p>
+A section header's <code>sh_name</code>
+member holds an index into the section header string table
+section, as designated by the <code>e_shstrndx</code>
+member of the ELF header.
+The following figures show a string table with 25 bytes
+and the strings associated with various indexes.
+<p>
+<table border cellspacing=0>
+<th>Index</th>
+<th>+0</th>
+<th>+1</th>
+<th>+2</th>
+<th>+3</th>
+<th>+4</th>
+<th>+5</th>
+<th>+6</th>
+<th>+7</th>
+<th>+8</th>
+<th>+9</th>
+<tr>
+<td align=right><b>0</b></td>
+<td align=center width="50"><code>\0</code></td>
+<td align=center width="50"><code>n</code></td>
+<td align=center width="50"><code>a</code></td>
+<td align=center width="50"><code>m</code></td>
+<td align=center width="50"><code>e</code></td>
+<td align=center width="50"><code>.</code></td>
+<td align=center width="50"><code>\0</code></td>
+<td align=center width="50"><code>V</code></td>
+<td align=center width="50"><code>a</code></td>
+<td align=center width="50"><code>r</td>
+</tr>
+<tr>
+<td align=right><b>10</b></td>
+<td align=center width="50"><code>i</code></td>
+<td align=center width="50"><code>a</code></td>
+<td align=center width="50"><code>b</code></td>
+<td align=center width="50"><code>l</code></td>
+<td align=center width="50"><code>e</code></td>
+<td align=center width="50"><code>\0</code></td>
+<td align=center width="50"><code>a</code></td>
+<td align=center width="50"><code>b</code></td>
+<td align=center width="50"><code>l</code></td>
+<td align=center width="50"><code>e</code></td>
+</tr>
+<tr>
+<td align=right><b>20</b></td>
+<td align=center width="50"><code>\0</code></td>
+<td align=center width="50"><code>\0</code></td>
+<td align=center width="50"><code>x</code></td>
+<td align=center width="50"><code>x</code></td>
+<td align=center width="50"><code>\0</code></td>
+<td colspan=5><code>&nbsp</code></td>
+</tr>
+</table>
+<hr>
+<b>Figure 4-15: String Table Indexes</b>
+<p>
+<table border cellspacing=0>
+<th>Index</th>
+<th>String</th>
+<tr>
+<td align=right>0</td>
+<td><i>none</i></td>
+</tr>
+<tr>
+<td align=right>1</td>
+<td>name.</td>
+</tr>
+<tr>
+<td align=right>7</td>
+<td>Variable</td>
+</tr>
+<tr>
+<td align=right>11</td>
+<td>able</td>
+</tr>
+<tr>
+<td align=right>16</td>
+<td>able</td>
+</tr>
+<tr>
+<td align=right>24</td>
+<td><i>null string</i></td>
+</tr>
+</tr>
+</table>
+<hr>
+<p>
+As the example shows, a string table index may refer
+to any byte in the section.
+A string may appear more than once;
+references to substrings may exist;
+and a single string may be referenced multiple times.
+Unreferenced strings also are allowed.
+<hr>
+<a href=header.html><img src=previous.gif alt="Previous"></a>
+<a href=index.html><img src=contents.gif alt="Contents"></a>
+<a href=symbol-table.html><img src=next.gif alt="Next"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

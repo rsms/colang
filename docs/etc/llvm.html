@@ -1,0 +1,21 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>llvm</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="llvm-notes" class="anchor" aria-hidden="true" href="#llvm-notes"></a>llvm notes</h1>
+<p>To see which features and CPUs that LLVM knows about, we can use llc. For example x86:</p>
+<pre><code>deps/llvm/bin/llvm-as &lt; /dev/null | deps/llvm/bin/llc -march=x86 -mattr=help
+</code></pre>
+<p>Look into using &quot;memory lifetime markers&quot;</p>
+<p><a href="https://llvm.org/docs/LangRef.html#memory-use-markers">https://llvm.org/docs/LangRef.html#memory-use-markers</a></p>
+<pre><code>declare void @llvm.lifetime.start(i64 &lt;size&gt;, i8* nocapture &lt;ptr&gt;)
+</code></pre>
+
+</body>
+</html>

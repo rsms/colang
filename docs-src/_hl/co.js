@@ -13,32 +13,31 @@ module.exports = function(hljs) {
   const KWS = [
     "auto",
     "break",
-    "default",
-    "fun",
-    "interface",
-    "select",
     "case",
-    "struct",
-    "else",
-    "goto",
-    "switch",
     "const",
-    "fallthrough",
-    "if",
-    "type",
     "continue",
+    "default",
+    "else",
+    "fallthrough",
     "for",
+    "fun",
+    "goto",
+    "if",
     "import",
+    "interface",
+    "mut",
     "return",
-    "var",
+    "select",
+    "struct",
+    "switch",
+    "type",
   ];
   const TYPES = [
     "bool",
-    "i8",  "i16", "i32", "i64", "isize", "int",
-    "u8",  "u16", "u32", "u64", "usize", "uint",
+    "i8",  "i16", "i32", "i64", "int",
+    "u8",  "u16", "u32", "u64", "uint",
     "f32", "f64",
     "byte",
-    "rune",
     "str",
   ];
   const KEYWORDS = {
@@ -48,8 +47,8 @@ module.exports = function(hljs) {
     type:     TYPES,
   };
   const COMMENTS = [
-    hljs.COMMENT('#', '$'),
-    hljs.COMMENT('#\\*', '\\*#'),
+    //hljs.COMMENT('//', '$'),
+    hljs.COMMENT('/\\*', '\\*/'),
   ]
   return {
     name: 'Co',
@@ -58,6 +57,18 @@ module.exports = function(hljs) {
     illegal: '</',
     contains: [
       hljs.SHEBANG({ binary: "co" }),
+
+      { className: 'comment',
+        begin: '//',
+        end: '$',
+        contains: [
+          {
+            className: 'errormsg',
+            begin: /error:/,
+            end: /$/,
+          },
+        ]
+      },
 
       ...COMMENTS,
 

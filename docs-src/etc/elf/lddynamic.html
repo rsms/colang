@@ -1,0 +1,1238 @@
+<html>
+<title>Dynamic Linking</title><p>
+<h1>Dynamic Linking</h1><p>
+<a name=interpreter></a>
+<h2>Program Interpreter</h2><p>
+An executable file that participates in
+dynamic linking shall have one
+<code>PT_INTERP</code> program header element.
+During
+<code>exec</code>(BA_OS),
+the system retrieves a path name from the <code>PT_INTERP</code>
+segment and creates the initial process image from
+the interpreter file's segments. That is,
+instead of using the original executable file's
+segment images, the system composes a memory
+image for the interpreter.
+It then is the interpreter's responsibility to
+receive control from the system and provide an
+environment for the application program.
+<p>
+As ``Process Initialization'' in Chapter 3 of the
+processor supplement mentions,
+the interpreter receives control in one of two ways.
+First, it may receive a file descriptor
+to read the executable file, positioned at the beginning.
+It can use this file descriptor to read and/or map the executable
+file's segments into memory.
+Second, depending on the executable file format, the system
+may load the executable file into memory instead of giving the
+interpreter an open file descriptor.
+With the possible exception of the file descriptor,
+the interpreter's initial process state matches
+what the executable file would have received.
+The interpreter itself may not require a second interpreter.
+An interpreter may be either a shared object
+or an executable file.
+<ul>
+<p><li>
+A shared object (the normal case) is loaded as
+position-independent, with addresses that may vary
+from one process to another; the system creates its segments
+in the dynamic segment area used by <code>mmap</code>(KE_OS) and related services
+[See ``Virtual Address Space'' in Chapter 3 of the processor
+supplement].
+Consequently, a shared object interpreter typically will
+not conflict with the original executable file's
+original segment addresses.
+<p><li>
+An executable file may be loaded at fixed addresses;
+if so, the system creates its segments
+using the virtual addresses from the program header table.
+Consequently, an executable file interpreter's
+virtual addresses may collide with the
+first executable file; the interpreter is responsible
+for resolving conflicts.
+</ul>
+<a name=dynamic_linker></a>
+<h2>Dynamic Linker</h2>
+When building an executable file that uses dynamic linking,
+the link editor adds a program header element of type
+<code>PT_INTERP</code> to an executable file, telling the system to invoke
+the dynamic linker as the program interpreter.
+<hr>
+<img src=warning.gif alt="NOTE:">
+The locations of the system provided dynamic
+linkers are processor specific.
+<hr><p>
+<code>Exec</code>(BA_OS)
+and the dynamic linker cooperate to
+create the process image for the program, which entails
+the following actions:
+<ul>
+<p><li>
+Adding the executable file's memory segments to the process image;
+<p><li>
+Adding shared object memory segments to the process image;
+<p><li>
+Performing relocations for the executable file and its
+shared objects;
+<p><li>
+Closing the file descriptor that was used to read the executable file,
+if one was given to the dynamic linker;
+<p><li>
+Transferring control to the program, making it look as if
+the program had received control directly from
+<code>exec</code>(BA_OS).
+</ul>
+<p>
+The link editor also constructs various data
+that assist the dynamic linker
+for executable and shared object files.
+As shown above in
+<a href=ldheader.html>``Program Header''</a>,
+this data resides
+in loadable segments, making them available during execution.
+(Once again, recall the exact segment contents are processor-specific.
+See the processor supplement for complete information).
+<ul>
+<p><li>
+A <code>.dynamic</code> section with type <code>SHT_DYNAMIC</code>
+holds various data.
+The structure residing at the
+beginning of the section holds the addresses
+of other dynamic linking information.
+<p><li>
+The <code>.hash</code> section with type <code>SHT_HASH</code>
+holds a symbol hash table.
+<p><li>
+The <code>.got</code> and <code>.plt</code> sections with type
+<code>SHT_PROGBITS</code>
+hold two separate tables:
+the global offset table and the procedure linkage table.
+Chapter 3 discusses how programs use the global offset table
+for position-independent code.
+Sections below explain how the dynamic linker uses
+and changes the tables to create memory images for object files.
+</ul>
+<p>
+Because every ABI-conforming program imports the basic system
+services from a shared object library [See ``System Library''
+in Chapter 6], the dynamic linker participates in every
+ABI-conforming program execution.
+<p>
+As
+`Program Loading'' explains in the processor supplement,
+shared objects may occupy
+virtual memory addresses that are different from the addresses recorded
+in the file's program header table.
+The dynamic linker relocates the memory image, updating
+absolute addresses before the application gains control.
+Although the absolute address values would be correct
+if the library were loaded at
+the addresses specified in the program header table, this normally
+is not the case.
+<p>
+If the process environment [see <code>exec</code>(BA_OS)]
+contains a variable named <code>LD_BIND_NOW</code>
+with a non-null value, the dynamic linker processes
+all relocations before transferring control to the program.
+For example, all the following environment entries
+would specify this behavior.
+<ul>
+<p><li>
+<code>LD_BIND_NOW=1</code>
+<p><li>
+<code>LD_BIND_NOW=on</code>
+<p><li>
+<code>LD_BIND_NOW=off</code>
+</ul>
+Otherwise, <code>LD_BIND_NOW</code> either
+does not occur in the environment or has a null value.
+The dynamic linker is permitted to evaluate procedure linkage table
+entries lazily, thus avoiding symbol resolution and relocation
+overhead for functions that are not called.
+See ``Procedure Linkage Table'' in this chapter of the processor
+supplement for more information.
+<a name=dynamic_section></a>
+<h2>Dynamic Section</h2><p>
+If an object file participates in dynamic linking,
+its program header table will have an element of type
+<code>PT_DYNAMIC</code>.
+This ``segment'' contains the <code>.dynamic</code> section.
+A special symbol, <code>_DYNAMIC</code>,
+labels the section, which contains
+an array of the following structures.
+<hr>
+<b>Figure 5-9: Dynamic Structure</b>
+<p>
+<pre>
+<code>
+typedef struct {
+	Elf32_Sword	d_tag;
+   	union {
+   		Elf32_Word	d_val;
+   		Elf32_Addr	d_ptr;
+	} d_un;
+} Elf32_Dyn;
+
+extern Elf32_Dyn	_DYNAMIC[];
+
+typedef struct {
+	Elf64_Sxword	d_tag;
+   	union {
+   		Elf64_Xword	d_val;
+   		Elf64_Addr	d_ptr;
+	} d_un;
+} Elf64_Dyn;
+
+extern Elf64_Dyn	_DYNAMIC[];
+</code>
+</pre>
+<hr>
+<p>
+For each object with this type, <code>d_tag</code>
+controls the interpretation of <code>d_un</code>.
+<DL COMPACT>
+<p><dt><code>d_val</code><dd>
+These objects represent integer values with various
+interpretations.
+<p><dt><code>d_ptr</code><dd>
+These objects represent program virtual addresses.
+As mentioned previously, a file's virtual addresses
+might not match the memory virtual addresses during execution.
+When interpreting addresses contained in the dynamic
+structure, the dynamic linker computes actual addresses,
+based on the original file value and the memory base address.
+For consistency, files do <i>not</i>
+contain relocation entries to ``correct'' addresses in the dynamic
+structure.
+</dl>
+<p>
+<a name=tag_encodings></a>
+To make it simpler for tools to interpret the contents of
+dynamic section entries, the value of each tag, except for those in
+two special compatibility ranges,
+will determine the interpretation of the <code>d_un</code>
+union.  A tag whose value is an even number
+indicates a dynamic section entry that uses <code>d_ptr</code>.
+A tag whose value is an odd number indicates a dynamic section entry
+that uses <code>d_val</code> or that uses neither <code>d_ptr</code>
+nor <code>d_val</code>.  Tags whose values are less
+than the special value <code>DT_ENCODING</code> and tags
+whose values fall between <code>DT_HIOS</code> and
+<code>DT_LOPROC</code> do not follow these rules.
+<p>
+The following table summarizes the tag requirements
+for executable and shared object files.
+If a tag is marked ``mandatory'', the dynamic linking
+array for an ABI-conforming file must have an entry of that type.
+Likewise, ``optional'' means an entry for the tag may appear
+but is not required.
+<hr>
+<b>Figure 5-10: Dynamic Array Tags</b>, <code>d_tag</code>
+<p>
+<table border cellspacing=0>
+<th><b>Name</b></th>
+<th><b>Value</b></th>
+<th><code>d_un</code></th>
+<th><b>Executable</b></th>
+<th><b>Shared Object</b></th>
+<tr>
+<td><code>DT_NULL</code></td>
+<td align=right><code>0</code></td>
+<td>ignored</td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_NEEDED</code></td>
+<td align=right><code>1</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_PLTRELSZ</code></td>
+<td align=right><code>2</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_PLTGOT</code></td>
+<td align=right><code>3</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_HASH</code></td>
+<td align=right><code>4</code></td>
+<td><code>d_ptr</code></td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_STRTAB</code></td>
+<td align=right><code>5</code></td>
+<td><code>d_ptr</code></td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_SYMTAB</code></td>
+<td align=right><code>6</code></td>
+<td><code>d_ptr</code></td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_RELA</code></td>
+<td align=right><code>7</code></td>
+<td><code>d_ptr</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_RELASZ</code></td>
+<td align=right><code>8</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_RELAENT</code></td>
+<td align=right><code>9</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_STRSZ</code></td>
+<td align=right><code>10</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_SYMENT</code></td>
+<td align=right><code>11</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>mandatory</td>
+</tr>
+<tr>
+<td><code>DT_INIT</code></td>
+<td align=right><code>12</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_FINI</code></td>
+<td align=right><code>13</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_SONAME</code></td>
+<td align=right><code>14</code></td>
+<td><code>d_val</code></td>
+<td>ignored</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_RPATH&#42</code></td>
+<td align=right><code>15</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>DT_SYMBOLIC&#42</code></td>
+<td align=right><code>16</code></td>
+<td>ignored</td>
+<td>ignored</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_REL</code></td>
+<td align=right><code>17</code></td>
+<td><code>d_ptr</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_RELSZ</code></td>
+<td align=right><code>18</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_RELENT</code></td>
+<td align=right><code>19</code></td>
+<td><code>d_val</code></td>
+<td>mandatory</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_PLTREL</code></td>
+<td align=right><code>20</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_DEBUG</code></td>
+<td align=right><code>21</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>DT_TEXTREL&#42</code></td>
+<td align=right><code>22</code></td>
+<td>ignored</td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_JMPREL</code></td>
+<td align=right><code>23</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_BIND_NOW&#42</code></td>
+<td align=right><code>24</code></td>
+<td>ignored</td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_INIT_ARRAY</code></td>
+<td align=right><code>25</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_FINI_ARRAY</code></td>
+<td align=right><code>26</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_INIT_ARRAYSZ</code></td>
+<td align=right><code>27</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_FINI_ARRAYSZ</code></td>
+<td align=right><code>28</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<td><code>DT_RUNPATH</code></td>
+<td align=right><code>29</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<td><code>DT_FLAGS</code></td>
+<td align=right><code>30</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>optional</td>
+</tr>
+<tr>
+<td><code>DT_ENCODING</code></td>
+<td align=right><code>32</code></td>
+<td>unspecified</td>
+<td>unspecified</td>
+<td>unspecified</td>
+</tr>
+<tr>
+<td><code>DT_PREINIT_ARRAY</code></td>
+<td align=right><code>32</code></td>
+<td><code>d_ptr</code></td>
+<td>optional</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>DT_PREINIT_ARRAYSZ</code></td>
+<td align=right><code>33</code></td>
+<td><code>d_val</code></td>
+<td>optional</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td><code>DT_LOOS</code></td>
+<td align=right><code>0x6000000D</code></td>
+<td>unspecified</td>
+<td>unspecified</td>
+<td>unspecified</td>
+</tr>
+<tr>
+<td><code>DT_HIOS</code></td>
+<td align=right><code>0x6ffff000</code></td>
+<td>unspecified</td>
+<td>unspecified</td>
+<td>unspecified</td>
+</tr>
+<tr>
+<td><code>DT_LOPROC</code></td>
+<td align=right><code>0x70000000</code></td>
+<td>unspecified</td>
+<td>unspecified</td>
+<td>unspecified</td>
+</tr>
+<tr>
+<td><code>DT_HIPROC</code></td>
+<td align=right><code>0x7fffffff</code></td>
+<td>unspecified</td>
+<td>unspecified</td>
+<td>unspecified</td>
+</tr>
+</table>
+<p>
+&#42 Signifies an entry that is at level 2.
+<hr>
+<DL COMPACT>
+<p><dt><code>DT_NULL</code><dd>
+An entry with a <code>DT_NULL</code> tag marks the end of the
+<code>_DYNAMIC</code> array.
+<p><dt><code>DT_NEEDED</code><dd>
+This element holds the string table offset of a null-terminated string,
+giving the name of a needed library.
+The offset is an index into the table recorded in the <code>DT_STRTAB</code> code.
+See
+<a href=#shobj_dependencies>``Shared Object Dependencies''</a>
+for more
+information about these names.
+The dynamic array may contain multiple entries with
+this type.
+These entries' relative order is significant, though their
+relation to entries of other types is not.
+<p><dt><code>DT_PLTRELSZ</code><dd>
+This element holds the total size, in bytes,
+of the relocation entries associated with the procedure linkage table.
+If an entry of type <code>DT_JMPREL</code> is present, a
+<code>DT_PLTRELSZ</code> must accompany it.
+<p><dt><code>DT_PLTGOT</code><dd>
+This element holds an address associated with the procedure linkage table
+and/or the global offset table.
+See this section in the processor supplement for details.
+<p><dt><code>DT_HASH</code><dd>
+This element holds the address of the symbol hash table,
+described in
+<a href=#hash>``Hash Table''</a>.
+This hash table refers to the symbol table referenced by the <code>DT_SYMTAB</code>
+element.
+<p><dt><code>DT_STRTAB</code><dd>
+This element holds the address of the string table,
+described in Chapter 4.
+Symbol names, library names, and other strings reside
+in this table.
+<p><dt><code>DT_SYMTAB</code><dd>
+This element holds the address of the symbol table,
+described in the first part of this chapter, with <code>Elf32_Sym</code>
+entries for the 32-bit class of files and <code>Elf64_Sym</code>
+entries for the 64-bit class of files.
+<p><dt><code>DT_RELA</code><dd>
+This element holds the address of a relocation table,
+described in Chapter 4.
+Entries in the table have explicit addends, such as
+<code>Elf32_Rela</code> for the 32-bit file class
+or <code>Elf64_Rela</code> for the 64-bit file class.
+An object file may have multiple relocation sections.
+When building the relocation table for an
+executable or shared object file, the link editor
+catenates those sections to form a single table.
+Although the sections remain independent in the object file,
+the dynamic linker sees a single table.
+When the dynamic linker creates the process image for
+an executable file or adds a shared object to the
+process image, it reads the relocation table and performs
+the associated actions.
+If this element is present, the dynamic structure must also have
+<code>DT_RELASZ</code> and <code>DT_RELAENT</code> elements.
+When relocation is ``mandatory'' for a file, either
+<code>DT_RELA</code> or <code>DT_REL</code> may occur (both are permitted but not required).
+<p><dt><code>DT_RELASZ</code><dd>
+This element holds the total size, in bytes, of the
+<code>DT_RELA</code> relocation table.
+<p><dt><code>DT_RELAENT</code><dd>
+This element holds the size, in bytes, of the
+<code>DT_RELA</code> relocation entry.
+<p><dt><code>DT_STRSZ</code><dd>
+This element holds the size, in bytes, of the string table.
+<p><dt><code>DT_SYMENT</code><dd>
+This element holds the size, in bytes, of a symbol table entry.
+<p><dt><code>DT_INIT</code><dd>
+This element holds the address of the initialization function,
+discussed in
+<a href=#init_fini>``Initialization and Termination Functions''</a>
+below.
+<p><dt><code>DT_FINI</code><dd>
+This element holds the address of the termination function,
+discussed in
+<a href=#init_fini>``Initialization and Termination Functions''</a>
+below.
+<p><dt><code>DT_SONAME</code><dd>
+This element holds the string table offset of a null-terminated string,
+giving the name of the shared object.
+The offset is an index into the table recorded in the <code>DT_STRTAB</code> entry.
+See
+<a href=#shobj_dependencies>``Shared Object Dependencies''</a>
+below for more
+information about these names.
+<a name=dt_rpath></a>
+<p><dt><code>DT_RPATH</code><dd>
+This element holds the string table offset of a null-terminated search
+library search path string discussed in
+<a href=#shobj_dependencies>``Shared Object Dependencies''</a>.
+The offset is an index into the table recorded in the
+<code>DT_STRTAB</code> entry.  This entry is at level 2.  Its
+use has been superseded by <a href=#dt_runpath><code>DT_RUNPATH</code></a>.
+<p><dt><code>DT_SYMBOLIC</code><dd>
+This element's presence in a shared object library alters
+the dynamic linker's symbol resolution algorithm for
+references within the library.
+Instead of starting a symbol search with the
+executable file, the dynamic linker starts from the
+shared object itself.
+If the shared object fails to supply the referenced
+symbol, the dynamic linker then searches the
+executable file and other shared objects as usual.
+This entry is at level 2.  Its use has been superseded
+by the <a href=#df_symbolic><code>DF_SYMBOLIC</code></a> flag.
+<p><dt><code>DT_REL</code><dd>
+This element is similar to <code>DT_RELA</code>,
+except its table has implicit addends, such as
+<code>Elf32_Rel</code> for the 32-bit file class
+or <code>Elf64_Rel</code> for the 64-bit file class.
+If this element is present, the dynamic structure must also have
+<code>DT_RELSZ</code> and <code>DT_RELENT</code> elements.
+<p><dt><code>DT_RELSZ</code><dd>
+This element holds the total size, in bytes, of the
+<code>DT_REL</code> relocation table.
+<p><dt><code>DT_RELENT</code><dd>
+This element holds the size, in bytes, of the
+<code>DT_REL</code> relocation entry.
+<p><dt><code>DT_PLTREL</code><dd>
+This member specifies the type of relocation entry
+to which the procedure linkage table refers.
+The <code>d_val</code> member holds <code>DT_REL</code> or <code>DT_RELA</code>,
+as appropriate.
+All relocations in a procedure linkage table must use
+the same relocation.
+<p><dt><code>DT_DEBUG</code><dd>
+This member is used for debugging.  Its contents are not specified
+for the ABI; programs that access this entry are not
+ABI-conforming.
+<p><dt><code>DT_TEXTREL</code><dd>
+This member's absence signifies that no
+relocation entry should cause a modification to a non-writable
+segment, as specified by the segment permissions in the program
+header table.
+If this member is present, one or more relocation entries might
+request modifications to a non-writable segment, and the dynamic
+linker can prepare accordingly.
+This entry is at level 2.  Its use has been superseded
+by the <a href=#df_textrel><code>DF_TEXTREL</code></a> flag.
+<p><dt><code>DT_JMPREL</code><dd>
+If present, this entry's <code>d_ptr</code>
+member holds the address of relocation entries associated solely
+with the procedure linkage table.
+Separating these relocation entries lets the dynamic linker ignore
+them during process initialization, if lazy binding is enabled.
+If this entry is present, the related entries of types
+<code>DT_PLTRELSZ</code> and <code>DT_PLTREL</code>
+must also be present.
+<p><dt><code>DT_BIND_NOW</code><dd>
+If present in a shared object or executable, this entry
+instructs the dynamic linker to process all relocations
+for the object containing this entry before transferring
+control to the program.
+The presence of this entry takes
+precedence over a directive to use lazy binding for this object when
+specified through the environment or via <code>dlopen</code>(BA_LIB).
+This entry is at level 2.  Its use has been superseded
+by the <a href=#df_bind_now><code>DF_BIND_NOW</code></a> flag.
+<p><dt><code>DT_INIT_ARRAY</code><dd>
+<a name=dt_init_array></a>
+This element holds the address of the array of pointers to initialization
+functions,
+discussed in
+<a href=#init_fini>``Initialization and Termination Functions''</a>
+below.
+<p><dt><code>DT_FINI_ARRAY</code><dd>
+This element holds the address of the array of pointers to termination
+functions,
+discussed in
+<a href=#init_fini>``Initialization and Termination Functions''</a>
+below.
+<p><dt><code>DT_INIT_ARRAYSZ</code><dd>
+This element holds the size in bytes of the array of initialization
+functions pointed to by the <code>DT_INIT_ARRAY</code> entry.
+If an object has a <code>DT_INIT_ARRAY</code> entry, it must
+also have a <code>DT_INIT_ARRAYSZ</code> entry.
+<p><dt><code>DT_FINI_ARRAYSZ</code><dd>
+This element holds the size in bytes of the array of termination
+functions pointed to by the <code>DT_FINI_ARRAY</code> entry.
+If an object has a <code>DT_FINI_ARRAY</code> entry, it must
+also have a <code>DT_FINI_ARRAYSZ</code> entry.
+<a name=dt_runpath></a>
+<p><dt><code>DT_RUNPATH</code><dd>
+This element holds the string table offset of a null-terminated
+library search path string discussed in
+<a href=#shobj_dependencies>``Shared Object Dependencies''</a>.
+The offset is an index into the table recorded in the
+<code>DT_STRTAB</code> entry.
+<p><dt><code>DT_FLAGS</code><dd>
+This element holds flag values specific to the object being
+loaded.  Each flag value will have the name <code>DF_</code><i>flag_name</i>.
+Defined values and their meanings are described <a href=#df_flags>below</a>.
+All other values are reserved.
+<p><dt><code>DT_PREINIT_ARRAY</code><dd>
+This element holds the address of the array of pointers to pre-initialization
+functions,
+discussed in
+<a href=#init_fini>``Initialization and Termination Functions''</a>
+below.  The <code>DT_PREINIT_ARRAY</code> table is processed only
+in an executable file; it is ignored if contained in a shared object.
+<p><dt><code>DT_PREINIT_ARRAYSZ</code><dd>
+This element holds the size in bytes of the array of pre-initialization
+functions pointed to by the <code>DT_PREINIT_ARRAY</code> entry.
+If an object has a <code>DT_PREINIT_ARRAY</code> entry, it must
+also have a <code>DT_PREINIT_ARRAYSZ</code> entry.  As with
+<code>DT_PREINIT_ARRAY</code>, this entry is ignored if it appears
+in a shared object.
+<p><dt><code>DT_ENCODING</code><dd>
+Values greater than or equal to <code>DT_ENCODING</code>
+and less than <code>DT_LOOS</code>
+follow the rules for the interpretation of the <code>d_un</code> union
+described <a href=#tag_encodings>above</a>.
+<p><dt><code>DT_LOOS</code> through <code>DT_HIOS</code><dd>
+Values in this inclusive range
+are reserved for operating system-specific semantics.
+All such values follow the rules for the interpretation of the
+<code>d_un</code> union described <a href=#tag_encodings>above</a>.
+<p><dt><code>DT_LOPROC</code> through <code>DT_HIPROC</code><dd>
+Values in this inclusive range
+are reserved for processor-specific semantics. If meanings
+are specified, the processor supplement explains them.
+All such values follow the rules for the interpretation of the
+<code>d_un</code> union described <a href=#tag_encodings>above</a>.
+</dl>
+<p>
+Except for the <code>DT_NULL</code> element at the end of the array,
+and the relative order of <code>DT_NEEDED</code>
+elements, entries may appear in any order.
+Tag values not appearing in the table are reserved.
+<a name=df_flags></a>
+<hr>
+<b>Figure 5-11: <code>DT_FLAGS</code> values</b>
+<p>
+<table border cellspacing=0>
+<th><b>Name</b></th>
+<th><b>Value</b></th>
+<tr>
+<td><code>DF_ORIGIN</code></td>
+<td align=right><code>0x1</code></td>
+</tr>
+<tr>
+<td><code>DF_SYMBOLIC</code></td>
+<td align=right><code>0x2</code></td>
+</tr>
+<tr>
+<td><code>DF_TEXTREL</code></td>
+<td align=right><code>0x4</code></td>
+</tr>
+<tr>
+<td><code>DF_BIND_NOW</code></td>
+<td align=right><code>0x8</code></td>
+</tr>
+</table>
+<hr>
+<dl compact>
+<p><dt><code>DF_ORIGIN</code><dd>
+This flag signifies that the object being loaded may make reference
+to the <code>$ORIGIN</code> substitution string (see <a href=#substitution>``Substitution Sequences''</a>).
+The dynamic linker must determine the pathname of the object
+containing this entry when the object is loaded.
+<a name=df_symbolic></a>
+<p><dt><code>DF_SYMBOLIC</code><dd>
+If this flag is set in a shared object library,
+the dynamic linker's symbol resolution algorithm for
+references within the library is changed.
+Instead of starting a symbol search with the
+executable file, the dynamic linker starts from the
+shared object itself.
+If the shared object fails to supply the referenced
+symbol, the dynamic linker then searches the
+executable file and other shared objects as usual.
+<a name=df_textrel></a>
+<p><dt><code>DF_TEXTREL</code><dd>
+If this flag is not set, no
+relocation entry should cause a modification to a non-writable
+segment, as specified by the segment permissions in the program
+header table.
+If this flag is set, one or more relocation entries might
+request modifications to a non-writable segment, and the dynamic
+linker can prepare accordingly.
+<a name=df_bind_now></a>
+<p><dt><code>DF_BIND_NOW</code><dd>
+If set in a shared object or executable, this flag
+instructs the dynamic linker to process all relocations
+for the object containing this entry before transferring
+control to the program.
+The presence of this entry takes
+precedence over a directive to use lazy binding for this object when
+specified through the environment or via <code>dlopen</code>(BA_LIB).
+</dl>
+<a name=shobj_dependencies></a>
+<h2>Shared Object Dependencies</h2>
+When the link editor processes an archive library,
+it extracts library members and copies them into
+the output object file.
+These statically linked services are available during
+execution without involving the dynamic linker.
+Shared objects also provide services, and
+the dynamic linker must attach the proper shared object files to
+the process image for execution.
+<p>
+When the dynamic linker creates the memory segments for
+an object file, the dependencies (recorded in
+<code>DT_NEEDED</code> entries of the dynamic structure)
+tell what shared objects are needed to
+supply the program's services.
+By repeatedly connecting referenced shared objects and
+their dependencies, the dynamic linker builds a complete process image.
+When resolving symbolic references, the dynamic linker
+examines the symbol tables with a breadth-first search.
+That is, it first looks at the symbol table of the
+executable program itself, then at the symbol tables
+of the <code>DT_NEEDED</code> entries (in order),
+and then at the second level <code>DT_NEEDED</code> entries, and
+so on.  Shared object files must be readable by the process;
+other permissions are not required.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Even when a shared object is referenced multiple
+times in the dependency list, the dynamic linker will
+connect the object only once to the process.
+<hr><p>
+<p>
+Names in the dependency list are copies either of the
+<code>DT_SONAME</code> strings or the path names of the shared objects used to build
+the object file.
+For example, if the link editor builds an executable
+file using one shared object with a
+<code>DT_SONAME</code> entry of <code>lib1</code>
+and another shared object library with the path name
+<code>/usr/lib/lib2</code>, the executable file will contain
+<code>lib1</code> and <code>/usr/lib/lib2</code> in its dependency list.
+<p>
+If a shared object name has one or more slash (<code>/</code>)
+characters anywhere in the name, such as <code>/usr/lib/lib2</code>
+or <code>directory/file</code>, the dynamic linker uses that string directly
+as the path name.
+If the name has no slashes, such as <code>lib1</code>,
+three facilities specify shared object path searching.
+<ul>
+<hr><p>
+<ul>
+<p><li>
+The dynamic array tag <code>DT_RUNPATH</code> gives a string that
+holds a list of directories, separated by colons (<code>:</code>).
+For example, the string
+<code>/home/dir/lib:/home/dir2/lib:</code>
+tells the dynamic linker to search first the directory
+<code>/home/dir/lib</code>, then <code>/home/dir2/lib</code>,
+and then the current directory to find dependencies.
+<p>
+The set of directories specified by a given <code>DT_RUNPATH</code>
+entry is used to find only the immediate dependencies
+of the executable or shared object containing the <code>DT_RUNPATH</code>
+entry.  That is, it is used only for those dependencies contained in
+the <code>DT_NEEDED</code> entries of the dynamic structure containing
+the <code>DT_RUNPATH</code> entry, itself.
+One object's <code>DT_RUNPATH</code> entry does not affect the search
+for any other object's dependencies.
+<p><li>
+A variable called <code>LD_LIBRARY_PATH</code>
+in the process environment [see <code>exec</code>(BA_OS)]
+may hold a list of directories as above, optionally
+followed by a semicolon (<code>;</code>) and
+another directory list.
+The following values would be equivalent to the previous example:
+<ul>
+<p><li>
+<code>LD_LIBRARY_PATH=/home/dir/usr/lib:/home/dir2/usr/lib:</code>
+<p><li>
+<code>LD_LIBRARY_PATH=/home/dir/usr/lib;/home/dir2/usr/lib:</code>
+<p><li>
+<code>LD_LIBRARY_PATH=/home/dir/usr/lib:/home/dir2/usr/lib:;</code>
+</ul>
+<p>
+Although some programs (such as the link editor) treat the lists
+before and after the semicolon differently,
+the dynamic linker does not.
+Nevertheless, the dynamic linker accepts the semicolon
+notation, with the semantics described previously.
+<p>
+All <code>LD_LIBRARY_PATH</code> directories are searched before those from
+<code>DT_RUNPATH</code>.
+<p><li>
+Finally, if the other two groups of directories
+fail to locate the desired library, the dynamic linker searches
+the default directories, <code>/usr/lib</code> or such other
+directories as may be specified by the ABI supplement for a
+given processor.
+</ul>
+<hr>
+<p>
+When the dynamic linker is searching for shared objects, it is
+not a fatal error if an ELF file with the wrong attributes
+is encountered in the search.  Instead, the dynamic linker
+shall exhaust the search of all paths before determining
+that a matching object could not be found.  For this determination,
+the relevant attributes are contained in the following ELF header fields:
+<code>e_ident[EI_DATA]</code>,
+<code>e_ident[EI_CLASS]</code>,
+<code>e_ident[EI_OSABI]</code>,
+<code>e_ident[EI_ABIVERSION]</code>,
+<code>e_machine</code>,
+<code>e_type</code>, <code>e_flags</code>
+and <code>e_version</code>.
+<hr>
+<img src=warning.gif alt="NOTE:">
+For security, the dynamic linker ignores
+<code>LD_LIBRARY_PATH</code> for set-user and
+set-group ID programs.
+It does, however, search <code>DT_RUNPATH</code> directories
+and the default directories.
+The same restriction may be applied to processes that have more than
+minimal privileges on systems with installed extended security
+mechanisms.
+<hr>
+<img src="warning.gif" alt="NOTE:">
+A fourth search facility, the dynamic array tag <code>DT_RPATH</code>,
+has been moved to level 2 in the ABI.
+It provides a colon-separated list of directories to search.
+Directories specified by <code>DT_RPATH</code> are searched
+before directories specified by <code>LD_LIBRARY_PATH</code>.
+<p>
+If both <code>DT_RPATH</code> and <code>DT_RUNPATH</code>
+entries appear in a single object's dynamic array,
+the dynamic linker processes only the <code>DT_RUNPATH</code>
+entry.
+<hr>
+<a name=substitution></a>
+<h3>Substitution Sequences</h3>
+Within a string provided by dynamic array entries with the
+<code>DT_NEEDED</code> or <code>DT_RUNPATH</code> tags and in
+pathnames passed as parameters to the <code>dlopen()</code> routine, a
+dollar sign (<code>$</code>) introduces a substitution sequence.
+This sequence consists of the dollar sign immediately followed
+by either the longest <i>name</i> sequence or a name contained
+within left and right braces (<code>{</code>) and (<code>}</code>).
+A name is a sequence of bytes that start with either a letter or
+an underscore followed by zero or more letters, digits or underscores.
+If a dollar sign is not immediately followed by a name or a
+brace-enclosed name, the behavior of the dynamic linker is unspecified.
+<p>
+If the name is ``<code>ORIGIN</code>'', then the substitution
+sequence is replaced by the dynamic linker with the absolute
+pathname of the directory in which the object containing the
+substitution sequence originated.  Moreover, the pathname will
+contain no symbolic links or use of ``<code>.</code>'' or
+``<code>..</code>'' components.
+Otherwise (when the name is not ``<code>ORIGIN</code>'')
+the behavior of the dynamic linker is unspecified.
+<p>
+When the dynamic linker loads an object that uses <code>$ORIGIN</code>,
+it must calculate the pathname of the directory containing the object.
+Because this calculation can be computationally expensive,
+implementations may want to avoid the calculation for objects
+that do not use <code>$ORIGIN</code>.
+If an object calls <code>dlopen()</code> with a string
+containing <code>$ORIGIN</code> and does not use <code>$ORIGIN</code>
+in one if its dynamic array entries,
+the dynamic linker may not have calculated the
+pathname for the object until the <code>dlopen()</code> actually
+occurs.  Since the application may have changed its current
+working directory before the <code>dlopen()</code> call,
+the calculation may not yield the correct result.
+To avoid this possibility, an object may signal its intention
+to reference <code>$ORIGIN</code> by setting the
+<a href=#df_flags><code>DF_ORIGIN</code> flag</a>.
+An implementation may reject an attempt to use <code>$ORIGIN</code>
+within a <code>dlopen()</code> call from an object that
+did not set the <code>DF_ORIGIN</code> flag and did not
+use <code>$ORIGIN</code> within its dynamic array.
+<hr>
+<img src=warning.gif alt="NOTE:">
+For security, the dynamic linker does not allow use of
+<code>$ORIGIN</code> substitution sequences for set-user and
+set-group ID programs.  For such sequences that appear
+within strings specified by <code>DT_RUNPATH</code> dynamic
+array entries, the specific search path containing the
+<code>$ORIGIN</code> sequence is ignored (though other
+search paths in the same string are processed).
+<code>$ORIGIN</code> sequences within a <code>DT_NEEDED</code>
+entry or path passed as a parameter to <code>dlopen()</code>
+are treated as errors.
+The same restrictions may be applied to processes that have more than
+minimal privileges on systems with installed extended security
+mechanisms.
+<hr>
+<a name=got></a>
+<h2>Global Offset Table</h2>
+<hr>
+<img src=warning.gif alt="NOTE:">
+This section requires processor-specific information.
+The <i>System V Application Binary Interface</i> supplement
+for the desired processor describes the details.
+<hr><p>
+<a name=plt></a>
+<h2>Procedure Linkage Table</h2>
+<hr>
+<img src=warning.gif alt="NOTE:">
+This section requires processor-specific information.
+The <i>System V Application Binary Interface</i> supplement
+for the desired processor describes the details.
+<hr><p>
+<a name=hash></a>
+<h2>Hash Table</h2>
+A hash table of <code>Elf32_Word</code>
+objects supports symbol table access.  The same table
+layout is used for both the 32-bit and 64-bit file class.
+Labels appear below
+to help explain the hash table organization,
+but they are not part of the specification.
+<hr>
+<b>Figure 5-12: Symbol Hash Table</b>
+<p>
+<table border cellspacing=0>
+<tr><td align=center><code>nbucket</code></td></tr>
+<tr><td align=center><code>nchain</code></td></tr>
+<tr><td align=center><code>bucket[0]<br>. . .<br>bucket[nbucket-1]</code></td></tr>
+<tr><td align=center><code>chain[0]<br>. . .<br>chain[nchain-1]</code></td></tr>
+</table>
+<hr>
+<p>
+The <code>bucket</code> array contains <code>nbucket</code>
+entries, and the <code>chain</code> array contains <code>nchain</code>
+entries; indexes start at 0.
+Both <code>bucket</code> and <code>chain</code>
+hold symbol table indexes.
+Chain table entries parallel the symbol table.
+The number of symbol table entries should equal
+<code>nchain</code>;
+so symbol table indexes also select chain table entries.
+A hashing function (shown below) accepts a symbol name and returns a
+value that may be used to compute a <code>bucket</code> index.
+Consequently, if the hashing function returns the value
+<i>x</i> for some name, <code>bucket[</code><i>x</i><code>%nbucket]</code> gives
+an index, <i>y</i>,
+into both the symbol table and the chain table.
+If the symbol table entry is not the one desired,
+<code>chain[</code><i>y</i><code>]</code> gives the next symbol table entry
+with the same hash value.
+One can follow the <code>chain</code>
+links until either the selected symbol table entry
+holds the desired name or the <code>chain</code> entry contains the value
+<code>STN_UNDEF</code>.
+<hr>
+<b>Figure 5-13: Hashing Function</b>
+<p>
+<pre>
+<code>
+unsigned long
+elf_hash(const unsigned char *name)
+{
+	unsigned long	h = 0, g;
+	while (*name)
+	{
+		h = (h &lt;&lt; 4) + *name++;
+		if (g = h &amp; 0xf0000000)
+			h ^= g &gt;&gt; 24;
+		h &amp;= ~g;
+	}
+	return h;
+}
+</code>
+</pre>
+<hr>
+<a name=init_fini></a>
+<h2>Initialization and Termination Functions</h2>
+After the dynamic linker has built the process image
+and performed the relocations, each shared object and the executable
+file get the opportunity to execute some initialization functions.
+All shared object initializations happen before the executable
+file gains control.
+<p>
+Before the initialization functions for any object A is called, the initialization
+functions for any other objects that object A depends on are called.
+For these purposes, an object A depends on another object B,
+if B appears in A's list of needed objects (recorded in the <code>DT_NEEDED</code>
+entries of the dynamic structure).
+The order of initialization for circular dependencies is undefined.
+<p>
+The initialization of objects occurs by recursing through the needed
+entries of each object.
+The initialization functions for an object are invoked after the needed
+entries for that object have been processed.
+The order of processing among the entries of a particular list of
+needed objects is unspecified.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Each processor supplement may optionally further restrict
+the algorithm used to determine the order of initialization.
+Any such restriction, however, may not conflict with
+the rules described by this specification.
+<hr>
+<p>
+The following example illustrates two of the possible correct orderings
+which can be generated for the example NEEDED lists.
+In this example the <i>a.out</i> is dependent on <code>b</code>, <code>d</code>, and <code>e</code>.
+<code>b</code> is dependent on <code>d</code> and <code>f</code>, while <code>d</code> is dependent on <code>e</code> and <code>g</code>.
+From this information a dependency graph can be drawn.
+The above algorithm on initialization will then allow the following
+specified initialization orderings among others.
+<hr>
+<b>Figure 5-14: Initialization Ordering Example</b>
+<p>
+<p><IMG SRC=init_example.gif><p>
+<hr>
+<p>
+<a name=fini_order></a>
+Similarly, shared objects and executable files may have termination
+functions, which are executed with the
+<code>atexit</code>(BA_OS) mechanism after the base process begins its
+termination sequence.
+The termination functions for any object A must be called before
+the termination functions for any other objects that object A depends
+on.  For these purposes, an object A depends on another object B,
+if B appears in A's list of needed objects (recorded in the <code>DT_NEEDED</code>
+entries of the dynamic structure).
+The order of termination for circular dependencies is undefined.
+<p>
+<a name=preinit></a>
+Finally, an executable file may have pre-initialization functions.
+These functions are executed after the dynamic linker has built
+the process image and performed relocations but before any shared
+object initialization functions.  Pre-initialization functions are
+not permitted in shared objects.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Complete initialization of system libraries may not have occurred when
+pre-initializations are executed, so some features of the system
+may not be available to pre-initialization code.  In general,
+use of pre-initialization code can be considered portable only
+if it has no dependencies on system libraries.
+<hr><p>
+<p>
+The dynamic linker ensures that it will not execute any initialization,
+pre-initialization, or termination functions more than once.
+<p>
+Shared objects designate their
+initialization and termination code in one of two ways.
+First, they may specify the address of a function to execute
+via the
+<code>DT_INIT</code>
+and
+<code>DT_FINI</code>
+entries in the dynamic structure, described in
+<a href=#dynamic_section>``Dynamic Section''</a>
+above.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Note that the address of a function
+need not be the same as a pointer to a function
+as defined by the processor supplement.
+<hr>
+<p>
+Shared objects may also (or instead) specify the address and size of
+an array of function pointers.  Each element of this
+array is a pointer to a function to be executed by the dynamic linker.
+Each array element is the size of a pointer in the
+programming model followed by the object containing
+the array.  The address of the array of initialization
+function pointers is specified by the <code>DT_INIT_ARRAY</code>
+entry in the dynamic structure.  Similarly, the address of
+the array of pre-initialization functions is specified by
+<code>DT_PREINIT_ARRAY</code> and the address of the array
+of termination functions is specified by <code>DT_FINI_ARRAY</code>.
+The size of each array is specified by the <code>DT_INIT_ARRAYSZ</code>,
+<code>DT_PREINIT_ARRAYSZ</code>, and <code>DT_FINI_ARRAYSZ</code>
+entries.
+<a name=pointer_note></a>
+<hr>
+<img src=warning.gif alt="NOTE:">
+The addresses contained in the initialization and termination arrays
+are function pointers as defined by the processor supplement for
+each processor.  On some architectures, a function pointer may not
+contain the actual address of the function.
+<hr><p>
+<a name=init_order></a>
+<p>
+The functions pointed to in the arrays
+specified by <code>DT_INIT_ARRAY</code> and by <code>DT_PREINIT_ARRAY</code>
+are executed by the dynamic
+linker in the same order in which their addresses appear in
+the array; those specified by <code>DT_FINI_ARRAY</code>
+are executed in reverse order.
+<p>
+If an object contains both <code>DT_INIT</code>
+and <code>DT_INIT_ARRAY</code> entries, the function referenced
+by the <code>DT_INIT</code> entry is processed before those
+referenced by the <code>DT_INIT_ARRAY</code> entry for that object.
+If an object contains both <code>DT_FINI</code>
+and <code>DT_FINI_ARRAY</code> entries, the functions referenced
+by the <code>DT_FINI_ARRAY</code> entry are processed before the one
+referenced by the <code>DT_FINI</code> entry for that object.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Although the
+<code>atexit</code>(BA_OS)
+termination processing normally will be done,
+it is not guaranteed to have executed upon process death.
+In particular, the process will not execute the termination processing
+if it calls <code>_exit</code> [see
+<code>exit</code>(BA_OS)]
+or if the process dies because it received a signal
+that it neither caught nor ignored.
+<hr><p>
+<p>
+<a name=register_init></a>
+The processor supplement for each processor specifies whether the
+dynamic linker is responsible for calling the executable file's
+initialization function or registering the executable file's
+termination function with
+<code>atexit</code>(BA_OS).
+Termination functions specified by users via the
+<code>atexit</code>(BA_OS)
+mechanism
+must be executed before any termination functions of shared objects.
+<hr>
+<a href=ldheader.html><img src=previous.gif alt="Previous">
+<a href=index.html><img src=contents.gif alt="Contents"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

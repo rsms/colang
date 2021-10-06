@@ -1,0 +1,574 @@
+<html>
+<title>Symbol Table</title><p>
+<h1>Symbol Table</h1><p>
+An object file's symbol table holds information
+needed to locate and relocate a program's symbolic
+definitions and references.
+A symbol table index is a subscript into this array.
+Index 0 both designates the first entry in the table
+and serves as the undefined symbol index.  The contents of the
+initial entry are specified later in this section.
+<p>
+<table border cellspacing=0>
+<th>Name</th>
+<th>Value</th>
+<tr>
+<td><code>STN_UNDEF</code></td>
+<td align=center><code>0</code></td>
+</tr>
+</table>
+<p>
+A symbol table entry has the following format.
+<hr>
+<b>Figure 4-16: Symbol Table Entry</b>
+<p>
+<pre>
+<code>
+typedef struct {
+	Elf32_Word	st_name;
+	Elf32_Addr	st_value;
+	Elf32_Word	st_size;
+	unsigned char	st_info;
+	unsigned char	st_other;
+	Elf32_Half	st_shndx;
+} Elf32_Sym;
+
+typedef struct {
+	Elf64_Word	st_name;
+	unsigned char	st_info;
+	unsigned char	st_other;
+	Elf64_Half	st_shndx;
+	Elf64_Addr	st_value;
+	Elf64_Xword	st_size;
+} Elf64_Sym;
+</pre>
+</code>
+<hr>
+<p>
+<DL COMPACT>
+<p><dt><code>st_name</code><dd>
+This member holds an index into the object file's
+symbol string table, which
+holds the character representations of the symbol names.
+If the value is non-zero, it represents a string table
+index that gives the symbol name.
+Otherwise, the symbol table entry has no name.
+</dl>
+<hr>
+<img src=warning.gif alt="NOTE:">
+External C symbols have the same names in C
+and object files' symbol tables.
+<hr><p>
+<DL COMPACT>
+<p><dt><code>st_value</code><dd>
+This member gives the value of the associated symbol.
+Depending on the context, this may be an absolute value,
+an address, and so on; details appear below.
+<p><dt><code>st_size</code><dd>
+Many symbols have associated sizes.
+For example, a data object's size is the number
+of bytes contained in the object.
+This member holds 0 if the symbol has no size or an unknown size.
+<p><dt><code>st_info</code><dd>
+This member specifies the symbol's type and binding attributes.
+A list of the values and meanings appears below.
+The following code shows how to manipulate the values for
+both 32 and 64-bit objects.
+<hr>
+<PRE>
+   #define ELF32_ST_BIND(i)   ((i)&gt;&gt;4)
+   #define ELF32_ST_TYPE(i)   ((i)&amp;0xf)
+   #define ELF32_ST_INFO(b,t) (((b)&lt;&lt;4)+((t)&amp;0xf))
+
+   #define ELF64_ST_BIND(i)   ((i)&gt;&gt;4)
+   #define ELF64_ST_TYPE(i)   ((i)&amp;0xf)
+   #define ELF64_ST_INFO(b,t) (((b)&lt;&lt;4)+((t)&amp;0xf))
+</PRE>
+<hr>
+<a name=st_other></a>
+<p><dt><code>st_other</code><dd>
+This member currently specifies a symbol's visibility.
+A list of the values and meanings appears <a href=#visibility>below</a>.
+The following code shows how to manipulate the values for
+both 32 and 64-bit objects.  Other bits contain 0 and have
+no defined meaning.
+<hr>
+<PRE>
+   #define ELF32_ST_VISIBILITY(o) ((o)&amp;0x3)
+   #define ELF64_ST_VISIBILITY(o) ((o)&amp;0x3)
+</PRE>
+<hr>
+<p><dt><code>st_shndx</code><dd>
+Every symbol table entry is <i>defined</i> in relation
+to some section. This member holds the relevant
+section header table index.
+As the <code>sh_link</code> and <code>sh_info</code> interpretation
+<a href=header.html#sh_link>table</a>
+and the related text describe,
+some section indexes indicate special meanings.
+<p>
+If this member contains <code>SHN_XINDEX</code>, then
+the actual section header index is too large to fit in this
+field.  The actual value is contained in the associated
+section of type <code>SHT_SYMTAB_SHNDX</code>.
+</dl>
+<p>
+A symbol's binding determines the linkage visibility
+and behavior.
+<hr>
+<b>Figure 4-17: Symbol Binding</b>
+<p>
+<table border cellspacing=0>
+<th>Name</th>
+<th>Value</th>
+<tr>
+<td><code>STB_LOCAL</code></td>
+<td align=right><code>0</code></td>
+</tr>
+<tr>
+<td><code>STB_GLOBAL</code></td>
+<td align=right><code>1</code></td>
+</tr>
+<tr>
+<td><code>STB_WEAK</code></td>
+<td align=right><code>2</code></td>
+</tr>
+<tr>
+<td><code>STB_LOOS</code></td>
+<td align=right><code>10</code></td>
+</tr>
+<tr>
+<td><code>STB_HIOS</code></td>
+<td align=right><code>12</code></td>
+</tr>
+<tr>
+<td><code>STB_LOPROC</code></td>
+<td align=right><code>13</code></td>
+</tr>
+<tr>
+<td><code>STB_HIPROC</code></td>
+<td align=right><code>15</code></td>
+</tr>
+</table>
+<hr>
+<dl compact>
+<p><dt><code>STB_LOCAL</code><dd>
+Local symbols are not visible outside the object file
+containing their definition.
+Local symbols of the same name may exist in
+multiple files without interfering with each other.
+<p><dt><code>STB_GLOBAL</code><dd>
+Global symbols are visible to all object files being combined.
+One file's definition of a global symbol will satisfy
+another file's undefined reference to the same global symbol.
+<p><dt><code>STB_WEAK</code><dd>
+Weak symbols resemble global symbols, but their
+definitions have lower precedence.
+<p><dt><code>STB_LOOS</code>&nbsp;through&nbsp;<code>STB_HIOS</code><dd>
+Values in this inclusive range
+are reserved for operating system-specific semantics.
+<p><dt><code>STB_LOPROC</code>&nbsp;through&nbsp;<code>STB_HIPROC</code><dd>
+Values in this inclusive range
+are reserved for processor-specific semantics.  If meanings are
+specified, the processor supplement explains them.
+</dl>
+<p>
+Global and weak symbols differ in two major ways.
+<ul>
+<p><li>
+When the link editor combines several relocatable object files,
+it does not allow multiple definitions of <code>STB_GLOBAL</code>
+symbols with the same name.
+On the other hand, if a defined global symbol exists,
+the appearance of a weak symbol with the same name
+will not cause an error.
+The link editor honors the global definition and ignores
+the weak ones.
+Similarly, if a common symbol exists
+(that is, a symbol whose <code>st_shndx</code>
+field holds <code>SHN_COMMON</code>),
+the appearance of a weak symbol with the same name will
+not cause an error.
+The link editor honors the common definition and
+ignores the weak ones.
+<p><li>
+When the link editor searches archive libraries [see ``Archive File''
+in Chapter 7],
+it extracts archive members that contain definitions of
+undefined global symbols.
+The member's definition may be either a global or a weak symbol.
+The link editor does not
+extract archive members to resolve undefined weak symbols.
+Unresolved weak symbols have a zero value.
+</ul>
+<a name="weak_note"></a>
+<hr>
+<img src=warning.gif alt="NOTE:">
+The behavior of weak symbols in areas not specified by this document is
+implementation defined.
+Weak symbols are intended primarily for use in system software.
+Their use in application programs is discouraged.
+<hr><p>
+In each symbol table, all symbols with <code>STB_LOCAL</code>
+binding precede the weak and global symbols.
+As
+<a href=header.html>``Sections''</a>,
+above describes,
+a symbol table section's <code>sh_info</code>
+section header member holds the symbol table index
+for the first non-local symbol.
+<p>
+A symbol's type provides a general classification for
+the associated entity.
+<hr>
+<b>Figure 4-18: Symbol Types</b>
+<p>
+<table border cellspacing=0>
+<th>Name</th>
+<th>Value</th>
+<tr>
+<td><code>STT_NOTYPE</code></td>
+<td align=right><code>0</code></td>
+</tr>
+<tr>
+<td><code>STT_OBJECT</code></td>
+<td align=right><code>1</code></td>
+</tr>
+<tr>
+<td><code>STT_FUNC</code></td>
+<td align=right><code>2</code></td>
+</tr>
+<tr>
+<td><code>STT_SECTION</code></td>
+<td align=right><code>3</code></td>
+</tr>
+<tr>
+<td><code>STT_FILE</code></td>
+<td align=right><code>4</code></td>
+</tr>
+<tr>
+<td><code>STT_COMMON</code></td>
+<td align=right><code>5</code></td>
+</tr>
+<tr>
+<td><code>STT_LOOS</code></td>
+<td align=right><code>10</code></td>
+</tr>
+<tr>
+<td><code>STT_HIOS</code></td>
+<td align=right><code>12</code></td>
+</tr>
+<tr>
+<td><code>STT_LOPROC</code></td>
+<td align=right><code>13</code></td>
+</tr>
+<tr>
+<td><code>STT_HIPROC</code></td>
+<td align=right><code>15</code></td>
+</tr>
+</table>
+<hr>
+<p>
+<DL COMPACT>
+<p><dt><code>STT_NOTYPE</code><dd>
+The symbol's type is not specified.
+<p><dt><code>STT_OBJECT</code><dd>
+The symbol is associated with a data object,
+such as a variable, an array, and so on.
+<p><dt><code>STT_FUNC</code><dd>
+The symbol is associated with a function or other executable code.
+<p><dt><code>STT_SECTION</code><dd>
+The symbol is associated with a section.
+Symbol table entries of this type exist primarily for relocation
+and normally have <code>STB_LOCAL</code> binding.
+<p><dt><code>STT_FILE</code><dd>
+Conventionally, the symbol's name gives the name of
+the source file associated with the object file.
+A file symbol has <code>STB_LOCAL</code>
+binding, its section index is <code>SHN_ABS</code>,
+and it precedes the other <code>STB_LOCAL</code>
+symbols for the file, if it is present.
+<p><dt><code>STT_COMMON</code><dd>
+The symbol labels an uninitialized common block.
+See <a href=#stt_common>below</a> for details.
+<p><dt><code>STT_LOOS</code>&nbsp;through&nbsp;<code>STT_HIOS</code><dd>
+Values in this inclusive range
+are reserved for operating system-specific semantics.
+<p><dt><code>STT_LOPROC</code>&nbsp;through&nbsp;<code>STT_HIPROC</code><dd>
+Values in this inclusive range
+are reserved for processor-specific semantics.
+If meanings are specified, the processor supplement explains
+them.
+</dl>
+<p>
+Function symbols (those with type
+<code>STT_FUNC</code>) in shared object files have special significance.
+When another object file references a function from
+a shared object, the link editor automatically creates a procedure
+linkage table entry for the referenced symbol.
+Shared object symbols with types other than
+<code>STT_FUNC</code> will not
+be referenced automatically through the procedure linkage table.
+<a name=stt_common></a>
+<p>
+Symbols with type <code>STT_COMMON</code> label uninitialized
+common blocks.  In relocatable objects, these symbols are
+not allocated and must have the special section index
+<code>SHN_COMMON</code> (see <a href=#shn_common>below</a>).
+In shared objects and executables these symbols must be
+allocated to some section in the defining object.
+<p>
+In relocatable objects, symbols with type <code>STT_COMMON</code>
+are treated just as other symbols with index <code>SHN_COMMON</code>.
+If the link-editor allocates space for the <code>SHN_COMMON</code>
+symbol in an output section of the object it is producing, it
+must preserve the type of the output symbol as <code>STT_COMMON</code>.
+<p>
+When the dynamic linker encounters a reference to a symbol
+that resolves to a definition of type <code>STT_COMMON</code>,
+it may (but is not required to) change its symbol resolution
+rules as follows: instead of binding the reference to
+the first symbol found with the given name, the dynamic linker searches
+for the first symbol with that name with type other
+than <code>STT_COMMON</code>.  If no such symbol is found,
+it looks for the <code>STT_COMMON</code> definition of that
+name that has the largest size.
+<a name=visibility></a>
+<p>
+A symbol's visibility, although it may be specified in a relocatable
+object, defines how that symbol may be accessed once it has
+become part of an executable or shared object.
+<hr>
+<b>Figure 4-19: Symbol Visibility</b>
+<p>
+<table border cellspacing=0>
+<th>Name</th>
+<th>Value</th>
+<tr>
+<td><code>STV_DEFAULT</code></td>
+<td align=right><code>0</code></td>
+</tr>
+<tr>
+<td><code>STV_INTERNAL</code></td>
+<td align=right><code>1</code></td>
+</tr>
+<tr>
+<td><code>STV_HIDDEN</code></td>
+<td align=right><code>2</code></td>
+</tr>
+<tr>
+<td><code>STV_PROTECTED</code></td>
+<td align=right><code>3</code></td>
+</tr>
+</table>
+<hr>
+<p>
+<DL COMPACT>
+<p><dt><code>STV_DEFAULT</code><dd>
+The visibility of symbols with the <code>STV_DEFAULT</code>
+attribute is as specified by the symbol's binding type.
+That is, global and weak symbols are visible
+outside of their defining <i>component</i>
+(executable file or shared object).
+Local symbols are <i>hidden</i>, as described below.
+Global and weak symbols are also <i>preemptable</i>,
+that is, they may by preempted by definitions of the same
+name in another component.
+<hr>
+<img src=warning.gif alt="NOTE:">
+An implementation may restrict the set of global and weak
+symbols that are externally visible.
+<hr><p>
+<p><dt><code>STV_PROTECTED</code><dd>
+A symbol defined in the current component is <i>protected</i>
+if it is visible in other components but not preemptable,
+meaning that any reference to such a symbol from within the
+defining component must be resolved to the definition in
+that component, even if there is a definition in another
+component that would preempt by the default rules.
+A symbol with <code>STB_LOCAL</code> binding may not have
+<code>STV_PROTECTED</code> visibility.
+<a name=protected_resolution></a>
+If a symbol definition with <code>STV_PROTECTED</code> visibility
+from a shared object is taken as resolving a reference
+from an executable or another shared object,
+the <code>SHN_UNDEF</code> symbol table entry created
+has <code>STV_DEFAULT</code> visibility.
+<hr>
+<img src=warning.gif alt="NOTE:">
+<a name=protected_note></a>
+The presence of the <code>STV_PROTECTED</code> flag on a symbol
+in a given load module does not affect the symbol resolution
+rules for references to that symbol from outside the containing
+load module.
+<hr><p>
+<p><dt><code>STV_HIDDEN</code><dd>
+A symbol defined in the current component is <i>hidden</i>
+if its name is not visible to other components.  Such a symbol
+is necessarily protected.  This attribute may be used to
+control the external interface of a component.  Note that
+an object named by such a symbol may still be referenced
+from another component if its address is passed outside.
+<p>
+A hidden symbol contained in a relocatable object must be
+either removed or converted to <code>STB_LOCAL</code> binding
+by the link-editor when the relocatable object is included in an
+executable file or shared object.
+<p><dt><code>STV_INTERNAL</code><dd>
+The meaning of this visibility attribute may be defined by processor
+supplements to further constrain hidden symbols.  A processor
+supplement's definition should be such that generic tools
+can safely treat internal symbols as hidden.
+<p>
+An internal symbol contained in a relocatable object must be
+either removed or converted to <code>STB_LOCAL</code> binding
+by the link-editor when the relocatable object is included in an
+executable file or shared object.
+</dl>
+<p>
+None of the visibility attributes affects resolution of symbols
+within an executable or shared object during link-editing -- such
+resolution is controlled by the binding type.  Once the link-editor
+has chosen its resolution, these attributes impose two requirements,
+both based on the fact that references in the code being linked may
+have been optimized to take advantage of the attributes.
+<ul>
+<li>
+First, all of the non-default visibility attributes, when applied
+to a symbol reference, imply that a definition to satisfy that
+reference must be provided within the current executable or
+shared object.  If such a symbol reference has no definition within the
+component being linked, then the reference must have
+<code>STB_WEAK</code> binding and is resolved to zero.
+<li>
+Second, if any reference to or definition of a name is a symbol with
+a non-default visibility attribute, the visibility attribute
+must be propagated to the resolving symbol in the linked object.
+If different visibility attributes are specified for distinct
+references to or definitions of a symbol, the most constraining
+visibility attribute must be propagated to the resolving symbol
+in the linked object.  The attributes, ordered from least
+to most constraining, are: <code>STV_PROTECTED</code>,
+<code>STV_HIDDEN</code> and <code>STV_INTERNAL</code>.
+</ul>
+<p>
+If a symbol's value refers to a
+specific location within a section,
+its section index member, <code>st_shndx</code>,
+holds an index into the section header table.
+As the section moves during relocation, the symbol's value
+changes as well, and references to the symbol
+continue to ``point'' to the same location in the program.
+Some special section index values give other semantics.
+<DL COMPACT>
+<p><dt><code>SHN_ABS</code><dd>
+The symbol has an absolute value that will not change
+because of relocation.
+<a name=shn_common></a>
+<p><dt><code>SHN_COMMON</code><dd>
+The symbol labels a common block that has not yet been allocated.
+The symbol's value gives alignment constraints,
+similar to a section's
+<code>sh_addralign</code> member.
+The link editor will allocate the storage for the symbol
+at an address that is a multiple of
+<code>st_value</code>.
+The symbol's size tells how many bytes are required.
+Symbols with section index <code>SHN_COMMON</code> may
+appear only in relocatable objects.
+<p><dt><code>SHN_UNDEF</code><dd>
+This section table index means the symbol is undefined.
+When the link editor combines this object file with
+another that defines the indicated symbol,
+this file's references to the symbol will be linked
+to the actual definition.
+<p><dt><code>SHN_XINDEX</code><dd>
+<a name=many_sections></a>
+This value is an escape value.  It indicates that the symbol
+refers to a specific location within a section, but that the
+section header index for that section is too large to be
+represented directly in the symbol table entry.  The actual
+section header index is found in the associated
+<code>SHT_SYMTAB_SHNDX</code>.   The entries in that section
+correspond one to one with the entries in the symbol table.
+All entries in the SHT_SYMTAB_SHNDX will represent valid
+section header indexes, even if their corresponding symbol
+table entries do not contain <code>SHN_XINDEX</code>.
+</dl>
+<p>
+The symbol table entry for index 0 (<code>STN_UNDEF</code>)
+is reserved; it holds the following.
+<hr>
+<b>Figure 4-20: Symbol Table Entry:Index 0</b>
+<p>
+<table border cellspacing=0>
+<th><b>Name</b></th>
+<th><b>Value</b></th>
+<th><b>Note</b></th>
+<tr>
+<td><code>st_name</code></td>
+<td align=center><code>0</code></td>
+<td>No name</td>
+</tr>
+<tr>
+<td><code>st_value</code></td>
+<td align=center><code>0</code></td>
+<td>Zero value</td>
+</tr>
+<tr>
+<td><code>st_size</code></td>
+<td align=center><code>0</code></td>
+<td>No size</td>
+</tr>
+<tr>
+<td><code>st_info</code></td>
+<td align=center><code>0</code></td>
+<td>No type, local binding</td>
+</tr>
+<tr>
+<td><code>st_other</code></td>
+<td align=center><code>0</code></td>
+<td>Default visibility</td>
+</tr>
+<tr>
+<td><code>st_shndx</code></td>
+<td align=center><code>SHN_UNDEF</code></td>
+<td>No section</td>
+</tr>
+</table>
+<hr>
+<a name=symbol_values></a>
+<h2>Symbol Values</h2>
+Symbol table entries for different object file types have
+slightly different interpretations for the <code>st_value</code> member.
+<ul>
+<p><li>
+In relocatable files, <code>st_value</code> holds alignment constraints for a symbol
+whose section index is <code>SHN_COMMON</code>.
+<p><li>
+In relocatable files, <code>st_value</code> holds
+a section offset for a defined symbol.
+<code>st_value</code> is an offset from the beginning of the section that
+<code>st_shndx</code> identifies.
+<p><li>
+In executable and shared object files,
+<code>st_value</code> holds a virtual address.
+To make these files' symbols more useful
+for the dynamic linker, the section offset (file interpretation)
+gives way to a virtual address (memory interpretation)
+for which the section number is irrelevant.
+</ul>
+Although the symbol table values have similar meanings
+for different object files, the data allows
+efficient access by the appropriate programs.
+<hr>
+<a href=string-table.html><img src=previous.gif alt="Previous"></a>
+<a href=index.html><img src=contents.gif alt="Contents"></a>
+<a href=relocation.html><img src=next.gif alt="Next"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

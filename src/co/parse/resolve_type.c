@@ -193,9 +193,11 @@ inline static bool check_type_eq(
 }
 
 
-// resolve_ideal_type resolves the concrete type of n. If typecontext is provided, convlit is
-// used to "fit" n into that type. Otherwise the natural concrete type of n is used. (e.g. int)
-// n is assumed to be Type_ideal and must be a node->kind = NIntLit | NFloatLit | NVar | NId.
+// resolve_ideal_type resolves the concrete type of n.
+// If typecontext is provided, convlit is used to "fit" n into that type.
+// Otherwise the natural concrete type of n is used. (e.g. int)
+// n is assumed to be Type_ideal and must be a
+// node->kind = NIntLit | NFloatLit | NVar | NId.
 //
 static Node* resolve_ideal_type(
   ResCtx* nonull   ctx,

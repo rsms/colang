@@ -1,0 +1,26 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>execution-context-switching</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="execution-context-switching" class="anchor" aria-hidden="true" href="#execution-context-switching"></a>Execution context switching</h1>
+<p>M has a context
+T has a context</p>
+<p>m_call is called on a coroutine task T to switch execution to its M.</p>
+<p>go mcall
+mcall switches from the g to the g0 stack and invokes fn(g),
+where g is the goroutine that made the call.
+mcall saves g's current PC/SP in g-&gt;sched so that it can be restored later.
+It is up to fn to arrange for that later execution, typically by recording
+g in a data structure, causing something to call ready(g) later.
+mcall returns to the original goroutine g later, when g has been rescheduled.
+fn must not return at all; typically it ends by calling schedule, to let the m
+run other goroutines.</p>
+
+</body>
+</html>

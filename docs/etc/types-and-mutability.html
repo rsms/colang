@@ -1,0 +1,36 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>types-and-mutability</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<ul>
+<li><code>T</code> — &quot;owning value&quot;</li>
+<li><code>&amp;T</code> — &quot;ref to immutable value&quot;</li>
+<li><code>mut&amp;T</code> — &quot;ref to mutable value&quot;</li>
+</ul>
+<p>Examples with arrays:</p>
+<ul>
+<li><code>[T N]</code> is &quot;owning value of comptime-sized array&quot;</li>
+<li><code>[T]</code> is &quot;owning value of runtime-sized array aka slice&quot;</li>
+<li><code>&amp;[T N]</code> is &quot;ref to immutable comptime-sized array&quot;</li>
+<li><code>&amp;[T]</code> is &quot;ref to immutable runtime-sized array aka slice&quot;</li>
+<li><code>mut&amp;[T N]</code> is &quot;ref to mutable comptime-sized array&quot;</li>
+<li><code>mut&amp;[T]</code> is &quot;ref to mutable runtime-sized array aka slice&quot;</li>
+</ul>
+<p>Example function signatures:</p>
+<ul>
+<li><code>fun stash(xs [int])</code> — takes over ownership</li>
+<li><code>fun stash(xs Foo)</code> — takes over ownership</li>
+<li><code>fun join(xs &amp;[int]) str</code> — borrows a read-only ref</li>
+<li><code>fun join(xs &amp;Foo) str</code> — borrows a read-only ref</li>
+<li><code>fun reverse(xs mut&amp;[int])</code> — borrows a mutable ref</li>
+<li><code>fun reverse(xs mut&amp;Foo)</code> — borrows a mutable ref</li>
+</ul>
+
+</body>
+</html>

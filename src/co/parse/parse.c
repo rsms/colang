@@ -250,6 +250,17 @@ static Node* infixExpr(Parser* p, int precedence, PFlag fl, Node* left);
 static Node* exprOrTuple(Parser* p, int precedence, PFlag fl);
 
 
+static const char* var_kind_name(Node* n) {
+  if (NodeIsParam(n))
+    return "function parameter";
+
+  // if (n->var.init && NodeIsType(n->var.init))
+  //   return "type definition";
+
+  return "variable";
+}
+
+
 static void scopestackGrow(Parser* p) {
   p->scopestack.cap *= 2;
   Mem mem = p->build->mem;
@@ -307,11 +318,7 @@ static void scopestackCheckUnused(Parser* p) {
     if (R_UNLIKELY(key != sym__ && n->kind == NVar && n->var.nrefs == 0)) {
       // TODO: combine the error message with that of package-level reporter
       PosSpan ps = { n->pos, n->endpos };
-      build_warnf(p->build, ps, "unused %s %s",
-        ( NodeIsParam(n) ? "function parameter" :
-          n->var.init && NodeIsType(n->var.init) ? "type" :
-          "variable" ),
-        n->var.name);
+      build_warnf(p->build, ps, "unused %s %s", var_kind_name(n), n->var.name);
     }
   }
 }
@@ -717,10 +724,21 @@ static Node* make_var(Parser* p, const Node* name, Node* nullable init, Type* nu
   n->pos = name->pos; // TODO: expand pos span to include type?
   n->var.name = name->id.name;
   n->type = t;
+
   if (p->fnest == 0 && name_is_pub(n->var.name))
     NodeSetPublic(n);
+
   if (init)
     set_var_init(p, n, init);
+
+  Node* existing = lookupsymShallow(p, n->var.name);
+  if (existing) {
+    build_warnf(p->build, NodePosSpan(name),
+      "%s definition shadows %s",
+      var_kind_name(n), var_kind_name(existing));
+    build_notef(p->build, NodePosSpan(existing), "previous definition");
+  }
+
   defsym(p, name->id.name, n);
   return n;
 }
@@ -822,13 +840,6 @@ static Node* PMutOrConst(Parser* p, PFlag fl) {
 }
 
 
-// assignment to fields, e.g. "x.y = 3" -> (assign (Selector (Id x) (Id y)) (Int 3))
-static Node* pAssignSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  panic("TODO pAssignSelector");
-  return bad(p);
-}
-
-
 // e.g. "a = x"
 static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   asserteq_debug(left->kind, NId);
@@ -840,29 +851,32 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   if (target && target->kind == NVar) {
     if (R_UNLIKELY(target->var.isconst)) {
       // syntaxerr(p, "assignment to constant %s", target->var.name);
-      build_warnf(p->build, NodePosSpan(left),
-        "variable definition shadows constant %s", target->var.name);
+      build_errf(p->build, NodePosSpan(left),
+        "cannot assign to constant %s", target->var.name);
       build_notef(p->build, NodePosSpan(target),
         "constant %s defined here", target->var.name);
-    } else {
-      // assign to existing var and make sure the target is marked as variable
-      NodeClearConst(target);
-      if (target->kind == NVar)
-        NodeRefVar(target);
-      Node* n = mknode(p, NAssign);
-      n->op.op = TAssign;
-      nexttok(p); // consume '='
-      Node* right = expr(p, PREC_LOWEST, fl);
-      n->op.left = target;
-        // ^ store target (e.g. NVar) instead of NId to simplify IR generation
-      n->op.right = right;
-      NodeTransferUnresolved(n, right);
-      if (left->type && left->type == right->type) {
-        NodeTransferPartialType2(n, left, right);
-        n->type = left->type;
-      }
-      return n;
+      build_notef(p->build, NodePosSpan(left),
+        "to define a new shadowing variable, use explicit mutability keyword"
+        " mut or const. For example: mut %s = ...",
+        target->var.name);
     }
+    // assign to existing var and make sure the target is marked as variable
+    NodeClearConst(target);
+    if (target->kind == NVar)
+      NodeRefVar(target);
+    Node* n = mknode(p, NAssign);
+    n->op.op = TAssign;
+    nexttok(p); // consume '='
+    Node* right = expr(p, PREC_LOWEST, fl);
+    n->op.left = target;
+      // ^ store target (e.g. NVar) instead of NId to simplify IR generation
+    n->op.right = right;
+    NodeTransferUnresolved(n, right);
+    if (left->type && left->type == right->type) {
+      NodeTransferPartialType2(n, left, right);
+      n->type = left->type;
+    }
+    return n;
   }
 
   // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
@@ -870,8 +884,55 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto ctxtype = set_ctxtype(p, NULL);
   Node* init = expr(p, PREC_LOWEST, fl);
   p->ctxtype = ctxtype;
-  Node* n = make_var(p, left, init, NULL); // copies left->id.name and left->pos
-  return n;
+  return make_var(p, left, init, NULL); // copies left->id.name and left->pos
+}
+
+
+// "name type"
+static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
+  asserteq_debug(name->kind, NId);
+  assert_debug(NodeIsType(type));
+
+  // optional initializer expression
+  Node* init = NULL;
+  if (got(p, TAssign)) {
+    Type* ctxtype = set_ctxtype(p, type);
+    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    p->ctxtype = ctxtype;
+  }
+
+  return make_var(p, name, init, type);
+}
+
+
+// PIdTrailing parses a trailing identifier, e.g. "b" in "a b"
+//
+//!Parselet (TId ASSIGN)
+static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  auto id = pId(p);
+
+  if (R_UNLIKELY((fl & PFlagRValue) || left->kind != NId)) {
+    // (fl & PFlagRValue)   Occurs as an expression, e.g. "b" in "x = a b"
+    // (left->kind != NId)  Identifier following some expression e.g. "b" in "3 b"
+    syntaxerrp(p, id->pos, "unexpected identifier %s", id->id.name);
+    return id;
+  }
+
+  Type* typ = resolve_id(p, id, fl | PFlagType);
+  Node* init = NULL;
+  if (got(p, TAssign)) {
+    Type* ctxtype = set_ctxtype(p, typ);
+    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    p->ctxtype = ctxtype;
+  }
+  return make_var(p, left, init, typ);
+}
+
+
+// assignment to fields, e.g. "x.y = 3" -> (assign (Selector (Id x) (Id y)) (Int 3))
+static Node* pAssignSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  panic("TODO pAssignSelector");
+  return bad(p);
 }
 
 
@@ -1084,23 +1145,6 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 }
 
 
-// "name type"
-static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
-  asserteq_debug(name->kind, NId);
-  assert_debug(NodeIsType(type));
-
-  // optional initializer expression
-  Node* init = NULL;
-  if (got(p, TAssign)) {
-    Type* ctxtype = set_ctxtype(p, type);
-    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
-    p->ctxtype = ctxtype;
-  }
-
-  return make_var(p, name, init, type);
-}
-
-
 //!Parselet (TMut MEMBER)
 static Node* PMutInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   if (left->kind != NId) {
@@ -1189,30 +1233,6 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
   }
 
   return n;
-}
-
-
-// PIdTrailing parses a trailing identifier, e.g. "b" in "a b"
-//
-//!Parselet (TId ASSIGN)
-static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  auto id = pId(p);
-
-  if (R_UNLIKELY((fl & PFlagRValue) || left->kind != NId)) {
-    // (fl & PFlagRValue)   Occurs as an expression, e.g. "b" in "x = a b"
-    // (left->kind != NId)  Identifier following some expression e.g. "b" in "3 b"
-    syntaxerrp(p, id->pos, "unexpected identifier %s", id->id.name);
-    return id;
-  }
-
-  Type* typ = resolve_id(p, id, fl | PFlagType);
-  Node* init = NULL;
-  if (got(p, TAssign)) {
-    Type* ctxtype = set_ctxtype(p, typ);
-    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
-    p->ctxtype = ctxtype;
-  }
-  return make_var(p, left, init, typ);
 }
 
 
@@ -1511,16 +1531,11 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 }
 
 
-// BlockOrStructType = Block | StructType
 // Block = "{" Expr* "}"
-//!PrefixParselet TLBrace
-static Node* PBlockOrStructType(Parser* p, PFlag fl) {
-  if (fl & PFlagType)
-    return pStructType(p, fl, mknode(p, NStructType));
-
+// NOTE: it's the callers responsibility to call pushScope & popScope
+static Node* pBlock(Parser* p, PFlag fl) {
   auto n = mknode(p, NBlock);
   nexttok(p); // consume "{"
-  pushScope(p);
 
   Node* cn = NULL;
   while (p->s.tok != TNone && p->s.tok != TRBrace) {
@@ -1546,11 +1561,23 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   }
 
   set_endpos(p, n);
-  popScopeAndCheckUnused(p);
 
   if (n->array.a.len == 1)
     return n->array.a.v[0];
 
+  return n;
+}
+
+
+// BlockOrStructType = Block | StructType
+// Block = "{" Expr* "}"
+//!PrefixParselet TLBrace
+static Node* PBlockOrStructType(Parser* p, PFlag fl) {
+  if (fl & PFlagType)
+    return pStructType(p, fl, mknode(p, NStructType));
+  pushScope(p);
+  Node* n = pBlock(p, fl);
+  popScopeAndCheckUnused(p);
   return n;
 }
 
@@ -1882,7 +1909,7 @@ static Node* PFun(Parser* p, PFlag fl) {
     defsym(p, n->fun.name, n);
 
   // function parameters
-  pushScope(p);
+  pushScope(p); // body AND parameter scope
   if (p->s.tok == TLParen) {
     auto pa = pParams(p);
     // Note: the type of fun.params should structually match the type of call.args.
@@ -1922,7 +1949,7 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->s.tok == TLBrace) {
     // assign body before parsing so that we can check for it in pBlock
     assert_debug((fl & PFlagType) == 0); // needed for PBlockOrStructType
-    n->fun.body = PBlockOrStructType(p, bodyfl);
+    n->fun.body = pBlock(p, bodyfl);
   } else if (got(p, TRArr)) {
     n->fun.body = exprOrTuple(p, PREC_LOWEST, bodyfl);
   }

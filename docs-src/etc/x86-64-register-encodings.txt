@@ -1,0 +1,17 @@
+Enc         8-bit GP  16-bit GP  32-bit GP  64-bit GP  80-bit x87  64-bit MMX  128-bit XMM  256-bit YMM  16-bit Segment  32-bit Control  32-bit Debug
+0.000 (0)   AL        AX         EAX        RAX        ST0         MMX0        XMM0         YMM0         ES              CR0             DR0
+0.001 (1)   CL        CX         ECX        RCX        ST1         MMX1        XMM1         YMM1         CS              CR1             DR1
+0.010 (2)   DL        DX         EDX        RDX        ST2         MMX2        XMM2         YMM2         SS              CR2             DR2
+0.011 (3)   BL        BX         EBX        RBX        ST3         MMX3        XMM3         YMM3         DS              CR3             DR3
+0.100 (4)   AH, SPL1  SP         ESP        RSP        ST4         MMX4        XMM4         YMM4         FS              CR4             DR4
+0.101 (5)   CH, BPL1  BP         EBP        RBP        ST5         MMX5        XMM5         YMM5         GS              CR5             DR5
+0.110 (6)   DH, SIL1  SI         ESI        RSI        ST6         MMX6        XMM6         YMM6         -               CR6             DR6
+0.111 (7)   BH, DIL1  DI         EDI        RDI        ST7         MMX7        XMM7         YMM7         -               CR7             DR7
+1.000 (8)   R8L       R8W        R8D        R8         -           MMX0        XMM8         YMM8         ES              CR8             DR8
+1.001 (9)   R9L       R9W        R9D        R9         -           MMX1        XMM9         YMM9         CS              CR9             DR9
+1.010 (10)  R10L      R10W       R10D       R10        -           MMX2        XMM10        YMM10        SS              CR10            DR10
+1.011 (11)  R11L      R11W       R11D       R11        -           MMX3        XMM11        YMM11        DS              CR11            DR11
+1.100 (12)  R12L      R12W       R12D       R12        -           MMX4        XMM12        YMM12        FS              CR12            DR12
+1.101 (13)  R13L      R13W       R13D       R13        -           MMX5        XMM13        YMM13        GS              CR13            DR13
+1.110 (14)  R14L      R14W       R14D       R14        -           MMX6        XMM14        YMM14        -               CR14            DR14
+1.111 (15)  R15L      R15W       R15D       R15        -           MMX7        XMM15        YMM15        -               CR15            DR15

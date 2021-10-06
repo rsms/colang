@@ -1,0 +1,71 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>type-context</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="type-context" class="anchor" aria-hidden="true" href="#type-context"></a>Type context</h1>
+<p>Type resolver
+&quot;requested types&quot; version 2</p>
+<p>The idea is that there's always an expected type context.
+For example, a call to a function <code>(int bool)-&gt;int</code> has the type context <code>(int bool)</code> (a tuple),
+while an assignment to a var e.g. <code>var x int = </code> has the type context <code>int</code>.</p>
+<p>Now, with basic types this is pretty straight-forward; when encountering an ideally-typed value
+simply convert it to the basic type (if possible.) E.g. <code>x int = y</code> =&gt; <code>x int = y as int</code>.
+However for complex types like tuples it's a little trickier. Consider the following:</p>
+<pre><code>fun add(x int, y uint) -&gt; x + y
+fun main {
+  a, b = 2, 4
+  # add's parameters =&gt; (int uint)
+  # input arguments  =&gt; (ideal ideal)
+  add(a, b)
+}
+</code></pre>
+<p>We need to map the input type (ideal ideal) to the context type (int uint).
+This is essentially tree matching as the input type and context type may be arbitrarily
+complex. For example:</p>
+<pre><code>input:   (ideal (ideal {foo=ideal bar=ideal} ideal) ideal) =&gt;
+context: (int (float64 {foo=int bar=int64} int) float32)
+</code></pre>
+<p>Same data as tree views:</p>
+<pre><code>input:            =&gt;    context:
+  ideal           =&gt;      int
+  tuple:          =&gt;      tuple:
+    ideal         =&gt;        float64
+    struct:       =&gt;        struct:
+      foo=ideal   =&gt;          foo=int
+      bar=ideal   =&gt;          bar=int64
+    ideal         =&gt;        int
+  ideal           =&gt;      float32
+</code></pre>
+<p>So what we do is to decompose complex type contexts as we descend AST nodes.
+Taking our example from earlier with the call:</p>
+<pre><code>context_type_stack.push( NTupleType(int uint) )   # &lt;-- 1
+call resolve_type tuplenode
+  call resolve_tuple_type tuplenode
+    ct = context_type_stack.top()
+    if ct is not NTupleType
+      error &quot;type mismatch: got tuple where ${ct} is expected&quot;
+    if ct.len != tuplenode.len
+      error &quot;type mismatch: ${tuplenode.len} items where ${ct.len} are expected&quot;
+    for (i = 0; i &lt; tuplenode.len; i++)
+      itemnode = tuplenode[i]
+      ct2 = ct[i]
+      context_type_stack.push(ct2)   # &lt;-- 2
+      call resolve_type itemnode
+        call resolve_ideal_type itemnode
+          ct = context_type_stack.top()
+          if ct is not NBasicType
+            error &quot;type mismatch: got ideal type where ${ct} is expected&quot;
+          convert_ideal_type(itemnode, ct)
+      context_type_stack.pop()       # &lt;-- 3
+
+context_type_stack.pop( NTupleType(int uint) )   # &lt;-- 4
+</code></pre>
+
+</body>
+</html>

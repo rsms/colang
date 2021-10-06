@@ -1,12 +1,12 @@
 #!/bin/sh
 set -e
 cd "$(dirname "$0")"
-. ../../misc/_common.sh
+. ../misc/_common.sh
 
 # npm info rsms-mkweb
-MKWEB_AR_VERSION=0.1.10
+MKWEB_AR_VERSION=0.1.11
 MKWEB_AR_URL=https://registry.npmjs.org/rsms-mkweb/-/rsms-mkweb-${MKWEB_AR_VERSION}.tgz
-MKWEB_AR_URL_SHA1=f6281e10b8f38cf9ae8e5529f8cbc02f18d6e2c8
+MKWEB_AR_URL_SHA1=67d417e1d1c842f6b99c4ef605b12bbf510020df
 MKWEB_AR_NAME=mkweb-${MKWEB_AR_VERSION}.tgz
 MKWEB_EXE=$DEPS_DIR/mkweb/mkweb-${MKWEB_AR_VERSION}
 

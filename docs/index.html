@@ -5,7 +5,7 @@
   <title>The Co programming language</title>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/style.css?ku2w9rrb">
+  <link rel="stylesheet" type="text/css" href="/style.css?kug4gzsz">
 </head>
 <body>
 <h1><a id="the-co-programming-language" class="anchor" aria-hidden="true" href="#the-co-programming-language"></a>The Co programming language</h1>
@@ -27,7 +27,7 @@ and curly-braces &quot;push and pop&quot;.</p>
 B = Spaceship()
 
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span> <span /class="hl-title"/g>int</span></span>
-  B.engine.output <span /class="hl-comment"/g># =&gt; 500</span>
+  B.engine.output # =&gt; <span /class="hl-number"/g>500</span>
 </code></pre>
 <pre><code class="language-co"><span /class="hl-typedef"/g><span /class="hl-keyword"/g>type</span> <span /class="hl-title"/g>Spaceship</span> {</span>
   shields <span /class="hl-type"/g>u8</span> = <span /class="hl-number"/g>10</span>;
@@ -39,7 +39,7 @@ B = Spaceship()
 B = Spaceship();
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span> <span /class="hl-title"/g>int</span></span> {
   s = <span /class="hl-string"/g>&quot;thi\ng&quot;</span>
-  B.engine.output; <span /class="hl-comment"/g># =&gt; 500</span>
+  B.engine.output; # =&gt; <span /class="hl-number"/g>500</span>
 }
 </code></pre>
 <p>Semicolons can be omitted using the following two rules:</p>
@@ -71,6 +71,96 @@ a closing curly brace <code>}</code> is automatically inserted into the token st
 for each recorded &quot;automatic&quot; block on a stack.</p>
 </li>
 </ol>
+<h3><a id="variables" class="anchor" aria-hidden="true" href="#variables"></a>Variables</h3>
+<p>Variables serve as both names for values and storage locations for mutable data.
+Defining a variable is done in one of two ways:</p>
+<pre><code class="language-co">x = <span /class="hl-number"/g>1</span>       <span /class="hl-comment"/g>// defines a new mutable variable x</span>
+x = <span /class="hl-number"/g>2</span>       <span /class="hl-comment"/g>// assigns to x (since it is defined)</span>
+<span /class="hl-keyword"/g>mut</span> x = <span /class="hl-number"/g>3</span>   <span /class="hl-comment"/g>// defines a new mutable variable x, shadows previous</span>
+<span /class="hl-keyword"/g>const</span> y = <span /class="hl-number"/g>4</span> <span /class="hl-comment"/g>// defines a new constant variable y</span>
+y = <span /class="hl-number"/g>7</span>       <span /class="hl-comment"/g>// <span /class="hl-errormsg"/g>error: cannot assign to constant y</span></span>
+</code></pre>
+<h3><a id="ideally-typed-literals" class="anchor" aria-hidden="true" href="#ideally-typed-literals"></a>Ideally-typed literals</h3>
+<p>Literal numbers in Co are ideally typed, meaning an expession like <code>4</code> is not
+of a particular type of number until it is used.</p>
+<pre><code class="language-co"><span /class="hl-number"/g>4</span>                <span /class="hl-comment"/g>// numeric literal of &quot;ideal&quot; type</span>
+<span /class="hl-keyword"/g>const</span> x = <span /class="hl-number"/g>4</span>      <span /class="hl-comment"/g>// type: ideal</span>
+<span /class="hl-keyword"/g>const</span> y <span /class="hl-type"/g>int</span> = <span /class="hl-number"/g>4</span>  <span /class="hl-comment"/g>// type: int</span>
+<span /class="hl-keyword"/g>const</span> z = y      <span /class="hl-comment"/g>// type: int</span>
+<span /class="hl-keyword"/g>const</span> a = <span /class="hl-number"/g>128</span>    <span /class="hl-comment"/g>// type: ideal</span>
+v <span /class="hl-type"/g>i8</span>             <span /class="hl-comment"/g>// defines a variable of type i8</span>
+v = x            <span /class="hl-comment"/g>// x is interpreted as an i8 literal</span>
+v = a            <span /class="hl-comment"/g>// <span /class="hl-errormsg"/g>error: constant 128 overflows i8</span></span>
+</code></pre>
+<h3><a id="automatic-constants" class="anchor" aria-hidden="true" href="#automatic-constants"></a>Automatic constants</h3>
+<p>Variables in Co are optimistically constant, meaning that if a variable is never
+stored to, it is treated as defined immutable with the <code>const</code> keyword.</p>
+<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>(v <span /class="hl-type"/g>int</span>)</span> <span /class="hl-title"/g>int</span></span>
+  <span /class="hl-keyword"/g>const</span> a [<span /class="hl-type"/g>int</span> <span /class="hl-number"/g>3</span>] = [<span /class="hl-number"/g>1</span>, <span /class="hl-number"/g>2</span>, <span /class="hl-number"/g>3</span>]
+  b [<span /class="hl-type"/g>int</span> <span /class="hl-number"/g>3</span>] = [<span /class="hl-number"/g>10</span>, <span /class="hl-number"/g>20</span>, <span /class="hl-number"/g>30</span>]
+  c [<span /class="hl-type"/g>int</span> <span /class="hl-number"/g>3</span>] = [<span /class="hl-number"/g>100</span>, <span /class="hl-number"/g>200</span>, <span /class="hl-number"/g>300</span>]
+  b[<span /class="hl-number"/g>1</span>] = v  <span /class="hl-comment"/g>// b promoted to mutable</span>
+  a[<span /class="hl-number"/g>1</span>] + b[<span /class="hl-number"/g>1</span>] + c[<span /class="hl-number"/g>1</span>]
+</code></pre>
+<p>In the above example <code>a</code> and <code>c</code> are constants; <code>c</code> is demoted to <code>const</code>
+as it is never written to, while <code>b</code> is promoted to <code>mut</code> since we store to it.
+The difference is mainly in the generated code: Co is able to generate less and more
+efficient code this way. Only stack memory for <code>b</code> is allocated in the above example.
+Access to <code>a</code> and <code>c</code> are resolved at compile time.</p>
+<p>x86_64 code generated <em>without</em> optimizations:</p>
+<pre><code class="language-asmx86"><span /class="hl-symbol"/g>_main:</span>
+  <span /class="hl-comment"/g>; initialize data for variable b on stack</span>
+  movl  <span /class="hl-number"/g>$30</span>, -<span /class="hl-number"/g>4</span>(%rsp)
+  movl  <span /class="hl-number"/g>$20</span>, -<span /class="hl-number"/g>8</span>(%rsp)
+  movl  <span /class="hl-number"/g>$10</span>, -<span /class="hl-number"/g>12</span>(%rsp)
+  movl  %edi, -<span /class="hl-number"/g>8</span>(%rsp)    <span /class="hl-comment"/g>; b[1] = v</span>
+  movl  l_a+<span /class="hl-number"/g>4</span>(%rip), %eax <span /class="hl-comment"/g>; r1 = a[1]</span>
+  movl  -<span /class="hl-number"/g>8</span>(%rsp), %ecx    <span /class="hl-comment"/g>; r2 = b[1]</span>
+  addl  l_c+<span /class="hl-number"/g>4</span>(%rip), %ecx <span /class="hl-comment"/g>; r2 = c[1] + r2</span>
+  addl  %ecx, %eax        <span /class="hl-comment"/g>; r1 = r2 + r1</span>
+  retq
+<span /class="hl-symbol"/g>l_a:</span> <span /class="hl-comment"/g>; constant data of variable a</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>1</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>2</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>3</span>
+<span /class="hl-symbol"/g>l_c:</span> <span /class="hl-comment"/g>; constant data of variable c</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>100</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>200</span>
+<span /class="hl-meta"/g>  .long</span> <span /class="hl-number"/g>300</span>
+</code></pre>
+<p>x86_64 code generated <em>with</em> optimizations:</p>
+<pre><code class="language-asmx86"><span /class="hl-symbol"/g>_main:</span>
+  leal  <span /class="hl-number"/g>202</span>(%rdi), %eax
+  retq
+</code></pre>
+<h3><a id="arrays" class="anchor" aria-hidden="true" href="#arrays"></a>Arrays</h3>
+<p>An array is a fixed-length sequence of data in one contiguous memory segment.
+The length of an Array may be known at compile time.</p>
+<p>Some examples:</p>
+<pre><code class="language-co">a [<span /class="hl-type"/g>u8</span> <span /class="hl-number"/g>10</span>]                <span /class="hl-comment"/g>// array of 10 bytes, all 0</span>
+b [<span /class="hl-type"/g>i64</span> <span /class="hl-number"/g>3</span>] = [<span /class="hl-number"/g>10</span>, <span /class="hl-number"/g>20</span>, <span /class="hl-number"/g>30</span>] <span /class="hl-comment"/g>// 3 64-bit integers</span>
+c = [<span /class="hl-type"/g>i64</span>(<span /class="hl-number"/g>10</span>), <span /class="hl-number"/g>20</span>, <span /class="hl-number"/g>30</span>]    <span /class="hl-comment"/g>// type inferred to [i64 3]</span>
+d = [<span /class="hl-number"/g>10</span>, <span /class="hl-number"/g>20</span>, <span /class="hl-number"/g>30</span>]         <span /class="hl-comment"/g>// type inferred to [int 3]</span>
+e = d                    <span /class="hl-comment"/g>// copy of d. Type [int 3]</span>
+f = &amp;d                   <span /class="hl-comment"/g>// immutable reference to d</span>
+g = <span /class="hl-keyword"/g>mut</span>&amp;d                <span /class="hl-comment"/g>// mutable reference to d</span>
+h = d[:<span /class="hl-number"/g>2</span>]                <span /class="hl-comment"/g>// copy of slice of d. Type [int 2]</span>
+i = &amp;d[:<span /class="hl-number"/g>2</span>]               <span /class="hl-comment"/g>// immutable reference to slice of d</span>
+k = <span /class="hl-keyword"/g>mut</span>&amp;d[<span /class="hl-number"/g>1</span>:]            <span /class="hl-comment"/g>// mutable reference to slice of d</span>
+k[<span /class="hl-number"/g>1</span>] = e[<span /class="hl-number"/g>0</span>]              <span /class="hl-comment"/g>// modify 2nd element of d</span>
+d.len                    <span /class="hl-comment"/g>// 3</span>
+k.len                    <span /class="hl-comment"/g>// 2</span>
+
+<span /class="hl-comment"/g>// still undecided: array types with runtime-varying length</span>
+<span /class="hl-comment"/g>// Alt A:</span>
+s1 [<span /class="hl-type"/g>int</span>] = d             <span /class="hl-comment"/g>// copy of d with length</span>
+s2 &amp;[<span /class="hl-type"/g>int</span>] = d            <span /class="hl-comment"/g>// immutable ref to d with length</span>
+s3 <span /class="hl-keyword"/g>mut</span>&amp;[<span /class="hl-type"/g>int</span>] = d         <span /class="hl-comment"/g>// mutable ref to d with length</span>
+
+<span /class="hl-comment"/g>// Alt B:</span>
+s1 [<span /class="hl-type"/g>int</span>] = d             <span /class="hl-comment"/g>// immutable ref to d with length</span>
+s2 <span /class="hl-keyword"/g>mut</span>[<span /class="hl-type"/g>int</span>] = d          <span /class="hl-comment"/g>// mutable ref to d with length</span>
+</code></pre>
 <h2><a id="open-source" class="anchor" aria-hidden="true" href="#open-source"></a>Open Source</h2>
 <p><a href="https://github.com/rsms/co2">https://github.com/rsms/co2</a></p>
 

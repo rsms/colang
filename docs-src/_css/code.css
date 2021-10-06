@@ -1,26 +1,28 @@
 pre {
-  --bg:          #f6f8fa;
-  --fg-comment:  rgba(var(--foreground-color-rgb),0.5);
-  --fg-keyword:  #d73a49;
-  --fg-type:     var(--fg-keyword);
-  --fg-data:     #333377;
-  --fg-string:   #333377;
-  --fg-diff-add: #55a532;
-  --bg-diff-add: #eaffea;
-  --fg-diff-rem: #bd2c00;
-  --bg-diff-rem: #ffecec;
+  --bg:            #f6f8fa;
+  --fg-comment:    rgba(var(--foreground-color-rgb),0.5);
+  --fg-commenterr: rgb(186, 94, 81);
+  --fg-keyword:    #d73a49;
+  --fg-type:       var(--fg-keyword);
+  --fg-data:       #333377;
+  --fg-string:     #333377;
+  --fg-diff-add:   #55a532;
+  --bg-diff-add:   #eaffea;
+  --fg-diff-rem:   #bd2c00;
+  --bg-diff-rem:   #ffecec;
 
   @media (prefers-color-scheme: dark) {
     /* --bg:          rgb(22, 27, 34); */
-    --bg:          rgb(30, 27, 26);
-    --fg-comment:  rgba(var(--foreground-color-rgb),0.4);
-    --fg-keyword:  #ff7b72;
-    --fg-data:     #0ff;
-    --fg-string:   rgb(165, 214, 255);
-    --fg-diff-add: #55a532;
-    --bg-diff-add: #eaffea;
-    --fg-diff-rem: #bd2c00;
-    --bg-diff-rem: #ffecec;
+    --bg:            rgb(30, 27, 26);
+    --fg-comment:    rgba(var(--foreground-color-rgb),0.4);
+    --fg-commenterr: #735048;
+    --fg-keyword:    #ff7b72;
+    --fg-data:       #abe0ec;
+    --fg-string:     rgb(165, 214, 255);
+    --fg-diff-add:   #55a532;
+    --bg-diff-add:   #eaffea;
+    --fg-diff-rem:   #bd2c00;
+    --bg-diff-rem:   #ffecec;
   }
 
   background:    var(--bg);
@@ -31,10 +33,13 @@ pre {
 }
 
 /* comments  */
-.hl-comment,
-.hl-meta {
+.hl-comment {
   color: var(--fg-comment);
+  & .hl-errormsg { color: var(--fg-commenterr) }
 }
+
+/* meta (?) */
+.hl-meta { color: var(--fg-keyword) }
 
 /* variable */
 .hl-variable,

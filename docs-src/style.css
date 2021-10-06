@@ -30,6 +30,9 @@
   --background-color: white;
   --foreground-color-rgb: 0,0,0;
   --bgcolor-level1: rgba(0,0,0,0.1);
+  /* --code-bg: #ffffdd; */
+  /* --code-bg: #f6f6f6; */
+  /* --code-bg: inherit; */
 
   @media (prefers-color-scheme: dark) {
     /* cold: */
@@ -43,6 +46,7 @@
 
     --link-color: #70CAFC;
     --link-visited-color: #B79EFF;
+    /* --code-bg: #2d2920; */
 
     font-weight: 400;
 
@@ -71,7 +75,7 @@ h1, h2, h3, h4, h5, h6 {
 h1 { font-weight: 650; letter-spacing: -0.02em; }
 h2, h3, h4, h5, h6 { letter-spacing: 0em; }
 h3 { font-weight: 650; letter-spacing: 0.01em; }
-h4, h5, h6 { font-weight: 700; letter-spacing: 0.015em; }
+h4, h5, h6 { font-weight: 600; letter-spacing: 0.01em; }
 
 h2, h3, h4, h5, h6 {
   & > a.anchor {
@@ -100,4 +104,12 @@ h2, h3, h4, h5, h6 {
   &:hover > a.anchor {
     opacity: 1;
   }
+}
+
+em { letter-spacing: 0.01em }
+
+:not(pre) > code {
+  /* background: var(--code-bg); */
+  padding: 0 0.2em;
+  /* border-radius: 0.2em */
 }

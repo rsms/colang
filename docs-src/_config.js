@@ -5,15 +5,15 @@ module.exports = ({
   glob,     // glob function (NPM: miniglob)
 }) => {
   // called when program starts
+  site.outdir = "../docs"
   // console.log(site)
-  site.outdir = "../../docs"
 
   // configure highlight.js
-  hljs.registerLanguage("co", require("../../misc/highlight.js_co.js"))
-  // hljs.registerLanguage("asmarm",  require("highlight.js/lib/languages/armasm"))
-  // hljs.registerLanguage("asmavr",  require("highlight.js/lib/languages/avrasm"))
-  // hljs.registerLanguage("asmmips", require("highlight.js/lib/languages/mipsasm"))
-  // hljs.registerLanguage("asmx86",  require("highlight.js/lib/languages/x86asm"))
+  hljs.registerLanguage("co",     require("./_hl/co"))
+  hljs.registerLanguage("asmarm", require("./_hl/armasm"))
+  hljs.registerLanguage("asmx86", require("./_hl/x86asm"))
+  hljs.registerLanguage("wast",   require("./_hl/wasm"))
+  hljs.registerLanguage("llvm",   require("./_hl/llvm"))
 
   // these optional callbacks can return a Promise to cause build process to wait
   //

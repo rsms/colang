@@ -1,0 +1,60 @@
+<html>
+<title>Program loading and dynamic linking</title><p>
+<h1>Introduction to Program loading and dynamic linking</h1><p>
+This section describes the object file
+information and system actions that create running programs.
+Some information here applies to all systems;
+information specific to one processor resides in
+sections marked accordingly.
+<p>
+Executable and shared object files statically represent programs.
+To execute such programs, the system uses the files to create
+dynamic program representations, or process images.
+As section ''Virtual Address Space'' in Chapter 3 of the
+processor supplement describes, a process image has segments that
+hold its text, data, stack, and so on.  This chapter's major sections
+discuss the following:
+<ul>
+<li>
+<a href=ldheader.html>Program Header.</a>
+This section complements Chapter 4, describing
+object file structures that relate directly to program execution.
+The primary data structure, a program header table, locates
+segment images within the file and contains other information
+necessary to create the memory image for the program.
+<li>
+Program Loading.
+Given an object file, the system must load
+it into memory for the program to run.
+<li>
+<a href=lddynamic.html>Dynamic linking.</a>
+After the system loads the program it must complete
+the process image by resolving symbolic references among the object
+files that compose the process.
+</ul>
+<hr>
+<img src=warning.gif alt="NOTE:">
+The processor supplement defines a naming convention for ELF constants
+that have processor ranges specified.  Names such as <code>DT_</code>,
+<code>PT_</code>,
+for processor specific extensions, incorporate the name of the
+processor: <code>DT_M32_SPECIAL</code>, for example.
+Pre-existing processor
+extensions not using this convention will be supported.
+<table>
+<th>Pre-Existing Extensions</th>
+<tr>
+<td><code>DT_JUMP_REL</code></td>
+</tr>
+</table>
+<hr>
+<a href=relocation.html><img src=previous.gif alt="Previous"></a>
+<a href=index.html><img src=contents.gif alt="Contents"></a>
+<a href=ldheader.html><img src=next.gif alt="Next"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

@@ -1,0 +1,123 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>guiding-principles</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="philosophy-and-guiding-principles" class="anchor" aria-hidden="true" href="#philosophy-and-guiding-principles"></a>Philosophy and guiding principles</h1>
+<ul>
+<li>It's a tool for getting the job done; a means to an end</li>
+<li>Explicit is better than implicit</li>
+<li>Simple is better than complex</li>
+<li>Simple is better than easy</li>
+<li>Simplicity does not mean easy, but it may mean straight-forward or uncomplicated</li>
+<li>Just because something may be simple, don’t mistake it for crude</li>
+<li>Simplicity is a goal, not a by-product</li>
+<li>Choose simplicity over completeness. There is an exponential cost in completeness.</li>
+<li>Complex is better than complicated</li>
+<li>Flat is better than nested</li>
+<li>Special cases aren't special enough to break the rules, although practicality beats purity</li>
+<li>Errors should never pass silently, unless explicitly silenced</li>
+<li>Mutable state is hard</li>
+<li>Immutable data can be safely shared</li>
+<li>Isolated data is safe</li>
+</ul>
+<h2><a id="sources-of-inspiration" class="anchor" aria-hidden="true" href="#sources-of-inspiration"></a>Sources of inspiration</h2>
+<h3><a id="simplicity-and-collaboration" class="anchor" aria-hidden="true" href="#simplicity-and-collaboration"></a>Simplicity and collaboration</h3>
+<p>every language starts out with simplicity as a goal, yet many of them fail to achieve this goal. Eventually falling back on notions of expressiveness or power of the language as justification for a failure to remain simple.</p>
+<p>Any why is this ? Why do so many language, launched with sincere, idealistic goals, fall afoul of their own self inflicted complexity ?</p>
+<p>One reason, one major reason, I believe, is that to be thought successful, a language should somehow include all the popular features of its predecessors.
+If you would listen to language critics, they demand that any new language should push forward the boundaries of language theory.</p>
+<p>In reality this appears to be a veiled request that your new language include all the bits they felt were important in their favourite old language, while still holding true to the promise of whatever it was that drew them to investigate your language I the first place.</p>
+<p>I believe that this is a fundamentally incorrect view.</p>
+<p>Why would a new language be proposed if not to address limitations of its predecessors ?</p>
+<p>Why should a new language not aim to represent a refinement of the cornucopia of features presented in existing languages, learning from its predecessors, rather than repeating their folly.</p>
+<p>Language design is about trade-offs; you cannot have your cake and eat it too. So I challenge the notion that every mainstream language must be a super-set of those it seeks to replace.</p>
+<p>[...]</p>
+<p>Go is a language that chooses to be simple, and it does so by choosing to not include many features that other programming languages have accustomed their users to believing are essential.</p>
+<p>[...]</p>
+<p>A lack of simplicity is, of course complexity.</p>
+<p>Complexity is friction, a force which acts against getting things done.</p>
+<p>Complexity is debt, it robs you of capital to invest in the future.</p>
+<p>[...]</p>
+<p>Good programmers write simple programs.</p>
+<p>They bring their experience, their knowledge and their failures to new designs, to learn from and avoid mistakes in the future.</p>
+<p>[...]</p>
+<blockquote>
+<p>“Simplicity is the ultimate sophistication” — Leonardo da Vinci</p>
+</blockquote>
+<p><em><a href="https://dave.cheney.net/2015/03/08/simplicity-and-collaboration">Simplicity and collaboration, Dave Cheney</a></em></p>
+<h3><a id="the-zen-of-python" class="anchor" aria-hidden="true" href="#the-zen-of-python"></a>The Zen of Python</h3>
+<p>Beautiful is better than ugly.<br>
+Explicit is better than implicit.<br>
+Simple is better than complex.<br>
+Complex is better than complicated.<br>
+Flat is better than nested.<br>
+Sparse is better than dense.<br>
+Readability counts.<br>
+Special cases aren't special enough to break the rules.<br>
+Although practicality beats purity.<br>
+Errors should never pass silently.<br>
+Unless explicitly silenced.<br>
+In the face of ambiguity, refuse the temptation to guess.<br>
+There should be one-- and preferably only one --obvious way to do it.<br>
+Although that way may not be obvious at first unless you're Dutch.<br>
+Now is better than never.<br>
+Although never is often better than <em>right</em> now.<br>
+If the implementation is hard to explain, it's a bad idea.<br>
+If the implementation is easy to explain, it may be a good idea.<br>
+Namespaces are one honking great idea -- let's do more of those!<br></p>
+<p><em><a href="https://www.python.org/dev/peps/pep-0020/">The Zen of Python, Tim Peters</a></em></p>
+<h3><a id="the-pony-philosophy" class="anchor" aria-hidden="true" href="#the-pony-philosophy"></a>The Pony Philosophy</h3>
+<p>Order of importance:</p>
+<ol>
+<li>Correctness</li>
+<li>Performance</li>
+<li>Simplicity</li>
+<li>Consistency</li>
+<li>Completeness</li>
+</ol>
+<h4><a id="correctness" class="anchor" aria-hidden="true" href="#correctness"></a>Correctness</h4>
+<p>Incorrectness is simply not allowed. It’s pointless to try to get stuff done if you can’t guarantee the result is correct.</p>
+<h4><a id="performance" class="anchor" aria-hidden="true" href="#performance"></a>Performance</h4>
+<p>Runtime speed is more important than everything except correctness. If performance must be sacrificed for correctness, try to come up with a new way to do things. The faster the program can get stuff done, the better. This is more important than anything except a correct result.</p>
+<h4><a id="simplicity" class="anchor" aria-hidden="true" href="#simplicity"></a>Simplicity</h4>
+<p>Simplicity can be sacrificed for performance. It is more important for the interface to be simple than the implementation. The faster the programmer can get stuff done, the better. It’s ok to make things a bit harder on the programmer to improve performance, but it’s more important to make things easier on the programmer than it is to make things easier on the language/runtime.</p>
+<h4><a id="consistency" class="anchor" aria-hidden="true" href="#consistency"></a>Consistency</h4>
+<p>Consistency can be sacrificed for simplicity or performance. Don’t let excessive consistency get in the way of getting stuff done.</p>
+<h4><a id="completeness" class="anchor" aria-hidden="true" href="#completeness"></a>Completeness</h4>
+<p>It’s nice to cover as many things as possible, but completeness can be sacrificed for anything else. It’s better to get some stuff done now than wait until everything can get done later.
+The “get-stuff-done” approach has the same attitude towards correctness and simplicity as “the-right-thing”, but the same attitude towards consistency and completeness as “worse-is-better”. It also adds performance as a new principle, treating it as the second most important thing (after correctness).</p>
+<h4><a id="pony-guiding-principles" class="anchor" aria-hidden="true" href="#pony-guiding-principles"></a>Pony Guiding Principles</h4>
+<p>Throughout the design and development of the language, the following principles should be adhered to.</p>
+<ul>
+<li>Use the get-stuff-done approach.</li>
+<li>Simple grammar. Language must be trivial to parse for both humans and computers.</li>
+<li>No loadable code. Everything is known to the compiler.</li>
+<li>Fully type safe. There is no “trust me, I know what I’m doing” coercion.</li>
+<li>Fully memory safe. There is no “this random number is really a pointer, honest.”</li>
+<li>No crashes. A program that compiles should never crash (although it may hang or do something unintended).</li>
+<li>Sensible error messages. Where possible use simple error messages for specific error cases. It is fine to assume the programmer knows the definitions of words in our lexicon, but avoid compiler or other computer science jargon.</li>
+<li>Inherent build system. No separate applications required to configure or build.</li>
+<li>Aim to reduce common programming bugs through the use of restrictive syntax.</li>
+<li>Provide a single, clean and clear way to do things rather than catering to every programmer’s preferred prejudices.</li>
+<li>Make upgrades clean. Do not try to merge new features with the ones they are replacing, if something is broken remove it and replace it in one go. Where possible provide rewrite utilities to upgrade source between language versions.</li>
+<li>Reasonable build time. Keeping down build time is important, but less important than runtime performance and correctness.</li>
+<li>Allowing the programmer to omit some things from the code (default arguments, type inference, etc) is fine, but fully specifying should always be allowed.</li>
+<li>No ambiguity. The programmer should never have to guess what the compiler will do, or vice-versa.</li>
+<li>Document required complexity. Not all language features have to be trivial to understand, but complex features must have full explanations in the docs to be allowed in the language.</li>
+<li>Language features should be minimally intrusive when not used.</li>
+<li>Fully defined semantics. The semantics of all language features must be available in the standard language docs. It is not acceptable to leave behavior undefined or “implementation dependent”.</li>
+<li>Efficient hardware access must be available, but this does not have to pervade the whole language.</li>
+<li>The standard library should be implemented in Pony.</li>
+<li>Interoperability. Must be interoperable with other languages, but this may require a shim layer if non-primitive types are used.</li>
+<li>Avoid library pain. Use of 3rd party Pony libraries should be as easy as possible, with no surprises. This includes writing and distributing libraries and using multiple versions of a library in a single program.</li>
+</ul>
+<p><em><a href="https://www.ponylang.io/discover/#the-pony-philosophy">The Pony Philosophy</a></em></p>
+
+</body>
+</html>

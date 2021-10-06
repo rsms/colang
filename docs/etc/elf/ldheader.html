@@ -1,0 +1,623 @@
+<html>
+<title>Program Header</title><p>
+<h1>Program Header</h1><p>
+An executable or shared object file's program header table
+is an array of structures, each describing a segment or
+other information the system needs to prepare the program for execution.
+An object file <i>segment</i> contains one or more <i>sections</i>,
+as
+<a href=#segment_contents>``Segment Contents''</a>
+describes below.
+Program headers are meaningful only for executable
+and shared object files.
+A file specifies its own program header size with the ELF header's
+<code>e_phentsize</code> and <code>e_phnum</code> members.
+See
+<a href=header.html>``ELF Header''</a> in Chapter 4
+for more information.
+<hr>
+<b>Figure 5-1: Program Header</b>
+<p>
+<pre>
+<code>
+typedef struct {
+	Elf32_Word	p_type;
+	Elf32_Off	p_offset;
+	Elf32_Addr	p_vaddr;
+	Elf32_Addr	p_paddr;
+	Elf32_Word	p_filesz;
+	Elf32_Word	p_memsz;
+	Elf32_Word	p_flags;
+	Elf32_Word	p_align;
+} Elf32_Phdr;
+
+typedef struct {
+	Elf64_Word	p_type;
+	Elf64_Word	p_flags;
+	Elf64_Off	p_offset;
+	Elf64_Addr	p_vaddr;
+	Elf64_Addr	p_paddr;
+	Elf64_Xword	p_filesz;
+	Elf64_Xword	p_memsz;
+	Elf64_Xword	p_align;
+} Elf64_Phdr;
+</pre>
+</code>
+<dl compact>
+<p><dt><code>p_type</code><dd>
+This member tells what kind of segment this array element
+describes or how to interpret the array element's information.
+Type values and their meanings appear
+<a href=#p_type>below</a>.
+<p><dt><code>p_offset</code><dd>
+This member gives the offset from the beginning of the
+file at which the first byte of the segment resides.
+<p><dt><code>p_vaddr</code><dd>
+This member gives the virtual address at which
+the first byte of the segment resides in memory.
+<p><dt><code>p_paddr</code><dd>
+On systems for which physical addressing is relevant,
+this member is reserved for the segment's physical address.
+Because System V ignores physical addressing
+for application programs, this member has unspecified
+contents for executable files and shared objects.
+<p><dt><code>p_filesz</code><dd>
+This member gives the number of bytes in the file image of
+the segment; it may be zero.
+<p><dt><code>p_memsz</code><dd>
+This member gives the number of bytes in the memory image of
+the segment; it may be zero.
+<p><dt><code>p_flags</code><dd>
+This member gives flags relevant to the segment.
+Defined flag values appear
+<a href=#p_flags>below</a>.
+<p><dt><code>p_align</code><dd>
+As ``Program Loading'' describes in this chapter of the processor
+supplement,
+loadable process segments must have congruent values for
+<code>p_vaddr</code> and <code>p_offset</code>, modulo the page size.
+This member gives the value to which the
+segments are aligned in memory and in the file.
+Values 0 and 1 mean no alignment is required.
+Otherwise, <code>p_align</code>
+should be a positive, integral power of 2, and <code>p_vaddr</code>
+should equal <code>p_offset</code>,
+modulo <code>p_align</code>.
+</dl>
+<p>
+Some entries describe process segments; others
+give supplementary information and do not contribute to
+the process image.
+Segment entries may appear in any order, except as
+explicitly noted
+<a href=#p_type>below</a>.
+Defined type values follow;
+other values are reserved for future use.
+<a name="p_type"></a>
+<hr>
+<b>Figure 5-2: Segment Types</b>, <code>p_type</code>
+<p>
+<table border cellspacing=0>
+<th><b>Name</b></th>
+<th><b>Value</b></th>
+<tr>
+<td><code>PT_NULL</code></td>
+<td align=right><code>0</code></td>
+</tr>
+<tr>
+<td><code>PT_LOAD</code></td>
+<td align=right><code>1</code></td>
+</tr>
+<tr>
+<td><code>PT_DYNAMIC</code></td>
+<td align=right><code>2</code></td>
+</tr>
+<tr>
+<td><code>PT_INTERP</code></td>
+<td align=right><code>3</code></td>
+</tr>
+<tr>
+<td><code>PT_NOTE</code></td>
+<td align=right><code>4</code></td>
+</tr>
+<tr>
+<td><code>PT_SHLIB</code></td>
+<td align=right><code>5</code></td>
+</tr>
+<tr>
+<td><code>PT_PHDR</code></td>
+<td align=right><code>6</code></td>
+</tr>
+<tr>
+<td><code>PT_LOOS</code></td>
+<td align=right><code>0x60000000</code></td>
+</tr>
+<tr>
+<td><code>PT_HIOS</code></td>
+<td align=right><code>0x6fffffff</code></td>
+</tr>
+<tr>
+<td><code>PT_LOPROC</code></td>
+<td align=right><code>0x70000000</code></td>
+</tr>
+<tr>
+<td><code>PT_HIPROC</code></td>
+<td align=right><code>0x7fffffff</code></td>
+</tr>
+</table>
+<hr>
+<dl compact>
+<p><dt><code>PT_NULL</code><dd>
+The array element is unused; other members' values are undefined.
+This type lets the program header table have ignored entries.
+<p><dt><code>PT_LOAD</code><dd>
+The array element specifies a loadable segment,
+described by <code>p_filesz</code> and <code>p_memsz</code>.
+The bytes from the file are mapped to the
+beginning of the memory segment.
+If the segment's memory size (<code>p_memsz</code>)
+is larger than the file size (<code>p_filesz</code>),
+the ``extra'' bytes are defined to hold the value 0
+and to follow the segment's initialized area.
+The file size may not be larger than the memory size.
+Loadable segment entries in the program header table
+appear in ascending order, sorted on the <code>p_vaddr</code> member.
+<p><dt><code>PT_DYNAMIC</code><dd>
+The array element specifies dynamic linking information.
+See
+<a href=lddynamic.html#dynamic_section>``Dynamic Section''</a>
+below for more information.
+<p><dt><code>PT_INTERP</code><dd>
+The array element specifies the location and size of
+a null-terminated path name to invoke as an interpreter.
+This segment type is meaningful only for executable files
+(though it may occur for shared objects);
+it may not occur more than once in a file.
+If it is present, it must precede any loadable segment entry.
+See
+<a href=lddynamic.html#interpreter>``Program Interpreter''</a>
+below for more information.
+<p><dt><code>PT_NOTE</code><dd>
+The array element specifies the location and size of
+auxiliary information.
+See
+<a href=#note_section>``Note Section''</a>
+below for more information.
+<p><dt><code>PT_SHLIB</code><dd>
+This segment type is reserved but has unspecified semantics.
+Programs that contain an array element of this type do not
+conform to the ABI.
+<p><dt><code>PT_PHDR</code><dd>
+The array element, if present, specifies the location and size of
+the program header table itself, both in the file and
+in the memory image of the program.
+This segment type may not occur more than once in a file.
+Moreover, it may occur only if the program header table is
+part of the memory image of the program.
+If it is present, it must precede any loadable segment entry.
+See
+<a href=lddynamic.html#interpreter>``Program Interpreter''</a>
+below for more information.
+<p><dt><code>PT_LOOS</code> through <code>PT_HIOS</code>
+<dd>
+Values in this inclusive range
+are reserved for operating system-specific semantics.
+<p><dt><code>PT_LOPROC</code> through <code>PT_HIPROC</code>
+<dd>
+Values in this inclusive range
+are reserved for processor-specific semantics.
+If meanings are specified, the processor supplement explains
+them.
+</dl>
+<hr>
+<img src=warning.gif alt="NOTE:">
+Unless specifically required elsewhere,
+all program header segment types are optional.
+A file's program header table may contain
+only those elements relevant to its contents.
+<hr>
+<a name=base_address></a>
+<h2>Base Address</h2><p>
+As ``Program Loading'' in this chapter of the processor supplement
+describes, the virtual addresses in the program headers might not
+represent the actual virtual addresses of the program's memory
+image.  Executable files typically contain absolute code.  To let
+the process execute correctly, the segments must reside at the
+virtual addresses used to build the executable file.  On the other
+hand, shared object segments typically contain position-independent
+code.  This lets a segment's virtual address change from one
+process to another, without invalidating execution behavior.
+On some platforms, while the system chooses virtual
+addresses for individual processes,
+it maintains the <i>relative</i> position of one
+segment to another within any one shared object.
+Because position-independent code on those platforms
+uses relative addressing between segments,
+the difference between virtual addresses
+in memory must match the difference between virtual addresses
+in the file.  The differences between the virtual address
+of any segment in memory and the corresponding virtual address
+in the file is thus a single constant value for any one
+executable or shared object in a given process.  This difference
+is the <i>base address</i>.  One use of the base address is to
+relocate the memory image of the file during dynamic linking.
+<p>
+An executable or shared object file's base address (on platforms
+that support the concept)
+is calculated during execution
+from three values: the virtual memory load address, the maximum page size,
+and the lowest virtual address of a program's loadable segment.
+To compute the base address, one determines the memory address associated
+with the lowest <code>p_vaddr</code> value for a <code>PT_LOAD</code>
+segment.  This address is truncated to the nearest multiple of
+the maximum page size.  The corresponding <code>p_vaddr</code>
+value itself is also truncated to the nearest multiple of
+the maximum page size.  The base address is the difference
+between the truncated memory address and the truncated
+<code>p_vaddr</code> value.
+<p>
+See this chapter in the processor supplement for more information
+and examples.  ``Operating System Interface'' of Chapter 3
+in the processor supplement contains more information about the
+virtual address space and page size.
+<a name=segment_permissions></a>
+<h2>Segment Permissions</h2><p>
+A program to be loaded by the system must
+have at least one loadable segment (although
+this is not required by the file format).
+When the system creates loadable segments' memory images,
+it gives access permissions as specified in the <code>p_flags</code> member.
+<hr>
+<b>Figure 5-3: Segment Flag Bits, </b><code>p_flags</code>
+<p>
+<a name=p_flags></a>
+<table border cellspacing=0>
+<th><b>Name</b></th>
+<th><b>Value</b></th>
+<th><b>Meaning</b></th>
+<tr>
+<td><code>PF_X</code></td>
+<td align=right><code>0x1</code></td>
+<td>Execute</td>
+</tr>
+<tr>
+<td><code>PF_W</code></td>
+<td align=right><code>0x2</code></td>
+<td>Write</td>
+</tr>
+<tr>
+<td><code>PF_R</code></td>
+<td align=right><code>0x4</code></td>
+<td>Read</td>
+</tr>
+<tr>
+<td><code>PF_MASKOS</code></td>
+<td align=right><code>0x0ff00000</code></td>
+<td>Unspecified</td>
+</tr>
+<tr>
+<td><code>PF_MASKPROC</code></td>
+<td align=right><code>0xf0000000</code></td>
+<td>Unspecified</td>
+</tr>
+</table>
+<hr>
+All bits included in the <code>PF_MASKOS</code>
+mask are reserved for operating system-specific semantics.
+<p>
+All bits included in the <code>PF_MASKPROC</code>
+mask are reserved for processor-specific semantics.
+If meanings are specified, the processor supplement explains them.
+<p>
+If a permission bit is 0, that type of access is denied.
+Actual memory permissions depend on the memory management unit,
+which may vary from one system to another.
+Although all flag combinations are valid, the system may grant
+more access than requested.
+In no case, however, will a segment have write permission
+unless it is specified explicitly.
+The following table shows both the exact flag interpretation
+and the allowable flag interpretation. ABI-conforming systems may
+provide either.
+<hr>
+<b>Figure 5-4: Segment Permissions</b>
+<p>
+<table border cellspacing=0>
+<th><b>Flags</b></th>
+<th><b>Value</b></th>
+<th><b>Exact</b></th>
+<th><b>Allowable</b></th>
+<tr>
+<td><i>none</i></td>
+<td align=center><code>0</code></td>
+<td>All access denied</td>
+<td>All access denied</td>
+</tr>
+<tr>
+<td><code>PF_X</code></td>
+<td align=center><code>1</code></td>
+<td>Execute only</td>
+<td>Read, execute</td>
+</tr>
+<tr>
+<td><code>PF_W</code></td>
+<td align=center><code>2</code></td>
+<td>Write only</td>
+<td>Read, write, execute</td>
+</tr>
+<tr>
+<td><code>PF_W+PF_X</code></td>
+<td align=center><code>3</code></td>
+<td>Write, execute</td>
+<td>Read, write, execute</td>
+</tr>
+<tr>
+<td><code>PF_R</code></td>
+<td align=center><code>4</code></td>
+<td>Read only</td>
+<td>Read, execute</td>
+</tr>
+<tr>
+<td><code>PF_R+PF_X</code></td>
+<td align=center><code>5</code></td>
+<td>Read, execute</td>
+<td>Read, execute</td>
+</tr>
+<tr>
+<td><code>PF_R+PF_W</code></td>
+<td align=center><code>6</code></td>
+<td>Read, write</td>
+<td>Read, write, execute</td>
+</tr>
+<tr>
+<td><code>PF_R+PF_W+PF_X</code></td>
+<td align=center><code>7</code></td>
+<td>Read, write, execute</td>
+<td>Read, write, execute</td>
+</tr>
+</table>
+<hr>
+<p>
+For example, typical text segments have read and execute - but not write - permissions.
+Data segments normally have read, write, and execute permissions.
+<a name=segment_contents></a>
+<h2>Segment Contents</h2><p>
+An object file segment comprises one or more sections,
+though this fact is transparent to the program header.
+Whether the file segment holds one or many sections
+also is immaterial to program loading.
+Nonetheless, various data must be present for program
+execution, dynamic linking, and so on.
+The diagrams below illustrate segment contents in general terms.
+The order and membership of sections within a segment may vary;
+moreover, processor-specific constraints may alter the
+examples below.  See the processor supplement for details.
+<p>
+Text segments contain read-only instructions and data,
+typically including the following sections described in Chapter 4.
+Other sections may also reside in loadable segments;
+these examples are not meant to give complete and
+exclusive segment contents.
+<hr>
+<b>Figure 5-5: Text Segment</b>
+<p>
+<table border cellspacing=0>
+<tr><td align=center><code>.text</code></td></tr>
+<tr><td align=center><code>.rodata</code></td></tr>
+<tr><td align=center><code>.hash</code></td></tr>
+<tr><td align=center><code>.dynsym</code></td></tr>
+<tr><td align=center><code>.dynstr</code></td></tr>
+<tr><td align=center><code>.plt</code></td></tr>
+<tr><td align=center><code>.rel.got</code></td></tr>
+</table>
+<hr>
+<p>
+Data segments contain writable data and instructions,
+typically including the following sections.
+<hr>
+<b>Figure 5-6: Data Segment</b>
+<p>
+<table border cellspacing=0>
+<tr><td align=center><code>.data</code></td></tr>
+<tr><td align=center><code>.dynamic</code></td></tr>
+<tr><td align=center><code>.got</code></td></tr>
+<tr><td align=center><code>.bss</code></td></tr>
+</table>
+<hr>
+<p>
+A <code>PT_DYNAMIC</code> program header element points at the <code>.dynamic</code>
+section, explained in
+<a href=lddynamic.html#dynamic_section>``Dynamic Section''</a>
+below.
+The <code>.got</code> and <code>.plt</code>
+sections also hold information related to position-independent
+code and dynamic linking.
+Although
+the <code>.plt</code>
+appears in a text segment in the previous table, it
+may reside in a text or a data segment,
+depending on the processor.
+See ``Global Offset Table'' and ``Procedure Linkage Table''
+in this section of the processor supplement for details.
+<p>
+As
+<a href=ldsheader.html>``Sections''</a>
+in Chapter 4 describes,
+the <code>.bss</code> section has the type <code>SHT_NOBITS</code>.
+Although it occupies no space in the file, it contributes
+to the segment's memory image.
+Normally, these uninitialized data reside at the end of
+the segment, thereby making <code>p_memsz</code> larger
+than <code>p_filesz</code>
+in the associated program header element.
+<a name=note_section></a>
+<h2>Note Section</h2>
+Sometimes a vendor or system builder needs to mark an
+object file with special information that
+other programs will check for conformance, compatibility, etc.
+Sections of type <code>SHT_NOTE</code>
+and program header elements of type
+<code>PT_NOTE</code> can be used for this purpose.
+The note information in sections and
+program header elements holds a variable amount of entries.
+In 64-bit objects (files with <code>e_ident[EI_CLASS]</code> equal to
+<code>ELFCLASS64</code>),
+each entry is an array of 8-byte words in the format of
+the target processor.
+In 32-bit objects (files with <code>e_ident[EI_CLASS]</code> equal to
+<code>ELFCLASS32</code>),
+each entry is an array of 4-byte words in the format of
+the target processor.
+Labels appear below
+to help explain note information
+organization, but they are not part of the specification.
+<hr>
+<b>Figure 5-7: Note Information</b>
+<p>
+<table border cellspacing=0>
+<tr><td align=center><code>namesz</code></td></tr>
+<tr><td align=center><code>descsz</code></td></tr>
+<tr><td align=center><code>type</code></td></tr>
+<tr><td align=center><code>name<br>. . .</code></td></tr>
+<tr><td align=center><code>desc<br>. . .</code></td></tr>
+</table>
+<hr>
+<dl>
+<dt><code>namesz</code> and <code>name</code>
+<dd>
+The first <code>namesz</code> bytes in <code>name</code>
+contain a null-terminated character representation
+of the entry's owner or originator.
+There is no formal mechanism for avoiding name conflicts.
+By convention, vendors use their own name, such as
+<code>XYZ Computer Company</code>, as the identifier.
+If no name is present, <code>namesz</code> contains 0.
+Padding is present, if necessary, to ensure 8 or 4-byte
+alignment for the descriptor (depending on whether the
+file is a 64-bit or 32-bit object).
+Such padding is not included in <code>namesz</code>.
+<p><dt><code>descsz</code> and <code>desc</code>
+<dd>
+The first <code>descsz</code> bytes in <code>desc</code>
+hold the note descriptor.  The ABI places no constraints on a
+descriptor's contents.
+If no descriptor is present, <code>descsz</code>
+contains 0.
+Padding is present, if necessary, to ensure 8 or 4-byte
+alignment for the next note entry (depending on whether the
+file is a 64-bit or 32-bit object).
+Such padding is not included in <code>descsz</code>.
+<p><dt><code>type</code>
+<dd>
+This word gives the interpretation of the descriptor.
+Each originator controls its own types; multiple
+interpretations of a single type value may exist.
+Thus, a program must recognize both the name and
+the type to recognize a descriptor.
+Types currently must be non-negative.
+The ABI does not define what descriptors mean.
+</dl>
+<p>
+To illustrate, the following note segment holds two entries.
+<hr>
+<b>Figure 5-8: Example Note Segment</b>
+<p>
+<table>
+<td>
+<table>
+<tr><td><br></td></tr>
+<tr><td><code>namesz</code></td></tr>
+<tr><td><code>descsz</code></td></tr>
+<tr><td><code>type</code></td></tr>
+<tr><td><code>name</code></td></tr>
+<tr><td><br></td></tr>
+<tr><td><code>namesz</code></td></tr>
+<tr><td><code>descsz</code></td></tr>
+<tr><td><code>type</code></td></tr>
+<tr><td><code>name</code></td></tr>
+<tr><td><br></td></tr>
+<tr><td><code>desc</code></td></tr>
+<tr><td><br></td></tr>
+</table>
+</td>
+<td>
+<table border cellspacing=0>
+<th width=40><b>+0</b></th>
+<th width=40><b>+1</b></th>
+<th width=40><b>+2</b></th>
+<th width=40><b>+3</b></th>
+<tr><td colspan=4 align=center><code>7</code></td></tr>
+<tr><td colspan=4 align=center><code>0</code></td></tr>
+<tr><td colspan=4 align=center><code>1</code></td></tr>
+<tr>
+<td><code>x</code></td>
+<td><code>y</code></td>
+<td><code>z</code></td>
+<td>&nbsp</td>
+</tr>
+<tr>
+<td><code>c</code></td>
+<td><code>o</code></td>
+<td><code>\0</code></td>
+<td><i>pad</i></td>
+</tr>
+<tr><td colspan=4 align=center><code>7</code></td></tr>
+<tr><td colspan=4 align=center><code>8</code></td></tr>
+<tr><td colspan=4 align=center><code>3</code></td></tr>
+<tr>
+<td><code>x</code></td>
+<td><code>y</code></td>
+<td><code>z</code></td>
+<td>&nbsp</td>
+</tr>
+<tr>
+<td><code>c</code></td>
+<td><code>o</code></td>
+<td><code>\0</code></td>
+<td><i>pad</i></td>
+<tr><td colspan=4 align=center><i>word 0</i></td></tr>
+<tr><td colspan=4 align=center><i>word 1</i></td></tr>
+</tr>
+</table>
+</td>
+<td>
+<table>
+<tr><td><br></td></tr>
+<tr><td>No descriptor</td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+<tr><td><br></td></tr>
+</table>
+</td>
+</table>
+<hr>
+<img src=warning.gif alt="NOTE:">
+The system reserves note information with no name
+(<code>namesz==0</code>) and with a zero-length name
+(<code>name[0]=='\0'</code>) but currently defines no types.
+All other names must have at least one non-null character.
+<hr>
+<img src=warning.gif alt="NOTE:">
+Note information is optional.  The presence of note information
+does not affect a program's ABI conformance, provided the
+information does not affect the program's execution behavior.
+Otherwise, the program does not conform to the ABI and has
+undefined behavior.
+<hr>
+<a href=ldintro.html><img src=previous.gif alt="Previous"></a>
+<a href=index.html><img src=contents.gif alt="Contents"></a>
+<a href=lddynamic.html><img src=next.gif alt="Next"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

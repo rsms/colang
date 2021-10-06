@@ -1,0 +1,252 @@
+<html>
+<title>Object Files</title>
+<h1>Introduction to object files</h1>
+This chapter describes the
+object file format, called ELF (Executable and Linking Format).
+There are three main types of object files.
+<ul>
+<p><li>
+A <i>relocatable file</i>
+holds code and data suitable for linking
+with other object files to create an executable
+or a shared object file.
+<p><li>
+An <i>executable file</i>
+holds a program suitable for execution;
+the file specifies how
+<code>exec</code>(BA_OS)
+creates a program's process image.
+<p><li>
+A
+<i>shared object file</i>
+holds code and data suitable for linking
+in two contexts.
+First, the link editor [see <code>ld</code>(BA_OS)]
+processes the shared object file with other relocatable
+and shared object files to create another object file.
+Second, the dynamic linker combines it with an executable file and other
+shared objects to create a process image.
+</ul>
+<p>
+Created by the assembler and link editor, object files are binary
+representations of programs intended to be executed directly on
+a processor.  Programs that require other abstract machines, such
+as shell scripts, are excluded.
+</p>
+<p>
+After the introductory material, this chapter focuses on the file
+format and how it pertains to building programs.  Chapter 5 also
+describes parts of the object file, concentrating on the information
+necessary to execute a program.
+</p>
+<a name=file_format></a>
+<h2>File Format</h2><p>
+Object files participate in program linking (building a program)
+and program execution (running a program).  For convenience and
+efficiency, the object file format provides parallel views of a file's
+contents, reflecting the differing needs of those activities.
+Figure 4-1 shows an object file's organization.
+<hr>
+<b>Figure 4-1: Object File Format</b>
+<p>
+<table>
+<tr><td width="250">
+<table border=1 cellspacing=0>
+<caption align=bottom><b>Linking View</b></caption>
+<tr><td align=center>ELF Header</td></tr>
+<tr><td align=center>Program header table<br><i>optional</i></td></tr>
+<tr><td align=center>Section 1</td></tr>
+<tr><td align=center>...</td></tr>
+<tr><td align=center>Section n</td></tr>
+<tr><td align=center>...</td></tr>
+<tr><td align=center>Section header table<br><i>required</i></td></tr>
+</table>
+</td>
+<td>
+<table border=1 cellspacing=0>
+<caption align=bottom><b>Execution View</b></caption>
+<tr><td align=center>ELF Header</td></tr>
+<tr><td align=center>Program header table<br><i>required</i></td></tr>
+<tr><td align=center>Segment 1<br></td></tr>
+<tr><td align=center>Segment 2<br></td></tr>
+<tr><td align=center>Segment 3<br></td></tr>
+<tr><td align=center>...</td></tr>
+<tr><td align=center>Section header table<br><i>optional</i></td></tr>
+</table>
+</td>
+</tr>
+</table>
+<hr>
+<p>
+An <i>ELF header</i> resides at the beginning and
+holds a ``road map''
+describing the file's organization. <i>Sections</i> hold the bulk
+of object file information for the linking view: instructions,
+data, symbol table, relocation information, and so on.
+Descriptions of special sections appear later in the chapter.
+Chapter 5 discusses <i>segments</i> and the program execution
+view of the file.
+</p>
+<p>
+A <i>program header table</i> tells the system how to create a process image.
+Files used to build a process image (execute a program)
+must have a program header table; relocatable files do not need one.
+A <i>section header table</i>
+contains information describing the file's sections.
+Every section has an entry in the table; each entry
+gives information such as the section name, the
+section size, and so on.
+Files used during linking must have a section header table;
+other object files may or may not have one.
+<p><hr>
+<img src=warning.gif alt="NOTE:">
+Although the figure shows the program header table
+immediately after the ELF header, and the section header table
+following the sections, actual files may differ.
+Moreover, sections and segments have no specified order.
+Only the ELF header has a fixed position in the file.
+<hr><p>
+<a name=data_representation></a>
+<h2>Data Representation</h2><p>
+As described here, the object file
+format
+supports various processors with 8-bit bytes
+and either 32-bit or 64-bit architectures.
+Nevertheless, it is intended to be extensible to larger
+(or smaller) architectures.
+Object files therefore represent some control data
+with a machine-independent format,
+making it possible to identify object files and
+interpret their contents in a common way.
+Remaining data in an object file
+use the encoding of the target processor, regardless of
+the machine on which the file was created.
+<hr>
+<b>Figure 4-2: 32-Bit Data Types</b>
+<p>
+<table border=1 cellspacing=0>
+<tr>
+<th>Name</th>
+<th>Size</th>
+<th>Alignment</th>
+<th>Purpose</th>
+<tr>
+<td><code>Elf32_Addr</code></td>
+<TD align=center><code>4</code></td>
+<TD align=center><code>4</code></td>
+<td>Unsigned program address</td>
+</tr>
+<tr>
+<td><code>Elf32_Off</code></td>
+<TD align=center><code>4</code></td>
+<TD align=center><code>4</code></td>
+<td>Unsigned file offset</td>
+</tr>
+<tr>
+<td><code>Elf32_Half</code></td>
+<td align=center><code>2</code></td>
+<td align=center><code>2</code></td>
+<td>Unsigned medium integer</td>
+</tr>
+<tr>
+<td><code>Elf32_Word</code></td>
+<TD align=center><code>4</code></td>
+<TD align=center><code>4</code></td>
+<td>Unsigned integer</td>
+</tr>
+<tr>
+<td><code>Elf32_Sword</code></td>
+<TD align=center><code>4</code></td>
+<TD align=center><code>4</code></td>
+<td>Signed integer</td>
+</tr>
+<tr>
+<td><code>unsigned char</code></td>
+<TD align=center><code>1</code></td>
+<TD align=center><code>1</code></td>
+<td>Unsigned small integer</td>
+</tr>
+</table>
+<p>
+<b>64-Bit Data Types</b>
+<p>
+<table border cellspacing=0>
+<tr>
+<th>Name</th>
+<th>Size</th>
+<th>Alignment</th>
+<th>Purpose</th>
+<tr>
+<td><code>Elf64_Addr</code></td>
+<TD align=center><code>8</code></td>
+<TD align=center><code>8</code></td>
+<td>Unsigned program address</td>
+</tr>
+<tr>
+<td><code>Elf64_Off</code></td>
+<TD align=center><code>8</code></td>
+<TD align=center><code>8</code></td>
+<td>Unsigned file offset</td>
+</tr>
+<tr>
+<td><code>Elf64_Half</code></td>
+<TD align=center><code>2</code></td>
+<TD align=center><code>2</code></td>
+<td>Unsigned medium integer</td>
+</tr>
+<tr>
+<td><code>Elf64_Word</code></td>
+<td align=center><code>4</code></td>
+<td align=center><code>4</code></td>
+<td>Unsigned integer</td>
+</tr>
+<tr>
+<td><code>Elf64_Sword</code></td>
+<td align=center><code>4</code></td>
+<td align=center><code>4</code></td>
+<td>Signed integer</td>
+</tr>
+<tr>
+<td><code>Elf64_Xword</code></td>
+<td align=center><code>8</code></td>
+<td align=center><code>8</code></td>
+<td>Unsigned long integer</td>
+</tr>
+<tr>
+<td><code>Elf64_Sxword</code></td>
+<td align=center><code>8</code></td>
+<td align=center><code>8</code></td>
+<td>Signed long integer</td>
+</tr>
+<tr>
+<td><code>unsigned char</code></td>
+<td align=center><code>1</code></td>
+<td align=center><code>1</code></td>
+<td>Unsigned small integer</td>
+</tr>
+</table>
+<p>
+<hr>
+All data structures that the object file format
+defines follow the ``natural'' size and alignment guidelines
+for the relevant class.
+If necessary, data structures contain explicit padding to
+ensure 8-byte alignment for 8-byte objects,
+4-byte alignment for 4-byte objects, to force
+structure sizes to a multiple of 4 or 8, and so forth.
+Data also have suitable alignment from the beginning of the file.
+Thus, for example, a structure containing an
+<code>Elf32_Addr</code>
+member will be aligned on a 4-byte boundary within the file.
+<p>
+For portability reasons, ELF uses no bit-fields.
+<hr>
+<a href=index.html><img src=contents.gif alt="Contents">
+<a href=header.html><img src=next.gif alt="Next"></a>
+<hr>
+<i>
+<small>
+&#169; 1997, 1998, 1999, 2000 The Santa Cruz Operation, Inc.  All rights reserved.
+</small>
+</i>
+</html>

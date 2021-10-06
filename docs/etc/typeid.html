@@ -1,0 +1,218 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>typeid</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="type-identity" class="anchor" aria-hidden="true" href="#type-identity"></a>Type Identity</h1>
+<blockquote>
+<p>This document is out of date. <code>typeid</code> has been changed to encode types using ASCII characters
+and to express compound types with both opening and closing tokens.</p>
+</blockquote>
+<p>A type's identity is effectively its shape. Examples:</p>
+<pre><code>int == int != float
+(int,float) == (int,float) != (float,int)
+[int] == [int] != [float]
+{name str; age int} != {foo str; bar int}  // field names are part of the shape
+</code></pre>
+<p>Named types are just alises; its identity is their shape, not their name:</p>
+<pre><code>type GameObject = { id int; velocity Vec2 }
+type SpaceShip = { id int; velocity Vec2 }
+fun draw(obj GameObject) { ... }
+draw(SpaceShip(id=1, velocity=(0.1, 0.0)))
+// this is ok SpaceShip == GameObject
+</code></pre>
+<p>Types are equal when their identity is the same.</p>
+<p>If types are <em>compatible</em> is a more complex matter. Say we change the example above to add
+a color field to the SpaceShip struct. This makes GameObject and SpaceShip distinct types:</p>
+<pre><code>type GameObject = { id int; velocity Vec2 }
+type SpaceShip = { id int; velocity Vec2; color Vec3 }
+fun draw(obj GameObject) { ... }
+draw(SpaceShip(id=1, velocity=(0.1, 0.0), color=RED))
+// this still works since SpaceShip &gt;= GameObject
+</code></pre>
+<p>Compatibility depends on the specific type:</p>
+<ul>
+<li>scalar: never compatible. E.g. float and int are never compatible.</li>
+<li>list: compatible if their element type is. E.g. [SpaceShip] &gt;= [GameObject]</li>
+<li>tuple: compatible by prefix. E.g. (float,int,bool) &gt;= (float,int); (int,int) &lt;= (int,int,int).</li>
+<li>struct: compatible by field names. E.g. {name:str;id:int;admin:bool} &gt;= {id:int;name:str}</li>
+</ul>
+<p>The identity of a struct is the union of its <em>sorted</em> fields. I.e:</p>
+<pre><code>{a:int; b:int; c:int} == {c:int; b:int; a:int} == {c:int; c:int; a:int}
+</code></pre>
+<p>Really, implementation for struct identity is similar to tuples:</p>
+<pre><code>{a:int; b:int; c:int} -&gt; ((&quot;a&quot; int) (&quot;b&quot; int) (&quot;c&quot; int))
+</code></pre>
+<p>So, the identity of any type is a list:</p>
+<pre><code>int                       =&gt; 0
+float                     =&gt; 1
+str                       =&gt; 2
+struct                    =&gt; 3
+list                      =&gt; 4
+bool                      =&gt; 5
+fun                       =&gt; 6
+funret                    =&gt; 7
+tuple                     =&gt; 8
+(int,float)               =&gt; 8, 0, 1
+(int,float,float,int)     =&gt; 8, 0, 1, 1, 0
+((int,float),(float,int)) =&gt; 8, 8, 0, 1, 8, 1, 0
+[int]                     =&gt; 4, 0
+[(int,float)]             =&gt; 4, 8, 0, 1
+fun(int,[float])bool      =&gt; 6, 0, 4, 1, 7, 5
+</code></pre>
+<h2><a id="structs" class="anchor" aria-hidden="true" href="#structs"></a>Structs</h2>
+<p>Struct types too could effectively be identified by a list, but as we will see in a few lines,
+this is not enough for structs, so structs are compared differently from other types.
+First, let's see what happens if we just flatten struct to a list of IDs:
+Since all identifiers (Syms) are interned, field names are identified by intptr.</p>
+<pre><code>1. {name str; age int}                         =&gt; (struct,(Sym(&quot;age&quot;),int),(Sym(&quot;name&quot;),str))
+2. (struct,(Sym(&quot;age&quot;),int),(Sym(&quot;name&quot;),str)) =&gt; (struct,(0xDEAD,int),(0xBEEF,str))
+3. (struct,(0xDEAD,int),(0xBEEF,str))          =&gt; 3, 0xDEAD, 0, 0xBEEF, 2
+</code></pre>
+<p>This is nice and elegant but matching structs with varying fields is now inconvenient:</p>
+<pre><code>{name str; age int}             =&gt; 3, 0xDEAD, 0, 0xBEEF, 2
+{name str; age int; admin bool} =&gt; 3, 0xAD41, 5, 0xDEAD, 0, 0xBEEF, 2
+</code></pre>
+<p>Oops! <code>{name str; age int} &lt;= {name str; age int; admin bool}</code> is not true here since
+<code>{... admin bool}</code> (<code>0xAD41, 5</code>) is sorted before age.
+Performing a lookup or testing for compatibility between these two structs will be expensive
+in practice as we'd need to scan.</p>
+<p>Instead, records are identified the way as is described above, but are additionally book-keeped in
+a separate data structure indexed in fields:</p>
+<pre><code>// identity:
+typeid({name str; age int})             =&gt; 3, 0xDEAD, 0, 0xBEEF, 2
+typeid({name str; age int; admin bool}) =&gt; 3, 0xAD41, 5, 0xDEAD, 0, 0xBEEF, 2
+typeid({name str; age int}) =&gt; (3, 0xDEAD, 0, 0xBEEF, 2)  // identity
+// struct index mappings:
+(0xDEAD, 0) =&gt; (3, 0xDEAD, 0, 0xBEEF, 2), (3, 0xAD41, 5, 0xDEAD, 0, 0xBEEF, 2)
+(0xBEEF, 2) =&gt; (3, 0xDEAD, 0, 0xBEEF, 2), (3, 0xAD41, 5, 0xDEAD, 0, 0xBEEF, 2)
+(0xAD41, 5) =&gt; (3, 0xAD41, 5, 0xDEAD, 0, 0xBEEF, 2)
+</code></pre>
+<p>Wrapping this up in an example:</p>
+<pre><code>type Account = { id int }
+type TwitterAccount = { handle str; id int }
+fun lookup(account Account) { dothing(account.id) }
+lookup(TwitterAccount { handle: &quot;rsms&quot;, id: 4911 })
+</code></pre>
+<p>When we see the call to <code>lookup(Account)</code>, we do the following:</p>
+<pre><code class="language-py">ok = typeIsAssignable(param0, arg0)
+
+<span /class="hl-keyword"/g>def</span> <span /class="hl-title function_"/g>typeIsAssignable</span>(<span /class="hl-params"/g>L, R</span>):  <span /class="hl-comment"/g># L &lt;= R</span>
+  <span /class="hl-keyword"/g>if</span> typeid(L) == typeid(R):
+    <span /class="hl-keyword"/g>return</span> <span /class="hl-literal"/g>True</span>
+  <span /class="hl-keyword"/g>if</span> typeid(L)[<span /class="hl-number"/g>0</span>] == typeid(R)[<span /class="hl-number"/g>0</span>]:
+    <span /class="hl-keyword"/g>if</span> typeid(L)[<span /class="hl-number"/g>0</span>] == structTypeID:
+      <span /class="hl-keyword"/g>for</span> field <span /class="hl-keyword"/g>in</span> L:
+        <span /class="hl-keyword"/g>if</span> typeid(R) <span /class="hl-keyword"/g>not</span> <span /class="hl-keyword"/g>in</span> structIndex.lookup(typeid(field)):
+          <span /class="hl-comment"/g># R does not have field</span>
+          <span /class="hl-keyword"/g>return</span> <span /class="hl-literal"/g>False</span>
+      <span /class="hl-keyword"/g>return</span> <span /class="hl-literal"/g>True</span> <span /class="hl-comment"/g># all fields found</span>
+    <span /class="hl-keyword"/g>if</span> typeid(L)[<span /class="hl-number"/g>0</span>] == listTypeID:
+      <span /class="hl-keyword"/g>return</span> typeIsAssignable(L.listElementType, R.listElementType)
+  <span /class="hl-keyword"/g>return</span> <span /class="hl-literal"/g>False</span>
+</code></pre>
+<p>There are likely better, more efficient ways to match on arbitrary structural shapes.</p>
+<h3><a id="challenge-with-efficient-struct-field-access" class="anchor" aria-hidden="true" href="#challenge-with-efficient-struct-field-access"></a>Challenge with efficient struct field access</h3>
+<p>Allowing structs to be &quot;interfaces&quot; means that we can't trivially optimize structs into arrays,
+as is common. For example:</p>
+<pre><code>type User = { name string; age int } =&gt; (int, string)
+// access is efficient; just by offset:
+doThing({ name: &quot;Sam&quot;, age: 30 })
+fun printName(u User) {
+  print(u.name)
+}
+</code></pre>
+<p>The implementation of <code>printName</code> can be compiled to this effective code:</p>
+<pre><code>fun printName(u User) {
+  // u.name  =&gt;  a[1]  =&gt;  ptr(a)+offsetof(a.name) =&gt;
+  tmp = LEA addr_of_u, 4  // 4 = byte offst of name field in struct.
+  call print tmp
+}
+</code></pre>
+<p>However, this approach does not work when the structs have different fields; different shapes:</p>
+<pre><code>type User    = { name string; age int }        =&gt; (int, string)
+type Account = {name str; age int; admin bool} =&gt; (bool, int, string)
+u = { name: &quot;Sam&quot;, age: 30 }
+a = { name: &quot;Robin&quot;, age: 24, admin: true }
+fun printName(u User) {
+  print(u.name)  // offsetof(u.name) != offsetof(a.name)
+}
+</code></pre>
+<p>Any creative ideas for how to do this?</p>
+<p>Go solves this by:</p>
+<ol>
+<li>only allowing functions in interfaces, and</li>
+<li>using a special call with vtable-like indirection on any interfaces.</li>
+</ol>
+<p>Go's approach works but is inconvenient:</p>
+<ul>
+<li>Requires a distinction between struct and interface.</li>
+<li>Requires you to write function implementations for any field of a struct
+which needed through an interface.</li>
+</ul>
+<h4><a id="idea-1-convert-at-call-site" class="anchor" aria-hidden="true" href="#idea-1-convert-at-call-site"></a>Idea 1: Convert at call site</h4>
+<p>If the type of a parameter is identical to an argument, then no conversion is needed.
+Otherwise create a temporary struct:</p>
+<pre><code>if typeid(param0) == typeid(arg0):
+  call printName a
+else:
+  tmp = alloca sizeof(User)
+  tmp[0] = a[1]  // remap field
+  tmp[1] = a[2]  // remap field
+  call printName tmp
+</code></pre>
+<p>In this approach we could further optimize this by tracking what fields a function needs access to:</p>
+<pre><code>fun printName(u User) {
+  // compiler meta data: (struct_access User (minField name) (maxField name))
+  print(u.name)
+}
+</code></pre>
+<p>At the call sites we can generate just the code needed:</p>
+<pre><code>if typeid(param0) == typeid(a):
+  call printName a
+else:
+  tmp = alloca sizeof( offsetof(User.maxField)
+                     + offsetof(User.minField)
+                     + sizeof(User.maxField) )
+  tmp[0] = a[1]  // remap field
+  call printName tmp
+</code></pre>
+<h2><a id="listing-of-identities" class="anchor" aria-hidden="true" href="#listing-of-identities"></a>Listing of identities</h2>
+<blockquote>
+<p>Out of date</p>
+</blockquote>
+<pre><code>id(nil)                    = 0
+id(bool)                   = 10
+id(int8)                   = 20
+id(int16)                  = 21
+id(int32)                  = 22
+id(int64)                  = 23
+id(uint8)                  = 24
+id(uint16)                 = 25
+id(uint32)                 = 26
+id(uint64)                 = 27
+id(float32)                = 30
+id(float64)                = 31
+id(tuple)                  = 40
+id(list)                   = 41
+id(struct)                 = 42
+id(fun)                    = 43
+id(funret)                 = 44
+id(str)                    = 45
+// compound types:
+id(int,float)              = id(tuple), id(int), id(float)
+id((int,float),(bool,int)) = id(tuple), id(tuple), id(int,float),
+                                        id(tuple), id(bool,int)
+id([int])                  = id(list), id(int)
+id({name str; age int})    = id(struct) (&quot;age&quot;, id(int))
+                                        (&quot;name&quot;, id(str))
+id(fun(int,float)-&gt;bool)   = id(fun)
+</code></pre>
+
+</body>
+</html>

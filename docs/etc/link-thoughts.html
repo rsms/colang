@@ -1,0 +1,46 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>link-thoughts</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<p>Thoughts on linking code</p>
+<p>What if instead of object files, we were to maintain a graph database of all
+assembled code?</p>
+<p>Traditionally a C-like compiler will parse, compile and assemble each source file into
+an ELF/Mach-O/etc object file and
+finally—when all object files required for a program are available—link them all together
+by reading &amp; parsing all these object files just to build a new object (exe) file.
+Here's an example of a simple program with four source files:</p>
+<pre><code>    main
+  /  |   \
+foo  bar  baz
+  \  /
+  util
+</code></pre>
+<p>main requires foo, bar and baz. foo and bar both require util.
+In practice this is not a tree but a list:</p>
+<ul>
+<li>main -&gt; main.o</li>
+<li>foo -&gt; foo.o</li>
+<li>bar -&gt; bar.o</li>
+<li>baz -&gt; baz.o</li>
+<li>util -&gt; util.o</li>
+</ul>
+<p>A C-like compiler would link foo, bar, baz, util and main objects everytime any part changes.
+Say we only change baz, we take the cost of re-linking the tree of foo, bar &amp; util.</p>
+<p>Imagine if these were represented as a tree even as linked objects, not just temporarily
+inside the compiler. Then we could link subtrees together:</p>
+<pre><code>main           = [main.o, foo+util+bar.o, baz.o]
+foo+util+bar.o = [foo.o, bar.o, util.o]
+foo+util.o     = [foo.o, util.o]         # Can be skipped; unused
+foo+util.o     = [bar.o, util.o]         # Can be skipped; unused
+</code></pre>
+<p>If <code>baz</code> changes, we can reuse the subtree object <code>foo+util+bar.o</code></p>
+
+</body>
+</html>
