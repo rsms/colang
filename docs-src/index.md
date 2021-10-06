@@ -77,7 +77,8 @@ Curly braces can be omitted using the following two rules:
 ### Variables
 
 Variables serve as both names for values and storage locations for mutable data.
-Defining a variable is done in one of two ways:
+Defining a variable is done in one of two ways: automatically if undefined when assigned
+or explicitly with a keyword and/or type.
 
 ```co
 x = 1       // defines a new mutable variable x
@@ -98,7 +99,7 @@ of a particular type of number until it is used.
 const x = 4      // type: ideal
 const y int = 4  // type: int
 const z = y      // type: int
-const a = 128    // type: ideal
+a = 128          // type: ideal (automatic constant)
 v i8             // defines a variable of type i8
 v = x            // x is interpreted as an i8 literal
 v = a            // error: constant 128 overflows i8

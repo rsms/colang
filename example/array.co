@@ -14,11 +14,11 @@ fun main() int
   // d = [10, c[1], 10]
   // d[1] = 4
 
-  e [int 3] = [10,11,12]
+  mut e [int 3] = [10,11,12]
   e[1] = 22
-  f [int 3] = [100,101,102]
+  mut f [int 3] = [100,101,102]
   f = K // copy K to f
-  g = K // g alias for K (no copy) since g is never mutated or escapes
+  g = K // g alias for K (no copy) since g is never mutated
   h = K // copy K to g
   h[1] = 9
 

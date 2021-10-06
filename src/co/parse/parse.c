@@ -888,21 +888,46 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 }
 
 
-// "name type"
-static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
-  asserteq_debug(name->kind, NId);
-  assert_debug(NodeIsType(type));
-
-  // optional initializer expression
-  Node* init = NULL;
-  if (got(p, TAssign)) {
-    Type* ctxtype = set_ctxtype(p, type);
-    init = expr(p, PREC_LOWEST, fl | PFlagRValue);
-    p->ctxtype = ctxtype;
-  }
-
-  return make_var(p, name, init, type);
-}
+// // "name mut type"
+// // "name &type"
+// static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
+//   asserteq_debug(name->kind, NId);
+//   assert_debug(NodeIsType(type));
+//
+//   // optional initializer expression
+//   Node* init = NULL;
+//   if (got(p, TAssign)) {
+//     Type* ctxtype = set_ctxtype(p, type);
+//     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
+//     p->ctxtype = ctxtype;
+//   }
+//
+//   return make_var(p, name, init, type);
+// }
+//
+// // "name mut type"
+// //!Parselet (TMut MEMBER)
+// static Node* PMutInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+//   if (left->kind != NId) {
+//     syntaxerr(p, "unexpected mut keyword");
+//     return left;
+//   }
+//   fl |= PFlagMut;
+//   Type* t = pType(p, fl);
+//   return pTrailingVar(p, fl, left, t);
+// }
+//
+// // "name &type"
+// //-Parselet (TAnd BITWISE_AND)
+// static Node* PInfixAnd(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+//   if ((fl & PFlagRValue) == 0 && left->kind == NId) {
+//     // e.g. "x &T"
+//     Type* t = pType(p, fl);
+//     return pTrailingVar(p, fl, left, t);
+//   }
+//   return PInfixOp(p, e, fl, left);
+//   // dlog("NBinOp %s", fmtast(left));
+// }
 
 
 // PIdTrailing parses a trailing identifier, e.g. "b" in "a b"
@@ -1128,11 +1153,23 @@ static Node* PLBrackPrefix(Parser* p, PFlag fl) {
 
 
 // Index = expr "[" expr "]"
-static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+//!Parselet (TLBrack MEMBER)
+static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   assert_debug((fl & PFlagType) == 0); // indexing is not valid in type context
   auto n = mknode(p, NIndex);
+
+  // warn if there's space in between "left" and "[", e.g. "x [i]"
+  if (R_UNLIKELY(p->s.prevtokend < p->s.tokstart)) {
+    PosSpan pos = {0};
+    u32 nspace = p->s.tokstart - p->s.prevtokend;
+    pos.start = pos_with_adjusted_start(n->pos, -(i32)nspace);
+    pos.start = pos_with_width(pos.start, nspace);
+    build_warnf(p->build, pos, "misleading whitespace in subscript expression");
+  }
+
   nexttok(p); // consume "["
   n->index.operand = useAsRValue(p, left);
+
   if (R_UNLIKELY(p->s.tok == TRBrack)) {
     syntaxerr(p, "missing index");
     nexttok(p); // consume unexpected "]"
@@ -1141,33 +1178,8 @@ static Node* pIndex(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     want(p, TRBrack);
     nodeTransferUnresolved2(n, n->index.operand, n->index.index);
   }
+
   return n;
-}
-
-
-//!Parselet (TMut MEMBER)
-static Node* PMutInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  if (left->kind != NId) {
-    syntaxerr(p, "unexpected mut keyword");
-    return left;
-  }
-  fl |= PFlagMut;
-  Type* t = pType(p, fl);
-  return pTrailingVar(p, fl, left, t);
-}
-
-
-//!Parselet (TLBrack MEMBER)
-static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  // Two possibilities:
-  // x [T] -- array var
-  // x[3]  -- index (subscript) access
-  //
-  // if there's no space in between "left" and "[", treat it as index access
-  if (p->s.prevtokend == p->s.tokstart || left->kind != NId)
-    return pIndex(p, e, fl, left);
-  Type* t = pArrayType(p, fl);
-  return pTrailingVar(p, fl, left, t);
 }
 
 
@@ -1598,6 +1610,7 @@ static Node* PPrefixOp(Parser* p, PFlag fl) {
 //          (TAndAnd LOGICAL_AND)
 //          (TPipe BITWISE_OR)
 //          (THat BITWISE_XOR)
+//          (TAnd BITWISE_AND)
 //          (TEq EQUAL) (TNEq EQUAL)
 //          (TLt COMPARE) (TGt COMPARE) (TLEq COMPARE) (TGEq COMPARE)
 //          (TPlus ADD) (TMinus ADD)
@@ -1613,17 +1626,6 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   p->ctxtype = ctxtype; // restore ctxtype
   nodeTransferUnresolved2(n, left, n->op.right);
   return n;
-}
-
-//!Parselet (TAnd BITWISE_AND)
-static Node* PInfixAnd(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  if ((fl & PFlagRValue) == 0 && left->kind == NId) {
-    // e.g. "x &T"
-    Type* t = pType(p, fl);
-    return pTrailingVar(p, fl, left, t);
-  }
-  return PInfixOp(p, e, fl, left);
-  // dlog("NBinOp %s", fmtast(left));
 }
 
 // PostfixOp = Expr ( "++" | "--" )
@@ -1983,11 +1985,11 @@ static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TAuto] = {PAuto, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
-  [TMut] = {PMutOrConst, PMutInfix, PREC_MEMBER},
+  [TMut] = {PMutOrConst, NULL, PREC_MEMBER},
   [TConst] = {PMutOrConst, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
   [TLBrack] = {PLBrackPrefix, PLBrackInfix, PREC_MEMBER},
-  [TAnd] = {PRefPrefix, PInfixAnd, PREC_BITWISE_AND},
+  [TAnd] = {PRefPrefix, PInfixOp, PREC_BITWISE_AND},
   [TStruct] = {PStructType, NULL, PREC_MEMBER},
   [TType] = {PTypeDef, NULL, PREC_MEMBER},
   [TLBrace] = {PBlockOrStructType, NULL, PREC_MEMBER},

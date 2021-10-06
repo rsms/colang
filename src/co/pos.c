@@ -118,17 +118,20 @@ static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* sr
 
   // squiggle "~~~" or arrow "^"
   u32 width = pos_width(start);
-  if (pos_isknown(end) && start != end) {
-    if (pos_line(start) == pos_line(end) && pos_isbefore(start, end))
-      width = (u32)(pos_col(end) - pos_col(start)) + pos_width(end);
-    // else: TODO: span lines
-  }
+  if (pos_isknown(end) &&
+      pos_line(start) == pos_line(end) &&
+      (start == end || pos_isbefore(start, end)))
+  {
+    width = (u32)(pos_col(end) - pos_col(start)) + pos_width(end);
+  } // else if (pos_isknown(end)) TODO: spans lines
+
   if (width > 0) {
     s = str_appendfill(s, width, '~'); // squiggle
     s = str_appendc(s, '\n');
   } else {
     s = str_appendcstr(s, "^\n");
   }
+
   return s;
 }
 

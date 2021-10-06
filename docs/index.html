@@ -73,7 +73,8 @@ for each recorded &quot;automatic&quot; block on a stack.</p>
 </ol>
 <h3><a id="variables" class="anchor" aria-hidden="true" href="#variables"></a>Variables</h3>
 <p>Variables serve as both names for values and storage locations for mutable data.
-Defining a variable is done in one of two ways:</p>
+Defining a variable is done in one of two ways: automatically if undefined when assigned
+or explicitly with a keyword and/or type.</p>
 <pre><code class="language-co">x = <span /class="hl-number"/g>1</span>       <span /class="hl-comment"/g>// defines a new mutable variable x</span>
 x = <span /class="hl-number"/g>2</span>       <span /class="hl-comment"/g>// assigns to x (since it is defined)</span>
 <span /class="hl-keyword"/g>mut</span> x = <span /class="hl-number"/g>3</span>   <span /class="hl-comment"/g>// defines a new mutable variable x, shadows previous</span>
@@ -87,7 +88,7 @@ of a particular type of number until it is used.</p>
 <span /class="hl-keyword"/g>const</span> x = <span /class="hl-number"/g>4</span>      <span /class="hl-comment"/g>// type: ideal</span>
 <span /class="hl-keyword"/g>const</span> y <span /class="hl-type"/g>int</span> = <span /class="hl-number"/g>4</span>  <span /class="hl-comment"/g>// type: int</span>
 <span /class="hl-keyword"/g>const</span> z = y      <span /class="hl-comment"/g>// type: int</span>
-<span /class="hl-keyword"/g>const</span> a = <span /class="hl-number"/g>128</span>    <span /class="hl-comment"/g>// type: ideal</span>
+a = <span /class="hl-number"/g>128</span>          <span /class="hl-comment"/g>// type: ideal (automatic constant)</span>
 v <span /class="hl-type"/g>i8</span>             <span /class="hl-comment"/g>// defines a variable of type i8</span>
 v = x            <span /class="hl-comment"/g>// x is interpreted as an i8 literal</span>
 v = a            <span /class="hl-comment"/g>// <span /class="hl-errormsg"/g>error: constant 128 overflows i8</span></span>
