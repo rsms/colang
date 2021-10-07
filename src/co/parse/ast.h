@@ -54,7 +54,7 @@ typedef enum {
   _(ArrayType,   NodeClassType) /* [4]int, []int */ \
   _(TupleType,   NodeClassType) /* (float,bool,int) */ \
   _(StructType,  NodeClassType) /* struct{foo float; y bool} */ \
-  _(FunType,     NodeClassType) /* (int,int)->(float,bool) */ \
+  _(FunType,     NodeClassType) /* fun(int,int)(float,bool) */ \
   _(TypeType,    NodeClassMeta) /* type of a type */ \
 /*END DEF_NODE_KINDS*/
 

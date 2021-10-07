@@ -773,10 +773,10 @@ static Type* pMutType(Parser* p, PFlag fl) {
 }
 
 
-// ConstVarDecl | MutVarDecl | MutType
-// ConstVarDecl = "const" Id Type? "=" Expr
-// MutVarDecl   = "mut" Id (Type | Type? "=" Expr)
-// MutType      = "mut" Type
+// VarDef      = MutVarDecl | MutType
+// ConstVarDef = "const" Id Type? "=" Expr
+// MutVarDef   = "mut" Id (Type | Type? "=" Expr)
+// MutType     = "mut" Type
 //
 // e.g. "mut x int", "mut x = 4", "mut x int = 4"
 // e.g. "const x int", "const x = 4", "const x int = 4"

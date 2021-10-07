@@ -14,6 +14,7 @@ module.exports = ({
   hljs.registerLanguage("asmx86", require("./_hl/x86asm"))
   hljs.registerLanguage("wast",   require("./_hl/wasm"))
   hljs.registerLanguage("llvm",   require("./_hl/llvm"))
+  hljs.registerLanguage("bnf",   require("./_hl/abnf"))
 
   // these optional callbacks can return a Promise to cause build process to wait
   //

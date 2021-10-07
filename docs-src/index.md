@@ -73,20 +73,21 @@ Curly braces can be omitted using the following two rules:
 
 
 
-
 ### Variables
 
 Variables serve as both names for values and storage locations for mutable data.
 Defining a variable is done in one of two ways: automatically if undefined when assigned
-or explicitly with a keyword and/or type.
+or explicitly with a keyword.
 
 ```co
-x = 1       // defines a new mutable variable x
+x = 1       // defines a new variable x
 x = 2       // assigns to x (since it is defined)
-mut x = 3   // defines a new mutable variable x, shadows previous
-const y = 4 // defines a new constant variable y
+mut x = 3   // defines a new variable x, shadows previous
+mut z int   // defines variable z with explicit type and 0 value
+const y = 4 // defines constant y
 y = 7       // error: cannot assign to constant y
 ```
+
 
 
 ### Ideally-typed literals
@@ -104,6 +105,7 @@ v i8             // defines a variable of type i8
 v = x            // x is interpreted as an i8 literal
 v = a            // error: constant 128 overflows i8
 ```
+
 
 
 ### Automatic constants
@@ -194,6 +196,133 @@ s1 [int] = d             // immutable ref to d with length
 s2 mut[int] = d          // mutable ref to d with length
 ```
 
+
+
+
+## Grammar
+
+```bnf
+// Unicode character classes
+newline        = /* the Unicode code point U+000A */
+unicode_char   = /* an arbitrary Unicode code point except newline */
+unicode_letter = /* a Unicode code point classified as "Letter" */
+unicode_digit  = /* a code point classified as "Number, decimal digit" */
+
+// Letters and digits
+letter        = unicode_letter | "_" | "$"
+decimal_digit = "0" ... "9"
+octal_digit   = "0" ... "7"
+hex_digit     = "0" ... "9" | "A" ... "F" | "a" ... "f"
+
+// Keywords
+as      const     defer  for   import   struct
+break   continue  else   fun   mut      switch
+case    default   enum   if    return   type
+
+// Operators, delimiters, and other special tokens
++    &     +=    &=     &&    ==    !=    (    )
+-    |     -=    |=     ||    <     <=    [    ]
+*    ^     *=    ^=     <-    >     >=    {    }
+/    <<    /=    <<=    ->    =     :=    ,    ;
+%    >>    %=    >>=    ++    !     ...   .    :
+&^         &^=          --          ..
+
+list_sep = "," | ";"
+
+comment = line_comment | block_comment
+  line_comment  = "//" /* anything except newline */ newline
+  block_comment = "/*" /* anything except the terminator: */ "*/"
+
+TranslationUnit = Statement ( ";" Statement )* ";"*
+Statement       = Import | Expr
+Import          = "import" str_lit
+
+Expr = Identifier
+     | TypeExpr
+     | Literal
+     | PrefixExpr
+     | InfixExpr
+     | SuffixExpr
+
+Identifier = letter (letter | unicode_digit | "-")*
+TypeExpr   = NamedType | FunType
+
+Literal = bool_lit | nil_lit | num_lit | array_lit
+  bool_lit = "true" | "false"
+  nil_lit  = "nil"
+  num_lit  = int_lit | float_lit
+    int_lit = dec_lit | hex_lit | oct_lit | bin_lit
+      dec_lit = decimal_digit+
+      hex_lit = "0" ( "x" | "X" ) hex_digit+
+      oct_lit = "0" ( "o" | "O")  octal_digit+
+      bin_lit = "0" ( "b" | "B" ) ( "0" | "1" )+
+    float_lit = decimals "." [ decimals ] [ exponent ]
+              | decimals exponent
+              | "." decimals [ exponent ]
+      decimals = decimal_digit+
+      exponent = ( "e" | "E" ) [ "+" | "-" ] decimals
+  array_lit = "[" [ Expr (list_sep Expr)* list_sep? ] "]"
+
+PrefixExpr = if | prefix_op | const_def | var_def | type_def | fun_def
+           | tuple | group | block
+  if = "if" condExpr thenExpr [ "else" elseExpr ]
+    condExpr = Expr
+    thenExpr = Expr
+    elseExpr = Expr
+  prefix_op = prefix_operator Expr
+    prefix_operator = "!" | "+" | "-" | "~" | "&" | "++" | "--"
+  const_def = "const" Identifier Type? "=" Expr
+  var_def   = "mut" Identifier ( Type | Type? "=" Expr )
+  type_def  = "type" Identifier Type
+  fun_def   = "fun" Identifier? ( params Type? | params? )
+    params = "(" [ (param list_sep)* paramt list_sep? ] ")"
+      param  = Identifier Type?
+      paramt = Identifier Type
+  tuple = "(" Expr ("," Expr)+ ","? ")"
+  group = "(" Expr ")"
+  block = "{" Expr (";" Expr)+ ";"? "}"
+
+InfixExpr = Expr ( binary_op | selector )
+  binary_op = binary_operator Expr
+  binary_operator = arith_op | bit_op | cmp_op | logic_op | assign_op
+    arith_op  = "+"  | "-"  | "*" | "/" | "%"
+    bit_op    = "<<" | ">>" | "&" | "|" | "~" | "^"
+    cmp_op    = "==" | "!=" | "<" | "<=" | ">" | ">="
+    logic_op  = "&&" | "||"
+    assign_op = "="  | "+=" | "-=" | "*=" | "/=" | "%="
+              | "<<=" | ">>=" | "&=" | "|=" | "~=" | "^="
+  selector = Expr "." Identifier
+
+SuffixExpr = Expr ( index | call | suffix_op | suffix_typecast )
+  index           = "[" Expr "]"
+  suffix_op       = "++" | "--"
+  suffix_typecast = "as" Type
+  call = Expr "(" args ")"
+    args = positionalArgs* namedArgs* list_sep?
+      positionalArgs = positionalArg (list_sep positionalArg)*
+      namedArgs      = namedArg (list_sep namedArg)*
+      namedArg       = Identifier "=" Expr
+      positionalArg  = Expr
+
+Type = NamedType
+     | RefType
+     | TupleType
+     | ArrayType
+     | StructType
+     | FunType
+
+NamedType = Identifier  // e.g. "int", "u32", "MyType"
+RefType   = "mut"? "&" Type
+TupleType = "(" Type ("," Type)+ ","? ")"
+ArrayType = "[" Type size? "]"
+  size = Expr?
+StructType = "{" [ field ( ";" field )* ";"? ] "}"
+  field = ( Identifier Type | NamedType ) ( "=" Expr )?
+FunType = "fun" ( ftparams Type? | ftparams? )
+  ftparams = params
+           | "(" [ Type (list_sep Type)* list_sep? ] ")"
+
+```
 
 
 ## Open Source

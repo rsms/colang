@@ -5,7 +5,7 @@
   <title>The Co programming language</title>
   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" type="text/css" href="/style.css?kug4gzsz">
+  <link rel="stylesheet" type="text/css" href="/style.css?kug99at3">
 </head>
 <body>
 <h1><a id="the-co-programming-language" class="anchor" aria-hidden="true" href="#the-co-programming-language"></a>The Co programming language</h1>
@@ -74,11 +74,12 @@ for each recorded &quot;automatic&quot; block on a stack.</p>
 <h3><a id="variables" class="anchor" aria-hidden="true" href="#variables"></a>Variables</h3>
 <p>Variables serve as both names for values and storage locations for mutable data.
 Defining a variable is done in one of two ways: automatically if undefined when assigned
-or explicitly with a keyword and/or type.</p>
-<pre><code class="language-co">x = <span /class="hl-number"/g>1</span>       <span /class="hl-comment"/g>// defines a new mutable variable x</span>
+or explicitly with a keyword.</p>
+<pre><code class="language-co">x = <span /class="hl-number"/g>1</span>       <span /class="hl-comment"/g>// defines a new variable x</span>
 x = <span /class="hl-number"/g>2</span>       <span /class="hl-comment"/g>// assigns to x (since it is defined)</span>
-<span /class="hl-keyword"/g>mut</span> x = <span /class="hl-number"/g>3</span>   <span /class="hl-comment"/g>// defines a new mutable variable x, shadows previous</span>
-<span /class="hl-keyword"/g>const</span> y = <span /class="hl-number"/g>4</span> <span /class="hl-comment"/g>// defines a new constant variable y</span>
+<span /class="hl-keyword"/g>mut</span> x = <span /class="hl-number"/g>3</span>   <span /class="hl-comment"/g>// defines a new variable x, shadows previous</span>
+<span /class="hl-keyword"/g>mut</span> z <span /class="hl-type"/g>int</span>   <span /class="hl-comment"/g>// defines variable z with explicit type and 0 value</span>
+<span /class="hl-keyword"/g>const</span> y = <span /class="hl-number"/g>4</span> <span /class="hl-comment"/g>// defines constant y</span>
 y = <span /class="hl-number"/g>7</span>       <span /class="hl-comment"/g>// <span /class="hl-errormsg"/g>error: cannot assign to constant y</span></span>
 </code></pre>
 <h3><a id="ideally-typed-literals" class="anchor" aria-hidden="true" href="#ideally-typed-literals"></a>Ideally-typed literals</h3>
@@ -161,6 +162,128 @@ s3 <span /class="hl-keyword"/g>mut</span>&amp;[<span /class="hl-type"/g>int</spa
 <span /class="hl-comment"/g>// Alt B:</span>
 s1 [<span /class="hl-type"/g>int</span>] = d             <span /class="hl-comment"/g>// immutable ref to d with length</span>
 s2 <span /class="hl-keyword"/g>mut</span>[<span /class="hl-type"/g>int</span>] = d          <span /class="hl-comment"/g>// mutable ref to d with length</span>
+</code></pre>
+<h2><a id="grammar" class="anchor" aria-hidden="true" href="#grammar"></a>Grammar</h2>
+<pre><code class="language-bnf"><span /class="hl-comment"/g>// Unicode character classes</span>
+<span /class="hl-attribute"/g>newline</span>        <span /class="hl-operator"/g>=</span> <span /class="hl-comment"/g>/* the Unicode code point U+000A */</span>
+<span /class="hl-attribute"/g>unicode_char</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-comment"/g>/* an arbitrary Unicode code point except newline */</span>
+<span /class="hl-attribute"/g>unicode_letter</span> <span /class="hl-operator"/g>=</span> <span /class="hl-comment"/g>/* a Unicode code point classified as &quot;Letter&quot; */</span>
+<span /class="hl-attribute"/g>unicode_digit</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-comment"/g>/* a code point classified as &quot;Number, decimal digit&quot; */</span>
+
+<span /class="hl-comment"/g>// Letters and digits</span>
+<span /class="hl-attribute"/g>letter</span>        <span /class="hl-operator"/g>=</span> unicode_letter | <span /class="hl-string"/g>&quot;_&quot;</span> | <span /class="hl-string"/g>&quot;$&quot;</span>
+<span /class="hl-attribute"/g>decimal_digit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ... <span /class="hl-string"/g>&quot;9&quot;</span>
+<span /class="hl-attribute"/g>octal_digit</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ... <span /class="hl-string"/g>&quot;7&quot;</span>
+<span /class="hl-attribute"/g>hex_digit</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ... <span /class="hl-string"/g>&quot;9&quot;</span> | <span /class="hl-string"/g>&quot;A&quot;</span> ... <span /class="hl-string"/g>&quot;F&quot;</span> | <span /class="hl-string"/g>&quot;a&quot;</span> ... <span /class="hl-string"/g>&quot;f&quot;</span>
+
+<span /class="hl-comment"/g>// Keywords</span>
+as      const     defer  for   import   struct
+break   continue  else   fun   mut      switch
+case    default   enum   if    return   type
+
+<span /class="hl-comment"/g>// Operators, delimiters, and other special tokens</span>
++    &amp;     +<span /class="hl-operator"/g>=</span>    &amp;<span /class="hl-operator"/g>=</span>     &amp;&amp;    <span /class="hl-operator"/g>=</span><span /class="hl-operator"/g>=</span>    !<span /class="hl-operator"/g>=</span>    (    )
+-    |     -<span /class="hl-operator"/g>=</span>    |<span /class="hl-operator"/g>=</span>     ||    &lt;     &lt;<span /class="hl-operator"/g>=</span>    [    ]
+*    ^     *<span /class="hl-operator"/g>=</span>    ^<span /class="hl-operator"/g>=</span>     &lt;-    &gt;     &gt;<span /class="hl-operator"/g>=</span>    {    }
+/    &lt;&lt;    /<span /class="hl-operator"/g>=</span>    &lt;&lt;<span /class="hl-operator"/g>=</span>    -&gt;    <span /class="hl-operator"/g>=</span>     :<span /class="hl-operator"/g>=</span>    ,    ;
+%    &gt;&gt;    %<span /class="hl-operator"/g>=</span>    &gt;&gt;<span /class="hl-operator"/g>=</span>    ++    !     ...   .    :
+&amp;^         &amp;^<span /class="hl-operator"/g>=</span>          --          ..
+<span /class="hl-attribute"/g>
+list_sep</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;,&quot;</span> | <span /class="hl-string"/g>&quot;;&quot;</span>
+<span /class="hl-attribute"/g>
+comment</span> <span /class="hl-operator"/g>=</span> line_comment | block_comment
+<span /class="hl-attribute"/g>  line_comment</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;//&quot;</span> <span /class="hl-comment"/g>/* anything except newline */</span> newline
+<span /class="hl-attribute"/g>  block_comment</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;/*&quot;</span> <span /class="hl-comment"/g>/* anything except the terminator: */</span> <span /class="hl-string"/g>&quot;*/&quot;</span>
+<span /class="hl-attribute"/g>
+TranslationUnit</span> <span /class="hl-operator"/g>=</span> Statement ( <span /class="hl-string"/g>&quot;;&quot;</span> Statement )* <span /class="hl-string"/g>&quot;;&quot;</span>*
+<span /class="hl-attribute"/g>Statement</span>       <span /class="hl-operator"/g>=</span> Import | Expr
+<span /class="hl-attribute"/g>Import</span>          <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;import&quot;</span> str_lit
+<span /class="hl-attribute"/g>
+Expr</span> <span /class="hl-operator"/g>=</span> Identifier
+     | TypeExpr
+     | Literal
+     | PrefixExpr
+     | InfixExpr
+     | SuffixExpr
+<span /class="hl-attribute"/g>
+Identifier</span> <span /class="hl-operator"/g>=</span> letter (letter | unicode_digit | <span /class="hl-string"/g>&quot;-&quot;</span>)*
+<span /class="hl-attribute"/g>TypeExpr</span>   <span /class="hl-operator"/g>=</span> NamedType | FunType
+<span /class="hl-attribute"/g>
+Literal</span> <span /class="hl-operator"/g>=</span> bool_lit | nil_lit | num_lit | array_lit
+<span /class="hl-attribute"/g>  bool_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;true&quot;</span> | <span /class="hl-string"/g>&quot;false&quot;</span>
+<span /class="hl-attribute"/g>  nil_lit</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;nil&quot;</span>
+<span /class="hl-attribute"/g>  num_lit</span>  <span /class="hl-operator"/g>=</span> int_lit | float_lit
+<span /class="hl-attribute"/g>    int_lit</span> <span /class="hl-operator"/g>=</span> dec_lit | hex_lit | oct_lit | bin_lit
+<span /class="hl-attribute"/g>      dec_lit</span> <span /class="hl-operator"/g>=</span> decimal_digit+
+<span /class="hl-attribute"/g>      hex_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ( <span /class="hl-string"/g>&quot;x&quot;</span> | <span /class="hl-string"/g>&quot;X&quot;</span> ) hex_digit+
+<span /class="hl-attribute"/g>      oct_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ( <span /class="hl-string"/g>&quot;o&quot;</span> | <span /class="hl-string"/g>&quot;O&quot;</span>)  octal_digit+
+<span /class="hl-attribute"/g>      bin_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;0&quot;</span> ( <span /class="hl-string"/g>&quot;b&quot;</span> | <span /class="hl-string"/g>&quot;B&quot;</span> ) ( <span /class="hl-string"/g>&quot;0&quot;</span> | <span /class="hl-string"/g>&quot;1&quot;</span> )+
+<span /class="hl-attribute"/g>    float_lit</span> <span /class="hl-operator"/g>=</span> decimals <span /class="hl-string"/g>&quot;.&quot;</span> [ decimals ] [ exponent ]
+              | decimals exponent
+              | <span /class="hl-string"/g>&quot;.&quot;</span> decimals [ exponent ]
+<span /class="hl-attribute"/g>      decimals</span> <span /class="hl-operator"/g>=</span> decimal_digit+
+<span /class="hl-attribute"/g>      exponent</span> <span /class="hl-operator"/g>=</span> ( <span /class="hl-string"/g>&quot;e&quot;</span> | <span /class="hl-string"/g>&quot;E&quot;</span> ) [ <span /class="hl-string"/g>&quot;+&quot;</span> | <span /class="hl-string"/g>&quot;-&quot;</span> ] decimals
+<span /class="hl-attribute"/g>  array_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> [ Expr (list_sep Expr)* list_sep? ] <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>
+PrefixExpr</span> <span /class="hl-operator"/g>=</span> if | prefix_op | const_def | var_def | type_def | fun_def
+           | tuple | group | block
+<span /class="hl-attribute"/g>  if</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;if&quot;</span> condExpr thenExpr [ <span /class="hl-string"/g>&quot;else&quot;</span> elseExpr ]
+<span /class="hl-attribute"/g>    condExpr</span> <span /class="hl-operator"/g>=</span> Expr
+<span /class="hl-attribute"/g>    thenExpr</span> <span /class="hl-operator"/g>=</span> Expr
+<span /class="hl-attribute"/g>    elseExpr</span> <span /class="hl-operator"/g>=</span> Expr
+<span /class="hl-attribute"/g>  prefix_op</span> <span /class="hl-operator"/g>=</span> prefix_operator Expr
+<span /class="hl-attribute"/g>    prefix_operator</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;!&quot;</span> | <span /class="hl-string"/g>&quot;+&quot;</span> | <span /class="hl-string"/g>&quot;-&quot;</span> | <span /class="hl-string"/g>&quot;~&quot;</span> | <span /class="hl-string"/g>&quot;&amp;&quot;</span> | <span /class="hl-string"/g>&quot;++&quot;</span> | <span /class="hl-string"/g>&quot;--&quot;</span>
+<span /class="hl-attribute"/g>  const_def</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;const&quot;</span> Identifier Type? <span /class="hl-string"/g>&quot;=&quot;</span> Expr
+<span /class="hl-attribute"/g>  var_def</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span> Identifier ( Type | Type? <span /class="hl-string"/g>&quot;=&quot;</span> Expr )
+<span /class="hl-attribute"/g>  type_def</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;type&quot;</span> Identifier Type
+<span /class="hl-attribute"/g>  fun_def</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;fun&quot;</span> Identifier? ( params Type? | params? )
+<span /class="hl-attribute"/g>    params</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;(&quot;</span> [ (param list_sep)* paramt list_sep? ] <span /class="hl-string"/g>&quot;)&quot;</span>
+<span /class="hl-attribute"/g>      param</span>  <span /class="hl-operator"/g>=</span> Identifier Type?
+<span /class="hl-attribute"/g>      paramt</span> <span /class="hl-operator"/g>=</span> Identifier Type
+<span /class="hl-attribute"/g>  tuple</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;(&quot;</span> Expr (<span /class="hl-string"/g>&quot;,&quot;</span> Expr)+ <span /class="hl-string"/g>&quot;,&quot;</span>? <span /class="hl-string"/g>&quot;)&quot;</span>
+<span /class="hl-attribute"/g>  group</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;(&quot;</span> Expr <span /class="hl-string"/g>&quot;)&quot;</span>
+<span /class="hl-attribute"/g>  block</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;{&quot;</span> Expr (<span /class="hl-string"/g>&quot;;&quot;</span> Expr)+ <span /class="hl-string"/g>&quot;;&quot;</span>? <span /class="hl-string"/g>&quot;}&quot;</span>
+<span /class="hl-attribute"/g>
+InfixExpr</span> <span /class="hl-operator"/g>=</span> Expr ( binary_op | selector )
+<span /class="hl-attribute"/g>  binary_op</span> <span /class="hl-operator"/g>=</span> binary_operator Expr
+<span /class="hl-attribute"/g>  binary_operator</span> <span /class="hl-operator"/g>=</span> arith_op | bit_op | cmp_op | logic_op | assign_op
+<span /class="hl-attribute"/g>    arith_op</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;+&quot;</span>  | <span /class="hl-string"/g>&quot;-&quot;</span>  | <span /class="hl-string"/g>&quot;*&quot;</span> | <span /class="hl-string"/g>&quot;/&quot;</span> | <span /class="hl-string"/g>&quot;%&quot;</span>
+<span /class="hl-attribute"/g>    bit_op</span>    <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;&lt;&lt;&quot;</span> | <span /class="hl-string"/g>&quot;&gt;&gt;&quot;</span> | <span /class="hl-string"/g>&quot;&amp;&quot;</span> | <span /class="hl-string"/g>&quot;|&quot;</span> | <span /class="hl-string"/g>&quot;~&quot;</span> | <span /class="hl-string"/g>&quot;^&quot;</span>
+<span /class="hl-attribute"/g>    cmp_op</span>    <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;==&quot;</span> | <span /class="hl-string"/g>&quot;!=&quot;</span> | <span /class="hl-string"/g>&quot;&lt;&quot;</span> | <span /class="hl-string"/g>&quot;&lt;=&quot;</span> | <span /class="hl-string"/g>&quot;&gt;&quot;</span> | <span /class="hl-string"/g>&quot;&gt;=&quot;</span>
+<span /class="hl-attribute"/g>    logic_op</span>  <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;&amp;&amp;&quot;</span> | <span /class="hl-string"/g>&quot;||&quot;</span>
+<span /class="hl-attribute"/g>    assign_op</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;=&quot;</span>  | <span /class="hl-string"/g>&quot;+=&quot;</span> | <span /class="hl-string"/g>&quot;-=&quot;</span> | <span /class="hl-string"/g>&quot;*=&quot;</span> | <span /class="hl-string"/g>&quot;/=&quot;</span> | <span /class="hl-string"/g>&quot;%=&quot;</span>
+              | <span /class="hl-string"/g>&quot;&lt;&lt;=&quot;</span> | <span /class="hl-string"/g>&quot;&gt;&gt;=&quot;</span> | <span /class="hl-string"/g>&quot;&amp;=&quot;</span> | <span /class="hl-string"/g>&quot;|=&quot;</span> | <span /class="hl-string"/g>&quot;~=&quot;</span> | <span /class="hl-string"/g>&quot;^=&quot;</span>
+<span /class="hl-attribute"/g>  selector</span> <span /class="hl-operator"/g>=</span> Expr <span /class="hl-string"/g>&quot;.&quot;</span> Identifier
+<span /class="hl-attribute"/g>
+SuffixExpr</span> <span /class="hl-operator"/g>=</span> Expr ( index | call | suffix_op | suffix_typecast )
+<span /class="hl-attribute"/g>  index</span>           <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Expr <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>  suffix_op</span>       <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;++&quot;</span> | <span /class="hl-string"/g>&quot;--&quot;</span>
+<span /class="hl-attribute"/g>  suffix_typecast</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;as&quot;</span> Type
+<span /class="hl-attribute"/g>  call</span> <span /class="hl-operator"/g>=</span> Expr <span /class="hl-string"/g>&quot;(&quot;</span> args <span /class="hl-string"/g>&quot;)&quot;</span>
+<span /class="hl-attribute"/g>    args</span> <span /class="hl-operator"/g>=</span> positionalArgs* namedArgs* list_sep?
+<span /class="hl-attribute"/g>      positionalArgs</span> <span /class="hl-operator"/g>=</span> positionalArg (list_sep positionalArg)*
+<span /class="hl-attribute"/g>      namedArgs</span>      <span /class="hl-operator"/g>=</span> namedArg (list_sep namedArg)*
+<span /class="hl-attribute"/g>      namedArg</span>       <span /class="hl-operator"/g>=</span> Identifier <span /class="hl-string"/g>&quot;=&quot;</span> Expr
+<span /class="hl-attribute"/g>      positionalArg</span>  <span /class="hl-operator"/g>=</span> Expr
+<span /class="hl-attribute"/g>
+Type</span> <span /class="hl-operator"/g>=</span> NamedType
+     | RefType
+     | TupleType
+     | ArrayType
+     | StructType
+     | FunType
+<span /class="hl-attribute"/g>
+NamedType</span> <span /class="hl-operator"/g>=</span> Identifier  <span /class="hl-comment"/g>// e.g. &quot;int&quot;, &quot;u32&quot;, &quot;MyType&quot;</span>
+<span /class="hl-attribute"/g>RefType</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> Type
+<span /class="hl-attribute"/g>TupleType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;(&quot;</span> Type (<span /class="hl-string"/g>&quot;,&quot;</span> Type)+ <span /class="hl-string"/g>&quot;,&quot;</span>? <span /class="hl-string"/g>&quot;)&quot;</span>
+<span /class="hl-attribute"/g>ArrayType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type size? <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>  size</span> <span /class="hl-operator"/g>=</span> Expr?
+<span /class="hl-attribute"/g>StructType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;{&quot;</span> [ field ( <span /class="hl-string"/g>&quot;;&quot;</span> field )* <span /class="hl-string"/g>&quot;;&quot;</span>? ] <span /class="hl-string"/g>&quot;}&quot;</span>
+<span /class="hl-attribute"/g>  field</span> <span /class="hl-operator"/g>=</span> ( Identifier Type | NamedType ) ( <span /class="hl-string"/g>&quot;=&quot;</span> Expr )?
+<span /class="hl-attribute"/g>FunType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;fun&quot;</span> ( ftparams Type? | ftparams? )
+<span /class="hl-attribute"/g>  ftparams</span> <span /class="hl-operator"/g>=</span> params
+           | <span /class="hl-string"/g>&quot;(&quot;</span> [ Type (list_sep Type)* list_sep? ] <span /class="hl-string"/g>&quot;)&quot;</span>
+
 </code></pre>
 <h2><a id="open-source" class="anchor" aria-hidden="true" href="#open-source"></a>Open Source</h2>
 <p><a href="https://github.com/rsms/co2">https://github.com/rsms/co2</a></p>
