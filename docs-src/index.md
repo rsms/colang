@@ -238,14 +238,14 @@ Statement       = Import | Expr
 Import          = "import" str_lit
 
 Expr = Identifier
-     | TypeExpr
      | Literal
+     | TypeExpr
      | PrefixExpr
      | InfixExpr
      | SuffixExpr
 
-Identifier = letter (letter | unicode_digit | "-")*
 TypeExpr   = NamedType | FunType
+Identifier = letter (letter | unicode_digit | "-")*
 
 Literal = bool_lit | nil_lit | num_lit | array_lit
   bool_lit = "true" | "false"

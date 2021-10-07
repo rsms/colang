@@ -200,14 +200,14 @@ TranslationUnit</span> <span /class="hl-operator"/g>=</span> Statement ( <span /
 <span /class="hl-attribute"/g>Import</span>          <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;import&quot;</span> str_lit
 <span /class="hl-attribute"/g>
 Expr</span> <span /class="hl-operator"/g>=</span> Identifier
-     | TypeExpr
      | Literal
+     | TypeExpr
      | PrefixExpr
      | InfixExpr
      | SuffixExpr
 <span /class="hl-attribute"/g>
-Identifier</span> <span /class="hl-operator"/g>=</span> letter (letter | unicode_digit | <span /class="hl-string"/g>&quot;-&quot;</span>)*
-<span /class="hl-attribute"/g>TypeExpr</span>   <span /class="hl-operator"/g>=</span> NamedType | FunType
+TypeExpr</span>   <span /class="hl-operator"/g>=</span> NamedType | FunType
+<span /class="hl-attribute"/g>Identifier</span> <span /class="hl-operator"/g>=</span> letter (letter | unicode_digit | <span /class="hl-string"/g>&quot;-&quot;</span>)*
 <span /class="hl-attribute"/g>
 Literal</span> <span /class="hl-operator"/g>=</span> bool_lit | nil_lit | num_lit | array_lit
 <span /class="hl-attribute"/g>  bool_lit</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;true&quot;</span> | <span /class="hl-string"/g>&quot;false&quot;</span>
