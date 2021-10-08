@@ -30,7 +30,9 @@
   --background-color: white;
   --foreground-color-rgb: 0,0,0;
   --bgcolor-level1: rgba(0,0,0,0.1);
+
   /* --code-bg: #ffffdd; */
+  --code-bg: #f6f8fa;
   /* --code-bg: #f6f6f6; */
   /* --code-bg: inherit; */
 
@@ -46,7 +48,8 @@
 
     --link-color: #70CAFC;
     --link-visited-color: #B79EFF;
-    /* --code-bg: #2d2920; */
+
+    --code-bg: #242120;
 
     font-weight: 400;
 
@@ -59,13 +62,16 @@ body {
   margin: 0 auto;
 }
 
-li > p + ul,
-li > p + ol {
-  margin-top: calc(var(--blockSpacingBottom) * -1);
-}
 ul > li,
 ol > li {
-  margin-bottom: 0;
+  margin-bottom: calc(var(--blockSpacingBottom) * 0.25);
+}
+p + ul, p + ol {
+  margin-top: calc(var(--blockSpacingBottom) * -0.75);
+}
+li > p + ul,
+li > p + ol {
+  margin-top: calc(var(--blockSpacingBottom) * -0.75);
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -110,10 +116,28 @@ em { letter-spacing: 0.01em }
 
 code, tt {
   font-feature-settings: 'calt' 0, 'kern' 1;
+  font-weight: 400;
 }
 
 :not(pre) > code {
-  /* background: var(--code-bg); */
-  padding: 0 0.2em;
-  /* border-radius: 0.2em */
+  background:    var(--code-bg);
+  border-radius: 0.2em;
+  padding:       0 0.2em;
+  font-size:     0.9375rem;  /* 15dp @ font-size 16 */
+}
+
+blockquote {
+  /* colorful callout */
+  padding: 0.5em 1em;
+  /* background: #fdfaaa; */
+  background: #d4ffe1;
+  border-radius: 0.2em;
+  /* color: rgba(var(--foreground-color-rgb), 0.8); */
+
+  /* github-style indented dimmed */
+/*   --color: rgba(var(--foreground-color-rgb), 0.2);
+  padding-left: 1.0em;
+  border-left: 0.2rem solid var(--color);
+  font-weight: 449;
+  color: rgba(var(--foreground-color-rgb), 0.7); */
 }

@@ -1,5 +1,4 @@
 pre {
-  --bg:            #f6f8fa;
   --fg-comment:    rgba(var(--foreground-color-rgb),0.5);
   --fg-commenterr: rgb(186, 94, 81);
   --fg-keyword:    #d73a49;
@@ -12,8 +11,6 @@ pre {
   --bg-diff-rem:   #ffecec;
 
   @media (prefers-color-scheme: dark) {
-    /* --bg:          rgb(22, 27, 34); */
-    --bg:            rgb(30, 27, 26);
     --fg-comment:    rgba(var(--foreground-color-rgb),0.4);
     --fg-commenterr: #735048;
     --fg-keyword:    #ff7b72;
@@ -25,8 +22,9 @@ pre {
     --bg-diff-rem:   #ffecec;
   }
 
-  background:    var(--bg);
-  font-size:     0.875rem;  /* 14dp @ font-size 16 */
+  background:    var(--code-bg);
+  /* font-size:     0.875rem; */  /* 14dp @ font-size 16 */
+  font-size:     0.9375rem;  /* 15dp @ font-size 16 */
   padding:       0.625rem;  /* 10dp @ font-size 16 */
   border-radius: 0.3125rem; /* 5dp @ font-size 16 */
   -webkit-text-size-adjust: none;

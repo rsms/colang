@@ -4,12 +4,12 @@ module.exports = function(hljs) {
     "true",
     "false",
     "nil"
-  ];
+  ]
   const BUILT_INS = [
     "copy",
     "panic",
     "print",
-  ];
+  ]
   const KWS = [
     "auto",
     "break",
@@ -31,7 +31,8 @@ module.exports = function(hljs) {
     "struct",
     "switch",
     "type",
-  ];
+    "var",
+  ]
   const TYPES = [
     "bool",
     "i8",  "i16", "i32", "i64", "int",
@@ -39,17 +40,68 @@ module.exports = function(hljs) {
     "f32", "f64",
     "byte",
     "str",
-  ];
+  ]
+
   const KEYWORDS = {
     keyword:  KWS,
     literal:  LITERALS,
     built_in: BUILT_INS,
     type:     TYPES,
-  };
+  }
+
   const COMMENTS = [
     //hljs.COMMENT('//', '$'),
     hljs.COMMENT('/\\*', '\\*/'),
+    { className: 'comment',
+      begin: '//',
+      end: '$',
+      contains: [
+        {
+          className: 'errormsg',
+          begin: /error:/,
+          end: /$/,
+        },
+      ]
+    },
   ]
+
+  const FUN_TYPE = {
+    variants: [
+      {
+        className: 'funtype',
+        begin: 'fun',
+        returnBegin: true,
+        contains: [] // defined later
+      },
+      {
+        begin: /\(/,
+        end: /\)/,
+        contains: [] // defined later
+      }
+    ]
+  }
+  const FUN_TYPE2 = FUN_TYPE
+  FUN_TYPE2.variants[1].contains = [ FUN_TYPE ]
+  FUN_TYPE.variants[1].contains = [ FUN_TYPE2 ]
+  const PARAMS = {
+    className: 'params',
+    begin: /\(/,
+    end: /\)/,
+    endsParent: true,
+    keywords: KEYWORDS,
+    relevance: 0,
+    contains: [
+      FUN_TYPE,
+      ...COMMENTS
+    ]
+  }
+  FUN_TYPE.variants[0].contains = [
+    { className: 'type',
+      begin: 'fun',
+    },
+    PARAMS,
+  ]
+
   return {
     name: 'Co',
     aliases: [],
@@ -57,18 +109,6 @@ module.exports = function(hljs) {
     illegal: '</',
     contains: [
       hljs.SHEBANG({ binary: "co" }),
-
-      { className: 'comment',
-        begin: '//',
-        end: '$',
-        contains: [
-          {
-            className: 'errormsg',
-            begin: /error:/,
-            end: /$/,
-          },
-        ]
-      },
 
       ...COMMENTS,
 
@@ -86,23 +126,30 @@ module.exports = function(hljs) {
         ]
       },
 
-      { className: 'function',
+      {
+        className: 'function',
         beginKeywords: 'fun',
-        end: '\\s*(\\{|$)',
+        end: '[(]|$',
+        returnBegin: true,
         excludeEnd: true,
+        keywords: KEYWORDS,
+        relevance: 5,
         contains: [
-          hljs.TITLE_MODE,
           {
-            className: 'params',
-            begin: /\(/,
-            end: /\)/,
-            keywords: KEYWORDS,
-            illegal: /["']/,
-            contains: [
-              ...COMMENTS,
-            ],
+            begin: hljs.UNDERSCORE_IDENT_RE + '\\s*\\(',
+            returnBegin: true,
+            relevance: 0,
+            contains: [ hljs.UNDERSCORE_TITLE_MODE ]
           },
-          ...COMMENTS,
+          {
+            className: 'type',
+            begin: /</,
+            end: />/,
+            keywords: 'reified',
+            relevance: 0
+          },
+          PARAMS,
+          ...COMMENTS
         ]
       },
 

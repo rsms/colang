@@ -28,7 +28,7 @@ type Spaceship
 B = Spaceship()
 
 fun main() int
-  B.engine.output # => 500
+  B.engine.output // => 500
 ```
 
 ```co
@@ -42,7 +42,7 @@ type Spaceship {
 B = Spaceship();
 fun main() int {
   s = "thi\ng"
-  B.engine.output; # => 500
+  B.engine.output; // => 500
 }
 ```
 
@@ -101,7 +101,7 @@ const x = 4      // type: ideal
 const y int = 4  // type: int
 const z = y      // type: int
 a = 128          // type: ideal (automatic constant)
-v i8             // defines a variable of type i8
+mut v i8         // defines a variable of type i8
 v = x            // x is interpreted as an i8 literal
 v = a            // error: constant 128 overflows i8
 ```
@@ -116,8 +116,8 @@ stored to, it is treated as defined immutable with the `const` keyword.
 ```co
 fun main(v int) int
   const a [int 3] = [1, 2, 3]
-  b [int 3] = [10, 20, 30]
-  c [int 3] = [100, 200, 300]
+  mut b [int 3] = [10, 20, 30]
+  mut c [int 3] = [100, 200, 300]
   b[1] = v  // b promoted to mutable
   a[1] + b[1] + c[1]
 ```
@@ -156,7 +156,7 @@ x86_64 code generated _with_ optimizations:
 
 ```asmx86
 _main:
-  leal  202(%rdi), %eax
+  leal  202(%rdi), %eax ; add 202 to arg1
   retq
 ```
 
@@ -171,29 +171,29 @@ The length of an Array may be known at compile time.
 Some examples:
 
 ```co
-a [u8 10]                // array of 10 bytes, all 0
-b [i64 3] = [10, 20, 30] // 3 64-bit integers
-c = [i64(10), 20, 30]    // type inferred to [i64 3]
-d = [10, 20, 30]         // type inferred to [int 3]
-e = d                    // copy of d. Type [int 3]
-f = &d                   // immutable reference to d
-g = mut&d                // mutable reference to d
-h = d[:2]                // copy of slice of d. Type [int 2]
-i = &d[:2]               // immutable reference to slice of d
-k = mut&d[1:]            // mutable reference to slice of d
-k[1] = e[0]              // modify 2nd element of d
-d.len                    // 3
-k.len                    // 2
+mut a [u8 10]                // array of 10 bytes, all 0
+mut b [i64 3] = [10, 20, 30] // 3 64-bit integers
+c = [i64(10), 20, 30]        // type inferred to [i64 3]
+d = [10, 20, 30]             // type inferred to [int 3]
+e = d                        // copy of d. Type [int 3]
+const f = &d                 // immutable ref to d. Type &[int 3]
+g = &d                       // mutable ref to d. Type mut&[int 3]
+h = d[:2]                    // copy of slice of d. Type [int 2]
+const i = &d[:2]             // immutable ref to slice of d
+k = &d[1:]                   // mutable ref to slice of d
+k[1] = e[0]                  // modify 2nd element of d
+d.len                        // 3
+k.len                        // 2
 
 // still undecided: array types with runtime-varying length
 // Alt A:
-s1 [int] = d             // copy of d with length
-s2 &[int] = d            // immutable ref to d with length
-s3 mut&[int] = d         // mutable ref to d with length
+mut s1 [int] = d      // copy of d with length
+mut s2 &[int] = d     // immutable ref to d with length
+mut s3 mut&[int] = d  // mutable ref to d with length
 
 // Alt B:
-s1 [int] = d             // immutable ref to d with length
-s2 mut[int] = d          // mutable ref to d with length
+mut s1 [int] = d      // immutable ref to d with length
+mut s2 mut[int] = d   // mutable ref to d with length
 ```
 
 
