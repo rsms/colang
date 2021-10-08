@@ -85,8 +85,10 @@ typedef struct B {
   LLVMTypeRef t_i16;
   LLVMTypeRef t_i32;
   LLVMTypeRef t_i64;
+  // LLVMTypeRef t_i128;
   LLVMTypeRef t_f32;
   LLVMTypeRef t_f64;
+  // LLVMTypeRef t_f128;
 
   LLVMTypeRef t_int;
   LLVMTypeRef t_size;
@@ -1644,12 +1646,14 @@ static void build_module(Build* build, Node* pkgnode, LLVMModuleRef mod) {
     // note: no disposal needed of built-in types
     .t_void = LLVMVoidTypeInContext(ctx),
     .t_bool = LLVMInt1TypeInContext(ctx),
-    .t_i8 = LLVMInt8TypeInContext(ctx),
-    .t_i16 = LLVMInt16TypeInContext(ctx),
-    .t_i32 = LLVMInt32TypeInContext(ctx),
-    .t_i64 = LLVMInt64TypeInContext(ctx),
-    .t_f32 = LLVMFloatTypeInContext(ctx),
-    .t_f64 = LLVMDoubleTypeInContext(ctx),
+    .t_i8   = LLVMInt8TypeInContext(ctx),
+    .t_i16  = LLVMInt16TypeInContext(ctx),
+    .t_i32  = LLVMInt32TypeInContext(ctx),
+    .t_i64  = LLVMInt64TypeInContext(ctx),
+    // .t_i128 = LLVMInt128TypeInContext(ctx),
+    .t_f32  = LLVMFloatTypeInContext(ctx),
+    .t_f64  = LLVMDoubleTypeInContext(ctx),
+    // .t_f128 = LLVMFP128TypeInContext(ctx),
   };
   _b.t_int = _b.t_i32; // alias int = i32
   _b.t_size = _b.t_i64; // alias size = i32
