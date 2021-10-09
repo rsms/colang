@@ -327,4 +327,4 @@ FunType = "fun" ( ftparams Type? | ftparams? )
 
 ## Open Source
 
-<https://github.com/rsms/co2>
+<https://github.com/rsms/colang>
