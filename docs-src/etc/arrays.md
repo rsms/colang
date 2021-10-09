@@ -34,30 +34,16 @@ In this example, it's important to...
   to the caller.
 
 
-## Open questions
-
-1. ~Perhaps a slice operation should always yield a reference?<br>
-   i.e. `y` in `x = [1,2,3]; y = x[:2]` is what?<br>
-   Current idea is that it becomes a copy of a slice of x (`[1,2]`)
-   and that `z = &x[:2]` yields a reference (of type `mut&[int]`).
-   But this might be confusing, especially how it might interact
-   with dynamic arrays: what is `s` in `var a [int]; s = a[:2]`?<br>
-   Dynamic arrays are not copy on assignment but change ownership,
-   so the only logical outcome is that `s` becomes the new owner
-   and `a` becomes invalid, but that is a little confusing since
-   the same operation on a fixed-size array has a different outcome!
-   See [examples in the "Array references & slices" section](#ref-ex1)~<br>
-   Yes.
-
-
 ## Fixed-size arrays
 
-Fixed-size arrays is contiguous memory the size of multiple instances
-of its elemental type. The size of a fixed-size array is part of its type and thus
-a compile-time constant.
-For example `[i32 3]` is 12 bytes of memory; three 32-bit integers.
+A fixed-size array is a sequence of values of the same type `T`,
+stored in contiguous memory.
+Arrays are created using brackets `[]`, and their length, which is known at compile time,
+is part of their type signature `[T length]`.
+For example `[i32 3]` is 12 bytes of memory holding three 32-bit integers.
 
-Fixed-size arrays are useful as temporary storage for compile-time bounded loops
+Fixed-size arrays are useful as temporary storage,
+for compile-time bounded work
 and for expressing uniform data like a vector.
 
 ```co
@@ -83,28 +69,103 @@ fun moving_avg(n int, f fun(i int)f64) f64
   avg
 ```
 
-Constant (immutable, read-only) fixed-size arrays are stored in global constant memory
+Constant (i.e. immutable, read-only) fixed-size arrays are stored in global constant memory
 and are in many cases elided at compile time, depending on use.
+
 Mutable fixed-size arrays use local (e.g. stack) memory inside functions and global
 writable memory when defined at the package level.
 
-Assigning, returning or passing fixed-size arrays as function arguments creates
-copies, just like with any other value in Co.
-i.e. in `x = [1,2,3]; y = x`, y is a distinct copy of the array at `x`,
-while `z` in `x = [1,2,3]; z = &x` is a reference (pointer) to the same array as `x`.
+Passing a fixed-size array as a call argument or assigning it to a variable is not
+allowed. It it were allowed it would mean a copy was made which could be hard to spot
+in code that is being debugged. Instead a explicit copy or reference should be used:
 
-Fixed-size arrays in Co can be created both in function scope (local memory, e.g. stack)
-and at the package level (global memory.)
-They can be both constant and mutable.
-The type of fixed-size arrays is written as `[T n]`,
-for example `[int 3]` for "array of 3 ints"
+```co
+a = [1, 2, 3]
+var b [int 3]
+copy(b, a) // copy values of a to b
+c = &a     // reference/slice of a; type mut&[int 3]
+d = a      // error: array type [int 3] is not assignable
+```
+
+
+
+## Dynamic arrays
+
+Sometimes arrays need to grow by bounds only known at runtime.
+Dynamic arrays has a length and capacity which can vary at runtime.
+Dynamic arrays can grow and are allocated on the heap.
+Dynamic array's data is not copied when passed around, instead its ownership transfers.
+
+For example we might parse a CSV file into an array of rows:
+
+```co
+type CSVRow [&[u8]]
+
+fun parse_csv(csvdata &[u8], nrows_guess uint)
+  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
+  for csvdata.len > 0
+    row, csvdata = parse_next_row(csvdata)
+    if row.isValid
+      rows.append(row)
+  log("parsed {rows.len} rows")
+  // 'rows' deallocated here as its storage goes out of scope
+```
+
+Co accomplishes this with dynamic, growable arrays allocated on the heap
+using the heap allocator function `alloc<T type>(typ T, count uint) [T]`.
+
+This also enables us to return large arrays as function results without
+the overhead of copying an array to the caller:
+
+```co
+type CSVRow [&[u8]]
+
+fun parse_csv(csvdata &[u8], nrows_guess uint) [CSVRow]
+  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
+  for csvdata.len > 0
+    row, csvdata = parse_next_row(csvdata)
+    if row.isValid
+      rows.append(row)
+  rows // ownership moves to caller
+
+fun main
+  rows = parse_csv(csvdata, 32)
+  // 'rows' deallocated here as its storage goes out of scope
+```
+
+
+### Dynamic arrays is how heap memory is managed
+
+Dynamic arrays is the only way to allocate and reallocate heap memory in Co.
+
+- **`alloc<T type>(typ T, count uint, align uint) [T]`**
+  allocates a new region of memory of `sizeof(T)*count` bytes,
+  aligned to `align`, in the current allocator.
+  `alloc` is analogous to `calloc` in C.
+  If allocation fails, an empty array is returned, i.e. `retval.len==retval.cap==0`.
+
+- **`alloc<T type>(typ T, count uint) [T]`**
+  is equivalent to calling `alloc<T>(T, count, sizeof(T))`.
+
+- **`realloc<T type>(a mut&[T], count uint) bool`**
+  resizes `a` to `sizeof(T)*count` bytes, in the current allocator.
+  If resizing fails, `false` is returned and `a` is left untouched.
+  It is important that the current allocator is the same allocator
+  which was initially used to `alloc` the array `a`.
+
+- **`append<T>(dst mut&[T], src ...&[T]) bool`**
+  copies src to dst, calling realloc if needed to grow `dst`.
+  If growing `dst` fails, `false` is returned and `dst` is left untouched.
+  It is important that the current allocator is the same allocator
+  which was initially used to `alloc` the array `dst`.
+
 
 
 ## Array references & slices
 
 Co features "references" as a way to share values without making copies.
 References does not constitute ownership of data but is merely a borrowed handle.
-References are like pointers in C with some additional compile-time semantics to
+They are like pointers in C with some additional compile-time semantics to
 help you discern ownership.
 
 <span id="ref-ex1"></span>
@@ -182,60 +243,7 @@ e = &a[:] // mut&[int 3]  same as d
   May be better to just not allow it and emit a compiler error instead.
 
 
----
-
-### Ownerhip issue with `v=myarray`
-
-With `v = myarray` taking a ref instead of copying,
-the following pattern becomes a problem:
-
-```co
-fun foo(arg int)
-  xs = if arg > 0  // type of xs is mut&[int 3]
-    a = [100,200,300] // on stack
-    a[0] *= arg
-    a // use a for xs
-  else
-    [1,2,3] // use this constant for xs
-  // xs is a ref "mut&[int 3]" to an array (a)
-  // which memory is no longer valid!
-```
-
-In practice with Co's LLVM backend this is fine since all stack allocations
-no matter the scope are all on the logical function's "root scope" stack
-(unless llvm.lifetime.\* is used.)
-The issue is with ownership semantics: in the example above,
-`a` owns the array value `[100*arg,200,300]`
-and `a` is invalid outside the "then" block of the "if" expression,
-so any references to `a` outside that scope are invalid.
-
-C doesn't have this issue since it lacks scope-based ownership semantics
-and all local values are allocated on the function stack, without regards to scope:
-
-```c
-void foo(int big) {
-  int* xs;
-  if (big) {
-    xs = (int[3]){100,200,300};
-  } else {
-    xs = (int[3]){1,2,3};
-  }
-}
-// ... generates the exact same code as:
-void foo(int big) {
-  int* xs;
-  int[3] a = {100,200,300};
-  int[3] b = {1,2,3};
-  if (big) {
-    xs = a;
-  } else {
-    xs = b;
-  }
-}
-```
-
-
----
+### Array reference examples
 
 Array references are useful when defining a function that accepts a variable
 number of items which it only needs to read:
@@ -252,9 +260,6 @@ The function in the above example receives a tuple of two values:
 1. a pointer to memory that contains f64 data (array data)
 2. count of valid values at the memory location (length of array)
 
-Co uses a "slice reference" type for this, `&[T]`, which is a tuple
-of pointer & length. More on this in a minute.
-
 Variably-sized arrays are also useful locally, for example to drop
 the first element under some condition only known at runtime:
 
@@ -269,10 +274,6 @@ fun compute_stuff(nozero bool)
 ```
 
 Slicing works on all kinds of arrays.
-Slicing a fixed-size array does not copy it but yields a reference
-with a pointer to the array memory, number of valid entries (length)
-and the capacity of the underlying array.
-
 
 An array reference `&[T]` or `mut&[T]`  is represented at runtime as
 a structure with the following fields:
@@ -282,7 +283,7 @@ struct const_slice_ref {
   ptr memaddr // pointer to data
   len uint    // number of valid entries at ptr
 }
-struct mutable_slice_ref {
+struct mut_slice_ref {
   ptr memaddr // pointer to data
   len uint    // number of valid entries at ptr
   cap uint    // number of entries that can be stored at ptr
@@ -291,53 +292,15 @@ struct mutable_slice_ref {
 
 
 
-## Dynamic arrays
 
-Sometimes arrays need to grow by bounds only known at runtime.
-Dynamic arrays has a length and capacity which can vary at runtime.
-Dynamic arrays can grow and are allocated on the heap.
-Dynamic array's data is not copied when passed around, instead its ownerhip transfers.
+<br>
+<small>End of main article</small>
 
-For example we might parse a CSV file into an array of row structures:
-
-```co
-type CSVRow [&[u8]]
-
-fun parse_csv(csvdata &[u8], nrows_guess uint)
-  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
-  for csvdata.len > 0
-    row, csvdata = parse_next_row(csvdata)
-    if row.isValid
-      rows.append(row)
-  log("parsed {rows.len} rows")
-  // 'rows' deallocated here as its storage goes out of scope
-```
-
-Co accomplishes this with dynamic, growable arrays allocated on the heap
-using the heap allocator function `alloc<T type>(typ T, count uint) T`.
-
-This also enables us to return large arrays as function results without
-the overhead of copying an array to the caller:
-
-```co
-type CSVRow [&[u8]]
-
-fun parse_csv(csvdata &[u8], nrows_guess uint) [CSVRow]
-  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
-  for csvdata.len > 0
-    row, csvdata = parse_next_row(csvdata)
-    if row.isValid
-      rows.append(row)
-  rows // ownership moves to caller
-
-fun main
-  rows = parse_csv(csvdata, 32)
-  // 'rows' deallocated here as its storage goes out of scope
-```
+------------------------------------------------------------------
 
 
 
-### Idea: Stack-storage optimization of dynamic arrays
+## Idea: Stack-storage optimization of dynamic arrays
 
 Heap allocations are relatively expensive and so it should be
 possible to make use of the stack even for arrays that grows.
@@ -417,7 +380,6 @@ struct dynarray {
 ```
 
 
-------------------------------------------------------------------
 
 ## Language grammar (arrays)
 
@@ -439,6 +401,22 @@ list_sep         = "," | ";"
 - Array lits may be better as type constructors, ie `[int](1,2,3)` which would allow
   expressing an array type context-free, i.e. `[x]` is unambiguously an array type
   rather than "array literal in some places and array type in other places."
+
+
+### Questions
+
+1. ~Perhaps a slice operation should always yield a reference?<br>
+   i.e. `y` in `x = [1,2,3]; y = x[:2]` is what?<br>
+   Current idea is that it becomes a copy of a slice of x (`[1,2]`)
+   and that `z = &x[:2]` yields a reference (of type `mut&[int]`).
+   But this might be confusing, especially how it might interact
+   with dynamic arrays: what is `s` in `var a [int]; s = a[:2]`?<br>
+   Dynamic arrays are not copy on assignment but change ownership,
+   so the only logical outcome is that `s` becomes the new owner
+   and `a` becomes invalid, but that is a little confusing since
+   the same operation on a fixed-size array has a different outcome!
+   See [examples in the "Array references & slices" section](#ref-ex1)~<br>
+   Yes.
 
 
 ### Rest parameters as syntactic sugar for fixed-size arrays

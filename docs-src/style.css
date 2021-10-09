@@ -169,3 +169,7 @@ table {
     padding-bottom: calc(var(--baseline) * 0.65);
   }
 }
+
+hr:not(:first-child) {
+  margin-top: calc(var(--lineHeight) * 2);
+}
