@@ -555,8 +555,6 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   // fl & ~RFlagResolveIdeal = clear "resolve ideal" flag
   auto typecontext = ctx->typecontext; // save typecontext
   n->op.left = resolve_type(ctx, n->op.left, fl & ~RFlagResolveIdeal);
-  if (n->op.op == TAssign)
-    clear_const(ctx, n->op.left);
 
   // if (n->op.op == TAssign && n->op.left->type->kind == NTupleType) {
   //   // multi assignment: support var definitions which have NULL as LHS values
@@ -565,38 +563,52 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   if (n->op.left->type != Type_ideal)
     ctx->typecontext = n->op.left->type;
   n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
-  lt = n->op.left->type;
-  rt = n->op.right->type;
+  lt = assertnotnull_debug(n->op.left->type);
+  rt = assertnotnull_debug(n->op.right->type);
   ctx->typecontext = typecontext; // restore typecontext
-  //
+
+  // assignment
+  if (n->op.op == TAssign) {
+    // storing to a var upgrades it to mutable
+    clear_const(ctx, n->op.left);
+
+    // storing to an array is not allowed
+    if (lt->kind == NArrayType && rt->kind == NArrayType) {
+      build_errf(ctx->build, NodePosSpan(n),
+        "array type %s is not assignable", fmtnode(lt));
+    }
+  }
+
   // convert operand types as needed. The following code tests all branches:
   //
-  //   a = 1 + 2                         # 1  left & right are untyped
-  //   a = 2 + (1 as uint32)             # 2  left is untyped, right is typed
-  //   a = (1 as uint32) + 2             # 3  left is typed, right is untyped
+  //   a = 1 + 2                         # 1  left & right are ideal
+  //   a = 2 + (1 as uint32)             # 2  left is ideal, right is typed
+  //   a = (1 as uint32) + 2             # 3  left is typed, right is ideal
   //   a = (1 as uint32) + (2 as uint32) # 4  left & right are typed
   //
   if (lt == Type_ideal) {
     /*if (n->op.op == TAssign) {
-      dlog_mod("[binop] 1  left is untyped and an assignment target");
+      dlog_mod("[binop] 1  left is ideal and an assignment target");
       Node* left = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
       dlog("left %s", fmtast(left));
     } else*/ if (rt == Type_ideal) {
-      dlog_mod("[binop] 2  left & right are untyped");
+      dlog_mod("[binop] 2  left & right are ideal");
       // TODO: we could pick the strongest type here by finding the CType of each operand and
       // then calling resolve_ideal_type on the stronger of the two. For example int32 > int16.
       n->op.left = resolve_ideal_type(ctx, n->op.left, ctx->typecontext, fl);
       lt = n->op.left->type;
       // note: continue to statement outside these if blocks
     } else {
-      dlog_mod("[binop] 3  left is untyped, right is typed (%s)", fmtnode(rt));
-      n->op.left = convlit(ctx->build, n->op.left, rt, ConvlitImplicit | ConvlitRelaxedType);
+      dlog_mod("[binop] 3  left is ideal, right is typed (%s)", fmtnode(rt));
+      n->op.left = convlit(
+        ctx->build, n->op.left, rt, ConvlitImplicit | ConvlitRelaxedType);
       n->type = rt;
       return finalize_binop(ctx, n);
     }
   } else if (rt == Type_ideal) {
-    dlog_mod("[binop] 4  left is typed (%s), right is untyped", fmtnode(lt));
-    n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
+    dlog_mod("[binop] 4  left is typed (%s), right is ideal", fmtnode(lt));
+    n->op.right = convlit(
+      ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
     n->type = lt;
     return finalize_binop(ctx, n);
   } else {
@@ -604,7 +616,7 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   // we get here from either of the two conditions:
-  // - left & right are both untyped (lhs has been resolved, above)
+  // - left & right are both ideal (lhs has been resolved, above)
   // - left & right are both typed
   if (!TypeEquals(ctx->build, lt, rt)) {
     if (rt == Type_ideal) {
@@ -612,7 +624,8 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
       n->op.right = resolve_ideal_type(ctx, n->op.right, lt, fl);
     } else {
       dlog_mod("[binop] 6B convlit right expr to type of left side (%s)", fmtnode(lt));
-      n->op.right = convlit(ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
+      n->op.right = convlit(
+        ctx->build, n->op.right, lt, ConvlitImplicit | ConvlitRelaxedType);
     }
 
     // check if convlit failed
@@ -1327,13 +1340,22 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   n->var.init = resolve_type(ctx, n->var.init, fl);
   ctx->typecontext = typecontext; // restore
 
-  if (n->type) {
-    // TODO: allow initializing with higher-fidelity type, e.g. "x [int] = [1,2,3]"
-    if (R_UNLIKELY(!TypeEquals(ctx->build, n->type, n->var.init->type)))
-      report_var_init_type_mismatch(ctx, n);
-  } else {
+  if (!n->type) {
     n->type = assertnotnull_debug(n->var.init->type);
+  } else if (R_UNLIKELY(!TypeEquals(ctx->build, n->type, n->var.init->type))) {
+    // TODO: allow initializing with higher-fidelity type, e.g. "x [int] = [1,2,3]"
+    report_var_init_type_mismatch(ctx, n);
   }
+
+  if (R_UNLIKELY(n->type->kind == NArrayType && n->var.init->kind != NArray)) {
+    // loading fixed-size arrays is not allowed
+    build_errf(ctx->build, NodePosSpan(n),
+      "array type %s is not assignable", fmtnode(n->type));
+    // suggest a ref
+    build_notef(ctx->build, NodePosSpan(n->var.init),
+      "try making a reference: &%s", fmtnode(n->var.init));
+  }
+
   return n;
 }
 

@@ -100,6 +100,15 @@ static bool convval(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
 }
 
 
+static Node* report_non_convertible(Build* b, Node* n, Type* t) {
+  const char* msg = "%s is not compatible with type %s";
+  if (n->type == Type_ideal)
+    msg = "ideal value %s can not be interpreted as type %s";
+  build_errf(b, NodePosSpan(n), msg, fmtnode(n), fmtnode(t));
+  return n;
+}
+
+
 // convlit converts an expression n to type t.
 // If n is already of type t, n is simply returned.
 Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
@@ -130,10 +139,8 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
 
   case NIntLit:
     n = NodeCopy(b->mem, n); // copy, since literals may be referenced by many
-    if (t->kind != NBasicType) {
-      dlog("TODO targetType->kind %s", NodeKindName(t->kind));
-      return n;
-    }
+    if (R_UNLIKELY(t->kind != NBasicType))
+      return report_non_convertible(b, n, t);
     if (convval(b, n, &n->val, t->t.basic.typeCode)) {
       n->type = t;
       return n;
@@ -141,7 +148,9 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
     break;
 
   case NBinOp:
-    if (t->kind == NBasicType) {
+    if (R_UNLIKELY(t->kind == NBasicType)) {
+      return report_non_convertible(b, n, t);
+    } else {
       //
       // TODO: IROpFromAST
       // // check to see if there is an operation on t; if the type cast is valid
@@ -160,8 +169,6 @@ Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
       n->op.left = left;
       n->op.right = right;
       n->type = n->op.left->type;
-    } else {
-      dlog("TODO NBinOp %s as %s", fmtnode(n), fmtnode(t));
     }
     break;
 

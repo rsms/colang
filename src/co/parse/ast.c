@@ -299,6 +299,7 @@ CType NodeIdealCType(const Node* n) {
 
 
 PosSpan NodePosSpan(const Node* n) {
+  assertnotnull_debug(n);
   PosSpan span = { n->pos, n->endpos };
   // dlog("-- NodePosSpan %s %u:%u",
   //   NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
