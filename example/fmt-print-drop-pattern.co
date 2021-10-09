@@ -1,0 +1,25 @@
+
+type str [u8]
+fun fmt_thing(Thing) str
+
+fun dostuff() {
+  var thing1 Thing
+  var thing2 Thing
+  print("things: %s, %s", fmt_thing(thing1), fmt_thing(thing2))
+  something_else()
+}
+
+// ... is equivalent to:
+
+fun dostuff() {
+  var thing1 Thing
+  var thing2 Thing
+  {
+    tmp1 = fmt_thing(thing1)
+    tmp2 = fmt_thing(thing2)
+    print("things: %s, %s", tmp1, tmp2)
+  } // tmp1 & tmp2 deallocated here
+  something_else()
+}
+
+

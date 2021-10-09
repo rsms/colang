@@ -73,3 +73,134 @@ s = "foo" // "str" or "&str"?
 const s2 = "foo" // immutable == const s2 = [3]u8('f','o','o')
 s3 = "foo"       // mutable   == s3 = [3]u8('f','o','o')
 print("hello")   // const tmp = "[5]u8('h','e'...)" passed as "&[]u8" aka "&str"
+
+// ————————————————————————————————————————————————————————————
+// Oct 6, array memory and ownership
+
+// idea: [T] is owning ref
+f(a [int 3])    // owning ptr to immu mem
+f(a mut[int 3]) // owning ptr to mut mem
+f(a [int])      // owning ptr+len to immu mem
+f(a mut[int])   // owning ptr+len to mut mem
+f(a &[int 3])   // borrowed ptr to immu mem
+f(a mut&[int 3])// borrowed ptr to mut mem
+f(a &[int])     // borrowed ptr+len to immu mem
+f(a mut&[int])  // borrowed ptr+len to mut mem
+// this way we don't need box<T> for big structs
+// or strings!
+// BUT! what memory? How do you stack allocate
+// an array?
+x = alloc(BigStruct, 1) // [BigStruct 1]
+s = "hello"             // [u8 5]
+mut s = "world"         // mut[u8 5]
+
+mut x [int] // dynamic array {ptr,len}
+x.append(1) // grows x
+f(a [int])  // takes ownership
+y = [1, 2]  // [int 2] stack allocated
+y.append(3) // error
+z = y[:]    // [int]
+z.append(4) // allocator needs to know mem
+            // is on stack
+// what about escaping stack mem?
+fun f() [int]
+  a = [1, 2]
+  return a[:] // is a's mem copied?
+// could do escape analysis to either allocate
+// a on heap or to emit compiler error.
+
+// we need to be able to make both stack arrays
+// and heap arrays up front:
+fun dowork() int
+  tmp = [1, 2, 3] // [int 3]
+  return tmp[1]
+fun makestuff1() [int 3]
+  stuff = [1, 2, 3] // [int 3]
+  return stuff // copy of array to ret stack
+fun makestuff2() [int]
+  stuff = new(int, 3) // [int]
+  stuff = [1, 2, 3] // memcpy
+  return stuff // owning ptr+len to ret stack
+// okay, this can work.
+// fixed-size arrays always on stack or global mem
+// varying-size arrays are owning refs..? TODO
+const ga1 = [1, 2, 3] // [int 3] in global initial memory
+sa1 = [1, 2, 3]       // [int 3] on stack
+ra1 = &ga1[1:]        // &[int 2] borrowed ref to ga1
+ra2 = &sa1[1:]        // mut&[int 2] borrowed ref to sa1
+sa2 = sa1[1:]         // [int 2] on stack; copy of sa1
+ha1 = new(int, 3)     // [int] {len=0, cap=3, ptr=> [0,0,0] on heap}
+// [int] is a resizeable array with runtime-varying length and capacity
+
+ha2 = ha1      // move ownership ha1 -> ha2
+ha1[1]         // error: invalid variable (lost ownership)
+
+// populate heap array with value of other array:
+ha2.len = min(ha2.cap, sa1.len)
+copy(ha2, sa1) // memcpy(ha2, sa1, min(ha2.len, sa1.len))
+
+// ————————————————————————————————————————————————————————————————————————
+// Model where "[T]" is "ref to T array of varying len" (there's no "&[T]")
+fun reverse(v mut[int])
+x = [0, 1, 2]    // [int 3] ⟶ [0,1,2]
+y = x            // [int 3] ⟶ [0,1,2]
+r1 = &x          // &[int 3] ⟶ x
+r2 = &x[:2]      // &[int 2] ⟶ x
+s1 = x[:2]       // mut[int] {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+const s2 = x[:2] // [int]    {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+reverse(s1)      // s1 as plain arg (nothing unusual)
+reverse(s2)      // error: immutable ref where mutable ref is required
+reverse(x)       // create temporary slice, then call. i.e:
+  // 1. var tmp mut[int] = x[:]
+  // 2. call reverse(tmp)
+fun foo() [int]
+  x = [0, 1, 2] // [int 3]  [0,1,2] on stack
+  return x[:]   // WTF! Returns ptr to stack memory. Fail.
+
+// ————————————————————————————————————————————————————————————————————————
+// Model 2  (bad)
+fun reverse(v mut[int])
+x = [0, 1, 2]    // [int 3] ⟶ [0,1,2]
+y = x            // [int 3] ⟶ [0,1,2]
+r1 = &x          // mut&[int 3] ⟶ x
+r2 = &x[:2]      // mut&[int 2] ⟶ x
+// ownership moves from x to s1:
+s1 = x[:]        // [int] {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+reverse(s1)      // s1 as plain arg (nothing unusual)
+reverse(s2)      // error: immutable ref where mutable ref is required
+reverse(x)       // create temporary slice, then call. i.e:
+  // 1. var tmp mut[int] = x[:]
+  // 2. call reverse(tmp)
+fun foo() [int]
+  x = [0, 1, 2] // [int 3]  [0,1,2] on stack
+  return x[:]   // WTF! Returns ptr to stack memory. Fail.
+
+// ————————————————————————————————————————————————————————————————————————
+// Owning T  Borrowed T   Description
+// ————————— ———————————— ———————————————————————
+// [int 3]   &[int 3]     Fixed Array
+// [int]     &[int]       Slice of fixed Array
+// [int *]   &[int *]     Dynamic array
+//
+// ————————————————————————————————————————————————————————————————————————
+// Owning T  Borrowed T   Description
+// ————————— ———————————— ———————————————————————
+// [int 3]   &[int 3]     Fixed Array or slice thereof
+// [int]     &[int]       Dynamic array or slice thereof
+//
+
+
+/*!AST
+;@a1 = private unnamed_addr constant [3 x i32] [i32 0, i32 1, i32 2]
+
+define i32 @main() {
+  %x = alloca [3 x i32], align 4
+  store [3 x i32] [i32 0, i32 1, i32 2], [3 x i32]* %x, align 4
+
+  %y = alloca [3 x i32], align 4
+  call void @memcpy(%y, %x, i32 12, i1 false)
+
+  %z = alloca { i32, i32, i32* }, align 4
+  store { i32, i32, i32* } { 3, 3, %x }, { i32, i32, i32* }* %z, align 4
+}
+*/
