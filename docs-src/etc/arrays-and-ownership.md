@@ -3,17 +3,27 @@ title: Arrays
 ---
 # {{title}}
 
+Co has three constructs for dealing with arrays of values:
 
-## When and why do we need arrays?
+| Syntax  | Description
+|---------|-----------------------------------
+| `[T n]` | [Fixed-size arrays](fixed-size-arrays) for local and global data
+| `[T]`   | [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners. This is the foundation for—and the only way to—allocate heap memory.
+| `&[T]`  | [Array references & slices](#array-references-slices) for referring to arrays
 
-Okay so it's pretty nice to be able to make lists of stuff:
+<!-- - `[T n] ` [Fixed-size arrays](fixed-size-arrays) for local and global data
+- `[T]   ` [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners
+- `&[T]  ` [Array references & slices](#array-references-slices) for referring to arrays -->
+
+
+#### A quick example
 
 ```co
 fun make_stuff(count uint) [Stuff]
-  var stuffs [Stuff] = calloc(count, Stuff)
+  stuffs = calloc(count, Stuff) // [Stuff]
   for i = 0; i < stuffs.cap; i++
-    stuffs[stuffs.len++].somefield = i
-  stuffs
+    stuffs.append(Stuff(i))
+  stuffs // transfers ownership to caller
 ```
 
 In this example, it's important to...
@@ -24,10 +34,24 @@ In this example, it's important to...
   to the caller.
 
 
-### Fixed-size arrays
+#### Language grammar
+
+```bnf
+ArrayType        = FixedArrayType | DynamicArrayType
+FixedArrayType   = "[" Type ConstSizeExpr "]"
+DynamicArrayType = "[" Type "]"
+ArrayRefType     = "mut"? "&" ArrayType
+ArrayLiteral     = "[" [ Expr (list_sep Expr)* list_sep? ] "]"
+list_sep         = "," | ";"
+```
+
+
+## Fixed-size arrays
 
 Fixed-size arrays is contiguous memory the size of multiple instances
-of its elemental type. For example `[i32 3]` is 12 bytes of memory.
+of its elemental type. The size of a fixed-size array is part of its type and thus
+a compile-time constant.
+For example `[i32 3]` is 12 bytes of memory; three 32-bit integers.
 
 Fixed-size arrays are useful as temporary storage for compile-time bounded loops
 and for expressing uniform data like a vector.
@@ -71,14 +95,30 @@ They can be both constant and mutable.
 The type of fixed-size arrays is written as `[T n]`,
 for example `[int 3]` for "array of 3 ints"
 
-```bnf
-FixedArrayType = "[" Type UIntLit "]"
+
+## Array references & slices
+
+Co features "references" as a way to share values without making copies.
+References does not constitute ownership of data but is merely a borrowed handle.
+References are like pointers in C with some additional compile-time semantics to
+help you discern ownership.
+
+References to arrays support slicing; the ability to share a smaller
+range of an array.
+
+```co
+x = [1, 2, 3, 4, 5] // type [int 5]
+            // RESULT              TYPE         VALUE
+a = x       // copy of x           [int 5]      1,2,3,4,5
+b = x[1:4]  // copy of slice of x  [int 3]      2,3,4
+c = b[1:]   // copy of slice of x  [int 2]      3,4
+d = &x      // reference to x      mut&[int 5]  1,2,3,4,5
+e = &x[1:4] // ref to slice of x   mut&[int 3]  2,3,4
+f = &e[1:]  // ref to slice of x   mut&[int 2]  3,4
 ```
 
-
-### Variably-sized arrays
-
-These are useful when defining a function that accepts a variable number of items
+Array references are useful when defining a function that accepts a variable
+number of items which it only needs to read:
 
 ```co
 fun sum(xs &[f64]) f64
@@ -88,12 +128,12 @@ fun sum(xs &[f64]) f64
   return i
 ```
 
-Here the function only really needs two things:
-1. a pointer to (possibly read-only) memory that contains f64 data
-2. total number of f64 values at that pointer (length of array)
+The function in the above example receives a tuple of two values:
+1. a pointer to memory that contains f64 data (array data)
+2. count of valid values at the memory location (length of array)
 
-Co uses a "slice reference" type for this, `&[T]`.
-
+Co uses a "slice reference" type for this, `&[T]`, which is a tuple
+of pointer & length. More on this in a minute.
 
 Variably-sized arrays are also useful locally, for example to drop
 the first element under some condition only known at runtime:
@@ -108,7 +148,7 @@ fun compute_stuff(nozero bool)
     compute_one(xs[i])
 ```
 
-For this Co has slicing which works on all kinds of arrays.
+Slicing works on all kinds of arrays.
 Slicing a fixed-size array does not copy it but yields a reference
 with a pointer to the array memory, number of valid entries (length)
 and the capacity of the underlying array.
@@ -119,45 +159,38 @@ a structure with the following fields:
 
 ```co
 struct const_slice_ref {
-  ptr _ptrtype
-  len uint // number of valid entries at ptr
+  ptr memaddr // pointer to data
+  len uint    // number of valid entries at ptr
 }
 struct mutable_slice_ref {
-  ptr _ptrtype
-  len uint // number of valid entries at ptr
-  cap uint // number of entries that can be stored at ptr
+  ptr memaddr // pointer to data
+  len uint    // number of valid entries at ptr
+  cap uint    // number of entries that can be stored at ptr
 }
 ```
 
 
-The syntax for array references in Co is as follows:
 
-```bnf
-ArrayRef = "mut"? "&" ArrayType
-```
-
-In fact, references is a generic feature of Co and so its syntax is
-more correctly described as:
-
-```bnf
-Ref = "mut"? "&" Type
-```
-
-
-### Dynamic "growing" arrays
+## Dynamic arrays
 
 Sometimes arrays need to grow by bounds only known at runtime.
+Dynamic arrays has a length and capacity which can vary at runtime.
+Dynamic arrays can grow and are allocated on the heap.
+Dynamic array's data is not copied when passed around, instead its ownerhip transfers.
+
 For example we might parse a CSV file into an array of row structures:
 
 ```co
 type CSVRow [&[u8]]
+
 fun parse_csv(csvdata &[u8], nrows_guess uint)
-  rows = calloc(nrows_guess, CSVRow) // [CSVRow] heap-allocated array
+  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
   for csvdata.len > 0
     row, csvdata = parse_next_row(csvdata)
     if row.isValid
       rows.append(row)
   log("parsed {rows.len} rows")
+  // 'rows' deallocated here as its storage goes out of scope
 ```
 
 Co accomplishes this with dynamic, growable arrays allocated on the heap
@@ -168,47 +201,31 @@ the overhead of copying an array to the caller:
 
 ```co
 type CSVRow [&[u8]]
+
 fun parse_csv(csvdata &[u8], nrows_guess uint) [CSVRow]
-  rows = alloc(nrows_guess, CSVRow) // [CSVRow] heap-allocated array
+  rows = alloc(CSVRow, nrows_guess) // [CSVRow] heap-allocated array
   for csvdata.len > 0
     row, csvdata = parse_next_row(csvdata)
     if row.isValid
       rows.append(row)
-  rows
+  rows // ownership moves to caller
+
+fun main
+  rows = parse_csv(csvdata, 32)
+  // 'rows' deallocated here as its storage goes out of scope
 ```
 
 
 
-### Resource ownership
-
-Resource ownership rules in Co are simple:
-- Storage locations own their data.
-- Ownership is transferred only for heap arrays. All other values are copied.
-- References are pointers to data owned by someone else.
-
-When a storage location goes out of scope it relinquishes its ownership by bing "dropped".
-When a value is dropped, any heap arrays are deallocated.
-Any lingering references to a dropped value are invalid.
-Accessing such a reference causes a "safe crash" by panicing in "safe" builds
-and has undefined behavior in "fast" builds.
-
-A "storage location" is a variable, struct field, tuple element,
-array element or function parameter.
-
-All data is passed by value in Co.
-Note that references are memory addresses (an integer) and thus technically
-copied when passed around.
-
-
----
-[WIP]
+### Idea: Stack-storage optimization of dynamic arrays
 
 Heap allocations are relatively expensive and so it should be
-possible to make use of the stack even for arrays that might grow.
-For example the Co compiler makes use of the following pattern:
+possible to make use of the stack even for arrays that grows.
+
+The Co compiler, written in C, makes use of the following pattern:
 
 - allocate a small but common number of items on the stack
-- initialize an handle struct with a pointer to that memory and its capacity
+- initialize a "handle struct" with a pointer to that memory and its capacity
 - append items
   - when the capacity is reached, allocate more memory
     - if memory points to the stack:
@@ -218,111 +235,95 @@ For example the Co compiler makes use of the following pattern:
       - realloc
 - if memory points to the heap: free
 
-It may look something like this:
+It looks something like this in C:
 
 ```c
 // C
-struct tmparray { StuffResult* p; int cap; int len; };
-StuffResult* append(tmparray* a) {}
-int process_stuff(Stuff stuff, StuffResult** resv) {
-  struct { StuffResult* p; int cap; int len; } a;
-  StuffResult a_st[3];
-  a.p = a_st;
-  a.cap = 3;
-  while (stuff_next(&stuff)) {
-    StuffResult* result = append(&a);
-    if (!stuff_dequeue(&stuff, result))
-      a.len--;
+struct tmparray { Thing* p; void* initp; int cap; int len; };
+void grow(tmparray* a) {
+  a->cap *= 2;
+  if (a->p == a->initp) {
+    // move from stack to heap
+    a->p = malloc(sizeof(Thing) * a->cap);
+    memcpy(a->p, a->initp, sizeof(Thing) * a->len);
+  } else {
+    a->p = realloc(a->p, sizeof(Thing) * a->cap);
   }
+}
+void push(tmparray* a, Thing thing) {
+  if (a->len == a->cap)
+    grow(a);
+  a->p[a->len++] = thing;
+}
+void build_a_thing(Thing* v, int c);
+int process_stuff(Stuff stuff) {
+  Thing a_st[3];
+  struct tmparray a = { .p=a_st, .initp=a_st, .cap=3 };
+  Thing thing;
+  while (stuff_next(&thing)) {
+    push(&a, thing);
+  }
+  // use array of values
+  build_a_thing(a.p, a.len);
+  if (a.p != a_st)
+    free(a.p);
+}
+```
+
+It would be nice if Co could somehow do this as an optimization for dynamic arrays.
+Here's an example of what it could look like:
+
+```co
+fun process_stuff(stuff Stuff) [Thing]
+  var a [Thing] // creates a "default" dynamic array
+  // an implicit array of some small size is allocated on
+  // the stack here and a is pointed to it.
+  var thing Thing
+  for stuff_next(&thing)
+    a.append(thing) // may move a's data to heap
+  build_a_thing(&a)
+  // a dropped here; if a's data is on heap it is freed
+```
+
+The implementation struct of `[T]` could look like this:
+
+```co
+struct dynarray {
+  ptr memaddr // pointer to data
+  ish bool    // true if ptr is in the heap
+  len uint    // number of valid entries at ptr
+  cap uint    // number of entries that can be stored at ptr
 }
 ```
 
 
+------------------------------------------------------------------
 
-### Arrays as function results [WIP]
+## Notes & thoughts
 
-Sometimes we need to produce an array as the result of a function.
-If we return a pointer to the callees stack its value will likely be
-over written and thus be undefined
+- Should lit `[1,2,3]` yield a `mut&[int 3]` instead of `[int 3]`?
+  May be more useful if it did..?
 
-```co
-fun main()
-  numbers = make_numbers()
-  bar()
-  // 'numbers' invalid here!
-
-fun make_numbers() [int]
-  var numbers [StuffResult 3]
-  numbers[0] = 1
-  numbers[1] = 2
-  numbers[2] = 3
-  numbers
-```
-
-So we need to make sure that only arrays allocated on the stack can escape a
-function's body
-
-```co
-fun make_numbers() [int]
-  numbers = calloc(3, int) // allocate 3 ints on the heap
-  numbers[0] = 1
-  // ...
-  numbers
-```
-
-
-
-----------------
-WORK IN PROGRESS
-
-
-```co
-fun process_stuff(stuff Stuff) [StuffResult]
-  var results [StuffResult] = calloc(3, StuffResult)
-  for work in stuff.next()
-    if result = work()
-      results.append(result)
-  results
-```
-
-
-
-It might seem common to pass temporary arrays as arguments ...
-
-```co
-fun createFooConfig(things &[Thing]) FooConfig
-fun main()
-  config = createFooConfig([Thing(), Thing()])
-```
-
-... but in practice "rest" argument syntax covers most of these cases:
-
-```co
-fun createFooConfig(things ...&[Thing]) FooConfig
-fun main()
-  config = createFooConfig(Thing(), Thing())
-```
-
-
-## Notes
-
-- lit `[1,2,3]` might be better as a slice than array?
-
-- lits may be better as type constructors, ie `[int](1,2,3)` which would allow
-  expressing an array type context-free, ie `[x]` is unambiguously an array type
+- Array lits may be better as type constructors, ie `[int](1,2,3)` which would allow
+  expressing an array type context-free, i.e. `[x]` is unambiguously an array type
   rather than "array literal in some places and array type in other places."
 
 
-## Type model ideas
+### Rest parameters as syntactic sugar for fixed-size arrays
 
-| Owning T | Borrowed T | Description
-|----------|------------|-----------------------
-| [int 3]  | &[int 3]   | Fixed Array
-| [int]    | &[int]     | Slice of fixed Array
-| [int \*] | &[int \*]  | Dynamic array
+It nice to pass temporary arrays as arguments:
 
+```co
+fun create_config(somearg int, things &[Thing]) FooConfig
+fun main()
+  config = create_config(42, [Thing(), Thing()])
+```
 
-| Owning T | Borrowed T | Description
-|----------|------------|-----------------------
-| [int 3]  | &[int 3]   | Fixed Array or slice thereof
-| [int]    | &[int]     | Dynamic array or slice thereof
+A (unimplemented) "rest" parameter syntax could be a nice syntactic sugar:
+
+```co
+fun create_config(somearg int, things ...&[Thing]) FooConfig
+fun main()
+  config = create_config(42, Thing(), Thing())
+```
+

@@ -1,0 +1,30 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Resource ownership</title>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="/style.css?0">
+</head>
+<body>
+<h1><a id="resource-ownership" class="anchor" aria-hidden="true" href="#resource-ownership"></a>Resource ownership</h1>
+<p>Resource ownership rules in Co are simple:</p>
+<ul>
+<li>Storage locations own their data.</li>
+<li>Ownership is transferred only for heap arrays. All other values are copied.</li>
+<li>References are pointers to data owned by someone else.</li>
+</ul>
+<p>When a storage location goes out of scope it relinquishes its ownership by bing &quot;dropped&quot;.
+When a value is dropped, any heap arrays are deallocated.
+Any lingering references to a dropped value are invalid.
+Accessing such a reference causes a &quot;safe crash&quot; by panicing in &quot;safe&quot; builds
+and has undefined behavior in &quot;fast&quot; builds.</p>
+<p>A &quot;storage location&quot; is a variable, struct field, tuple element,
+array element or function parameter.</p>
+<p>All data is passed by value in Co.
+Note that references are memory addresses (an integer) and thus technically
+copied when passed around.</p>
+
+</body>
+</html>

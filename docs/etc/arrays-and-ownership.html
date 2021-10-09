@@ -9,13 +9,38 @@
 </head>
 <body>
 <h1><a id="arrays" class="anchor" aria-hidden="true" href="#arrays"></a>Arrays</h1>
-<h2><a id="when-and-why-do-we-need-arrays" class="anchor" aria-hidden="true" href="#when-and-why-do-we-need-arrays"></a>When and why do we need arrays?</h2>
-<p>Okay so it's pretty nice to be able to make lists of stuff:</p>
+<p>Co has three constructs for dealing with arrays of values:</p>
+<table>
+<thead>
+<tr>
+<th>Syntax</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>[T n]</code></td>
+<td><a href="fixed-size-arrays">Fixed-size arrays</a> for local and global data</td>
+</tr>
+<tr>
+<td><code>[T]</code></td>
+<td><a href="#dynamic-arrays">Dynamic arrays</a> that grow at runtime and can change owners. This is the foundation for—and the only way to—allocate heap memory.</td>
+</tr>
+<tr>
+<td><code>&amp;[T]</code></td>
+<td><a href="#array-references-slices">Array references &amp; slices</a> for referring to arrays</td>
+</tr>
+</tbody>
+</table>
+<!-- - `[T n] ` [Fixed-size arrays](fixed-size-arrays) for local and global data
+- `[T]   ` [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners
+- `&[T]  ` [Array references & slices](#array-references-slices) for referring to arrays -->
+<h4><a id="a-quick-example" class="anchor" aria-hidden="true" href="#a-quick-example"></a>A quick example</h4>
 <pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>make_stuff</span><span /class="hl-params"/g>(count <span /class="hl-type"/g>uint</span>)</span></span> [Stuff]
-  <span /class="hl-keyword"/g>var</span> stuffs [Stuff] = calloc(count, Stuff)
+  stuffs = calloc(count, Stuff) <span /class="hl-comment"/g>// [Stuff]</span>
   <span /class="hl-keyword"/g>for</span> i = <span /class="hl-number"/g>0</span>; i &lt; stuffs.cap; i++
-    stuffs[stuffs.len++].somefield = i
-  stuffs
+    stuffs.append(Stuff(i))
+  stuffs <span /class="hl-comment"/g>// transfers ownership to caller</span>
 </code></pre>
 <p>In this example, it's important to...</p>
 <ul>
@@ -25,9 +50,19 @@
 by the <code>make_stuff</code> body block and then when it returns, ownership is transferred
 to the caller.</li>
 </ul>
-<h3><a id="fixed-size-arrays" class="anchor" aria-hidden="true" href="#fixed-size-arrays"></a>Fixed-size arrays</h3>
+<h4><a id="language-grammar" class="anchor" aria-hidden="true" href="#language-grammar"></a>Language grammar</h4>
+<pre><code class="language-bnf"><span /class="hl-attribute"/g>ArrayType</span>        <span /class="hl-operator"/g>=</span> FixedArrayType | DynamicArrayType
+<span /class="hl-attribute"/g>FixedArrayType</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type ConstSizeExpr <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>DynamicArrayType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>ArrayRefType</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> ArrayType
+<span /class="hl-attribute"/g>ArrayLiteral</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> [ Expr (list_sep Expr)* list_sep? ] <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>list_sep</span>         <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;,&quot;</span> | <span /class="hl-string"/g>&quot;;&quot;</span>
+</code></pre>
+<h2><a id="fixed-size-arrays" class="anchor" aria-hidden="true" href="#fixed-size-arrays"></a>Fixed-size arrays</h2>
 <p>Fixed-size arrays is contiguous memory the size of multiple instances
-of its elemental type. For example <code>[i32 3]</code> is 12 bytes of memory.</p>
+of its elemental type. The size of a fixed-size array is part of its type and thus
+a compile-time constant.
+For example <code>[i32 3]</code> is 12 bytes of memory; three 32-bit integers.</p>
 <p>Fixed-size arrays are useful as temporary storage for compile-time bounded loops
 and for expressing uniform data like a vector.</p>
 <pre><code class="language-co">items = [<span /class="hl-number"/g>1</span>, <span /class="hl-number"/g>2</span>, <span /class="hl-number"/g>3</span>] <span /class="hl-comment"/g>// [int 3] in global memory</span>
@@ -64,22 +99,37 @@ and at the package level (global memory.)
 They can be both constant and mutable.
 The type of fixed-size arrays is written as <code>[T n]</code>,
 for example <code>[int 3]</code> for &quot;array of 3 ints&quot;</p>
-<pre><code class="language-bnf"><span /class="hl-attribute"/g>FixedArrayType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type UIntLit <span /class="hl-string"/g>&quot;]&quot;</span>
+<h2><a id="array-references-slices" class="anchor" aria-hidden="true" href="#array-references-slices"></a>Array references &amp; slices</h2>
+<p>Co features &quot;references&quot; as a way to share values without making copies.
+References does not constitute ownership of data but is merely a borrowed handle.
+References are like pointers in C with some additional compile-time semantics to
+help you discern ownership.</p>
+<p>References to arrays support slicing; the ability to share a smaller
+range of an array.</p>
+<pre><code class="language-co">x = [<span /class="hl-number"/g>1</span>, <span /class="hl-number"/g>2</span>, <span /class="hl-number"/g>3</span>, <span /class="hl-number"/g>4</span>, <span /class="hl-number"/g>5</span>] <span /class="hl-comment"/g>// type [int 5]</span>
+            <span /class="hl-comment"/g>// RESULT              TYPE         VALUE</span>
+a = x       <span /class="hl-comment"/g>// copy of x           [int 5]      1,2,3,4,5</span>
+b = x[<span /class="hl-number"/g>1</span>:<span /class="hl-number"/g>4</span>]  <span /class="hl-comment"/g>// copy of slice of x  [int 3]      2,3,4</span>
+c = b[<span /class="hl-number"/g>1</span>:]   <span /class="hl-comment"/g>// copy of slice of x  [int 2]      3,4</span>
+d = &amp;x      <span /class="hl-comment"/g>// reference to x      mut&amp;[int 5]  1,2,3,4,5</span>
+e = &amp;x[<span /class="hl-number"/g>1</span>:<span /class="hl-number"/g>4</span>] <span /class="hl-comment"/g>// ref to slice of x   mut&amp;[int 3]  2,3,4</span>
+f = &amp;e[<span /class="hl-number"/g>1</span>:]  <span /class="hl-comment"/g>// ref to slice of x   mut&amp;[int 2]  3,4</span>
 </code></pre>
-<h3><a id="variably-sized-arrays" class="anchor" aria-hidden="true" href="#variably-sized-arrays"></a>Variably-sized arrays</h3>
-<p>These are useful when defining a function that accepts a variable number of items</p>
+<p>Array references are useful when defining a function that accepts a variable
+number of items which it only needs to read:</p>
 <pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>sum</span><span /class="hl-params"/g>(xs &amp;[<span /class="hl-type"/g>f64</span>])</span></span> <span /class="hl-type"/g>f64</span>
   <span /class="hl-keyword"/g>var</span> sum <span /class="hl-type"/g>f64</span>
   <span /class="hl-keyword"/g>for</span> i = <span /class="hl-number"/g>0</span>; i &lt; xs.len; i++
     sum += xs[i]
   <span /class="hl-keyword"/g>return</span> i
 </code></pre>
-<p>Here the function only really needs two things:</p>
+<p>The function in the above example receives a tuple of two values:</p>
 <ol>
-<li>a pointer to (possibly read-only) memory that contains f64 data</li>
-<li>total number of f64 values at that pointer (length of array)</li>
+<li>a pointer to memory that contains f64 data (array data)</li>
+<li>count of valid values at the memory location (length of array)</li>
 </ol>
-<p>Co uses a &quot;slice reference&quot; type for this, <code>&amp;[T]</code>.</p>
+<p>Co uses a &quot;slice reference&quot; type for this, <code>&amp;[T]</code>, which is a tuple
+of pointer &amp; length. More on this in a minute.</p>
 <p>Variably-sized arrays are also useful locally, for example to drop
 the first element under some condition only known at runtime:</p>
 <pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>compute_stuff</span><span /class="hl-params"/g>(nozero <span /class="hl-type"/g>bool</span>)</span></span>
@@ -90,79 +140,64 @@ the first element under some condition only known at runtime:</p>
   <span /class="hl-keyword"/g>for</span> i = <span /class="hl-number"/g>0</span>; i &lt; xs.len; i++
     compute_one(xs[i])
 </code></pre>
-<p>For this Co has slicing which works on all kinds of arrays.
+<p>Slicing works on all kinds of arrays.
 Slicing a fixed-size array does not copy it but yields a reference
 with a pointer to the array memory, number of valid entries (length)
 and the capacity of the underlying array.</p>
 <p>An array reference <code>&amp;[T]</code> or <code>mut&amp;[T]</code> is represented at runtime as
 a structure with the following fields:</p>
 <pre><code class="language-co"><span /class="hl-keyword"/g>struct</span> const_slice_ref {
-  ptr _ptrtype
-  len <span /class="hl-type"/g>uint</span> <span /class="hl-comment"/g>// number of valid entries at ptr</span>
+  ptr memaddr <span /class="hl-comment"/g>// pointer to data</span>
+  len <span /class="hl-type"/g>uint</span>    <span /class="hl-comment"/g>// number of valid entries at ptr</span>
 }
 <span /class="hl-keyword"/g>struct</span> mutable_slice_ref {
-  ptr _ptrtype
-  len <span /class="hl-type"/g>uint</span> <span /class="hl-comment"/g>// number of valid entries at ptr</span>
-  cap <span /class="hl-type"/g>uint</span> <span /class="hl-comment"/g>// number of entries that can be stored at ptr</span>
+  ptr memaddr <span /class="hl-comment"/g>// pointer to data</span>
+  len <span /class="hl-type"/g>uint</span>    <span /class="hl-comment"/g>// number of valid entries at ptr</span>
+  cap <span /class="hl-type"/g>uint</span>    <span /class="hl-comment"/g>// number of entries that can be stored at ptr</span>
 }
 </code></pre>
-<p>The syntax for array references in Co is as follows:</p>
-<pre><code class="language-bnf"><span /class="hl-attribute"/g>ArrayRef</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> ArrayType
-</code></pre>
-<p>In fact, references is a generic feature of Co and so its syntax is
-more correctly described as:</p>
-<pre><code class="language-bnf"><span /class="hl-attribute"/g>Ref</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> Type
-</code></pre>
-<h3><a id="dynamic-growing-arrays" class="anchor" aria-hidden="true" href="#dynamic-growing-arrays"></a>Dynamic &quot;growing&quot; arrays</h3>
+<h2><a id="dynamic-arrays" class="anchor" aria-hidden="true" href="#dynamic-arrays"></a>Dynamic arrays</h2>
 <p>Sometimes arrays need to grow by bounds only known at runtime.
-For example we might parse a CSV file into an array of row structures:</p>
+Dynamic arrays has a length and capacity which can vary at runtime.
+Dynamic arrays can grow and are allocated on the heap.
+Dynamic array's data is not copied when passed around, instead its ownerhip transfers.</p>
+<p>For example we might parse a CSV file into an array of row structures:</p>
 <pre><code class="language-co"><span /class="hl-typedef"/g><span /class="hl-keyword"/g>type</span> <span /class="hl-title"/g>CSVRow</span> [&amp;[<span /class="hl-title"/g>u8</span>]]</span>
+
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>parse_csv</span><span /class="hl-params"/g>(csvdata &amp;[<span /class="hl-type"/g>u8</span>], nrows_guess <span /class="hl-type"/g>uint</span>)</span></span>
-  rows = calloc(nrows_guess, CSVRow) <span /class="hl-comment"/g>// [CSVRow] heap-allocated array</span>
+  rows = alloc(CSVRow, nrows_guess) <span /class="hl-comment"/g>// [CSVRow] heap-allocated array</span>
   <span /class="hl-keyword"/g>for</span> csvdata.len &gt; <span /class="hl-number"/g>0</span>
     row, csvdata = parse_next_row(csvdata)
     <span /class="hl-keyword"/g>if</span> row.isValid
       rows.append(row)
   log(<span /class="hl-string"/g>&quot;parsed {rows.len} rows&quot;</span>)
+  <span /class="hl-comment"/g>// &#x27;rows&#x27; deallocated here as its storage goes out of scope</span>
 </code></pre>
 <p>Co accomplishes this with dynamic, growable arrays allocated on the heap
 using the heap allocator function <code>alloc&lt;T type&gt;(typ T, count uint) T</code>.</p>
 <p>This also enables us to return large arrays as function results without
 the overhead of copying an array to the caller:</p>
 <pre><code class="language-co"><span /class="hl-typedef"/g><span /class="hl-keyword"/g>type</span> <span /class="hl-title"/g>CSVRow</span> [&amp;[<span /class="hl-title"/g>u8</span>]]</span>
+
 <span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>parse_csv</span><span /class="hl-params"/g>(csvdata &amp;[<span /class="hl-type"/g>u8</span>], nrows_guess <span /class="hl-type"/g>uint</span>)</span></span> [CSVRow]
-  rows = alloc(nrows_guess, CSVRow) <span /class="hl-comment"/g>// [CSVRow] heap-allocated array</span>
+  rows = alloc(CSVRow, nrows_guess) <span /class="hl-comment"/g>// [CSVRow] heap-allocated array</span>
   <span /class="hl-keyword"/g>for</span> csvdata.len &gt; <span /class="hl-number"/g>0</span>
     row, csvdata = parse_next_row(csvdata)
     <span /class="hl-keyword"/g>if</span> row.isValid
       rows.append(row)
-  rows
+  rows <span /class="hl-comment"/g>// ownership moves to caller</span>
+
+<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> main</span>
+  rows = parse_csv(csvdata, <span /class="hl-number"/g>32</span>)
+  <span /class="hl-comment"/g>// &#x27;rows&#x27; deallocated here as its storage goes out of scope</span>
 </code></pre>
-<h3><a id="resource-ownership" class="anchor" aria-hidden="true" href="#resource-ownership"></a>Resource ownership</h3>
-<p>Resource ownership rules in Co are simple:</p>
-<ul>
-<li>Storage locations own their data.</li>
-<li>Ownership is transferred only for heap arrays. All other values are copied.</li>
-<li>References are pointers to data owned by someone else.</li>
-</ul>
-<p>When a storage location goes out of scope it relinquishes its ownership by bing &quot;dropped&quot;.
-When a value is dropped, any heap arrays are deallocated.
-Any lingering references to a dropped value are invalid.
-Accessing such a reference causes a &quot;safe crash&quot; by panicing in &quot;safe&quot; builds
-and has undefined behavior in &quot;fast&quot; builds.</p>
-<p>A &quot;storage location&quot; is a variable, struct field, tuple element,
-array element or function parameter.</p>
-<p>All data is passed by value in Co.
-Note that references are memory addresses (an integer) and thus technically
-copied when passed around.</p>
-<hr>
-<p>[WIP]</p>
+<h3><a id="idea-stack-storage-optimization-of-dynamic-arrays" class="anchor" aria-hidden="true" href="#idea-stack-storage-optimization-of-dynamic-arrays"></a>Idea: Stack-storage optimization of dynamic arrays</h3>
 <p>Heap allocations are relatively expensive and so it should be
-possible to make use of the stack even for arrays that might grow.
-For example the Co compiler makes use of the following pattern:</p>
+possible to make use of the stack even for arrays that grows.</p>
+<p>The Co compiler, written in C, makes use of the following pattern:</p>
 <ul>
 <li>allocate a small but common number of items on the stack</li>
-<li>initialize an handle struct with a pointer to that memory and its capacity</li>
+<li>initialize a &quot;handle struct&quot; with a pointer to that memory and its capacity</li>
 <li>append items<ul>
 <li>when the capacity is reached, allocate more memory<ul>
 <li>if memory points to the stack:<ul>
@@ -180,122 +215,80 @@ For example the Co compiler makes use of the following pattern:</p>
 </li>
 <li>if memory points to the heap: free</li>
 </ul>
-<p>It may look something like this:</p>
+<p>It looks something like this in C:</p>
 <pre><code class="language-c"><span /class="hl-comment"/g>// C</span>
-<span /class="hl-class"/g><span /class="hl-keyword"/g>struct</span> <span /class="hl-title"/g>tmparray</span> {</span> StuffResult* p; <span /class="hl-type"/g>int</span> cap; <span /class="hl-type"/g>int</span> len; };
-StuffResult* <span /class="hl-title function_"/g>append</span><span /class="hl-params"/g>(tmparray* a)</span> {}
-<span /class="hl-type"/g>int</span> <span /class="hl-title function_"/g>process_stuff</span><span /class="hl-params"/g>(Stuff stuff, StuffResult** resv)</span> {
-  <span /class="hl-class"/g><span /class="hl-keyword"/g>struct</span> {</span> StuffResult* p; <span /class="hl-type"/g>int</span> cap; <span /class="hl-type"/g>int</span> len; } a;
-  StuffResult a_st[<span /class="hl-number"/g>3</span>];
-  a.p = a_st;
-  a.cap = <span /class="hl-number"/g>3</span>;
-  <span /class="hl-keyword"/g>while</span> (stuff_next(&amp;stuff)) {
-    StuffResult* result = append(&amp;a);
-    <span /class="hl-keyword"/g>if</span> (!stuff_dequeue(&amp;stuff, result))
-      a.len--;
+<span /class="hl-class"/g><span /class="hl-keyword"/g>struct</span> <span /class="hl-title"/g>tmparray</span> {</span> Thing* p; <span /class="hl-type"/g>void</span>* initp; <span /class="hl-type"/g>int</span> cap; <span /class="hl-type"/g>int</span> len; };
+<span /class="hl-type"/g>void</span> <span /class="hl-title function_"/g>grow</span><span /class="hl-params"/g>(tmparray* a)</span> {
+  a-&gt;cap *= <span /class="hl-number"/g>2</span>;
+  <span /class="hl-keyword"/g>if</span> (a-&gt;p == a-&gt;initp) {
+    <span /class="hl-comment"/g>// move from stack to heap</span>
+    a-&gt;p = <span /class="hl-built_in"/g>malloc</span>(<span /class="hl-keyword"/g>sizeof</span>(Thing) * a-&gt;cap);
+    <span /class="hl-built_in"/g>memcpy</span>(a-&gt;p, a-&gt;initp, <span /class="hl-keyword"/g>sizeof</span>(Thing) * a-&gt;len);
+  } <span /class="hl-keyword"/g>else</span> {
+    a-&gt;p = <span /class="hl-built_in"/g>realloc</span>(a-&gt;p, <span /class="hl-keyword"/g>sizeof</span>(Thing) * a-&gt;cap);
   }
 }
+<span /class="hl-type"/g>void</span> <span /class="hl-title function_"/g>push</span><span /class="hl-params"/g>(tmparray* a, Thing thing)</span> {
+  <span /class="hl-keyword"/g>if</span> (a-&gt;len == a-&gt;cap)
+    grow(a);
+  a-&gt;p[a-&gt;len++] = thing;
+}
+<span /class="hl-type"/g>void</span> <span /class="hl-title function_"/g>build_a_thing</span><span /class="hl-params"/g>(Thing* v, <span /class="hl-type"/g>int</span> c)</span>;
+<span /class="hl-type"/g>int</span> <span /class="hl-title function_"/g>process_stuff</span><span /class="hl-params"/g>(Stuff stuff)</span> {
+  Thing a_st[<span /class="hl-number"/g>3</span>];
+  <span /class="hl-class"/g><span /class="hl-keyword"/g>struct</span> <span /class="hl-title"/g>tmparray</span> <span /class="hl-title"/g>a</span> =</span> { .p=a_st, .initp=a_st, .cap=<span /class="hl-number"/g>3</span> };
+  Thing thing;
+  <span /class="hl-keyword"/g>while</span> (stuff_next(&amp;thing)) {
+    push(&amp;a, thing);
+  }
+  <span /class="hl-comment"/g>// use array of values</span>
+  build_a_thing(a.p, a.len);
+  <span /class="hl-keyword"/g>if</span> (a.p != a_st)
+    <span /class="hl-built_in"/g>free</span>(a.p);
+}
 </code></pre>
-<h3><a id="arrays-as-function-results-wip" class="anchor" aria-hidden="true" href="#arrays-as-function-results-wip"></a>Arrays as function results [WIP]</h3>
-<p>Sometimes we need to produce an array as the result of a function.
-If we return a pointer to the callees stack its value will likely be
-over written and thus be undefined</p>
-<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span></span>
-  numbers = make_numbers()
-  bar()
-  <span /class="hl-comment"/g>// &#x27;numbers&#x27; invalid here!</span>
-
-<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>make_numbers</span><span /class="hl-params"/g>()</span></span> [<span /class="hl-type"/g>int</span>]
-  <span /class="hl-keyword"/g>var</span> numbers [StuffResult <span /class="hl-number"/g>3</span>]
-  numbers[<span /class="hl-number"/g>0</span>] = <span /class="hl-number"/g>1</span>
-  numbers[<span /class="hl-number"/g>1</span>] = <span /class="hl-number"/g>2</span>
-  numbers[<span /class="hl-number"/g>2</span>] = <span /class="hl-number"/g>3</span>
-  numbers
+<p>It would be nice if Co could somehow do this as an optimization for dynamic arrays.
+Here's an example of what it could look like:</p>
+<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>process_stuff</span><span /class="hl-params"/g>(stuff Stuff)</span></span> [Thing]
+  <span /class="hl-keyword"/g>var</span> a [Thing] <span /class="hl-comment"/g>// creates a &quot;default&quot; dynamic array</span>
+  <span /class="hl-comment"/g>// an implicit array of some small size is allocated on</span>
+  <span /class="hl-comment"/g>// the stack here and a is pointed to it.</span>
+  <span /class="hl-keyword"/g>var</span> thing Thing
+  <span /class="hl-keyword"/g>for</span> stuff_next(&amp;thing)
+    a.append(thing) <span /class="hl-comment"/g>// may move a&#x27;s data to heap</span>
+  build_a_thing(&amp;a)
+  <span /class="hl-comment"/g>// a dropped here; if a&#x27;s data is on heap it is freed</span>
 </code></pre>
-<p>So we need to make sure that only arrays allocated on the stack can escape a
-function's body</p>
-<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>make_numbers</span><span /class="hl-params"/g>()</span></span> [<span /class="hl-type"/g>int</span>]
-  numbers = calloc(<span /class="hl-number"/g>3</span>, <span /class="hl-type"/g>int</span>) <span /class="hl-comment"/g>// allocate 3 ints on the heap</span>
-  numbers[<span /class="hl-number"/g>0</span>] = <span /class="hl-number"/g>1</span>
-  <span /class="hl-comment"/g>// ...</span>
-  numbers
+<p>The implementation struct of <code>[T]</code> could look like this:</p>
+<pre><code class="language-co"><span /class="hl-keyword"/g>struct</span> dynarray {
+  ptr memaddr <span /class="hl-comment"/g>// pointer to data</span>
+  ish <span /class="hl-type"/g>bool</span>    <span /class="hl-comment"/g>// true if ptr is in the heap</span>
+  len <span /class="hl-type"/g>uint</span>    <span /class="hl-comment"/g>// number of valid entries at ptr</span>
+  cap <span /class="hl-type"/g>uint</span>    <span /class="hl-comment"/g>// number of entries that can be stored at ptr</span>
+}
 </code></pre>
 <hr>
-<p>WORK IN PROGRESS</p>
-<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>process_stuff</span><span /class="hl-params"/g>(stuff Stuff)</span></span> [StuffResult]
-  <span /class="hl-keyword"/g>var</span> results [StuffResult] = calloc(<span /class="hl-number"/g>3</span>, StuffResult)
-  <span /class="hl-keyword"/g>for</span> work in stuff.next()
-    <span /class="hl-keyword"/g>if</span> result = work()
-      results.append(result)
-  results
-</code></pre>
-<p>It might seem common to pass temporary arrays as arguments ...</p>
-<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>createFooConfig</span><span /class="hl-params"/g>(things &amp;[Thing])</span></span> FooConfig
-<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span></span>
-  config = createFooConfig([Thing(), Thing()])
-</code></pre>
-<p>... but in practice &quot;rest&quot; argument syntax covers most of these cases:</p>
-<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>createFooConfig</span><span /class="hl-params"/g>(things ...&amp;[Thing])</span></span> FooConfig
-<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span></span>
-  config = createFooConfig(Thing(), Thing())
-</code></pre>
-<h2><a id="notes" class="anchor" aria-hidden="true" href="#notes"></a>Notes</h2>
+<h2><a id="notes-thoughts" class="anchor" aria-hidden="true" href="#notes-thoughts"></a>Notes &amp; thoughts</h2>
 <ul>
-<li><p>lit <code>[1,2,3]</code> might be better as a slice than array?</p>
+<li><p>Should lit <code>[1,2,3]</code> yield a <code>mut&amp;[int 3]</code> instead of <code>[int 3]</code>?
+May be more useful if it did..?</p>
 </li>
-<li><p>lits may be better as type constructors, ie <code>[int](1,2,3)</code> which would allow
-expressing an array type context-free, ie <code>[x]</code> is unambiguously an array type
+<li><p>Array lits may be better as type constructors, ie <code>[int](1,2,3)</code> which would allow
+expressing an array type context-free, i.e. <code>[x]</code> is unambiguously an array type
 rather than &quot;array literal in some places and array type in other places.&quot;</p>
 </li>
 </ul>
-<h2><a id="type-model-ideas" class="anchor" aria-hidden="true" href="#type-model-ideas"></a>Type model ideas</h2>
-<table>
-<thead>
-<tr>
-<th>Owning T</th>
-<th>Borrowed T</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>[int 3]</td>
-<td>&amp;[int 3]</td>
-<td>Fixed Array</td>
-</tr>
-<tr>
-<td>[int]</td>
-<td>&amp;[int]</td>
-<td>Slice of fixed Array</td>
-</tr>
-<tr>
-<td>[int *]</td>
-<td>&amp;[int *]</td>
-<td>Dynamic array</td>
-</tr>
-</tbody>
-</table>
-<table>
-<thead>
-<tr>
-<th>Owning T</th>
-<th>Borrowed T</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>[int 3]</td>
-<td>&amp;[int 3]</td>
-<td>Fixed Array or slice thereof</td>
-</tr>
-<tr>
-<td>[int]</td>
-<td>&amp;[int]</td>
-<td>Dynamic array or slice thereof</td>
-</tr>
-</tbody>
-</table>
+<h3><a id="rest-parameters-as-syntactic-sugar-for-fixed-size-arrays" class="anchor" aria-hidden="true" href="#rest-parameters-as-syntactic-sugar-for-fixed-size-arrays"></a>Rest parameters as syntactic sugar for fixed-size arrays</h3>
+<p>It nice to pass temporary arrays as arguments:</p>
+<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>create_config</span><span /class="hl-params"/g>(somearg <span /class="hl-type"/g>int</span>, things &amp;[Thing])</span></span> FooConfig
+<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span></span>
+  config = create_config(<span /class="hl-number"/g>42</span>, [Thing(), Thing()])
+</code></pre>
+<p>A (unimplemented) &quot;rest&quot; parameter syntax could be a nice syntactic sugar:</p>
+<pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>create_config</span><span /class="hl-params"/g>(somearg <span /class="hl-type"/g>int</span>, things ...&amp;[Thing])</span></span> FooConfig
+<span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>main</span><span /class="hl-params"/g>()</span></span>
+  config = create_config(<span /class="hl-number"/g>42</span>, Thing(), Thing())
+</code></pre>
 
 </body>
 </html>

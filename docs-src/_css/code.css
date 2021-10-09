@@ -23,8 +23,8 @@ pre {
   }
 
   background:    var(--code-bg);
-  /* font-size:     0.875rem; */  /* 14dp @ font-size 16 */
-  font-size:     0.9375rem;  /* 15dp @ font-size 16 */
+  font-size:     0.875rem;  /* 14dp @ font-size 16 */
+  /* font-size:     0.9375rem; */  /* 15dp @ font-size 16 */
   padding:       0.625rem;  /* 10dp @ font-size 16 */
   border-radius: 0.3125rem; /* 5dp @ font-size 16 */
   -webkit-text-size-adjust: none;
