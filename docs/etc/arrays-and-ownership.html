@@ -20,7 +20,7 @@
 <tbody>
 <tr>
 <td><code>[T n]</code></td>
-<td><a href="fixed-size-arrays">Fixed-size arrays</a> for local and global data</td>
+<td><a href="#fixed-size-arrays">Fixed-size arrays</a> for local and global data</td>
 </tr>
 <tr>
 <td><code>[T]</code></td>
@@ -50,14 +50,20 @@
 by the <code>make_stuff</code> body block and then when it returns, ownership is transferred
 to the caller.</li>
 </ul>
-<h4><a id="language-grammar" class="anchor" aria-hidden="true" href="#language-grammar"></a>Language grammar</h4>
-<pre><code class="language-bnf"><span /class="hl-attribute"/g>ArrayType</span>        <span /class="hl-operator"/g>=</span> FixedArrayType | DynamicArrayType
-<span /class="hl-attribute"/g>FixedArrayType</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type ConstSizeExpr <span /class="hl-string"/g>&quot;]&quot;</span>
-<span /class="hl-attribute"/g>DynamicArrayType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type <span /class="hl-string"/g>&quot;]&quot;</span>
-<span /class="hl-attribute"/g>ArrayRefType</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> ArrayType
-<span /class="hl-attribute"/g>ArrayLiteral</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> [ Expr (list_sep Expr)* list_sep? ] <span /class="hl-string"/g>&quot;]&quot;</span>
-<span /class="hl-attribute"/g>list_sep</span>         <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;,&quot;</span> | <span /class="hl-string"/g>&quot;;&quot;</span>
-</code></pre>
+<h2><a id="open-questions" class="anchor" aria-hidden="true" href="#open-questions"></a>Open questions</h2>
+<ol>
+<li>Perhaps a slice operation should always yield a reference?<br>
+i.e. <code>y</code> in <code>x = [1,2,3]; y = x[:2]</code> is what?<br>
+Current idea is that it becomes a copy of a slice of x (<code>[1,2]</code>)
+and that <code>z = &amp;x[:2]</code> yields a reference (of type <code>mut&amp;[int]</code>).
+But this might be confusing, especially how it might interact
+with dynamic arrays: what is <code>s</code> in <code>var a [int]; s = a[:2]</code>?<br>
+Dynamic arrays are not copy on assignment but change ownership,
+so the only logical outcome is that <code>s</code> becomes the new owner
+and <code>a</code> becomes invalid, but that is a little confusing since
+the same operation on a fixed-size array has a different outcome!
+See <a href="#ref-ex1">examples in the &quot;Array references &amp; slices&quot; section</a></li>
+</ol>
 <h2><a id="fixed-size-arrays" class="anchor" aria-hidden="true" href="#fixed-size-arrays"></a>Fixed-size arrays</h2>
 <p>Fixed-size arrays is contiguous memory the size of multiple instances
 of its elemental type. The size of a fixed-size array is part of its type and thus
@@ -104,7 +110,8 @@ for example <code>[int 3]</code> for &quot;array of 3 ints&quot;</p>
 References does not constitute ownership of data but is merely a borrowed handle.
 References are like pointers in C with some additional compile-time semantics to
 help you discern ownership.</p>
-<p>References to arrays support slicing; the ability to share a smaller
+<p><span id="ref-ex1"></span>
+References to arrays support slicing; the ability to share a smaller
 range of an array.</p>
 <pre><code class="language-co">x = [<span /class="hl-number"/g>1</span>, <span /class="hl-number"/g>2</span>, <span /class="hl-number"/g>3</span>, <span /class="hl-number"/g>4</span>, <span /class="hl-number"/g>5</span>] <span /class="hl-comment"/g>// type [int 5]</span>
             <span /class="hl-comment"/g>// RESULT              TYPE         VALUE</span>
@@ -134,9 +141,9 @@ of pointer &amp; length. More on this in a minute.</p>
 the first element under some condition only known at runtime:</p>
 <pre><code class="language-co"><span /class="hl-function"/g><span /class="hl-keyword"/g>fun</span> <span /class="hl-title"/g>compute_stuff</span><span /class="hl-params"/g>(nozero <span /class="hl-type"/g>bool</span>)</span></span>
   values = [<span /class="hl-number"/g>0</span>, <span /class="hl-number"/g>10</span>, <span /class="hl-number"/g>20</span>] <span /class="hl-comment"/g>// [int 3] on stack</span>
-  xs = values[:]       <span /class="hl-comment"/g>// mut&amp;[int] — pointer to &#x27;values&#x27;</span>
+  xs = &amp;values[:]      <span /class="hl-comment"/g>// mut&amp;[int] — pointer to &#x27;values&#x27;</span>
   <span /class="hl-keyword"/g>if</span> nozero
-    xs = xs[<span /class="hl-number"/g>1</span>:] <span /class="hl-comment"/g>// drop first value</span>
+    xs = &amp;xs[<span /class="hl-number"/g>1</span>:] <span /class="hl-comment"/g>// drop first value</span>
   <span /class="hl-keyword"/g>for</span> i = <span /class="hl-number"/g>0</span>; i &lt; xs.len; i++
     compute_one(xs[i])
 </code></pre>
@@ -268,6 +275,14 @@ Here's an example of what it could look like:</p>
 }
 </code></pre>
 <hr>
+<h2><a id="language-grammar-arrays" class="anchor" aria-hidden="true" href="#language-grammar-arrays"></a>Language grammar (arrays)</h2>
+<pre><code class="language-bnf"><span /class="hl-attribute"/g>ArrayType</span>        <span /class="hl-operator"/g>=</span> FixedArrayType | DynamicArrayType
+<span /class="hl-attribute"/g>FixedArrayType</span>   <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type ConstSizeExpr <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>DynamicArrayType</span> <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> Type <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>ArrayRefType</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;mut&quot;</span>? <span /class="hl-string"/g>&quot;&amp;&quot;</span> ArrayType
+<span /class="hl-attribute"/g>ArrayLiteral</span>     <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;[&quot;</span> [ Expr (list_sep Expr)* list_sep? ] <span /class="hl-string"/g>&quot;]&quot;</span>
+<span /class="hl-attribute"/g>list_sep</span>         <span /class="hl-operator"/g>=</span> <span /class="hl-string"/g>&quot;,&quot;</span> | <span /class="hl-string"/g>&quot;;&quot;</span>
+</code></pre>
 <h2><a id="notes-thoughts" class="anchor" aria-hidden="true" href="#notes-thoughts"></a>Notes &amp; thoughts</h2>
 <ul>
 <li><p>Should lit <code>[1,2,3]</code> yield a <code>mut&amp;[int 3]</code> instead of <code>[int 3]</code>?

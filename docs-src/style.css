@@ -30,6 +30,8 @@
   --background-color: white;
   --foreground-color-rgb: 0,0,0;
   --bgcolor-level1: rgba(0,0,0,0.1);
+  --link-color: var(--blue);
+  --link-underline-color: rgba(var(--foreground-color-rgb), 0.4);
 
   /* --code-bg: #ffffdd; */
   --code-bg: #f6f8fa;
@@ -48,6 +50,7 @@
 
     --link-color: #70CAFC;
     --link-visited-color: #B79EFF;
+    --link-underline-color: rgba(var(--foreground-color-rgb), 0.5);
 
     --code-bg: #242120;
 

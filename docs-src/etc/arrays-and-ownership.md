@@ -7,7 +7,7 @@ Co has three constructs for dealing with arrays of values:
 
 | Syntax  | Description
 |---------|-----------------------------------
-| `[T n]` | [Fixed-size arrays](fixed-size-arrays) for local and global data
+| `[T n]` | [Fixed-size arrays](#fixed-size-arrays) for local and global data
 | `[T]`   | [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners. This is the foundation for—and the only way to—allocate heap memory.
 | `&[T]`  | [Array references & slices](#array-references-slices) for referring to arrays
 
@@ -34,16 +34,19 @@ In this example, it's important to...
   to the caller.
 
 
-#### Language grammar
+## Open questions
 
-```bnf
-ArrayType        = FixedArrayType | DynamicArrayType
-FixedArrayType   = "[" Type ConstSizeExpr "]"
-DynamicArrayType = "[" Type "]"
-ArrayRefType     = "mut"? "&" ArrayType
-ArrayLiteral     = "[" [ Expr (list_sep Expr)* list_sep? ] "]"
-list_sep         = "," | ";"
-```
+1. Perhaps a slice operation should always yield a reference?<br>
+   i.e. `y` in `x = [1,2,3]; y = x[:2]` is what?<br>
+   Current idea is that it becomes a copy of a slice of x (`[1,2]`)
+   and that `z = &x[:2]` yields a reference (of type `mut&[int]`).
+   But this might be confusing, especially how it might interact
+   with dynamic arrays: what is `s` in `var a [int]; s = a[:2]`?<br>
+   Dynamic arrays are not copy on assignment but change ownership,
+   so the only logical outcome is that `s` becomes the new owner
+   and `a` becomes invalid, but that is a little confusing since
+   the same operation on a fixed-size array has a different outcome!
+   See [examples in the "Array references & slices" section](#ref-ex1)
 
 
 ## Fixed-size arrays
@@ -103,6 +106,7 @@ References does not constitute ownership of data but is merely a borrowed handle
 References are like pointers in C with some additional compile-time semantics to
 help you discern ownership.
 
+<span id="ref-ex1"></span>
 References to arrays support slicing; the ability to share a smaller
 range of an array.
 
@@ -141,9 +145,9 @@ the first element under some condition only known at runtime:
 ```co
 fun compute_stuff(nozero bool)
   values = [0, 10, 20] // [int 3] on stack
-  xs = values[:]       // mut&[int] — pointer to 'values'
+  xs = &values[:]      // mut&[int] — pointer to 'values'
   if nozero
-    xs = xs[1:] // drop first value
+    xs = &xs[1:] // drop first value
   for i = 0; i < xs.len; i++
     compute_one(xs[i])
 ```
@@ -298,6 +302,18 @@ struct dynarray {
 
 
 ------------------------------------------------------------------
+
+## Language grammar (arrays)
+
+```bnf
+ArrayType        = FixedArrayType | DynamicArrayType
+FixedArrayType   = "[" Type ConstSizeExpr "]"
+DynamicArrayType = "[" Type "]"
+ArrayRefType     = "mut"? "&" ArrayType
+ArrayLiteral     = "[" [ Expr (list_sep Expr)* list_sep? ] "]"
+list_sep         = "," | ";"
+```
+
 
 ## Notes & thoughts
 

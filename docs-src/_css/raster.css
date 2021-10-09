@@ -714,11 +714,13 @@ h1.xxxlarge, .h1.xxxlarge {
 /* anchor */
 a {
   text-decoration: underline;
-  -webkit-text-decoration: underline rgba(0, 0, 0, 0.3);
-          text-decoration: underline rgba(0, 0, 0, 0.3);
+  text-decoration-color: var(--link-underline-color);
   white-space: nowrap;
 }
-a:hover { color: var(--blue); }
+a:hover {
+  color: var(--link-color);
+  text-decoration-color: var(--link-color);
+}
 h1 > a, h2 > a, h3 > a, h4 > a, h5 > a, h6 > a,
 .h1 > a, .h2 > a, .h3 > a, .h4 > a, .h5 > a, .h6 > a {
   text-decoration: none;
@@ -727,8 +729,8 @@ h1 > a:hover, h2 > a:hover, h3 > a:hover, h4 > a:hover,
 h5 > a:hover, h6 > a:hover, .h1 > a:hover, .h2 > a:hover, .h3 > a:hover,
 .h4 > a:hover, .h5 > a:hover, .h6 > a:hover {
   text-decoration: underline;
-  -webkit-text-decoration: underline rgba(0, 0, 0, 0.3);
-          text-decoration: underline rgba(0, 0, 0, 0.3);
+  -webkit-text-decoration: underline rgba(var(--foreground-color-rgb), 0.5);
+          text-decoration: underline rgba(var(--foreground-color-rgb), 0.5);
   color: inherit;
 }
 /* image */
