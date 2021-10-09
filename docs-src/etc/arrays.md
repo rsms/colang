@@ -5,11 +5,11 @@ title: Arrays
 
 Co has three constructs for dealing with arrays of values:
 
-| Syntax  | Description
-|---------|-----------------------------------
-| `[T n]` | [Fixed-size arrays](#fixed-size-arrays) for local and global data
-| `[T]`   | [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners. This is the foundation for—and the only way to—allocate heap memory.
-| `&[T]`  | [Array references & slices](#array-references-slices) for referring to arrays
+Syntax  | Description
+--------|-----------------------------------
+`[T n]` | [Fixed-size arrays](#fixed-size-arrays) for local and global data
+`[T]`   | [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners. This is the foundation for—and the only way to—allocate heap memory.
+`&[T]`  | [Array references & slices](#array-references-slices) for referring to arrays
 
 <!-- - `[T n] ` [Fixed-size arrays](fixed-size-arrays) for local and global data
 - `[T]   ` [Dynamic arrays](#dynamic-arrays) that grow at runtime and can change owners
@@ -36,7 +36,7 @@ In this example, it's important to...
 
 ## Open questions
 
-1. Perhaps a slice operation should always yield a reference?<br>
+1. ~Perhaps a slice operation should always yield a reference?<br>
    i.e. `y` in `x = [1,2,3]; y = x[:2]` is what?<br>
    Current idea is that it becomes a copy of a slice of x (`[1,2]`)
    and that `z = &x[:2]` yields a reference (of type `mut&[int]`).
@@ -46,7 +46,8 @@ In this example, it's important to...
    so the only logical outcome is that `s` becomes the new owner
    and `a` becomes invalid, but that is a little confusing since
    the same operation on a fixed-size array has a different outcome!
-   See [examples in the "Array references & slices" section](#ref-ex1)
+   See [examples in the "Array references & slices" section](#ref-ex1)~<br>
+   Yes.
 
 
 ## Fixed-size arrays
@@ -107,19 +108,134 @@ References are like pointers in C with some additional compile-time semantics to
 help you discern ownership.
 
 <span id="ref-ex1"></span>
-References to arrays support slicing; the ability to share a smaller
-range of an array.
+Arrays support slicing; the ability to share a smaller range of an array.
+A slice operation returns a reference to an array rather than a copy.
+For example:
+
+```co
+x = [1, 2, 3, 4, 5] // fixed-size array of type [int 5]
+mut y [int]         // dynamic array of type [int]
+copy(y, x)          // y now has value 1,2,3,4,5
+// slice with values 2,3,4:
+a = x[1:4] // mut&[int 3]
+b = y[1:4] // mut&[int]
+```
+
+
+### Array slice and ref operations on fixed-size arrays
+
+Operation    | Result             | Type          | Value
+-------------|--------------------|---------------|-----------
+`a = x`      | not allowed
+`b = &x`     | ref to x           | `mut&[int 5]` | 1,2,3,4,5
+`c = x[:]`   | ref to slice of x  | `mut&[int 5]` | 1,2,3,4,5
+`d = x[1:4]` | ref to slice of x  | `mut&[int 3]` | 2,3,4
+`e = d[1:]`  | ref to slice of x  | `mut&[int 2]` | 3,4
+
+
+### Array slice and ref operations on dynamic arrays
+
+Operation    | Result             | Type          | Value
+-------------|--------------------|---------------|-----------
+`a = y`      | transfer ownership | `[int]`       | 1,2,3,4,5
+`b = &y`     | ref to x           | `mut&[int]`   | 1,2,3,4,5
+`c = y[:]`   | ref to slice of x  | `mut&[int]`   | 1,2,3,4,5
+`d = y[1:4]` | ref to slice of x  | `mut&[int]`   | 2,3,4
+`e = d[1:]`  | ref to slice of x  | `mut&[int]`   | 3,4
+
+
+### Downgrade comptime-sized -> runtime-sized array ref
+
+Comptime-sized slices can be downgraded to a runtime-sized slices:
+
+    M&[T n] ⟶ M&[T]
+
+For example:
 
 ```co
 x = [1, 2, 3, 4, 5] // type [int 5]
-            // RESULT              TYPE         VALUE
-a = x       // copy of x           [int 5]      1,2,3,4,5
-b = x[1:4]  // copy of slice of x  [int 3]      2,3,4
-c = b[1:]   // copy of slice of x  [int 2]      3,4
-d = &x      // reference to x      mut&[int 5]  1,2,3,4,5
-e = &x[1:4] // ref to slice of x   mut&[int 3]  2,3,4
-f = &e[1:]  // ref to slice of x   mut&[int 2]  3,4
+// downgrade a comptime-sized slice to a runtime-sized slice
+mut d &[int] = x[:] // mut&[int 5] ⟶ mut&[int]
+fun foo(v &[int])   // takes as a parameter a ref to a dynamic array
+foo(&x)             // mut&[int 5] ⟶ &[int]
 ```
+
+
+### Referencing a ref T yields a ref T
+
+To make the result of `s = &a[1:]` humanly deterministic,
+we have a general rule that says "referencing a ref T yields a ref T, not a ref ref T":
+
+    "&" RefType => RefType
+
+For example:
+
+```co
+a = [1,2,3]
+b = &a    // mut&[int 3]
+c = &b    // mut&[int 3]  NOT mut&mut&[int 3]
+d = a[:]  // mut&[int 3]
+e = &a[:] // mut&[int 3]  same as d
+```
+
+> **TODO:** Reconsider this.
+  May be better to just not allow it and emit a compiler error instead.
+
+
+---
+
+### Ownerhip issue with `v=myarray`
+
+With `v = myarray` taking a ref instead of copying,
+the following pattern becomes a problem:
+
+```co
+fun foo(arg int)
+  xs = if arg > 0  // type of xs is mut&[int 3]
+    a = [100,200,300] // on stack
+    a[0] *= arg
+    a // use a for xs
+  else
+    [1,2,3] // use this constant for xs
+  // xs is a ref "mut&[int 3]" to an array (a)
+  // which memory is no longer valid!
+```
+
+In practice with Co's LLVM backend this is fine since all stack allocations
+no matter the scope are all on the logical function's "root scope" stack
+(unless llvm.lifetime.\* is used.)
+The issue is with ownership semantics: in the example above,
+`a` owns the array value `[100*arg,200,300]`
+and `a` is invalid outside the "then" block of the "if" expression,
+so any references to `a` outside that scope are invalid.
+
+C doesn't have this issue since it lacks scope-based ownership semantics
+and all local values are allocated on the function stack, without regards to scope:
+
+```c
+void foo(int big) {
+  int* xs;
+  if (big) {
+    xs = (int[3]){100,200,300};
+  } else {
+    xs = (int[3]){1,2,3};
+  }
+}
+// ... generates the exact same code as:
+void foo(int big) {
+  int* xs;
+  int[3] a = {100,200,300};
+  int[3] b = {1,2,3};
+  if (big) {
+    xs = a;
+  } else {
+    xs = b;
+  }
+}
+```
+
+
+---
 
 Array references are useful when defining a function that accepts a variable
 number of items which it only needs to read:
