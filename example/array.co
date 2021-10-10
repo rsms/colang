@@ -16,7 +16,7 @@ fun main(arg1 int) int
 
   // mut e [int 3] = [10,11,12]
   // e[1] = 22
-  mut f [int 3] = [100,101,102]
+  var f [int 3] = [100,101,102]
   // f = K // error: array type [int 3] is not assignable
   g = K // error: array type [int 3] is not assignable
   // h = K // copy K to g

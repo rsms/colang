@@ -82,8 +82,8 @@ or explicitly with a keyword.
 ```co
 x = 1       // defines a new variable x
 x = 2       // assigns to x (since it is defined)
-mut x = 3   // defines a new variable x, shadows previous
-mut z int   // defines variable z with explicit type and 0 value
+var x = 3   // defines a new variable x, shadows previous
+var z int   // defines variable z with explicit type and 0 value
 const y = 4 // defines constant y
 y = 7       // error: cannot assign to constant y
 ```
@@ -101,7 +101,7 @@ const x = 4      // type: ideal
 const y int = 4  // type: int
 const z = y      // type: int
 a = 128          // type: ideal (automatic constant)
-mut v i8         // defines a variable of type i8
+var v i8         // defines a variable of type i8
 v = x            // x is interpreted as an i8 literal
 v = a            // error: constant 128 overflows i8
 ```
@@ -116,8 +116,8 @@ stored to, it is treated as defined immutable with the `const` keyword.
 ```co
 fun main(v int) int
   const a [int 3] = [1, 2, 3]
-  mut b [int 3] = [10, 20, 30]
-  mut c [int 3] = [100, 200, 300]
+  var b [int 3] = [10, 20, 30]
+  var c [int 3] = [100, 200, 300]
   b[1] = v  // b promoted to mutable
   a[1] + b[1] + c[1]
 ```
@@ -171,8 +171,8 @@ The length of an Array may be known at compile time.
 Some examples:
 
 ```co
-mut a [u8 10]                // array of 10 bytes, all 0
-mut b [i64 3] = [10, 20, 30] // 3 64-bit integers
+var a [u8 10]                // array of 10 bytes, all 0
+var b [i64 3] = [10, 20, 30] // 3 64-bit integers
 c = [i64(10), 20, 30]        // type inferred to [i64 3]
 d = [10, 20, 30]             // type inferred to [int 3]
 e = d                        // copy of d. Type [int 3]
@@ -187,13 +187,13 @@ k.len                        // 2
 
 // still undecided: array types with runtime-varying length
 // Alt A:
-mut s1 [int] = d      // copy of d with length
-mut s2 &[int] = d     // immutable ref to d with length
-mut s3 mut&[int] = d  // mutable ref to d with length
+var s1 [int] = d      // copy of d with length
+var s2 &[int] = d     // immutable ref to d with length
+var s3 mut&[int] = d  // mutable ref to d with length
 
 // Alt B:
-mut s1 [int] = d      // immutable ref to d with length
-mut s2 mut[int] = d   // mutable ref to d with length
+var s1 [int] = d      // immutable ref to d with length
+var s2 mut[int] = d   // mutable ref to d with length
 ```
 
 
@@ -215,9 +215,10 @@ octal_digit   = "0" ... "7"
 hex_digit     = "0" ... "9" | "A" ... "F" | "a" ... "f"
 
 // Keywords
-as      const     defer  for   import   struct
-break   continue  else   fun   mut      switch
-case    default   enum   if    return   type
+as      continue   enum   import   switch
+break   default    for    mut      type
+case    defer      fun    return   var
+const   else       if     struct
 
 // Operators, delimiters, and other special tokens
 +    &     +=    &=     &&    ==    !=    (    )
@@ -272,7 +273,7 @@ PrefixExpr = if | prefix_op | const_def | var_def | type_def | fun_def
   prefix_op = prefix_operator Expr
     prefix_operator = "!" | "+" | "-" | "~" | "&" | "++" | "--"
   const_def = "const" Identifier Type? "=" Expr
-  var_def   = "mut" Identifier ( Type | Type? "=" Expr )
+  var_def   = "var" Identifier ( Type | Type? "=" Expr )
   type_def  = "type" Identifier Type
   fun_def   = "fun" Identifier? ( params Type? | params? )
     params = "(" [ (param list_sep)* paramt list_sep? ] ")"

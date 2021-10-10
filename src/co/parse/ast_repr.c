@@ -187,7 +187,7 @@ Str NodeStr(Str s, const Node* n) {
     return str_appendfmt(s, "%s %s",
       (n->var.isconst ? "const" :
        NodeIsParam(n) ? "param" :
-                        "mut"),
+                        "var"),
       n->var.name);
 
   case NRef: // &x, mut&x
@@ -558,7 +558,7 @@ static const char* l_listname(NodeList* nl) {
       return (
         n->var.isconst ? "const" :
         NodeIsParam(n) ? "param" :
-                         "mut");
+                         "var");
     default:
       return NodeKindName(n->kind);
   }

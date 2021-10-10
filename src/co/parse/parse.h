@@ -87,6 +87,7 @@ typedef Node Type;
   _( type,        TType)        \
   _( const,       TConst)       \
   _( mut,         TMut)         \
+  _( var,         TVar)         \
 // Limited to a total of 31 keywords. See scan.c
 //END TOKEN_KEYWORDS
 

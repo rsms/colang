@@ -35,6 +35,7 @@ const Sym sym_switch = &"\x37\xE0\x68\x4B\x06\x00\x00\x80""switch\0"[8];
 const Sym sym_type = &"\x52\x1E\xB2\xD6\x04\x00\x00\x88""type\0"[8];
 const Sym sym_const = &"\x0A\x54\xDC\xAD\x05\x00\x00\x90""const\0"[8];
 const Sym sym_mut = &"\x7D\x83\xBC\x41\x03\x00\x00\x98""mut\0"[8];
+const Sym sym_var = &"\x27\xBE\x0A\xFD\x03\x00\x00\xA0""var\0"[8];
 
 const Sym sym_bool = &"\x70\x6D\x7D\x3D\x04\x00\x00\x00""bool\0"[8];
 const Sym sym_i8 = &"\x9D\xE2\x63\xDB\x02\x00\x00\x00""i8\0"[8];
@@ -166,10 +167,11 @@ static SymRBNode n_i32 = { sym_i32, false, &n_in, &n_str };
 static SymRBNode n_i8 = { sym_i8, true, &n_break, &n_i32 };
 static SymRBNode n_continue = { sym_continue, false, NULL, NULL };
 static SymRBNode n_import = { sym_import, true, NULL, NULL };
-static SymRBNode n_f32 = { sym_f32, true, NULL, NULL };
-static SymRBNode n_uint = { sym_uint, false, &n_import, &n_f32 };
-static SymRBNode n_auto = { sym_auto, false, &n_continue, &n_uint };
-static SymRBNode n_nil = { sym_nil, false, &n_i8, &n_auto };
+static SymRBNode n_uint = { sym_uint, false, &n_import, NULL };
+static SymRBNode n_auto = { sym_auto, true, &n_continue, &n_uint };
+static SymRBNode n_f32 = { sym_f32, false, NULL, NULL };
+static SymRBNode n_var = { sym_var, false, &n_auto, &n_f32 };
+static SymRBNode n_nil = { sym_nil, false, &n_i8, &n_var };
 static SymRBNode n_as = { sym_as, false, &n_struct, &n_nil };
 
 static SymRBNode* _symroot = &n_as;
@@ -197,9 +199,9 @@ Node* const _TypeCodeToTypeNodeMap[TypeCode_CONCRETE_END] = {
 __attribute__((used)) static const char* const debugSymCheck =
   "as#101 auto#102 break#103 continue#104 defer#105 else#106 enum#107 "
   "for#108 fun#109 if#10a import#10b in#10c nil#10d return#10e struct#10f "
-  "switch#110 type#111 const#112 mut#113 bool i8 u8 i16 u16 i32 u32 i64 "
-  "u64 f32 f64 int uint str auto ideal nil true:bool=1 false:bool=0 nil:nil=0 "
-  "_ ";
+  "switch#110 type#111 const#112 mut#113 var#114 bool i8 u8 i16 u16 i32 "
+  "u32 i64 u64 f32 f64 int uint str auto ideal nil true:bool=1 false:bool=0 "
+  "nil:nil=0 _ ";
 #endif
 
 //-- END gen_constants()

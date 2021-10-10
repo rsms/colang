@@ -775,16 +775,16 @@ static Type* pMutType(Parser* p, PFlag fl) {
 
 // VarDef      = MutVarDecl | MutType
 // ConstVarDef = "const" Id Type? "=" Expr
-// MutVarDef   = "mut" Id (Type | Type? "=" Expr)
-// MutType     = "mut" Type
+// MutVarDef   = "var" Id (Type | Type? "=" Expr)
+// MutType     = "var" Type
 //
-// e.g. "mut x int", "mut x = 4", "mut x int = 4"
+// e.g. "var x int", "var x = 4", "var x int = 4"
 // e.g. "const x int", "const x = 4", "const x int = 4"
 //
-//!PrefixParselet TMut TConst
-static Node* PMutOrConst(Parser* p, PFlag fl) {
+//!PrefixParselet TVar TConst
+static Node* PVarOrConst(Parser* p, PFlag fl) {
   if (fl & PFlagType) {
-    // MutType = "mut" Type
+    // MutType = "var" Type
     if (R_LIKELY(p->s.tok == TMut))
       return pMutType(p, fl);
     syntaxerr(p, "unexpected %s", TokName(p->s.tok));
@@ -792,7 +792,7 @@ static Node* PMutOrConst(Parser* p, PFlag fl) {
 
   bool isconst = p->s.tok == TConst;
   // Pos kwpos = ScannerPos(&p->s);
-  nexttok(p); // consume "mut" or "const"
+  nexttok(p); // consume "var" or "const"
 
   // name
   if (R_UNLIKELY(p->s.tok != TId)) {
@@ -826,7 +826,7 @@ static Node* PMutOrConst(Parser* p, PFlag fl) {
   // optional init
   Node* init = NULL;
   if (got(p, TAssign)) {
-    // e.g. "const name = x"
+    // e.g. "var name = x"
     Type* ctxtype = set_ctxtype(p, typ);
     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
     p->ctxtype = ctxtype;
@@ -1985,8 +1985,8 @@ static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TAuto] = {PAuto, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
-  [TMut] = {PMutOrConst, NULL, PREC_MEMBER},
-  [TConst] = {PMutOrConst, NULL, PREC_MEMBER},
+  [TVar] = {PVarOrConst, NULL, PREC_MEMBER},
+  [TConst] = {PVarOrConst, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
   [TLBrack] = {PLBrackPrefix, PLBrackInfix, PREC_MEMBER},
   [TAnd] = {PRefPrefix, PInfixOp, PREC_BITWISE_AND},

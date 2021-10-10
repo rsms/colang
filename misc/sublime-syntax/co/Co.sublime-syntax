@@ -308,7 +308,7 @@ contexts:
 
   initializers:
     # Match multiple variable declarations inside of parens
-    - match: \b(mut)\s+(\()
+    - match: \b(var)\s+(\()
       captures:
         1: storage.type.co
         2: meta.group.co punctuation.definition.group.begin.co
@@ -355,8 +355,8 @@ contexts:
       captures:
         1: storage.type.co
         2: entity.name.constant.co
-    # Matches the 'mut x int = 0' style of variable declaration
-    - match: '^\s*(mut)\s+({{identifier}})'
+    # Matches the 'var x int = 0' style of variable declaration
+    - match: '^\s*(var)\s+({{identifier}})'
       captures:
         1: storage.type.co
         2: variable.other.co
@@ -396,9 +396,9 @@ contexts:
       scope: constant.numeric.co
 
   late-keywords:
-    - match: \b(chan|fun|mut|type|map)\b
+    - match: \b(chan|fun|type|map|var|const)\b
       scope: storage.type.co
-    - match: \bconst\b
+    - match: \bmut\b
       scope: storage.modifier.co
 
   operators:
