@@ -462,9 +462,18 @@ static Value build_block(B* b, Node* n, const char* debugname) {
   assertnotnull_debug(n->type);
 
   Value v = NULL; // return null to signal "empty block"
+  bool noload = b->noload; // save
+  b->noload = true;
+
   for (u32 i = 0; i < n->array.a.len; i++) {
+    if (i == n->array.a.len - 1) {
+      // load last expression of a block that is in turn being loaded
+      b->noload = noload;
+    }
     v = build_expr(b, n->array.a.v[i], "");
   }
+
+  b->noload = noload; // restore
   // last expr of block is its value (TODO: is this true? is that Co's semantic?)
   return v;
 }
@@ -1008,7 +1017,6 @@ static Value build_index(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NIndex);
   assertnotnull_debug(n->type);
   assertnotnull_debug(n->index.index);
-  assertnotnull_debug(n->index.operand->type);
 
   Node* operand = assertnotnull_debug(n->index.operand);
   assert_debug(n->index.index->val.i <= 0xFFFFFFFF);
@@ -1026,7 +1034,14 @@ static Value build_index(B* b, Node* n, const char* debugname) {
   }
   #endif
 
-  switch (operand->type->kind) {
+  Type* operandt = assertnotnull_debug(operand->type);
+
+optype_switch:
+  switch (operandt->kind) {
+    case NRefType:
+      operandt = operandt->t.ref;
+      goto optype_switch;
+
     case NTupleType: {
       asserteq_debug(n->index.index->kind, NIntLit); // must be resolved const
       Value v = assertnotnull_debug(build_expr_noload(b, operand, debugname));
@@ -1527,6 +1542,13 @@ static Value build_namedval(B* b, Node* n, const char* debugname) {
 }
 
 
+static Value build_ref(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NRef);
+  n->irval = build_expr_noload(b, n->ref.target, debugname);
+  return n->irval;
+}
+
+
 static Value build_intlit(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NIntLit);
   assertnotnull_debug(n->type);
@@ -1582,6 +1604,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
     case NStructType: RET(build_struct_type_expr(b, n, debugname));
     case NTypeCast:   RET(build_typecast(b, n, debugname));
     case NVar:        RET(build_var(b, n, debugname));
+    case NRef:        RET(build_ref(b, n, debugname));
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;

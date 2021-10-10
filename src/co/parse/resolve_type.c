@@ -494,8 +494,13 @@ static Node* finalize_binop(ResCtx* ctx, Node* n) {
 }
 
 
+typedef enum {
+  ClearConstDefault = 0,
+  ClearConstStrict  = 1 << 0, // error if const var is encountered (for assignment)
+} ClearConstFlags;
+
 // clear_const marks any NVar or NField at n as being mutated
-static void clear_const(ResCtx* ctx, Node* n) {
+static void clear_const(ResCtx* ctx, Node* n, ClearConstFlags fl) {
   Node* nbase = n;
   while (1) {
     NodeClearConst(n);
@@ -507,12 +512,12 @@ static void clear_const(ResCtx* ctx, Node* n) {
         n = n->sel.operand;
         break;
       case NVar:
-        if (R_UNLIKELY(n->var.isconst)) {
+        if (R_UNLIKELY(n->var.isconst && (fl & ClearConstStrict))) {
+          NodeSetConst(n); // undo NodeClearConst
           build_errf(ctx->build, NodePosSpan(nbase),
             "cannot mutate constant variable %s", n->var.name);
-          if (n->pos != NoPos) {
+          if (n->pos != NoPos)
             build_notef(ctx->build, NodePosSpan(n), "%s defined here", n->var.name);
-          }
         }
         return;
       case NId:
@@ -570,7 +575,7 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   // assignment
   if (n->op.op == TAssign) {
     // storing to a var upgrades it to mutable
-    clear_const(ctx, n->op.left);
+    clear_const(ctx, n->op.left, ClearConstStrict);
 
     // storing to an array is not allowed
     if (lt->kind == NArrayType && rt->kind == NArrayType) {
@@ -1268,11 +1273,17 @@ static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
   n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
   ctx->typecontext = typecontext; // restore
 
-  Type* rtype = n->index.operand->type;
+  Type* rtype = assertnotnull_debug(n->index.operand->type);
+
+rtype_switch:
   switch (rtype->kind) {
+    case NRefType:
+      // unbox reference type e.g. "&[int]" => "[int]"
+      rtype = assertnotnull_debug(rtype->t.ref);
+      goto rtype_switch;
+
     case NArrayType:
-      assertnotnull_debug(rtype->t.array.subtype);
-      n->type = rtype->t.array.subtype;
+      n->type = assertnotnull_debug(rtype->t.array.subtype);
       break;
 
     case NTupleType:
@@ -1403,7 +1414,8 @@ static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
   assertnotnull_debug(n->ref.target);
   n->ref.target = resolve_type(ctx, n->ref.target, fl);
   Type* t = NewNode(ctx->build->mem, NRefType);
-  t->flags = n->flags & NodeFlagConst;
+  clear_const(ctx, n->ref.target, ClearConstDefault); // maybe upgrade target var to mut
+  t->flags = n->ref.target->flags & NodeFlagConst;
   t->t.ref = n->ref.target->type;
   n->type = t;
   return n;
