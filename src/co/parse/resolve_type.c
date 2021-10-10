@@ -512,12 +512,14 @@ static void clear_const(ResCtx* ctx, Node* n, ClearConstFlags fl) {
         n = n->sel.operand;
         break;
       case NVar:
-        if (R_UNLIKELY(n->var.isconst && (fl & ClearConstStrict))) {
+        if (n->var.isconst) {
           NodeSetConst(n); // undo NodeClearConst
-          build_errf(ctx->build, NodePosSpan(nbase),
-            "cannot mutate constant variable %s", n->var.name);
-          if (n->pos != NoPos)
-            build_notef(ctx->build, NodePosSpan(n), "%s defined here", n->var.name);
+          if (R_UNLIKELY(fl & ClearConstStrict)) {
+            build_errf(ctx->build, NodePosSpan(nbase),
+              "cannot mutate constant variable %s", n->var.name);
+            if (n->pos != NoPos)
+              build_notef(ctx->build, NodePosSpan(n), "%s defined here", n->var.name);
+          }
         }
         return;
       case NId:
