@@ -341,8 +341,6 @@ int cmd_build(int argc, const char** argv) {
     IRBuilderDispose(&irbuilder);
   #endif
 
-  // goto end; // XXX
-
 
   // emit target code with LLVM
   #ifdef CO_WITH_LLVM

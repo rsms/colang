@@ -838,19 +838,25 @@ static bool l_visit(NodeList* nl, void* cp) {
   if (c->fl & NodeReprAttrs) {
     if (n->flags) {
       s = style_push(&c->style, s, attr_color);
+
       if (NodeIsUnresolved(n))
         s = str_appendcstr(s, " @unres");
+
       if (NodeIsMacroParam(n)) {
         s = str_appendcstr(s, " @typeparam");
       } else if (NodeIsConst(n)) {
         s = str_appendcstr(s, " @const");
       }
+
       if ((n->flags & NodeFlagUnused))
         s = str_appendcstr(s, " @unused");
+
       if ((n->flags & NodeFlagPublic))
         s = str_appendcstr(s, " @pub");
+
       // if ((n->flags & NodeFlagHasConstVar))
       //   s = str_appendcstr(s, " @hascvar");
+
       s = style_pop(&c->style, s);
     }
     // pointer attr

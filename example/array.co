@@ -2,7 +2,8 @@
 
 fun main(arg1 int) int
   // a [int 3]
-  const K = [10,20,30]
+  // const K [int 3] = [10,20,30] // explicitly typed; type resolved by parse
+  const K = [10,20,30] // ideally typed, resolved by type resolver
   // const b [int 3] = [
   //   0,
   //   1
@@ -19,42 +20,30 @@ fun main(arg1 int) int
   //var f [int 3] = [100,101,102]
   // f = K // error: array type [int 3] is not assignable
   // g = K // error: array type [int 3] is not assignable
-  h = &K // mut&[int 3]
   // h[1] = 9
 
-  // x int = 3
-  // x = 4
+  // slices/refs of arrays
+  h = &K           // &[int 3]
+  cts1 = K[:]      // &[int 3]
+  cts2 = K[0:]     // &[int 3]
+  // cts3 = K[2:1] // error: invalid slice index: 2 > 1
+  // cts4 = K[:4]  // error: index 4 out of bounds, slicing array of length 3
+  cts5 = K[:2]     // &[int 2]
+  cts6 = K[1:2]    // &[int 1]
+  cts7 = K[2:2]    // &[int] -- runtime sized rather than [int 0] or nil
+  rts1 = K[0:arg1] // &[int]
+  cts8 = rts1[:2]  // &[int 2] -- upgrade to sized array type
 
-  // const c = [i8(0),i32(0),2] // error: incompatible type i32 in array of type i8
-  // r1 = &a // type: mut&[int] (since a is mutable)
-  // r2 = &b // type: &[int] (since b is immutable)
-  // // r3 [int] = &a // error: cannot use expression of type A; expected type B
-  // // r3 &[i8] = &a // error: cannot use expression of type A; expected type B
-  // r3 &[int] = &a
-  // r4 &[int] = &b
-  // r5 mut&[int] = &a
-  // r6 mut&[int] = &b // error: b is not mutable  -- TODO --
+  // error: cannot reference a reference
+  //var r1 &int
+  //r2 = &r1     // error: cannot reference a reference (type &int)
+  //r3 = &gref   // error: cannot reference a reference (type &int)
+  //global var gref &int
 
-  // s [int]
-
-  // bad1 mut&[int] = a // error: cannot initialize reference with value of type [int]
-  // bad2 [int] = &a // error: cannot initialize variable with reference
-
-  // K[1]
-  // f[1]
-  h[1]
-
-  // x [3]int
-  // x = [u16 3](0, 0, 0)
-  // y = [u16 3](0, 0, 0)
-  // x[1] + y[0]
-  // x
-
-  // t = (1, 2, 3)
-  // y = 3
-  // // y
+  cts8[0]
 
 // one = 1
+
 
 
 // fun invert(color [3]int) nil {

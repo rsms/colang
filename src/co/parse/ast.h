@@ -321,14 +321,18 @@ inline static bool NodeIsConst(const Node* n) { return (n->flags & NodeFlagConst
 inline static void NodeSetConst(Node* n) { n->flags |= NodeFlagConst; }
 inline static void NodeClearConst(Node* n) { n->flags &= ~NodeFlagConst; }
 inline static void NodeTransferConst(Node* parent, Node* child) {
-  // parent is const if n AND child is const
+  // parent is mutable if n OR child is NOT const, else parent is marked const.
+  parent->flags |= child->flags & NodeFlagConst;
+}
+inline static void NodeTransferMut(Node* parent, Node* child) {
+  // parent is const if n AND child is const, else parent is marked mutable.
   parent->flags = (parent->flags & ~NodeFlagConst) | (
     (parent->flags & NodeFlagConst) &
     (child->flags & NodeFlagConst)
   );
 }
-inline static void NodeTransferConst2(Node* parent, Node* child1, Node* child2) {
-  // parent is const if n AND child1 AND child2 is const
+inline static void NodeTransferMut2(Node* parent, Node* child1, Node* child2) {
+  // parent is const if n AND child1 AND child2 is const, else parent is marked mutable.
   parent->flags = (parent->flags & ~NodeFlagConst) | (
     (parent->flags & NodeFlagConst) &
     (child1->flags & NodeFlagConst) &

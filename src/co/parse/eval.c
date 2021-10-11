@@ -2,12 +2,13 @@
 #include "../util/array.h"
 #include "parse.h"
 
-static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable n);
+static Node* nullable _eval(
+  Build* b, NodeEvalFlags fl, Type* nullable targetType, Node* nullable n);
 
 
-Node* nullable NodeEval(Build* b, Node* n, Type* nullable targetType) {
+Node* nullable NodeEval(Build* b, Node* n, Type* nullable targetType, NodeEvalFlags fl) {
   assertnotnull(n);
-  return _eval(b, targetType, n);
+  return _eval(b, fl, targetType, n);
 }
 
 
@@ -63,12 +64,15 @@ static bool _eval_binop_float64(Build* b, Node* n, Tok op, double x, double y, d
   }
 }
 
-static Node* nullable _eval_binop(Build* b, Node* n, Node* left, Node* right) {
+static Node* nullable _eval_binop(
+  Build* b, NodeEvalFlags fl, Node* n, Node* left, Node* right)
+{
   assertnotnull_debug(left->type);
   assertnotnull_debug(right->type);
   if (left->kind != right->kind || !TypeEquals(b, left->type, right->type)) {
     // Note: This error is caught by resolve_type()
-    build_errf(b, NodePosSpan(n), "mixed types in operation %s", fmtnode(n));
+    if (fl & NodeEvalMustSucceed)
+      build_errf(b, NodePosSpan(n), "mixed types in operation %s", fmtnode(n));
     return NULL;
   }
 
@@ -112,13 +116,19 @@ static Node* nullable _eval_binop(Build* b, Node* n, Node* left, Node* right) {
       break;
   }
 
-  build_errf(b, NodePosSpan(n), "unsupported compile-time operation %s on type %s",
-    fmtnode(n), fmtnode(t));
+  if (fl & NodeEvalMustSucceed) {
+    build_errf(b, NodePosSpan(n),
+      "unsupported compile-time operation %s on type %s",
+      fmtnode(n), fmtnode(t));
+  }
+
   return NULL;
 }
 
 
-static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable n) {
+static Node* nullable _eval(
+  Build* b, NodeEvalFlags fl, Type* nullable targetType, Node* nullable n)
+{
   if (n == NULL)
     return NULL;
 
@@ -127,10 +137,10 @@ static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable 
   switch (n->kind) {
 
     case NId:
-      return _eval(b, targetType, n->id.target);
+      return _eval(b, fl, targetType, n->id.target);
 
     case NVar:
-      return _eval(b, targetType, n->var.init);
+      return _eval(b, fl, targetType, n->var.init);
 
     case NBoolLit:
     case NIntLit:
@@ -141,20 +151,21 @@ static Node* nullable _eval(Build* b, Type* nullable targetType, Node* nullable 
       return n;
 
     case NBinOp: {
-      auto left = _eval(b, targetType, n->op.left);
+      auto left = _eval(b, fl, targetType, n->op.left);
       if (!left)
         return NULL;
-      auto right = _eval(b, targetType, n->op.right);
+      auto right = _eval(b, fl, targetType, n->op.right);
       if (!right)
         return NULL;
-      n = _eval_binop(b, n, left, right);
+      n = _eval_binop(b, fl, n, left, right);
       if (n && targetType)
         n = convlit(b, n, targetType, ConvlitImplicit);
       return n;
     }
 
     default:
-      build_errf(b, NodePosSpan(n), "%s is not a compile-time expression", fmtnode(n));
+      if (fl & NodeEvalMustSucceed)
+        build_errf(b, NodePosSpan(n), "%s is not a compile-time expression", fmtnode(n));
       return NULL;
 
   } // switch (n->kind)

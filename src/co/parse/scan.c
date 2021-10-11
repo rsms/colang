@@ -515,8 +515,9 @@ Tok ScannerNext(Scanner* s) {
   case '}': s->tok = TRBrace; insertSemi = true; break;
   case '[': s->tok = TLBrack;                    break;
   case ']': s->tok = TRBrack; insertSemi = true; break;
-  case ';': s->tok = TSemi;                      break;
   case ',': s->tok = TComma;                     break;
+  case ';': s->tok = TSemi;                      break;
+  case ':': s->tok = TColon;                     break;
   case '.': s->tok = TDot;                       break;
 
   case '0'...'9':

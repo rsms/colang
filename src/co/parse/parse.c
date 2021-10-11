@@ -564,7 +564,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
     }
   #endif
 
-  if (id->id.target == NULL) {
+  if (R_UNLIKELY(id->id.target == NULL)) {
     // not found
     NodeSetUnresolved(id);
     id->flags |= NodeFlagRValue;
@@ -587,7 +587,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
       NodeTransferUnresolved(id, id->id.target);
   }
 
-  // NodeTransferConst(id, id->id.target);
+  // set id const == target const
   id->flags = (id->flags & ~NodeFlagConst) | (id->id.target->flags & NodeFlagConst);
 
   R_MUSTTAIL return simplify_id(p, id, fl);
@@ -820,6 +820,8 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
       }
     } else {
       typ = pType(p, fl);
+      if (isconst)
+        NodeSetConst(typ);
     }
   }
 
@@ -1152,7 +1154,10 @@ static Node* PLBrackPrefix(Parser* p, PFlag fl) {
 }
 
 
+// Index | Slice
 // Index = expr "[" expr "]"
+// Slice = expr "[" expr? ":" expr? "]"
+//
 //!Parselet (TLBrack MEMBER)
 static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   assert_debug((fl & PFlagType) == 0); // indexing is not valid in type context
@@ -1170,15 +1175,34 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   nexttok(p); // consume "["
   n->index.operand = useAsRValue(p, left);
 
-  if (R_UNLIKELY(p->s.tok == TRBrack)) {
-    syntaxerr(p, "missing index");
-    nexttok(p); // consume unexpected "]"
-  } else {
-    n->index.index = expr(p, PREC_LOWEST, fl | PFlagRValue);
-    want(p, TRBrack);
-    nodeTransferUnresolved2(n, n->index.operand, n->index.index);
+  switch (p->s.tok) {
+    case TRBrack:
+      // "[]"
+      syntaxerr(p, "missing index");
+      nexttok(p); // consume unexpected "]"
+      return n;
+    case TColon:
+      break;
+    default:
+      n->index.index = expr(p, PREC_LOWEST, fl | PFlagRValue);
+      nodeTransferUnresolved2(n, n->index.operand, n->index.index);
   }
 
+  if (p->s.tok == TColon) {
+    // "[:" -- slice
+    Node* operand = n->index.operand;
+    Node* start = n->index.index;
+    n->kind = NSlice;
+    n->slice.operand = operand;
+    n->slice.start = start;
+    nexttok(p); // consume ":"
+    if (p->s.tok != TRBrack) {
+      n->slice.end = expr(p, PREC_LOWEST, fl | PFlagRValue);
+      NodeTransferUnresolved(n, n->slice.end);
+    }
+  }
+
+  want(p, TRBrack);
   return n;
 }
 
@@ -1194,31 +1218,34 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
   auto n = mknode(p, NRef);
   nexttok(p); // consume "&"
 
+  // reference target
   n->ref.target = expr(p, PREC_LOWEST, PFlagRValue);
-  NodeTransferUnresolved(n, n->ref.target);
-
-  Node* target = n->ref.target;
-  if (target->kind == NId)
+  Node* target = assertnotnull_debug(n->ref.target);
+  NodeTransferUnresolved(n, target);
+  if (target->kind == NId && target->id.target)
     target = target->id.target;
 
   // mutability
   if (!p->ctxtype) {
     // e.g. "x = &y"
-    if (NodeIsUnresolved(n->ref.target)) {
-      // target must be a global -- immutable ref
-      NodeSetConst(n);
-    } else if (target->kind == NVar) {
-      if (target->var.isconst)
+    if (!NodeIsUnresolved(n->ref.target)) {
+      // target is known
+      if (target->kind == NVar) {
+        // if the target is a "const name T = ..." then the ref is const too: "&T"
+        // but for vars we leave the ref mutable.
+        if (target->var.isconst)
+          NodeSetConst(n);
+      } else if (NodeIsConst(target)) {
         NodeSetConst(n);
-    } else if (NodeIsConst(target)) {
-      NodeSetConst(n);
-    }
+      }
+    } // else: target is a global (or undefined)
   } else if ((fl & PFlagMut) == 0) {
     NodeSetConst(n);
   }
 
   if (!NodeIsConst(n) && target->kind == NVar && !target->var.isconst) {
-    // since we're making a mutable ref, treat it as a var store
+    // since we're making a mutable ref, treat it as a var store,
+    // making sure the target var is upgraded to "mut".
     NodeClearConst(target);
   }
 
@@ -1234,12 +1261,15 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
       } else {
         n->type = p->ctxtype;
       }
+    } else if (target->type->kind == NRefType) {
+      syntaxerrp(p, n->pos, "cannot reference a reference (type %s)",
+        fmtnode(target->type));
     } else {
       // type from target
       Type* t = NewNode(p->build->mem, NRefType);
       t->t.ref = target->type;
       NodeTransferUnresolved(t, t->t.ref);
-      t->flags = n->flags & NodeFlagConst;
+      NodeTransferConst(t, n);
       n->type = t;
     }
   }

@@ -11,7 +11,7 @@
 #include <llvm-c/OrcEE.h>
 
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
-//#define DEBUG_BUILD_EXPR
+#define DEBUG_BUILD_EXPR
 
 // rtimer helpers
 #define ENABLE_RTIMER_LOGGING

@@ -8,7 +8,7 @@
 ASSUME_NONNULL_BEGIN
 
 // DEBUG_MODULE: define to enable trace logging
-//#define DEBUG_MODULE ""
+#define DEBUG_MODULE ""
 
 #ifdef DEBUG_MODULE
   #define dlog_mod(format, ...) \
@@ -190,6 +190,56 @@ inline static bool check_type_eq(
     return report_type_mismatch(ctx, &r);
   }
   return true;
+}
+
+
+typedef enum {
+  ClearConstDefault = 0,
+  ClearConstStrict  = 1 << 0, // error if const var is encountered (for assignment)
+} ClearConstFlags;
+
+// clear_const marks any NVar or NField at n as being mutated
+static void clear_const(ResCtx* ctx, Node* n, ClearConstFlags fl) {
+  Node* nbase = n;
+  while (1) {
+    switch (n->kind) {
+      case NIndex:
+        n = n->index.operand;
+        break;
+      case NSelector:
+        n = n->sel.operand;
+        break;
+      case NVar:
+        if (n->var.isconst) {
+          if (R_UNLIKELY(fl & ClearConstStrict)) {
+            build_errf(ctx->build, NodePosSpan(nbase),
+              "cannot mutate constant variable %s", n->var.name);
+            if (n->pos != NoPos)
+              build_notef(ctx->build, NodePosSpan(n), "%s defined here", n->var.name);
+          }
+          return; // don't clear const
+        }
+        NodeClearConst(n);
+        goto end;
+      case NId:
+        n = assertnotnull_debug(n->id.target);
+        break;
+      default:
+        goto end;
+    }
+  }
+end:
+  NodeClearConst(nbase);
+}
+
+
+// make_ref_type creates a NRefType of element type elemt
+static Type* make_ref_type(ResCtx* ctx, Type* elemt) {
+  assertnotnull_debug(elemt);
+  Type* t = NewNode(ctx->build->mem, NRefType);
+  NodeTransferConst(t, elemt);  // transfer "mut&" or "&"
+  t->t.ref = assertnotnull_debug(elemt);
+  return t;
 }
 
 
@@ -489,46 +539,8 @@ static Node* finalize_binop(ResCtx* ctx, Node* n) {
     default:
       break;
   }
-  NodeTransferConst2(n, n->op.left, n->op.right);
+  NodeTransferMut2(n, n->op.left, n->op.right); // const if L & R are const, else mut
   return n;
-}
-
-
-typedef enum {
-  ClearConstDefault = 0,
-  ClearConstStrict  = 1 << 0, // error if const var is encountered (for assignment)
-} ClearConstFlags;
-
-// clear_const marks any NVar or NField at n as being mutated
-static void clear_const(ResCtx* ctx, Node* n, ClearConstFlags fl) {
-  Node* nbase = n;
-  while (1) {
-    NodeClearConst(n);
-    switch (n->kind) {
-      case NIndex:
-        n = n->index.operand;
-        break;
-      case NSelector:
-        n = n->sel.operand;
-        break;
-      case NVar:
-        if (n->var.isconst) {
-          NodeSetConst(n); // undo NodeClearConst
-          if (R_UNLIKELY(fl & ClearConstStrict)) {
-            build_errf(ctx->build, NodePosSpan(nbase),
-              "cannot mutate constant variable %s", n->var.name);
-            if (n->pos != NoPos)
-              build_notef(ctx->build, NodePosSpan(n), "%s defined here", n->var.name);
-          }
-        }
-        return;
-      case NId:
-        n = assertnotnull_debug(n->id.target);
-        break;
-      default:
-        return;
-    }
-  }
 }
 
 
@@ -1277,6 +1289,7 @@ static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
 
   Type* rtype = assertnotnull_debug(n->index.operand->type);
 
+  // derive type based on operand and index
 rtype_switch:
   switch (rtype->kind) {
     case NRefType:
@@ -1292,23 +1305,124 @@ rtype_switch:
       R_MUSTTAIL return resolve_index_tuple(ctx, n, fl);
 
     default:
-      build_errf(ctx->build, NodePosSpan(n),
-        "cannot access %s of type %s by index",
+      build_errf(ctx->build, NodePosSpan(n), "cannot access %s of type %s by index",
         fmtnode(n->index.operand), fmtnode(rtype));
   }
   return n;
 }
 
 
+static Node* resolve_array_slice(ResCtx* ctx, Node* n, RFlag fl, Type* atype) {
+  asserteq_debug(n->kind, NSlice);
+  asserteq_debug(atype->kind, NArrayType);
+
+  if (n->slice.start == NULL && n->slice.end == NULL) {
+    // "x[:]" => "&x"
+    Node* target = n->slice.operand;
+    n->kind = NRef;
+    n->ref.target = target;
+    n->type = make_ref_type(ctx, atype);
+    return n;
+  }
+
+  // the type of n will be a ref to an array,
+  // i.e. "mut&[T n]", "&[T n]", "mut&[T]" or "&[T]"
+  Type* t = NewNode(ctx->build->mem, NArrayType);
+  t->t.array.subtype = atype->t.array.subtype;
+  NodeTransferConst(t, n->slice.operand);  // transfer "mut&" or "&"
+  n->type = make_ref_type(ctx, t);
+
+  // invariant: there's at least one index in the slice expression
+  assert_debug(n->slice.start || n->slice.end);
+
+  // attempt to evaluate constant index expressions so that the type can retain its size
+  Node* start = NULL;
+  Node* end = NULL;
+  if (n->slice.start) {
+    start = NodeEval(ctx->build, n->slice.start, Type_u32, NodeEvalDefault);
+    if (!start)
+      return n; // runtime-sized
+  }
+  if (n->slice.end) {
+    end = NodeEval(ctx->build, n->slice.end, Type_u32, NodeEvalDefault);
+    if (!end)
+      return n; // runtime-sized
+  } else if (atype->t.array.size == 0) {
+    return n; // runtime-sized
+  }
+
+  // slice indices are known; check bounds and set resulting array type's size
+  u32 starti = start ? (u32)start->val.i : 0;
+  u32 endi   = end   ? (u32)end->val.i   : atype->t.array.size;
+  if (R_LIKELY(starti <= endi &&
+      (endi <= atype->t.array.size || atype->t.array.size == 0)) )
+  {
+    t->t.array.size = endi - starti;
+    if (t->t.array.size > 0) {
+      // save evaluated constants to reduce duplicate work for the backend
+      n->slice.start = start;
+      n->slice.end = end;
+    } // else: runtime-sized ("x[:0]" => "&[T]")
+      // Making a zero slice degrades the type to runtime sized.
+      // A zero-length array would be nil.
+  } else if (starti > endi && end) {
+    // error: invalid slice index
+    Node* focus = n->slice.start ? n->slice.start : n->slice.end;
+    build_errf(ctx->build, NodePosSpan(focus),
+      "invalid slice index: %u > %u", starti, endi);
+  } else {
+    // error: out of bounds
+    u32 i = starti;
+    Node* focus = n->slice.start;
+    if (endi > atype->t.array.size || focus == NULL) {
+      i = endi;
+      focus = n->slice.end;
+    }
+    build_errf(ctx->build, NodePosSpan(focus),
+      "index %u out of bounds, slicing array of length %u", i, atype->t.array.size);
+  }
+
+  return n;
+}
+
+
 static Node* resolve_slice(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSlice);
-  n->slice.operand = resolve_type(ctx, n->slice.operand, fl);
+
   fl |= RFlagResolveIdeal | RFlagEager;
+
+  // resolve types of operand and range indices
+  n->slice.operand = resolve_type(ctx, n->slice.operand, fl);
+
+  auto typecontext = typecontext_set(ctx, Type_u32);
   if (n->slice.start)
     n->slice.start = resolve_type(ctx, n->slice.start, fl);
   if (n->slice.end)
     n->slice.end = resolve_type(ctx, n->slice.end, fl);
-  panic("TODO");
+  ctx->typecontext = typecontext; // restore
+
+  Type* rtype = assertnotnull_debug(n->slice.operand->type);
+
+  // derive type based on operand and range indices
+rtype_switch:
+  switch (rtype->kind) {
+    case NRefType:
+      // unbox reference type e.g. "&[int]" => "[int]"
+      rtype = assertnotnull_debug(rtype->t.ref);
+      goto rtype_switch;
+
+    case NArrayType:
+      return resolve_array_slice(ctx, n, fl, rtype);
+
+    case NTupleType:
+      panic("TODO tuple");
+
+    default:
+      build_errf(ctx->build, NodePosSpan(n), "cannot slice %s of type %s",
+        fmtnode(n->index.operand), fmtnode(rtype));
+      n->type = Type_nil;
+  }
+
   return n;
 }
 
@@ -1347,14 +1461,19 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   assertnotnull_debug(n->var.init);
   assert_debug( ! NodeIsMacroParam(n)); // macro params should be typed already
 
-  auto typecontext = typecontext_set(ctx, n->type);
+  auto typecontext = typecontext_set(ctx, n->type); // save & set
+
   if (n->type)
     fl |= RFlagResolveIdeal | RFlagEager;
+
   n->var.init = resolve_type(ctx, n->var.init, fl);
+
   ctx->typecontext = typecontext; // restore
 
   if (!n->type) {
     n->type = assertnotnull_debug(n->var.init->type);
+    if (n->var.isconst)
+      NodeSetConst(n->type);
   } else if (R_UNLIKELY(!TypeEquals(ctx->build, n->type, n->var.init->type))) {
     // TODO: allow initializing with higher-fidelity type, e.g. "x [int] = [1,2,3]"
     report_var_init_type_mismatch(ctx, n);
@@ -1415,11 +1534,20 @@ static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NRef);
   assertnotnull_debug(n->ref.target);
   n->ref.target = resolve_type(ctx, n->ref.target, fl);
-  Type* t = NewNode(ctx->build->mem, NRefType);
-  clear_const(ctx, n->ref.target, ClearConstDefault); // maybe upgrade target var to mut
-  t->flags = n->ref.target->flags & NodeFlagConst;
-  t->t.ref = n->ref.target->type;
-  n->type = t;
+
+  if (R_UNLIKELY(n->ref.target->type->kind == NRefType)) {
+    build_errf(ctx->build, NodePosSpan(n->ref.target),
+      "cannot reference a reference (type %s)",
+      fmtnode(n->ref.target->type));
+  }
+
+  // if the target is a var with optimistic const-ness, upgrade it to mutable
+  clear_const(ctx, n->ref.target, ClearConstDefault);
+
+  // next, propagate const to target's type
+  NodeTransferConst(n->ref.target->type, n->ref.target);
+
+  n->type = make_ref_type(ctx, n->ref.target->type);
   return n;
 }
 

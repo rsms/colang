@@ -13,6 +13,7 @@ typedef Node Type;
   _( TNone  , "TNone" ) \
   _( TComma , ",")      \
   _( TSemi  , ";")      \
+  _( TColon , ":")      \
   \
   _( T_PRIM_OPS_START , "") \
   /* primary "intrinsic" operator tokens, most of them mapping directly to IR ops */ \
@@ -276,7 +277,7 @@ static bool TypeEquals(Build* b, Type* x, Type* y);
 // // intsize is the size in bytes of the "int" and "uint" types. E.g. 4 for 32-bit.
 // TypeConv CheckTypeConversion(Node* fromType, Node* toType, u32 intsize);
 
-typedef enum ConvlitFlags {
+typedef enum {
   ConvlitImplicit    = 0,
   ConvlitExplicit    = 1 << 0, // explicit conversion; allows for a greater range of conversions
   ConvlitRelaxedType = 1 << 1, // if a node is already typed, do nothing and return it.
@@ -289,11 +290,17 @@ typedef enum ConvlitFlags {
 // This function may call GetTypeID which may update b->syms and mutate n.
 Node* convlit(Build*, Node* n, Type* t, ConvlitFlags fl);
 
+
+typedef enum {
+  NodeEvalDefault     = 0,
+  NodeEvalMustSucceed = 1 << 0, // if evaluation fails, build_errf is used to report error
+} NodeEvalFlags;
+
 // NodeEval attempts to evaluate expr.
-// Returns NULL on failure or the resulting value on success.
+// Returns NULL on failure, or the resulting value on success.
 // If targetType is provided, the result is implicitly converted to that type.
 // In that case it is an error if the result can't be converted to targetType.
-Node* nullable NodeEval(Build* b, Node* expr, Type* nullable targetType);
+Node* nullable NodeEval(Build* b, Node* expr, Type* nullable targetType, NodeEvalFlags fl);
 
 // NodeEvalUint calls NodeEval with Type_uint.
 // result u64 in returnvalue->val.i
@@ -322,7 +329,7 @@ inline static bool TypeEquals(Build* b, Type* x, Type* y) {
 }
 
 inline static Node* nullable NodeEvalUint(Build* b, Node* expr) {
-  auto zn = NodeEval(b, expr, Type_uint);
+  auto zn = NodeEval(b, expr, Type_uint, NodeEvalMustSucceed);
 
   #if DEBUG
   if (zn) {
