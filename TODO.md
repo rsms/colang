@@ -65,6 +65,8 @@ Keep it (much) simpler than Co1 IR, without regalloc or instruction selection.
       There's some very basic code for array size eval in `src/co/parse/eval.c`.
 - [ ] Explore building WASM for web browsers (without LLVM)
   - [ ] Code generation without LLVM to WASM or JS (is there 3rd part stuff I can use?)
+- [ ] Look into using [mimalloc](https://github.com/microsoft/mimalloc)
+      for memory allocation
 
 
 ## Documentation

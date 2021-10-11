@@ -20,3 +20,10 @@ array element or function parameter.
 All data is passed by value in Co.
 Note that references are memory addresses (an integer) and thus technically
 copied when passed around.
+
+
+See also
+
+- ["Ownership You Can Count On: A Hybrid Approach to Safe Explicit Memory Management"](https://researcher.watson.ibm.com/researcher/files/us-bacon/Dingle07Ownership.pdf)
+- ["Friendship ended with the garbage collector" (inko)](https://yorickpeterse.com/articles/friendship-ended-with-the-garbage-collector/)
+- [Vale's Hybrid-Generational Memory](https://vale.dev/blog/hybrid-generational-memory)
