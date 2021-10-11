@@ -904,7 +904,8 @@ static bool l_visit(NodeList* nl, void* cp) {
           s = str_append(s, n->type->var.name, symlen(n->type->var.name));
           s = style_pop(&c->style, s);
         } else {
-          s = str_appendcstr(s, l_listname(&tnl));
+          //s = str_appendcstr(s, l_listname(&tnl));
+          s = str_appendcstr(s, "•••");
         }
       } else {
         // missing type "<?>"

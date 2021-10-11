@@ -11,7 +11,7 @@
 #include <llvm-c/OrcEE.h>
 
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
-#define DEBUG_BUILD_EXPR
+//#define DEBUG_BUILD_EXPR
 
 // rtimer helpers
 #define ENABLE_RTIMER_LOGGING
@@ -26,10 +26,10 @@
 #endif
 
 #ifdef DEBUG_BUILD_EXPR
-#define dlog_mod(b, fmt, ...) \
-  dlog("%.*s" fmt, (b)->log_indent * 2, kSpaces, ##__VA_ARGS__)
+  #define dlog_mod(b, fmt, ...) \
+    dlog("%.*s" fmt, (b)->log_indent * 2, kSpaces, ##__VA_ARGS__)
 #else
-  dlog_mod(b, fmt, ...) ((void)0)
+  #define dlog_mod(b, fmt, ...) ((void)0)
 #endif
 
 #define assert_llvm_type_iskind(llvmtype, expect_typekind) \
