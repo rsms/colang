@@ -231,23 +231,20 @@ Str NodeStr(Str s, const Node* n) {
     s = str_appendc(s, '.');
     return str_append(s, n->sel.member, symlen(n->sel.member));
 
-  case NIndex: // expr[index]
-    return str_appendcstr(s, "subscript");
-    // s = NodeStr(s, n->index.operand);
-    // s = str_appendc(s, '[');
-    // s = NodeStr(s, n->index.index);
-    // return str_appendc(s, ']');
+  case NIndex: // [index]
+    s = str_appendc(s, '[');
+    s = NodeStr(s, n->index.indexexpr);
+    return str_appendc(s, ']');
 
-  case NSlice: // expr[start?:end?]
-    return str_appendcstr(s, "slice");
+  case NSlice: // [start?:end?]
     // s = NodeStr(s, n->slice.operand);
-    // s = str_appendc(s, '[');
-    // if (n->slice.start)
-    //   s = NodeStr(s, n->slice.start);
-    // s = str_appendc(s, ':');
-    // if (n->slice.end)
-    //   s = NodeStr(s, n->slice.end);
-    // return str_appendc(s, ']');
+    s = str_appendc(s, '[');
+    if (n->slice.start)
+      s = NodeStr(s, n->slice.start);
+    s = str_appendc(s, ':');
+    if (n->slice.end)
+      s = NodeStr(s, n->slice.end);
+    return str_appendc(s, ']');
 
   case NBasicType: // int
     if (n == Type_ideal)
@@ -853,9 +850,6 @@ static bool l_visit(NodeList* nl, void* cp) {
 
       if ((n->flags & NodeFlagPublic))
         s = str_appendcstr(s, " @pub");
-
-      // if ((n->flags & NodeFlagHasConstVar))
-      //   s = str_appendcstr(s, " @hascvar");
 
       s = style_pop(&c->style, s);
     }

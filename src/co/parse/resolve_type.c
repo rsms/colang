@@ -1251,41 +1251,52 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_index_tuple(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
-  asserteq_debug(n->index.operand->type->kind, NTupleType);
+  Type* rtype = assertnotnull_debug(n->index.operand->type);
+  asserteq_debug(rtype->kind, NTupleType);
+  assert_debug(rtype->t.tuple.a.len > 0);
 
-  Node* zn = NodeEvalUint(ctx->build, n->index.index);
+  u32 index = n->index.index;
 
-  if (R_UNLIKELY(zn == NULL)) {
-    build_errf(ctx->build, NodePosSpan(n->index.index),
-      "%s is not a compile-time expression", fmtnode(n->index.index));
-    node_diag_trail(ctx->build, DiagNote, n->index.index);
+  if (R_UNLIKELY(index == 0xffffffff)) {
+    build_errf(ctx->build, NodePosSpan(n->index.indexexpr),
+      "%s is not a compile-time expression", fmtnode(n->index.indexexpr));
+    node_diag_trail(ctx->build, DiagNote, n->index.indexexpr);
+    n->type = Type_nil;
     return n;
   }
 
-  n->index.index = zn; // note: zn->val.i holds valid index
-  Type* rtype = n->index.operand->type;
-  u64 index = zn->val.i;
-
-  if (R_UNLIKELY(index >= (u64)rtype->t.tuple.a.len)) {
-    build_errf(ctx->build, NodePosSpan(n->index.index),
-      "no element %s in %s", fmtnode(zn), fmtnode(n));
-    node_diag_trail(ctx->build, DiagNote, n->index.index);
+  if (R_UNLIKELY(index >= rtype->t.tuple.a.len)) {
+    build_errf(ctx->build, NodePosSpan(n->index.indexexpr),
+      "no element %u in tuple with %u elements", index, rtype->t.tuple.a.len);
+    node_diag_trail(ctx->build, DiagNote, n->index.indexexpr);
+    n->type = Type_nil;
     return n;
   }
 
   n->type = rtype->t.tuple.a.v[index];
-
   return n;
 }
 
 
 static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
+  fl |= RFlagResolveIdeal | RFlagEager;
+
   n->index.operand = resolve_type(ctx, n->index.operand, fl);
 
   auto typecontext = typecontext_set(ctx, Type_uint);
-  n->index.index = resolve_type(ctx, n->index.index, fl | RFlagResolveIdeal | RFlagEager);
+  n->index.indexexpr = resolve_type(ctx, n->index.indexexpr, fl);
   ctx->typecontext = typecontext; // restore
+
+  // attempt to evaluate indexexpr
+  asserteq_debug(n->index.index, 0xffffffff);
+  Node* indexexpr = NodeEval(ctx->build, n->index.indexexpr, Type_u32, NodeEvalDefault);
+  if (indexexpr) {
+    // Note: if the user actually tries to index with the constant 0xffffffff,
+    // we will treat the access as a runtime-sized access. Plus, the backend will
+    // likely catch it at compile time anyways.
+    n->index.index = (u32)indexexpr->val.i;
+  }
 
   Type* rtype = assertnotnull_debug(n->index.operand->type);
 
@@ -1299,6 +1310,15 @@ rtype_switch:
 
     case NArrayType:
       n->type = assertnotnull_debug(rtype->t.array.subtype);
+      // if index is comptime and array type is sized, do bounds check
+      if (n->index.index != 0xffffffff &&
+          rtype->t.array.size != 0 &&
+          n->index.index >= rtype->t.array.size)
+      {
+        build_errf(ctx->build, NodePosSpan(n->index.indexexpr),
+          "index %u out of bounds, accessing array of length %u",
+            n->index.index, rtype->t.array.size);
+      }
       break;
 
     case NTupleType:
@@ -1560,13 +1580,13 @@ static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
 static Node* _resolve_type(ResCtx* ctx, Node* n, RFlag fl);
 static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl) {
   assert(n != NULL);
-  dlog_mod("○ %s %s (%p, class %s, type %s%s%s)",
+  dlog_mod("○ %s %s (Node@%p, type %s%s%s%s)",
     NodeKindName(n->kind), fmtnode(n),
     n,
-    NodeClassStr(NodeKindClass(n->kind)),
     fmtnode(n->type),
-    ctx->typecontext ? ", typecontext " : "",
-    ctx->typecontext ? fmtnode(ctx->typecontext) : "" );
+    ctx->typecontext ? ", typecontext: " : "",
+    ctx->typecontext ? fmtnode(ctx->typecontext) : "",
+    NodeIsRValue(n) ? ", rvalue" : "" );
 
   ctx->debug_depth++;
   Node* n2 = _resolve_type(ctx, n, fl);
@@ -1590,7 +1610,7 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
     if (is_type_complete(n))
       return n;
   } else {
-    if (n->flags & NodeFlagRValue)
+    if (NodeIsRValue(n))
       fl |= RFlagResolveIdeal | RFlagEager;
 
     if (n->type) {

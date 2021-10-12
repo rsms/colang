@@ -17,6 +17,8 @@ void build_init(Build*   b,
   b->diagh     = diagh;
   b->userdata  = userdata;
   b->diaglevel = DiagMAX;
+  b->sint_type = sizeof(long) > 4 ? TypeCode_i64 : TypeCode_i32; // default to host size
+  b->uint_type = sizeof(long) > 4 ? TypeCode_u64 : TypeCode_u32;
   SymMapInit(&b->types, 32, mem);
   ArrayInit(&b->diagarray);
   posmap_init(&b->posmap, mem);

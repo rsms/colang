@@ -366,13 +366,13 @@ static IRValue* ast_add_array(IRBuilder* u, Node* n) { // n->kind==NArray
 
 static IRValue* ast_add_index(IRBuilder* u, Node* n) { // n->kind==NIndex
   auto recv = ast_add_expr(u, n->index.operand);
-  auto index = ast_add_expr(u, n->index.index);
+  auto indexexpr = ast_add_expr(u, n->index.indexexpr);
   // See https://llvm.org/docs/LangRef.html#getelementptr-instruction
   // See https://llvm.org/docs/GetElementPtr.html
 
   auto v = IRValueNew(u->f, u->b, OpGEP, IRType_void, n->pos);
   IRValueAddArg(v, u->mem, recv);
-  IRValueAddArg(v, u->mem, index);
+  IRValueAddArg(v, u->mem, indexexpr);
 
   // set result type
   switch (recv->type->code) {

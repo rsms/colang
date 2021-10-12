@@ -1016,11 +1016,11 @@ static Value gep_load(B* b, Value v, u32 index, const char* debugname) {
 static Value build_index(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->kind, NIndex);
   assertnotnull_debug(n->type);
-  assertnotnull_debug(n->index.index);
 
+  Node* indexexpr = assertnotnull_debug(n->index.indexexpr);
   Node* operand = assertnotnull_debug(n->index.operand);
-  assert_debug(n->index.index->val.i <= 0xFFFFFFFF);
-  u32 index = (u32)n->index.index->val.i;
+  assert_debug(indexexpr->val.i <= 0xFFFFFFFF);
+  u32 index = (u32)indexexpr->val.i;
 
   // debugname "operand.index"
   #ifdef DEBUG
@@ -1043,30 +1043,31 @@ optype_switch:
       goto optype_switch;
 
     case NTupleType: {
-      asserteq_debug(n->index.index->kind, NIntLit); // must be resolved const
+      asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
       Value v = assertnotnull_debug(build_expr_noload(b, operand, debugname));
       return gep_load(b, v, index, debugname);
     }
 
     case NArrayType: {
-      asserteq_debug(n->index.index->kind, NIntLit); // must be resolved const
+      asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
       Value v = assertnotnull_debug(build_expr_noload(b, operand, debugname));
       return gep_load(b, v, index, debugname);
     }
-
-    // case NStructType:
-
-    // case NArrayType:
-    // TODO: LLVMBuildGEP2
-    // LLVMValueRef LLVMBuildGEP2(LLVMBuilderRef B, LLVMTypeRef Ty,
-    //                          LLVMValueRef Pointer, LLVMValueRef *Indices,
-    //                          unsigned NumIndices, const char *Name);
 
     default:
       panic("TODO: %s", NodeKindName(operand->type->kind));
   }
 
   return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+}
+
+
+static Value build_slice(B* b, Node* n, const char* debugname) {
+  asserteq_debug(n->kind, NSlice);
+  assertnotnull_debug(n->type);
+
+  panic("TODO");
+  return NULL;
 }
 
 
@@ -1295,11 +1296,11 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
 static Value build_assign_index(B* b, Node* n, const char* debugname) {
   asserteq_debug(n->op.left->kind, NIndex);
 
-  Node* target = n->op.left->index.operand; // i.e. "x" in "x[3] = y"
-  Node* index = n->op.left->index.index;    // i.e. "3" in "x[3] = y"
-  Node* source = n->op.right;               // i.e. "y" in "x[3] = y"
+  Node* target = n->op.left->index.operand;      // i.e. "x" in "x[3] = y"
+  Node* indexexpr = n->op.left->index.indexexpr; // i.e. "3" in "x[3] = y"
+  Node* source = n->op.right;                    // i.e. "y" in "x[3] = y"
 
-  Value indexval = build_expr_mustload(b, index, "");
+  Value indexval = build_expr_mustload(b, indexexpr, "");
   Value srcval = build_expr_mustload(b, source, "");
 
   Type* targett = assertnotnull_debug(target->type);
@@ -1597,6 +1598,7 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
     case NId:         RET(build_id_read(b, n, debugname));
     case NIf:         RET(build_if(b, n, debugname));
     case NIndex:      RET(build_index(b, n, debugname));
+    case NSlice:      RET(build_slice(b, n, debugname));
     case NIntLit:     RET(build_intlit(b, n, debugname));
     case NNamedVal:   RET(build_namedval(b, n, debugname));
     case NReturn:     RET(build_return(b, n, debugname));

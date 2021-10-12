@@ -201,7 +201,8 @@ typedef struct Node {
     } sel;
     /* index */ struct { // Index = Expr "[" Expr "]"
       Node* operand;
-      Node* index;
+      Node* indexexpr;
+      u32   index; // 0xffffffff if indexexpr is not a compile-time constant
     } index;
     /* slice */ struct { // Slice = Expr "[" Expr? ":" Expr? "]"
       Node*          operand;
@@ -360,6 +361,11 @@ inline static void NodeClearUnused(Node* n) { n->flags &= ~NodeFlagUnused; }
 inline static bool NodeIsPublic(const Node* n) { return (n->flags & NodeFlagPublic) != 0; }
 inline static void NodeSetPublic(Node* n) { n->flags |= NodeFlagPublic; }
 inline static void NodeClearPublic(Node* n) { n->flags &= ~NodeFlagPublic; }
+
+// Node{Is,Set,Clear}RValue controls the "is rvalue" flag of a node
+inline static bool NodeIsRValue(const Node* n) { return (n->flags & NodeFlagRValue) != 0; }
+inline static void NodeSetRValue(Node* n) { n->flags |= NodeFlagRValue; }
+inline static void NodeClearRValue(Node* n) { n->flags &= ~NodeFlagRValue; }
 
 inline static void NodeTransferCustomInit(Node* parent, Node* child) {
   parent->flags |= child->flags & NodeFlagCustomInit;

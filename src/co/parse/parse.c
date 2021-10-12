@@ -515,7 +515,7 @@ static Node* simplify_id(Parser* p, Node* id, PFlag fl) {
 
   if (fl & PFlagRValue) {
     target = t;
-    id->flags |= NodeFlagRValue;
+    NodeSetRValue(id);
   }
 
   if (NodeIsPrimitiveConst(target)) // NNil, NBasicType, NBoolLit
@@ -567,7 +567,7 @@ static Node* resolve_id(Parser* p, Node* id, PFlag fl) {
   if (R_UNLIKELY(id->id.target == NULL)) {
     // not found
     NodeSetUnresolved(id);
-    id->flags |= NodeFlagRValue;
+    NodeSetRValue(id);
     return id;
   }
 
@@ -620,7 +620,7 @@ static Node* useAsRValue(Parser* p, Node* expr) {
       return expr; // immutable memory, allocated by universe
 
     default:
-      expr->flags |= NodeFlagRValue;
+      NodeSetRValue(expr);
       return expr;
   }
 }
@@ -687,7 +687,7 @@ static Node* PId(Parser* p, PFlag fl) {
 
 static void set_var_init(Parser* p, Node* n, Node* init) {
   assertnotnull_debug(init);
-  n->var.init = init;
+  n->var.init = init = useAsRValue(p, init);
   NodeTransferUnresolved(n, init);
 
   if (n->type) {
@@ -843,11 +843,12 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
 
 
 // e.g. "a = x"
-static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   asserteq_debug(left->kind, NId);
 
   if (!left->id.target)
     left = resolve_id(p, left, PFlagNone);
+
   Node* target = left->id.target;
 
   if (target && target->kind == NVar) {
@@ -869,7 +870,7 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     Node* n = mknode(p, NAssign);
     n->op.op = TAssign;
     nexttok(p); // consume '='
-    Node* right = expr(p, PREC_LOWEST, fl);
+    Node* right = expr(p, PREC_LOWEST, fl | PFlagRValue);
     n->op.left = target;
       // ^ store target (e.g. NVar) instead of NId to simplify IR generation
     n->op.right = right;
@@ -881,55 +882,14 @@ static Node* pAssignId(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     return n;
   }
 
+
   // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
   nexttok(p); // consume '='
   auto ctxtype = set_ctxtype(p, NULL);
-  Node* init = expr(p, PREC_LOWEST, fl);
+  Node* init = expr(p, PREC_LOWEST, fl | PFlagRValue);
   p->ctxtype = ctxtype;
   return make_var(p, left, init, NULL); // copies left->id.name and left->pos
 }
-
-
-// // "name mut type"
-// // "name &type"
-// static Node* pTrailingVar(Parser* p, PFlag fl, Node* name, Type* type) {
-//   asserteq_debug(name->kind, NId);
-//   assert_debug(NodeIsType(type));
-//
-//   // optional initializer expression
-//   Node* init = NULL;
-//   if (got(p, TAssign)) {
-//     Type* ctxtype = set_ctxtype(p, type);
-//     init = expr(p, PREC_LOWEST, fl | PFlagRValue);
-//     p->ctxtype = ctxtype;
-//   }
-//
-//   return make_var(p, name, init, type);
-// }
-//
-// // "name mut type"
-// //!Parselet (TMut MEMBER)
-// static Node* PMutInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-//   if (left->kind != NId) {
-//     syntaxerr(p, "unexpected mut keyword");
-//     return left;
-//   }
-//   fl |= PFlagMut;
-//   Type* t = pType(p, fl);
-//   return pTrailingVar(p, fl, left, t);
-// }
-//
-// // "name &type"
-// //-Parselet (TAnd BITWISE_AND)
-// static Node* PInfixAnd(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-//   if ((fl & PFlagRValue) == 0 && left->kind == NId) {
-//     // e.g. "x &T"
-//     Type* t = pType(p, fl);
-//     return pTrailingVar(p, fl, left, t);
-//   }
-//   return PInfixOp(p, e, fl, left);
-//   // dlog("NBinOp %s", fmtast(left));
-// }
 
 
 // PIdTrailing parses a trailing identifier, e.g. "b" in "a b"
@@ -957,18 +917,18 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
 
 // assignment to fields, e.g. "x.y = 3" -> (assign (Selector (Id x) (Id y)) (Int 3))
-static Node* pAssignSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  panic("TODO pAssignSelector");
+static Node* pAssignToSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+  panic("TODO pAssignToSelector");
   return bad(p);
 }
 
 
 // parse assignment of any right-hand-side expression
-static Node* pAssignBasic(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* pAssignToBase(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   Node* n = mknode(p, NAssign);
   n->op.op = p->s.tok;
   nexttok(p); // consume '='
-  Node* right = exprOrTuple(p, e->prec, fl);
+  Node* right = exprOrTuple(p, e->prec, fl | PFlagRValue);
   n->op.left = left;
   n->op.right = right;
   nodeTransferUnresolved2(n, left, right);
@@ -981,11 +941,11 @@ static Node* pAssignBasic(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
 
 // e.g. "a, b = x, y"
-static Node* pAssignTuple(Parser* p, const Parselet* e, PFlag fl, Node* left) {
+static Node* pAssignToTuple(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   asserteq_debug(left->kind, NTuple);
   assert_debug(fl & PFlagRValue);
 
-  Node* n = pAssignBasic(p, e, fl, left);
+  Node* n = pAssignToBase(p, e, fl, left);
   Node* right = n->op.right;
 
   if (right->kind != NTuple) {
@@ -1035,10 +995,10 @@ static Node* pAssignTuple(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 static Node* nullable PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   fl |= PFlagRValue;
   switch (left->kind) {
-    case NId:       R_MUSTTAIL return pAssignId(p, e, fl, left);
-    case NTuple:    R_MUSTTAIL return pAssignTuple(p, e, fl, left);
-    case NSelector: R_MUSTTAIL return pAssignSelector(p, e, fl, left);
-    case NIndex:    R_MUSTTAIL return pAssignBasic(p, e, fl, left);
+    case NId:       R_MUSTTAIL return pAssignToId(p, e, fl, left);
+    case NTuple:    R_MUSTTAIL return pAssignToTuple(p, e, fl, left);
+    case NSelector: R_MUSTTAIL return pAssignToSelector(p, e, fl, left);
+    case NIndex:    R_MUSTTAIL return pAssignToBase(p, e, fl, left);
     default:
       build_errf(p->build, NodePosSpan(left), "cannot assign to %s", fmtnode(left));
       Tok followlist[] = { TSemi, 0 };
@@ -1173,25 +1133,25 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   nexttok(p); // consume "["
+  n->index.index = 0xffffffff; // not a compile-time constant (for now)
   n->index.operand = useAsRValue(p, left);
+  NodeTransferUnresolved(n, n->index.operand);
 
-  switch (p->s.tok) {
-    case TRBrack:
-      // "[]"
-      syntaxerr(p, "missing index");
-      nexttok(p); // consume unexpected "]"
-      return n;
-    case TColon:
-      break;
-    default:
-      n->index.index = expr(p, PREC_LOWEST, fl | PFlagRValue);
-      nodeTransferUnresolved2(n, n->index.operand, n->index.index);
+  if (p->s.tok == TRBrack) { // "[]"
+    syntaxerr(p, "missing index");
+    nexttok(p); // consume unexpected "]"
+    return n;
+  }
+
+  if (p->s.tok != TColon) {
+    n->index.indexexpr = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    NodeTransferUnresolved(n, n->index.indexexpr);
   }
 
   if (p->s.tok == TColon) {
     // "[:" -- slice
     Node* operand = n->index.operand;
-    Node* start = n->index.index;
+    Node* start = n->index.indexexpr;
     n->kind = NSlice;
     n->slice.operand = operand;
     n->slice.start = start;
@@ -1199,6 +1159,8 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     if (p->s.tok != TRBrack) {
       n->slice.end = expr(p, PREC_LOWEST, fl | PFlagRValue);
       NodeTransferUnresolved(n, n->slice.end);
+    } else {
+      n->slice.end = NULL; // since we converted n->kind
     }
   }
 
@@ -1717,7 +1679,7 @@ static Node* PIf(Parser* p, PFlag fl) {
   nodeTransferUnresolved2(n, n->cond.cond, n->cond.thenb);
 
   if (fl & PFlagRValue)
-    n->flags |= NodeFlagRValue;
+    NodeSetRValue(n);
 
   if (p->s.tok == TElse) {
     nexttok(p);

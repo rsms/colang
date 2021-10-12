@@ -53,8 +53,10 @@ static bool convval_to_int(Build* b, Node* srcnode, NVal* v, TypeCode tc) {
       // int -> int; check overflow and simply leave as-is (reinterpret.)
       if (R_UNLIKELY((i64)v->i < min_intval[tc] || max_intval[tc] < v->i)) {
         auto nval = NValFmt(str_new(16), *v);
-        build_errf(b, NodePosSpan(srcnode), "constant %s overflows %s", nval, TypeCodeName(tc));
+        build_errf(b, NodePosSpan(srcnode),
+          "constant %s overflows %s", nval, TypeCodeName(tc));
         str_free(nval);
+        panic("c");
       }
       return true;
 
@@ -112,7 +114,8 @@ static Node* report_non_convertible(Build* b, Node* n, Type* t) {
 // convlit converts an expression n to type t.
 // If n is already of type t, n is simply returned.
 Node* convlit(Build* b, Node* n, Type* t, ConvlitFlags fl) {
-  assert(t != NULL);
+  assertnotnull(t);
+  assertnotnull(n);
   assert(t != Type_ideal);
   assert(NodeKindIsType(t->kind));
 

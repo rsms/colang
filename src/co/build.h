@@ -3,6 +3,7 @@
 #include "util/symmap.h"
 #include "util/array.h"
 #include "pos.h"
+#include "types.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -48,6 +49,8 @@ struct Build {
   DiagHandler* nullable diagh;     // diagnostics handler
   void* nullable        userdata;  // custom user data passed to error handler
   u32                   errcount;  // total number of errors since last call to build_init
+  TypeCode              sint_type; // concrete type of "int"
+  TypeCode              uint_type; // concrete type of "uint"
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   Array                 diagarray; // all diagnostic messages produced. Stored in mem.
   PosMap                posmap;    // maps Source <-> Pos
@@ -57,7 +60,7 @@ struct Build {
 struct Pkg {
   Mem         mem;     // memory for resources only needed by this package
   const char* dir;     // directory filename
-  Str         id;      // fully qualified name (e.g. "bar/cat/foo") (TODO: consider using a Sym)
+  Str         id;      // fully qualified name (e.g. "bar/cat"); TODO: consider using Sym
   Str         name;    // relative name (e.g. "foo")
   Source*     srclist; // linked list of sources
 };

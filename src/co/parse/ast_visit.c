@@ -96,7 +96,8 @@ bool NodeVisitChildren(NodeList* parent, void* nullable data, NodeVisitor f) {
     return CALLBACK(n->sel.operand, "operand");
 
   case NIndex:
-    return CALLBACK(n->index.operand, "operand") && CALLBACK(n->index.index, "index");
+    return CALLBACK(n->index.operand, "operand") &&
+           CALLBACK(n->index.indexexpr, "index");
 
   case NSlice:
     return (

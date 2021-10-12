@@ -230,7 +230,7 @@ static Node* _resolve_sym(ResCtx* ctx, Node* n)
 
   case NIndex:
     n->index.operand = resolve_sym(ctx, n->index.operand);
-    n->index.index = resolve_sym(ctx, n->index.index);
+    n->index.indexexpr = resolve_sym(ctx, n->index.indexexpr);
     break;
 
   case NSlice:
