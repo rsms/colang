@@ -634,9 +634,20 @@ inline static void nodeTransferUnresolved2(Node* parent, Node* child1, Node* chi
 }
 
 
+static void assign_ctxtype(Parser* p, Type* nullable new_ctxtype) {
+  if (new_ctxtype) {
+    assert_debug(NodeIsType(new_ctxtype));
+    assert_debug(new_ctxtype != Type_ideal);
+  }
+  p->ctxtype = new_ctxtype;
+}
+
+
 static Type* nullable set_ctxtype(Parser* p, Type* nullable new_ctxtype) {
   auto old_ctxtype = p->ctxtype;
-  p->ctxtype = new_ctxtype && NodeIsType(new_ctxtype) ? new_ctxtype : NULL;
+  p->ctxtype = (
+    new_ctxtype && NodeIsType(new_ctxtype) && new_ctxtype != Type_ideal ? new_ctxtype :
+    NULL );
   return old_ctxtype;
 }
 
@@ -1065,7 +1076,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   auto ctxtype = set_ctxtype(p, NULL); // save & set
   bool set_type = false;
   if (ctxtype && ctxtype->kind == NArrayType) {
-    p->ctxtype = ctxtype->t.array.subtype;
+    assign_ctxtype(p, ctxtype->t.array.subtype);
     set_type = true;
   }
 
@@ -1337,7 +1348,7 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     if (n->call.receiver->kind == NBasicType) {
       // fast path for primitive types e.g. "i16(123)"
       n->kind = NTypeCast;
-      p->ctxtype = n->call.receiver;
+      assign_ctxtype(p, n->call.receiver);
       n->call.args = expr(p, PREC_LOWEST, fl | PFlagRValue);
       if (n->call.receiver == n->call.args->type) {
         // short circuit e.g. "x = i64(3)"
@@ -1398,8 +1409,7 @@ static Node* pField(Parser* p) {
 
   if (got(p, TAssign)) {
     // e.g. "field = initval"
-    auto ctxtype = p->ctxtype; // save ctxtype
-    p->ctxtype = n->type;
+    auto ctxtype = set_ctxtype(p, n->type);
     n->field.init = expr(p, PREC_LOWEST, PFlagRValue);
     p->ctxtype = ctxtype; // restore ctxtype
     NodeTransferUnresolved(n, n->field.init);
@@ -1612,8 +1622,7 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   n->op.op = p->s.tok;
   nexttok(p);
   n->op.left = useAsRValue(p, left);
-  auto ctxtype = p->ctxtype; // save ctxtype
-  p->ctxtype = n->op.left->type;
+  auto ctxtype = set_ctxtype(p, n->op.left->type);
   n->op.right = expr(p, e->prec, fl | PFlagRValue);
   p->ctxtype = ctxtype; // restore ctxtype
   nodeTransferUnresolved2(n, left, n->op.right);
