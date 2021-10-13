@@ -347,7 +347,7 @@ int cmd_build(int argc, const char** argv) {
     PRINT_BANNER();
     RTIMER_START();
 
-    build.safe = false;
+    // build.safe = false;
     #if 0
     // JIT
     //build.opt = CoOptFast;

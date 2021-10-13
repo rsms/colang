@@ -187,6 +187,7 @@ static const char* fmttype(LLVMTypeRef ty) {
   static const char* dnamef(B* b, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
+    b->dname_buf[0] = 0;
     vsnprintf(b->dname_buf, sizeof(b->dname_buf), fmt, ap);
     va_end(ap);
     return b->dname_buf;
@@ -1733,7 +1734,7 @@ static Value build_refstruct_deref(
     valptr = LLVMBuildPointerCast(b->builder, valptr, final_ptrty, "ptr");
   }
 
-  Value v = build_load(b, elem_ty, valptr, vname);
+  Value v = b->noload ? NULL : build_load(b, elem_ty, valptr, vname);
   // TODO if gen != 0, cmp gen at v
 
   *valptr_out = valptr;
@@ -1871,9 +1872,8 @@ static Value build_index(B* b, Node* n, const char* vname) {
   #endif
 
   Value v = notnull(build_expr_mustload(b, operand, vname));
-  dlog("v %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
-
   LLVMTypeRef ty = LLVMTypeOf(v);
+  // dlog("v %s = %s", fmttype(ty), fmtvalue(v));
 
   // automatic deref
   if (ty == b->t_ref) {
@@ -1881,15 +1881,16 @@ static Value build_index(B* b, Node* n, const char* vname) {
     // get actual type of ref pointer
     Type* operandt = notnull(operand->type);
     asserteq_debug(operandt->kind, NRefType);
-    ty = get_type(b, operandt->t.ref);
-    v = build_refstruct_deref(b, v, ty, (Value*)&n->irval, dnamef(b, "%s.ptr", vname));
-    dlog("v' %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
-  } /*else if (LLVMGetTypeKind(ty) == LLVMPointerTypeKind) {
-    // dereference pointer, e.g. "[3 x i64]*" => "[3 x i64]"
-    assert_llvm_type_isptr(ty);
-    ty = LLVMGetElementType(ty);
-    //v = build_load(b, ty, v, vname);
-  }*/
+    LLVMTypeRef aty = get_type(b, operandt->t.ref); // e.g. "[3 x i64]" (not ptr)
+
+    bool noload = b->noload; // save
+    b->noload = true;
+    build_refstruct_deref(b, v, aty, (Value*)&n->irval, dnamef(b, "%s.ptr", vname));
+    b->noload = noload; // restore
+
+    v = n->irval;
+    ty = LLVMTypeOf(v); // == LLVMPointerType(aty, 0)
+  }
 
   dlog("ty %s", fmttype(ty));
   dlog("v  %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
@@ -1923,6 +1924,9 @@ static Value build_index(B* b, Node* n, const char* vname) {
         ty = LLVMTypeOf(ptr);
         vn->irval = ptr;
       }
+
+      dlog("AFTER TMP LOAD ty %s", fmttype(ty));
+      dlog("AFTER TMP LOAD v  %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
       // continue with GEP load below
       break;
     }

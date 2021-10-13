@@ -34,3 +34,16 @@ fun index_argarray_ct(arg1 [int 3]) int
 
 fun index_argarray_rt(arg1 [int 3], arg2 int) int
   arg1[arg2] // gep load
+
+fun index_argarray_ref_ct(arg1 &[int 3]) int
+  arg1[1] // extractvalue
+
+fun index_argarray_ref_rt(arg1 &[int 3], arg2 int) int
+  arg1[arg2] // gep load
+
+
+fun index_argarray_mutref_ct(arg1 mut&[int 3]) int
+  arg1[1] // extractvalue
+
+fun index_argarray_mutref_rt(arg1 mut&[int 3], arg2 int) int
+  arg1[arg2] // gep load
