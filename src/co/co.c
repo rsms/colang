@@ -349,10 +349,11 @@ int cmd_build(int argc, const char** argv) {
 
     #if 1
     // JIT
+    //build.opt = CoOptFast;
     llvm_jit(&build, pkgnode);
     #else
     // Build native executable
-    build.opt = CoOptSafe;
+    //build.opt = CoOptSafe;
     if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
       return 1;
     }

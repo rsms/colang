@@ -17,6 +17,9 @@ ASSUME_NONNULL_BEGIN
   #define dlog_mod(...) do{}while(0)
 #endif
 
+// we check for so many null values in this file that a shorthand increases legibility
+#define notnull assertnotnull_debug
+
 
 typedef enum RFlag {
   RFlagNone = 0,
@@ -124,8 +127,8 @@ struct TypeMismatchReport {
 
 
 static bool report_type_mismatch(ResCtx* ctx, const TypeMismatchReport* r) {
-  Type* ltype = assertnotnull(r->ltype);
-  Type* rtype = assertnotnull(r->rtype);
+  Type* ltype = notnull(r->ltype);
+  Type* rtype = notnull(r->rtype);
   Node* nullable rvalue = r->rvalue;
   const char* msg = r->msg;
 
@@ -222,7 +225,7 @@ static void clear_const(ResCtx* ctx, Node* n, ClearConstFlags fl) {
         NodeClearConst(n);
         goto end;
       case NId:
-        n = assertnotnull_debug(n->id.target);
+        n = notnull(n->id.target);
         break;
       default:
         goto end;
@@ -235,10 +238,9 @@ end:
 
 // make_ref_type creates a NRefType of element type elemt
 static Type* make_ref_type(ResCtx* ctx, Type* elemt) {
-  assertnotnull_debug(elemt);
   Type* t = NewNode(ctx->build->mem, NRefType);
+  t->t.ref = notnull(elemt);
   NodeTransferConst(t, elemt);  // transfer "mut&" or "&"
-  t->t.ref = assertnotnull_debug(elemt);
   return t;
 }
 
@@ -302,14 +304,12 @@ static Node* resolve_ideal_type1(
     }
 
     case NReturn:
-      assertnotnull_debug(n->op.left);
-      n->op.left = resolve_ideal_type(ctx, n->op.left, typecontext, fl);
+      n->op.left = resolve_ideal_type(ctx, notnull(n->op.left), typecontext, fl);
       n->type = n->op.left->type;
       break;
 
     case NVar:
-      assertnotnull_debug(n->var.init);
-      n->var.init = resolve_ideal_type(ctx, n->var.init, typecontext, fl);
+      n->var.init = resolve_ideal_type(ctx, notnull(n->var.init), typecontext, fl);
       n->type = n->var.init->type;
       break;
 
@@ -349,16 +349,16 @@ static void err_ret_type(ResCtx* ctx, Node* fun, Node* retval) {
 }
 
 
-static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) {
+static Node* resolve_return(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NReturn);
   n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
   n->type = n->op.left->type;
 
   // check for return type match (result type is NULL for functions with inferred types)
-  auto fn = curr_fun(ctx); // NULL|Node[kind==NFun]
-  assertnotnull(fn); // return can only occur inside a function (parser ensures this)
-  assertnotnull(fn->type); // function's type should be resolved
-  auto fnrettype = fn->type->t.fun.result;
+  Node* fn = notnull(curr_fun(ctx)); // NULL|Node[kind==NFun]
+  // Note: curr_fun notnull: return can only occur inside a function (parser ensures this)
+  // function's type should be resolved
+  auto fnrettype = notnull(fn->type)->t.fun.result;
   if (R_UNLIKELY( fnrettype && !TypeEquals(ctx->build, fnrettype, n->type) ))
     err_ret_type(ctx, fn, n);
 
@@ -366,14 +366,35 @@ static Node* resolve_ret_type(ResCtx* ctx, Node* n, RFlag fl) {
 }
 
 
+static Node* resolve_prefix_op(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NPrefixOp);
+  n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
+  n->type = notnull(n->op.left->type);
+  if (n->op.op == TStar) {
+    // dereference e.g. "*r"
+    if (R_LIKELY(n->type->kind == NRefType)) {
+      n->type = n->type->t.ref;
+    } else {
+      build_errf(ctx->build, NodePosSpan(n),
+        "cannot dereference non-reference type %s", fmtnode(n->type));
+    }
+  }
+  return n;
+}
+
+
+static Node* resolve_postfix_op(ResCtx* ctx, Node* n, RFlag fl) {
+  asserteq_debug(n->kind, NPostfixOp);
+  n->op.left = resolve_type(ctx, n->op.left, fl | RFlagResolveIdeal);
+  n->type = n->op.left->type;
+  return n;
+}
+
+
 static Node* resolve_macro(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NMacro);
-
-  assertnotnull(n->macro.template);
-  n->macro.template = resolve_type(ctx, n->macro.template, fl);
-
+  n->macro.template = resolve_type(ctx, notnull(n->macro.template), fl);
   n->type = n->macro.template->type;
-
   return n;
 }
 
@@ -389,13 +410,12 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
 
   if (n->fun.params) {
     n->fun.params = resolve_type(ctx, n->fun.params, fl);
-    assertnotnull_debug(n->fun.params->type);
+    notnull(n->fun.params->type);
     ft->t.fun.params = n->fun.params;
   }
 
   // return type
-  assertnotnull(n->fun.result);
-  ft->t.fun.result = resolve_type(ctx, n->fun.result, fl);
+  ft->t.fun.result = resolve_type(ctx, notnull(n->fun.result), fl);
   if (R_UNLIKELY(!NodeIsType(ft->t.fun.result))) {
     build_errf(ctx->build, NodePosSpan(n->fun.result),
       "%s is not a type", fmtnode(n->fun.result));
@@ -408,7 +428,7 @@ static Node* resolve_fun(ResCtx* ctx, Node* n, RFlag fl) {
       n->fun.body = resolve_ideal_type(ctx, n->fun.body, ft->t.fun.result, fl);
     }
 
-    auto bodyType = assertnotnull_debug(n->fun.body->type);
+    auto bodyType = notnull(n->fun.body->type);
     dlog_mod("bodyType    => N%s %s", NodeKindName(bodyType->kind), fmtnode(bodyType));
     dlog_mod("return type => N%s %s",
       NodeKindName(ft->t.fun.result->kind), fmtnode(ft->t.fun.result));
@@ -486,9 +506,8 @@ static Node* resolve_array(ResCtx* ctx, Node* n, RFlag fl) {
   auto typecontext = ctx->typecontext; // save typecontext
   if (typecontext) {
     asserteq_debug(typecontext->kind, NArrayType);
-    assertnotnull_debug(typecontext->t.array.subtype);
     n->type = typecontext;
-    typecontext_set(ctx, typecontext->t.array.subtype);
+    typecontext_set(ctx, notnull(typecontext->t.array.subtype));
     for (u32 i = 0; i < n->array.a.len; i++) {
       RESOLVE_ARRAY_NODE_TYPE_MUT(&n->array.a, i, fl);
     }
@@ -513,7 +532,7 @@ static Node* resolve_array(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   // check types
-  Type* elemt = assertnotnull_debug(n->type->t.array.subtype);
+  Type* elemt = notnull(n->type->t.array.subtype);
   for (u32 i = 0; i < n->array.a.len; i++) {
     Node* cn = (Node*)n->array.a.v[i];
     check_type_eq(ctx, elemt, cn->type, cn,
@@ -582,8 +601,8 @@ static Node* resolve_binop_or_assign(ResCtx* ctx, Node* n, RFlag fl) {
   if (n->op.left->type != Type_ideal)
     ctx->typecontext = n->op.left->type;
   n->op.right = resolve_type(ctx, n->op.right, fl & ~RFlagResolveIdeal);
-  lt = assertnotnull_debug(n->op.left->type);
-  rt = assertnotnull_debug(n->op.right->type);
+  lt = notnull(n->op.left->type);
+  rt = notnull(n->op.right->type);
   ctx->typecontext = typecontext; // restore typecontext
 
   // assignment
@@ -695,7 +714,7 @@ static Node* resolve_tuple(ResCtx* ctx, Node* n, RFlag fl) {
     if (ctlist) {
       assert_debug(ctindex < ctlist->len);
       Node* ct = ctlist->v[ctindex++];
-      typecontext_set(ctx, NodeIsType(ct) ? ct : assertnotnull_debug(ct->type));
+      typecontext_set(ctx, NodeIsType(ct) ? ct : notnull(ct->type));
     }
     if (!n->array.a.v[i]) {
       if (ctx->typecontext) {
@@ -774,8 +793,8 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
   asserteq_debug(args->kind, NTuple);
   bool hasNamedArgs = args->flags & NodeFlagNamed;
 
-  Node* recv = assertnotnull_debug(call->call.receiver);
-  Type* recvt = assertnotnull_debug(recv->type);
+  Node* recv = notnull(call->call.receiver);
+  Type* recvt = notnull(recv->type);
 
   u32 argc;
   STK_ARRAY_DEFINE(argv, Node*, 16); // len = argc
@@ -784,7 +803,7 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
 
   switch (params->kind) {
     case NTuple: {
-      Type* paramst = assertnotnull_debug(params->type);
+      Type* paramst = notnull(params->type);
       args->type = paramst;
       asserteq_debug(paramst->kind, NTupleType);
       asserteq_debug(paramst->t.tuple.a.len, args->array.a.len); // len(args) == len(params)
@@ -839,11 +858,11 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
     if (arg->kind == NNamedVal)
       break;
     // positional argument
-    Type* paramt = assertnotnull_debug(typv[i]);
+    Type* paramt = notnull(typv[i]);
     assert_debug(NodeIsType(paramt));
     ctx->typecontext = paramt;
     arg = resolve_type(ctx, arg, RFlagResolveIdeal);
-    argv[i] = assertnotnull_debug(arg);
+    argv[i] = notnull(arg);
   }
 
   // resolve named arguments (remaining args are named)
@@ -871,9 +890,9 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
       goto end;
     }
 
-    ctx->typecontext = assertnotnull_debug(param->type);
+    ctx->typecontext = notnull(param->type);
     arg = resolve_type(ctx, arg, RFlagResolveIdeal);
-    argv[argi] = assertnotnull_debug(arg);
+    argv[argi] = notnull(arg);
   }
 
   // check types
@@ -882,7 +901,7 @@ static Node* resolve_call_args(ResCtx* ctx, Node* call, Node* args, Node* params
     Node* arg = argv[i];
     if (!arg) // absent argument
       continue;
-    Type* argt = assertnotnull_debug(arg->type);
+    Type* argt = notnull(arg->type);
     if (R_UNLIKELY(!TypeEquals(ctx->build, paramt, argt))) {
       build_errf(ctx->build, NodePosSpan(arg),
         "incompatible argument type %s, expecting %s in call to %s %s",
@@ -908,19 +927,17 @@ end:
 
 static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
-  Node* recv = assertnotnull_debug(n->call.receiver);
-  Type* recvt = assertnotnull_debug(recv->type);
+  Node* recv = notnull(n->call.receiver);
+  Type* recvt = notnull(recv->type);
   asserteq_debug(recvt->kind, NFunType);
 
-  n->type = assertnotnull_debug(recvt->t.fun.result);
+  n->type = notnull(recvt->t.fun.result);
 
   Node* nullable params = recvt->t.fun.params;
 
   // check input-output cardinality
-  if (params) {
-    assertnotnull_debug(params->type);
-    asserteq_debug(params->type->kind, NTupleType);
-  }
+  if (params)
+    asserteq_debug(notnull(params->type)->kind, NTupleType);
   if (n->call.args)
     asserteq_debug(n->call.args->kind, NTuple);
   u32 nparams = params ? params->type->t.tuple.a.len : 0;
@@ -934,10 +951,8 @@ static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
   }
 
   // resolve input arguments
-  if (n->call.args) {
-    assertnotnull_debug(params); // earlier cardinality guards this case
-    n->call.args = resolve_call_args(ctx, n, n->call.args, params);
-  }
+  if (n->call.args)
+    n->call.args = resolve_call_args(ctx, n, n->call.args, notnull(params));
 
   return n;
 }
@@ -945,7 +960,7 @@ static Node* resolve_call_fun(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NCall);
-  Node* tt = assertnotnull_debug(n->call.receiver->type);
+  Node* tt = notnull(n->call.receiver->type);
   asserteq_debug(tt->kind, NTypeType);
   Node* recvt = tt->t.type;
   assert_debug(NodeIsType(recvt));
@@ -957,7 +972,7 @@ static Node* resolve_call_type(ResCtx* ctx, Node* n, RFlag fl) {
     // disallow mixed positional and named arguments in type constructors
     if (R_UNLIKELY(
       (args->flags & NodeFlagNamed) &&
-      assertnotnull_debug((Node*)args->array.a.v[0])->kind != NNamedVal ))
+      notnull((Node*)args->array.a.v[0])->kind != NNamedVal ))
     {
       return resolve_failed(ctx, n, NodePosSpan(args),
         "mixed positional and named initializer values");
@@ -983,8 +998,8 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
   //   fmtnode(n->call.receiver->type));
 
   // Node* recv = unbox(n->call.receiver);
-  Node* recv = assertnotnull_debug(n->call.receiver);
-  Type* recvt = assertnotnull_debug(recv->type);
+  Node* recv = notnull(n->call.receiver);
+  Type* recvt = notnull(recv->type);
   switch (recvt->kind) {
     case NFunType: // function call
       R_MUSTTAIL return resolve_call_fun(ctx, n, fl);
@@ -1000,8 +1015,8 @@ static Node* resolve_call(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NTypeCast);
-  assertnotnull_debug(n->call.receiver);
-  assertnotnull_debug(n->call.args); // note: "T()" w/o args is a call, not a cast
+  notnull(n->call.receiver);
+  notnull(n->call.args); // note: "T()" w/o args is a call, not a cast
 
   if (R_UNLIKELY(!NodeIsType(n->call.receiver))) {
     return resolve_failed(ctx, n, NodePosSpan(n),
@@ -1015,7 +1030,7 @@ static Node* resolve_typecast(ResCtx* ctx, Node* n, RFlag fl) {
 
   n->call.args = resolve_type(ctx, n->call.args, fl | RFlagExplicitTypeCast);
 
-  assertnotnull_debug(n->call.args->type);
+  notnull(n->call.args->type);
 
   if (TypeEquals(ctx->build, n->call.args->type, n->type)) {
     // source type == target type: eliminate type cast.
@@ -1099,7 +1114,7 @@ static Node* resolve_id(ResCtx* ctx, Node* n, RFlag fl) {
 static void resolve_arraytype_size(ResCtx* ctx, Type* n) {
   asserteq_debug(n->kind, NArrayType);
   asserteq_debug(n->t.array.size, 0); // must not be resolved already
-  assertnotnull_debug(n->t.array.sizeexpr); // must be array and not slice
+  notnull(n->t.array.sizeexpr); // must be array and not slice
 
   // set temporary size so that we don't cause an infinite loop
   n->t.array.size = 0xDEADBEEF;
@@ -1174,7 +1189,7 @@ static Type* resolve_struct_type(ResCtx* ctx, Type* t, RFlag fl) {
     //     field->type = field->field.init->type;
     // }
 
-    assertnotnull_debug(field->type);
+    notnull(field->type);
     if (!is_type_complete(field->type)) {
       ctx->typecontext = field->type; // in case it changed above
       field->type = resolve_type(ctx, field->type, fl);
@@ -1226,7 +1241,7 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NSelector);
 
   n->sel.operand = resolve_type(ctx, n->sel.operand, fl);
-  Node* recvt = assertnotnull_debug(n->sel.operand->type);
+  Node* recvt = notnull(n->sel.operand->type);
 
   // if the receiver is a struct, attempt to resolve field
   if (recvt->kind == NStructType) {
@@ -1251,7 +1266,7 @@ static Node* resolve_selector(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_index_tuple(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NIndex);
-  Type* rtype = assertnotnull_debug(n->index.operand->type);
+  Type* rtype = notnull(n->index.operand->type);
   asserteq_debug(rtype->kind, NTupleType);
   assert_debug(rtype->t.tuple.a.len > 0);
 
@@ -1298,18 +1313,18 @@ static Node* resolve_index(ResCtx* ctx, Node* n, RFlag fl) {
     n->index.index = (u32)indexexpr->val.i;
   }
 
-  Type* rtype = assertnotnull_debug(n->index.operand->type);
+  Type* rtype = notnull(n->index.operand->type);
 
   // derive type based on operand and index
 rtype_switch:
   switch (rtype->kind) {
     case NRefType:
       // unbox reference type e.g. "&[int]" => "[int]"
-      rtype = assertnotnull_debug(rtype->t.ref);
+      rtype = notnull(rtype->t.ref);
       goto rtype_switch;
 
     case NArrayType:
-      n->type = assertnotnull_debug(rtype->t.array.subtype);
+      n->type = notnull(rtype->t.array.subtype);
       // if index is comptime and array type is sized, do bounds check
       if (n->index.index != 0xffffffff &&
           rtype->t.array.size != 0 &&
@@ -1421,14 +1436,14 @@ static Node* resolve_slice(ResCtx* ctx, Node* n, RFlag fl) {
     n->slice.end = resolve_type(ctx, n->slice.end, fl);
   ctx->typecontext = typecontext; // restore
 
-  Type* rtype = assertnotnull_debug(n->slice.operand->type);
+  Type* rtype = notnull(n->slice.operand->type);
 
   // derive type based on operand and range indices
 rtype_switch:
   switch (rtype->kind) {
     case NRefType:
       // unbox reference type e.g. "&[int]" => "[int]"
-      rtype = assertnotnull_debug(rtype->t.ref);
+      rtype = notnull(rtype->t.ref);
       goto rtype_switch;
 
     case NArrayType:
@@ -1478,7 +1493,7 @@ static void report_var_init_type_mismatch(ResCtx* ctx, Node* n) {
 
 static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NVar);
-  assertnotnull_debug(n->var.init);
+  notnull(n->var.init);
   assert_debug( ! NodeIsMacroParam(n)); // macro params should be typed already
 
   auto typecontext = typecontext_set(ctx, n->type); // save & set
@@ -1491,7 +1506,7 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
   ctx->typecontext = typecontext; // restore
 
   if (!n->type) {
-    n->type = assertnotnull_debug(n->var.init->type);
+    n->type = notnull(n->var.init->type);
     if (n->var.isconst)
       NodeSetConst(n->type);
   } else if (R_UNLIKELY(!TypeEquals(ctx->build, n->type, n->var.init->type))) {
@@ -1514,7 +1529,7 @@ static Node* resolve_var(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NField);
-  assertnotnull_debug(n->type);
+  notnull(n->type);
 
   if (n->field.init) {
     n->flags &= ~NodeFlagCustomInit;
@@ -1543,16 +1558,16 @@ static Node* resolve_field(ResCtx* ctx, Node* n, RFlag fl) {
 
 static Node* resolve_namedval(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NNamedVal);
-  assertnotnull_debug(n->namedval.value);
+  notnull(n->namedval.value);
   n->namedval.value = resolve_type(ctx, n->namedval.value, fl);
-  n->type = assertnotnull_debug(n->namedval.value->type);
+  n->type = notnull(n->namedval.value->type);
   return n;
 }
 
 
 static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
   asserteq_debug(n->kind, NRef);
-  assertnotnull_debug(n->ref.target);
+  notnull(n->ref.target);
   n->ref.target = resolve_type(ctx, n->ref.target, fl);
 
   if (R_UNLIKELY(n->ref.target->type->kind == NRefType)) {
@@ -1568,6 +1583,21 @@ static Node* resolve_ref(ResCtx* ctx, Node* n, RFlag fl) {
   NodeTransferConst(n->ref.target->type, n->ref.target);
 
   n->type = make_ref_type(ctx, n->ref.target->type);
+  return n;
+}
+
+
+static Node* resolve_numlit(ResCtx* ctx, Node* n, RFlag fl) {
+  assert_debug(n->kind == NIntLit || n->kind == NFloatLit);
+
+  if (ctx->typecontext) {
+    ConvlitFlags clfl = (fl & RFlagExplicitTypeCast) ? ConvlitExplicit : ConvlitImplicit;
+    return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
+  }
+
+  // fallback
+  n = NodeCopy(ctx->build->mem, n);
+  n->type = IdealType(n->val.ct); // select default type for the literal
   return n;
 }
 
@@ -1667,14 +1697,14 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NMacro:
     R_MUSTTAIL return resolve_macro(ctx, n, fl);
 
-  case NPostfixOp:
   case NPrefixOp:
-    n->op.left = resolve_type(ctx, n->op.left, fl);
-    n->type = n->op.left->type;
-    break;
+    R_MUSTTAIL return resolve_prefix_op(ctx, n, fl);
+
+  case NPostfixOp:
+    R_MUSTTAIL return resolve_postfix_op(ctx, n, fl);
 
   case NReturn:
-    R_MUSTTAIL return resolve_ret_type(ctx, n, fl);
+    R_MUSTTAIL return resolve_return(ctx, n, fl);
 
   case NBinOp:
   case NAssign:
@@ -1721,18 +1751,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
 
   case NIntLit:
   case NFloatLit:
-    if (fl & RFlagResolveIdeal) {
-      if (ctx->typecontext) {
-        ConvlitFlags clfl = (fl & RFlagExplicitTypeCast) ? ConvlitExplicit : ConvlitImplicit;
-        return convlit(ctx->build, n, ctx->typecontext, clfl | ConvlitRelaxedType);
-      }
-      // fallback
-      n = NodeCopy(ctx->build->mem, n);
-      n->type = IdealType(n->val.ct);
-      break;
-    }
+    if (fl & RFlagResolveIdeal)
+      R_MUSTTAIL return resolve_numlit(ctx, n, fl);
     // else: not ideal type; should be typed already!
-    FALLTHROUGH;
+    break;
+
+  // nodes which should always have a type (getting here is unexpected)
   case NBoolLit:
   case NStrLit:
   case NBad:
@@ -1744,15 +1768,12 @@ static Node* resolve_type(ResCtx* ctx, Node* n, RFlag fl)
   case NTupleType:
   case NTypeType:
   case _NodeKindMax:
-    dlog("unexpected %s", fmtast(n));
-    assert(!"expected to be typed");
     break;
 
   }  // switch (n->kind)
 
-  // when and if we get here, the node should be typed
-  assertnotnull_debug(n->type);
-
+  dlog("unexpected %s", fmtast(n));
+  assert(!"expected to be typed");
   return n;
 }
 

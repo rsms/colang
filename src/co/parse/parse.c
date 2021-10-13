@@ -1595,9 +1595,8 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   return n;
 }
 
-
-// PrefixOp = ( "+" | "-" | "!" ) Expr
-//!PrefixParselet TPlus TMinus TExcalm
+// PrefixOp = ( "+" | "-" | "!" | "*" ) Expr
+//!PrefixParselet TPlus TMinus TExcalm TStar
 static Node* PPrefixOp(Parser* p, PFlag fl) {
   auto n = mknode(p, NPrefixOp);
   n->op.op = p->s.tok;
@@ -1997,6 +1996,7 @@ static const Parselet parselets[TMax] = {
   [TPlus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TMinus] = {PPrefixOp, PInfixOp, PREC_ADD},
   [TExcalm] = {PPrefixOp, NULL, PREC_MEMBER},
+  [TStar] = {PPrefixOp, PInfixOp, PREC_MULTIPLY},
   [TIntLit] = {PIntLit, NULL, PREC_MEMBER},
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
@@ -2013,7 +2013,6 @@ static const Parselet parselets[TMax] = {
   [TGt] = {NULL, PInfixOp, PREC_COMPARE},
   [TLEq] = {NULL, PInfixOp, PREC_COMPARE},
   [TGEq] = {NULL, PInfixOp, PREC_COMPARE},
-  [TStar] = {NULL, PInfixOp, PREC_MULTIPLY},
   [TSlash] = {NULL, PInfixOp, PREC_MULTIPLY},
   [TPlusPlus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},
   [TMinusMinus] = {NULL, PPostfixOp, PREC_UNARY_POSTFIX},

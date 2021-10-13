@@ -1,0 +1,206 @@
+// Questions
+//
+// Q: How is ownership managed?
+// A: Single-owner by var
+//
+// Q: How is something allocated on the heap?
+// A1: Explicitly with "Box(T(1,2)) -> Box<T>" (using context.allocator, Box approach)
+// A2: Explicitly with "allocate(T(1,2)) -> *T" (using context.allocator, pointer approach)
+//
+// Q: How do you declare data immutable/read-only?
+// A: With "const" keyword on var definition
+//      Q: What about return values?
+//      A: Function should return a ref ("&T") if the data can't be mutated.
+//    +Implicitly by use (really just an optimization w/ no semantic impact.)
+//
+// Q: Is immutability of storage "infectious" on its data?
+//    i.e. is the returned slice editable? "fun get_buf() &[]u8"
+// A: Yes. It works for C, Rust, et al.
+//
+
+fun example
+  a = IVec3()          // mutable IVec3 because storage is mutable
+  const b = IVec3()    // immutable IVec3 because storage is immutable
+  c = b                // mutable IVec3; b copied to c
+  const d = [3](1,2,3) // immutable. array data stored in RO memory
+  e = d                // mutable; d copied to e (array data stored on stack)
+  //
+  // but what about slices?
+  const f = d[:]       // immutable slice pointing to RO memory
+                       // C equiv: static const Slice f = { .ptr=&d, .len=3 }
+  d[0] = 4             // invalid! can't modify RO memory! (C equiv: f.ptr[0]=4)
+  // idea: Slices work like structs: they inherit constness
+  //       i.e. C equiv of f's type is "struct { const int* ptr; uint len; }"
+
+
+type IVec3
+  x, y, z int
+
+fun main() int
+  fun volume(v &IVec3) int -> v.x * v.y * v.z
+  a = IVec3(1, 2, 3) // allocated on stack; "a" is current owner
+  b = &a             // "b" has a ref to "a"; type of "b" is "mut &IVec3" since "a" is mutable
+  c = a              // ownership transfers to "c" (TODO: is "a" invalid now? or a ref?)
+  d = volume(c)      // automatic referencing "&c" of argument
+  return d
+  // "c" goes out of scope; implicit "drop(c)" freeing the IVec3 since "c" is its owner
+  // "b" goes out of scope
+  // "a" goes out of scope
+
+// examples
+fun resolve(n Node) Node   // takes ownership of n, gives ownership of Node
+fun set_const(n &mut Node) // borrows n read-write, mutates n
+fun fmt_node(n &Node) str  // borrows n read-only, gives ownership of str
+fun get_name(n &Node) &str // borrows n read-only, returns read-only ref to str
+fun get_buf(n &mut Node) &mut []u8
+
+// signatures
+fun i1(v IVec3)      // callee is given ownership
+fun i2(v &IVec3)     // callee is lent a read-only reference
+fun i3(v &mut IVec3) // callee is lent a mutable reference
+
+fun o1() IVec3       // caller is given ownership
+fun o2() &IVec3      // caller is lent a read-only reference
+fun o3() &mut IVec3  // caller is lent a mutable reference
+
+// What about strings?
+// A string literal is of what type?
+s = "foo" // "str" or "&str"?
+// It would be nice to support mutable strings.
+// Maybe "str" is an alias for "[]u8"
+// and string literals become eg "[3]u8('f','o','o')",
+// then the same mutability rules can be applied as for arrays.
+const s2 = "foo" // immutable == const s2 = [3]u8('f','o','o')
+s3 = "foo"       // mutable   == s3 = [3]u8('f','o','o')
+print("hello")   // const tmp = "[5]u8('h','e'...)" passed as "&[]u8" aka "&str"
+
+// ————————————————————————————————————————————————————————————
+// Oct 6, array memory and ownership
+
+// idea: [T] is owning ref
+f(a [int 3])    // owning ptr to immu mem
+f(a mut[int 3]) // owning ptr to mut mem
+f(a [int])      // owning ptr+len to immu mem
+f(a mut[int])   // owning ptr+len to mut mem
+f(a &[int 3])   // borrowed ptr to immu mem
+f(a mut&[int 3])// borrowed ptr to mut mem
+f(a &[int])     // borrowed ptr+len to immu mem
+f(a mut&[int])  // borrowed ptr+len to mut mem
+// this way we don't need box<T> for big structs
+// or strings!
+// BUT! what memory? How do you stack allocate
+// an array?
+x = alloc(BigStruct, 1) // [BigStruct 1]
+s = "hello"             // [u8 5]
+mut s = "world"         // mut[u8 5]
+
+mut x [int] // dynamic array {ptr,len}
+x.append(1) // grows x
+f(a [int])  // takes ownership
+y = [1, 2]  // [int 2] stack allocated
+y.append(3) // error
+z = y[:]    // [int]
+z.append(4) // allocator needs to know mem
+            // is on stack
+// what about escaping stack mem?
+fun f() [int]
+  a = [1, 2]
+  return a[:] // is a's mem copied?
+// could do escape analysis to either allocate
+// a on heap or to emit compiler error.
+
+// we need to be able to make both stack arrays
+// and heap arrays up front:
+fun dowork() int
+  tmp = [1, 2, 3] // [int 3]
+  return tmp[1]
+fun makestuff1() [int 3]
+  stuff = [1, 2, 3] // [int 3]
+  return stuff // copy of array to ret stack
+fun makestuff2() [int]
+  stuff = new(int, 3) // [int]
+  stuff = [1, 2, 3] // memcpy
+  return stuff // owning ptr+len to ret stack
+// okay, this can work.
+// fixed-size arrays always on stack or global mem
+// varying-size arrays are owning refs..? TODO
+const ga1 = [1, 2, 3] // [int 3] in global initial memory
+sa1 = [1, 2, 3]       // [int 3] on stack
+ra1 = &ga1[1:]        // &[int 2] borrowed ref to ga1
+ra2 = &sa1[1:]        // mut&[int 2] borrowed ref to sa1
+sa2 = sa1[1:]         // [int 2] on stack; copy of sa1
+ha1 = new(int, 3)     // [int] {len=0, cap=3, ptr=> [0,0,0] on heap}
+// [int] is a resizeable array with runtime-varying length and capacity
+
+ha2 = ha1      // move ownership ha1 -> ha2
+ha1[1]         // error: invalid variable (lost ownership)
+
+// populate heap array with value of other array:
+ha2.len = min(ha2.cap, sa1.len)
+copy(ha2, sa1) // memcpy(ha2, sa1, min(ha2.len, sa1.len))
+
+// ————————————————————————————————————————————————————————————————————————
+// Model where "[T]" is "ref to T array of varying len" (there's no "&[T]")
+fun reverse(v mut[int])
+x = [0, 1, 2]    // [int 3] ⟶ [0,1,2]
+y = x            // [int 3] ⟶ [0,1,2]
+r1 = &x          // &[int 3] ⟶ x
+r2 = &x[:2]      // &[int 2] ⟶ x
+s1 = x[:2]       // mut[int] {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+const s2 = x[:2] // [int]    {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+reverse(s1)      // s1 as plain arg (nothing unusual)
+reverse(s2)      // error: immutable ref where mutable ref is required
+reverse(x)       // create temporary slice, then call. i.e:
+  // 1. var tmp mut[int] = x[:]
+  // 2. call reverse(tmp)
+fun foo() [int]
+  x = [0, 1, 2] // [int 3]  [0,1,2] on stack
+  return x[:]   // WTF! Returns ptr to stack memory. Fail.
+
+// ————————————————————————————————————————————————————————————————————————
+// Model 2  (bad)
+fun reverse(v mut[int])
+x = [0, 1, 2]    // [int 3] ⟶ [0,1,2]
+y = x            // [int 3] ⟶ [0,1,2]
+r1 = &x          // mut&[int 3] ⟶ x
+r2 = &x[:2]      // mut&[int 2] ⟶ x
+// ownership moves from x to s1:
+s1 = x[:]        // [int] {len=2, cap=3, ptr= ⟶ x [0,1,2]}
+reverse(s1)      // s1 as plain arg (nothing unusual)
+reverse(s2)      // error: immutable ref where mutable ref is required
+reverse(x)       // create temporary slice, then call. i.e:
+  // 1. var tmp mut[int] = x[:]
+  // 2. call reverse(tmp)
+fun foo() [int]
+  x = [0, 1, 2] // [int 3]  [0,1,2] on stack
+  return x[:]   // WTF! Returns ptr to stack memory. Fail.
+
+// ————————————————————————————————————————————————————————————————————————
+// Owning T  Borrowed T   Description
+// ————————— ———————————— ———————————————————————
+// [int 3]   &[int 3]     Fixed Array
+// [int]     &[int]       Slice of fixed Array
+// [int *]   &[int *]     Dynamic array
+//
+// ————————————————————————————————————————————————————————————————————————
+// Owning T  Borrowed T   Description
+// ————————— ———————————— ———————————————————————
+// [int 3]   &[int 3]     Fixed Array or slice thereof
+// [int]     &[int]       Dynamic array or slice thereof
+//
+
+
+/*!AST
+;@a1 = private unnamed_addr constant [3 x i32] [i32 0, i32 1, i32 2]
+
+define i32 @main() {
+  %x = alloca [3 x i32], align 4
+  store [3 x i32] [i32 0, i32 1, i32 2], [3 x i32]* %x, align 4
+
+  %y = alloca [3 x i32], align 4
+  call void @memcpy(%y, %x, i32 12, i1 false)
+
+  %z = alloca { i32, i32, i32* }, align 4
+  store { i32, i32, i32* } { 3, 3, %x }, { i32, i32, i32* }* %z, align 4
+}
+*/
