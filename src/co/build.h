@@ -13,10 +13,9 @@ typedef struct Source Source;
 
 // CoOptType identifies an optimization type/strategy
 typedef enum CoOptType {
-  CoOptNone,  // -O0  safety on
-  CoOptSafe,  // -O3  safety on
-  CoOptFast,  // -O3  safety off
-  CoOptSmall, // -Oz  safety off
+  CoOptNone,  // -O0
+  CoOptFast,  // -O3
+  CoOptSmall, // -Oz
 } CoOptType;
 
 // DiagLevel is the level of severity of a diagnostic message
@@ -44,6 +43,7 @@ struct Build {
   Pkg*                  pkg;       // top-level package for which we are building
   CoOptType             opt;       // optimization type
   bool                  debug;     // build a debug build (include debug information etc)
+  bool                  safe;      // enable boundary checks and memory ref checks
   SymPool*              syms;      // symbol pool
   SymMap                types;     // interned types
   DiagHandler* nullable diagh;     // diagnostics handler
@@ -87,9 +87,6 @@ void build_init(Build*,
 
 // build_dispose frees up internal resources used by Build
 void build_dispose(Build*);
-
-// build_is_unsafe returns true if b->opt is CoOptFast or CoOptSmall
-static bool build_is_unsafe(const Build*);
 
 // build_emit_diag invokes b->diagh. d must have been allocated in b->mem.
 static void build_emit_diag(Build* b, Diagnostic* d);
@@ -155,10 +152,6 @@ void SourceChecksum(Source* src);
 
 // -----------------------------------------------------------------------------------------------
 // implementations
-
-inline static bool build_is_unsafe(const Build* b) {
-  return b->opt == CoOptFast || b->opt == CoOptSmall;
-}
 
 inline static const Source* nullable build_get_source(const Build* b, Pos pos) {
   return (Source*)pos_source(&b->posmap, pos);

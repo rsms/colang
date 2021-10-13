@@ -347,13 +347,14 @@ int cmd_build(int argc, const char** argv) {
     PRINT_BANNER();
     RTIMER_START();
 
-    #if 1
+    // build.safe = false;
+    #if 0
     // JIT
     //build.opt = CoOptFast;
     llvm_jit(&build, pkgnode);
     #else
     // Build native executable
-    //build.opt = CoOptSafe;
+    // build.opt = CoOptFast;
     if (!llvm_build_and_emit(&build, pkgnode, NULL/*target=host*/)) {
       return 1;
     }

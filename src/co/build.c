@@ -12,6 +12,7 @@ void build_init(Build*   b,
   assertnotnull(mem);
   memset(b, 0, sizeof(Build));
   b->mem       = mem;
+  b->safe      = true;
   b->syms      = syms;
   b->pkg       = pkg;
   b->diagh     = diagh;

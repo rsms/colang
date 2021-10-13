@@ -1,7 +1,22 @@
+
+// fun main(arg1 &int, arg2 int) int
+//   *arg1
+
+fun foo(x, y &int) int
+  *x + *y
+
 fun main(arg1 int) int
-  x = &arg1 // mut&int
-  y = &arg1 // mut&int
-  a = *x    // int
-  b = *y    // int
-  // y = *arg1 // error: cannot dereference non-reference type int
-  a + b
+  x = &arg1
+  x = &arg1 // make mutable
+  foo(&arg1, x)
+  *x
+
+// var x int = 1
+// x = 2
+
+// fun main(arg1 int) int
+//   x = &arg1 // mut&int
+//   y = &arg1 // mut&int
+//   a = *x    // int
+//   b = *y    // int
+//   a + b

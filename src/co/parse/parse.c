@@ -1601,7 +1601,7 @@ static Node* PPrefixOp(Parser* p, PFlag fl) {
   auto n = mknode(p, NPrefixOp);
   n->op.op = p->s.tok;
   nexttok(p);
-  n->op.left = expr(p, PREC_LOWEST, fl | PFlagRValue);
+  n->op.left = expr(p, PREC_MEMBER, fl | PFlagRValue);
   NodeTransferUnresolved(n, n->op.left);
   return n;
 }

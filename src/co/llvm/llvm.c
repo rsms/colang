@@ -65,6 +65,7 @@ typedef struct B {
   // development debugging support
   #ifdef DEBUG_BUILD_EXPR
   int log_indent;
+  char dname_buf[128];
   #endif
 
   // optimization
@@ -83,7 +84,7 @@ typedef struct B {
 
   // memory generation check (specific to current function)
   LLVMBasicBlockRef mgen_failb;
-  Value             mgen_alloca; // alloca for failed ref (type "co.ref" { i32*, i32 })
+  Value             mgen_alloca; // alloca for failed ref (type "REF" { i32*, i32 })
 
   // type constants
   LLVMTypeRef t_void;
@@ -180,7 +181,27 @@ static const char* fmttype(LLVMTypeRef ty) {
 }
 
 
-static Value store(B* b, Value v, Value ptr) {
+// dnamef formats IR value names
+#if DEBUG
+  ATTR_FORMAT(printf, 2, 3)
+  static const char* dnamef(B* b, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(b->dname_buf, sizeof(b->dname_buf), fmt, ap);
+    va_end(ap);
+    return b->dname_buf;
+  }
+#else
+  #define dnamef(b, fmt, ...) ""
+#endif
+
+
+static LLVMTypeRef refstruct_type(B*);
+
+
+// build_store is really just LLVMBuildStore with assertions enabled in DEBUG builds
+static Value build_store(B* b, Value v, Value ptr) {
+
   #if DEBUG
   LLVMTypeRef ptrty = LLVMTypeOf(ptr);
   asserteq(LLVMGetTypeKind(ptrty), LLVMPointerTypeKind);
@@ -194,23 +215,29 @@ static Value store(B* b, Value v, Value ptr) {
 }
 
 
+// build_load is really just LLVMBuildLoad2 with assertions enabled in DEBUG builds
+static Value build_load(B* b, LLVMTypeRef elem_ty, Value ptr, const char* vname) {
+
+  #if DEBUG
+  LLVMTypeRef ptrty = LLVMTypeOf(ptr);
+  asserteq(LLVMGetTypeKind(ptrty), LLVMPointerTypeKind);
+  LLVMTypeRef ptr_elem_ty = LLVMGetElementType(ptrty);
+  if (elem_ty != ptr_elem_ty) {
+    panic("load destination type %s != source type %s",
+      fmttype(elem_ty), fmttype(ptr_elem_ty));
+  }
+  #endif
+
+  return LLVMBuildLoad2(b->builder, elem_ty, ptr, vname);
+}
+
+
 static Value build_copy(B* b, Value dstptr, Value srcptr, Value sizeval) {
   asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(srcptr)), LLVMPointerTypeKind);
   asserteq_debug(LLVMTypeOf(dstptr), LLVMTypeOf(srcptr));
   u32 dst_align = LLVMGetAlignment(dstptr);
   u32 src_align = LLVMGetAlignment(srcptr);
   return LLVMBuildMemCpy(b->builder, dstptr, dst_align, srcptr, src_align, sizeval);
-}
-
-
-static void store_or_copy(B* b, Value v, Value ptr) {
-  LLVMTypeRef ty = LLVMTypeOf(v);
-  if (LLVMGetTypeKind(ty) == LLVMPointerTypeKind) {
-    Value sizeval = LLVMSizeOf(LLVMGetElementType(ty));
-    build_copy(b, ptr, v, sizeval);
-  } else {
-    store(b, v, ptr);
-  }
 }
 
 
@@ -251,50 +278,58 @@ static LLVMTypeRef get_array_type(B* b, Type* tn);
 static LLVMTypeRef get_type(B* b, Type* nullable n) {
   if (!n)
     return b->t_void;
+
   switch (n->kind) {
-    case NBasicType: {
-      switch (n->t.basic.typeCode) {
-        case TypeCode_bool:
-          return b->t_bool;
-        case TypeCode_i8:
-        case TypeCode_u8:
-          return b->t_i8;
-        case TypeCode_i16:
-        case TypeCode_u16:
-          return b->t_i16;
-        case TypeCode_i32:
-        case TypeCode_u32:
-          return b->t_i32;
-        case TypeCode_i64:
-        case TypeCode_u64:
-          return b->t_i64;
-        case TypeCode_f32:
-          return b->t_f32;
-        case TypeCode_f64:
-          return b->t_f64;
-        case TypeCode_ideal:
-        case TypeCode_int:
-        case TypeCode_uint:
-          return b->t_int;
-        case TypeCode_nil:
-          return b->t_void;
-        default: {
-          panic("TODO basic type %s", n->t.basic.name);
-          break;
-        }
+
+  case NBasicType: {
+    switch (n->t.basic.typeCode) {
+      case TypeCode_bool:
+        return b->t_bool;
+      case TypeCode_i8:
+      case TypeCode_u8:
+        return b->t_i8;
+      case TypeCode_i16:
+      case TypeCode_u16:
+        return b->t_i16;
+      case TypeCode_i32:
+      case TypeCode_u32:
+        return b->t_i32;
+      case TypeCode_i64:
+      case TypeCode_u64:
+        return b->t_i64;
+      case TypeCode_f32:
+        return b->t_f32;
+      case TypeCode_f64:
+        return b->t_f64;
+      case TypeCode_ideal:
+      case TypeCode_int:
+      case TypeCode_uint:
+        return b->t_int;
+      case TypeCode_nil:
+        return b->t_void;
+      default: {
+        panic("TODO basic type %s", n->t.basic.name);
+        break;
       }
-      break;
     }
-    case NStructType:
-      return get_struct_type(b, n);
-    case NArrayType:
-      return get_array_type(b, n);
-    default:
-      panic("TODO node kind %s", NodeKindName(n->kind));
-      break;
+    break;
   }
-  panic("invalid node kind %s", NodeKindName(n->kind));
-  return NULL;
+
+  case NStructType:
+    R_MUSTTAIL return get_struct_type(b, n);
+
+  case NArrayType:
+    R_MUSTTAIL return get_array_type(b, n);
+
+  case NRefType:
+    if (b->build->safe)
+      return refstruct_type(b);
+    return LLVMPointerType(get_type(b, n->t.ref), 0);
+
+  default:
+    panic("invalid node kind %s", NodeKindName(n->kind));
+    return NULL;
+  }
 }
 
 
@@ -318,22 +353,22 @@ inline static Value get_current_fun(B* b) {
 }
 
 
-static Value build_expr(B* b, Node* n, const char* debugname);
+static Value build_expr(B* b, Node* n, const char* vname);
 
 
 // build_expr_noload calls build_expr with b->noload set to true, ignoring result value
-inline static Value nullable build_expr_noload(B* b, Node* n, const char* debugname) {
+inline static Value nullable build_expr_noload(B* b, Node* n, const char* vname) {
   bool noload = b->noload; // save
   b->noload = true;
-  build_expr(b, n, debugname);
+  build_expr(b, n, vname);
   b->noload = noload; // restore
   return n->irval;
 }
 
-inline static Value build_expr_mustload(B* b, Node* n, const char* debugname) {
+inline static Value build_expr_mustload(B* b, Node* n, const char* vname) {
   bool noload = b->noload; // save
   b->noload = false;
-  Value v = build_expr(b, n, debugname);
+  Value v = build_expr(b, n, vname);
   b->noload = noload; // restore
   return v;
 }
@@ -437,7 +472,37 @@ static Value build_funproto(B* b, Node* n, const char* name) {
 }
 
 
-static Value build_fun(B* b, Node* n, const char* debugname) {
+// static bool arg_type_needs_alloca(LLVMTypeRef ty) {
+//   switch (LLVMGetTypeKind(ty)) {
+//     // types of arguments which must always be placed in a local alloca
+//     case LLVMFunctionTypeKind:
+//     case LLVMStructTypeKind:
+//     case LLVMArrayTypeKind:
+//     case LLVMVectorTypeKind:
+//     case LLVMScalableVectorTypeKind:
+//       return true;
+
+//     case LLVMVoidTypeKind:
+//     case LLVMHalfTypeKind:
+//     case LLVMFloatTypeKind:
+//     case LLVMDoubleTypeKind:
+//     case LLVMX86_FP80TypeKind:
+//     case LLVMFP128TypeKind:
+//     case LLVMPPC_FP128TypeKind:
+//     case LLVMLabelTypeKind:
+//     case LLVMIntegerTypeKind:
+//     case LLVMPointerTypeKind:
+//     case LLVMMetadataTypeKind:
+//     case LLVMX86_MMXTypeKind:
+//     case LLVMTokenTypeKind:
+//     case LLVMBFloatTypeKind:
+//     case LLVMX86_AMXTypeKind:
+//       return false;
+//   }
+// }
+
+
+static Value build_fun(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NFun);
   notnull(n->type);
   asserteq_debug(n->type->kind, NFunType);
@@ -484,12 +549,20 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
       asserteq_debug(pn->kind, NVar);
       assert_debug(NodeIsParam(pn));
       Value pv = LLVMGetParam(fn, i);
-      if (NodeIsConst(pn)) { // immutable
+      LLVMTypeRef ty = LLVMTypeOf(pv);
+      if (NodeIsConst(pn) /*&& !arg_type_needs_alloca(ty)*/) {
+        // immutable pimitive value does not need a local alloca
         pn->irval = pv;
       } else { // mutable
-        LLVMTypeRef ty = get_type(b, pn->type);
-        pn->irval = LLVMBuildAlloca(b->builder, ty, pn->var.name);
-        store(b, pv, pn->irval);
+        const char* name = pn->var.name;
+        #if DEBUG
+        char namebuf[128];
+        snprintf(namebuf, sizeof(namebuf), "arg_%s", name);
+        name = namebuf;
+        #endif
+
+        pn->irval = LLVMBuildAlloca(b->builder, ty, name);
+        build_store(b, pv, pn->irval);
       }
     }
   }
@@ -530,7 +603,7 @@ static Value build_fun(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_block(B* b, Node* n, const char* debugname) {
+static Value build_block(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NBlock);
   notnull(n->type);
 
@@ -552,10 +625,10 @@ static Value build_block(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_struct_cons(B* b, Node* n, const char* debugname);
+static Value build_struct_cons(B* b, Node* n, const char* vname);
 
 
-static Value build_type_call(B* b, Node* n, const char* debugname) {
+static Value build_type_call(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NCall);
   notnull(n->call.receiver->type);
   asserteq_debug(n->call.receiver->type->kind, NTypeType);
@@ -565,7 +638,7 @@ static Value build_type_call(B* b, Node* n, const char* debugname) {
 
   switch (tn->kind) {
     case NStructType:
-      return build_struct_cons(b, n, debugname);
+      return build_struct_cons(b, n, vname);
     default:
       panic("TODO: type call %s", fmtnode(tn));
       return NULL;
@@ -573,7 +646,7 @@ static Value build_type_call(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_fun_call(B* b, Node* n, const char* debugname) {
+static Value build_fun_call(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NCall);
   notnull(n->call.receiver->type);
   asserteq_debug(n->call.receiver->type->kind, NFunType);
@@ -584,6 +657,9 @@ static Value build_fun_call(B* b, Node* n, const char* debugname) {
     errlog("unknown function");
     return NULL;
   }
+
+  bool noload = b->noload; // save
+  b->noload = false;
 
   // arguments
   u32 argc = 0;
@@ -597,6 +673,8 @@ static Value build_fun_call(B* b, Node* n, const char* debugname) {
     }
   }
 
+  b->noload = noload; // restore
+
   asserteq(LLVMCountParams(callee), argc);
   Value v = LLVMBuildCall(b->builder, callee, argv, argc, "");
 
@@ -607,16 +685,16 @@ static Value build_fun_call(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_call(B* b, Node* n, const char* debugname) {
+static Value build_call(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NCall);
   notnull(n->type);
 
   Type* recvt = notnull(n->call.receiver->type);
   switch (recvt->kind) {
     case NTypeType: // type constructor call
-      return build_type_call(b, n, debugname);
+      return build_type_call(b, n, vname);
     case NFunType: // function call
-      return build_fun_call(b, n, debugname);
+      return build_fun_call(b, n, vname);
     default:
       panic("invalid call kind=%s n=%s", NodeKindName(recvt->kind), fmtnode(n));
       return NULL;
@@ -624,10 +702,10 @@ static Value build_call(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_init_store(B* b, Node* n, Value init, const char* debugname) {
+static Value build_init_store(B* b, Node* n, Value init, const char* vname) {
   if (!LLVMGetInsertBlock(b->builder) /*|| !b->mutable*/) {
     // global
-    Value ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), debugname);
+    Value ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), vname);
     LLVMSetLinkage(ptr, LLVMPrivateLinkage);
     LLVMSetInitializer(ptr, init);
     LLVMSetGlobalConstant(ptr, LLVMIsConstant(init));
@@ -635,8 +713,8 @@ static Value build_init_store(B* b, Node* n, Value init, const char* debugname) 
     return ptr;
   }
   // mutable, on stack
-  Value ptr = LLVMBuildAlloca(b->builder, LLVMTypeOf(init), debugname);
-  store(b, init, ptr);
+  Value ptr = LLVMBuildAlloca(b->builder, LLVMTypeOf(init), vname);
+  build_store(b, init, ptr);
   return ptr;
 }
 
@@ -648,8 +726,13 @@ static Value nullable set_varalloca(B* b, Value v) {
   return outer;
 }
 
-
-static Value take_varalloca(B* b, LLVMTypeRef ty) {
+#if DEBUG
+static Value take_varalloca(B* b, LLVMTypeRef ty)
+#else
+#define take_varalloca(b, ign) _take_varalloca(b)
+static Value _take_varalloca(B* b)
+#endif
+{
   if (!b->varalloc)
     return NULL;
 
@@ -669,7 +752,7 @@ static Value take_varalloca(B* b, LLVMTypeRef ty) {
 }
 
 
-static Value build_array(B* b, Node* n, const char* debugname) {
+static Value build_array(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NArray);
   Type* arrayt = notnull(n->type);
 
@@ -707,10 +790,10 @@ static Value build_array(B* b, Node* n, const char* debugname) {
     Value init = LLVMConstArray(elemty, valuev, valuec);
     if (ptr) {
       // store to preallocated var address
-      store(b, init, ptr);
+      build_store(b, init, ptr);
     } else {
       // store as global
-      ptr = LLVMAddGlobal(b->mod, arrayty, debugname);
+      ptr = LLVMAddGlobal(b->mod, arrayty, vname);
       LLVMSetLinkage(ptr, LLVMPrivateLinkage);
       LLVMSetInitializer(ptr, init);
       LLVMSetGlobalConstant(ptr, true);
@@ -733,7 +816,7 @@ static Value build_array(B* b, Node* n, const char* debugname) {
     for (u32 i = initv ? 1 : 0; i < valuec; i++) {
       if (valuev[i] != initv) {
         Value eptr = LLVMBuildInBoundsGEP2(b->builder, arrayty, ptr, gepindexv, 2, "");
-        store(b, valuev[i], eptr);
+        build_store(b, valuev[i], eptr);
       }
     }
     n->irval = ptr;
@@ -741,12 +824,12 @@ static Value build_array(B* b, Node* n, const char* debugname) {
 
   STK_ARRAY_DISPOSE(valuev);
 
-  // n->irval = build_init_store(b, n, init, debugname);
+  // n->irval = build_init_store(b, n, init, vname);
   return n->irval;
 }
 
 
-static Value build_typecast(B* b, Node* n, const char* debugname) {
+static Value build_typecast(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NTypeCast);
   notnull(n->type);
   notnull(n->call.args);
@@ -756,15 +839,15 @@ static Value build_typecast(B* b, Node* n, const char* debugname) {
   LLVMBool isSigned = false;
   LLVMTypeRef dsttype = b->t_i32;
   LLVMValueRef srcval = build_expr(b, n->call.args, "");
-  return LLVMBuildIntCast2(b->builder, srcval, dsttype, isSigned, debugname);
+  return LLVMBuildIntCast2(b->builder, srcval, dsttype, isSigned, vname);
 }
 
 
-static Value build_return(B* b, Node* n, const char* debugname) {
+static Value build_return(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NReturn);
   notnull(n->type);
   // TODO: check current function and if type is nil, use LLVMBuildRetVoid
-  LLVMValueRef v = build_expr(b, n->op.left, debugname);
+  LLVMValueRef v = build_expr(b, n->op.left, vname);
   // if (value_is_call(v))
   //   LLVMSetTailCall(v, true);
   return LLVMBuildRet(b->builder, v);
@@ -835,7 +918,7 @@ static LLVMTypeRef get_array_type(B* b, Type* tn) {
 }
 
 
-static Value build_struct_type_expr(B* b, Type* n, const char* debugname) {
+static Value build_struct_type_expr(B* b, Type* n, const char* vname) {
   LLVMTypeRef ty = get_struct_type(b, n);
   dlog_mod(b, "build_struct_type_expr %s", fmttype(ty));
 
@@ -849,7 +932,7 @@ static Value build_struct_type_expr(B* b, Type* n, const char* debugname) {
 
 
 static Value build_anon_struct(
-  B* b, Value* values, u32 numvalues, const char* debugname, Mutability mut)
+  B* b, Value* values, u32 numvalues, const char* vname, Mutability mut)
 {
   u32 nconst = 0;
   for (u32 i = 0; i < numvalues; i++)
@@ -860,12 +943,12 @@ static Value build_anon_struct(
     Value init = LLVMConstStructInContext(b->ctx, values, numvalues, /*packed*/false);
     if (mut == Mutable) {
       // struct will be modified; allocate on stack
-      Value ptr = LLVMBuildAlloca(b->builder, LLVMTypeOf(init), debugname);
-      store(b, init, ptr);
+      Value ptr = LLVMBuildAlloca(b->builder, LLVMTypeOf(init), vname);
+      build_store(b, init, ptr);
       return ptr;
     } else {
       // struct is read-only; allocate as global
-      LLVMValueRef ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), debugname);
+      LLVMValueRef ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), vname);
       LLVMSetLinkage(ptr, LLVMPrivateLinkage);
       LLVMSetInitializer(ptr, init);
       LLVMSetGlobalConstant(ptr, true);
@@ -885,11 +968,11 @@ static Value build_anon_struct(
   }
 
   LLVMTypeRef ty = LLVMStructTypeInContext(b->ctx, typesv, numvalues, /*packed*/false);
-  Value ptr = LLVMBuildAlloca(b->builder, ty, debugname);
+  Value ptr = LLVMBuildAlloca(b->builder, ty, vname);
 
   for (u32 i = 0; i < numvalues; i++) {
     LLVMValueRef fieldptr = LLVMBuildStructGEP2(b->builder, ty, ptr, i, "");
-    store(b, values[i], fieldptr);
+    build_store(b, values[i], fieldptr);
   }
 
   STK_ARRAY_DISPOSE(typesv);
@@ -914,7 +997,7 @@ static Value build_initializer(B* b, Type* tn, Node* nullable init, const char* 
 }
 
 
-static Value build_field(B* b, Node* n, const char* debugname) {
+static Value build_field(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NField);
   // TODO: use constructor arguments if present
   return build_initializer(b, n->type, n->field.init, n->field.name);
@@ -990,7 +1073,7 @@ end:
 }
 
 
-static Value build_struct_cons(B* b, Node* n, const char* debugname) {
+static Value build_struct_cons(B* b, Node* n, const char* vname) {
   // called by build_type_call
   asserteq_debug(n->kind, NCall);
 
@@ -1002,12 +1085,12 @@ static Value build_struct_cons(B* b, Node* n, const char* debugname) {
 
   LLVMTypeRef ty = get_struct_type(b, structType);
   Value init = build_struct_init(b, structType, n->call.args, ty);
-  n->irval = build_init_store(b, n, init, debugname);
+  n->irval = build_init_store(b, n, init, vname);
   return n->irval;
 }
 
 
-static Value build_selector(B* b, Node* n, const char* debugname) {
+static Value build_selector(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NSelector);
   notnull(n->type);
   assert_debug(n->sel.indices.len > 0); // GEP path should be resolved by type resolver
@@ -1020,7 +1103,7 @@ static Value build_selector(B* b, Node* n, const char* debugname) {
   // fprintf(stderr, "\n");
   // #endif
 
-  Value ptr = notnull(build_expr_noload(b, n->sel.operand, debugname));
+  Value ptr = notnull(build_expr_noload(b, n->sel.operand, vname));
   LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
 
   u32 nindices = n->sel.indices.len + 1; // first index is for pointer array/offset
@@ -1034,7 +1117,7 @@ static Value build_selector(B* b, Node* n, const char* debugname) {
   // become a single GEP. e.g. "x.foo.bar" into nested struct "bar".
 
   n->irval = LLVMBuildInBoundsGEP2(
-    b->builder, st_ty, ptr, indices, nindices, debugname);
+    b->builder, st_ty, ptr, indices, nindices, vname);
 
   STK_ARRAY_DISPOSE(indices);
 
@@ -1042,12 +1125,12 @@ static Value build_selector(B* b, Node* n, const char* debugname) {
     return n->irval;
 
   LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(n->irval));
-  return LLVMBuildLoad2(b->builder, elem_ty, n->irval, debugname);
+  return build_load(b, elem_ty, n->irval, vname);
 }
 
 
 // gep_load loads the value of field at index from sequence at memory location ptr
-static Value gep_load(B* b, Value v, u32 index, const char* debugname) {
+static Value gep_load(B* b, Value v, u32 index, const char* vname) {
   LLVMTypeRef vty = LLVMTypeOf(notnull(v));
   LLVMTypeKind tykind = LLVMGetTypeKind(vty);
 
@@ -1076,17 +1159,17 @@ static Value gep_load(B* b, Value v, u32 index, const char* debugname) {
 
   // "inbounds" — the result value of the GEP is undefined if the address is outside
   // the actual underlying allocated object and not the address one-past-the-end.
-  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, debugname);
+  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
 
   LLVMTypeRef elem_ty = (
     seqty_kind == LLVMStructTypeKind ? LLVMStructGetTypeAtIndex(seqty, index) :
     LLVMGetElementType(seqty));
 
-  return LLVMBuildLoad2(b->builder, elem_ty, elemptr, debugname);
+  return build_load(b, elem_ty, elemptr, vname);
 }
 
 
-static Value build_index(B* b, Node* n, const char* debugname) {
+static Value build_index(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NIndex);
   notnull(n->type);
 
@@ -1095,15 +1178,15 @@ static Value build_index(B* b, Node* n, const char* debugname) {
   assert_debug(indexexpr->val.i <= 0xFFFFFFFF);
   u32 index = (u32)indexexpr->val.i;
 
-  // debugname "operand.index"
+  // vname "operand.index"
   #ifdef DEBUG
-  char debugname2[256];
-  if (debugname[0] == 0 && operand->kind == NVar) {
+  char vname2[256];
+  if (vname[0] == 0 && operand->kind == NVar) {
     int len = snprintf(
-      debugname2, sizeof(debugname2), "%s.%u", operand->var.name, index);
-    if ((size_t)len >= sizeof(debugname2))
-      debugname2[sizeof(debugname2) - 1] = '\0'; // truncate
-    debugname = debugname2;
+      vname2, sizeof(vname2), "%s.%u", operand->var.name, index);
+    if ((size_t)len >= sizeof(vname2))
+      vname2[sizeof(vname2) - 1] = '\0'; // truncate
+    vname = vname2;
   }
   #endif
 
@@ -1117,14 +1200,14 @@ optype_switch:
 
     case NTupleType: {
       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-      Value v = notnull(build_expr_noload(b, operand, debugname));
-      return gep_load(b, v, index, debugname);
+      Value v = notnull(build_expr_noload(b, operand, vname));
+      return gep_load(b, v, index, vname);
     }
 
     case NArrayType: {
       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-      Value v = notnull(build_expr_noload(b, operand, debugname));
-      return gep_load(b, v, index, debugname);
+      Value v = notnull(build_expr_noload(b, operand, vname));
+      return gep_load(b, v, index, vname);
     }
 
     default:
@@ -1135,7 +1218,7 @@ optype_switch:
 }
 
 
-static Value build_slice(B* b, Node* n, const char* debugname) {
+static Value build_slice(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NSlice);
   notnull(n->type);
 
@@ -1144,7 +1227,7 @@ static Value build_slice(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value load_var(B* b, Node* n, const char* debugname) {
+static Value load_var(B* b, Node* n, const char* vname) {
   assert_debug(n->kind == NVar);
   Value v = (Value)n->irval;
 
@@ -1159,17 +1242,17 @@ static Value load_var(B* b, Node* n, const char* debugname) {
     return LLVMGetInitializer(v);
   }
 
-  if (debugname[0] == 0)
-    debugname = notnull(n->var.name);
+  if (vname[0] == 0)
+    vname = notnull(n->var.name);
 
   LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
   dlog_mod(b, "load_var ptr (type %s => %s): %s",
     fmttype(LLVMTypeOf(v)), fmttype(ty), fmtvalue(v));
-  return LLVMBuildLoad2(b->builder, ty, v, debugname);
+  return build_load(b, ty, v, vname);
 }
 
 
-static Value build_var_def(B* b, Node* n, const char* debugname, Value nullable init) {
+static Value build_var_def(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NVar);
   assertnull_debug(n->irval);
   assert_debug( ! NodeIsParam(n)); // params are eagerly built by build_fun
@@ -1180,65 +1263,71 @@ static Value build_var_def(B* b, Node* n, const char* debugname, Value nullable 
 
   notnull(n->type);
 
-  if (debugname[0] == 0)
-    debugname = n->var.name;
+  if (vname[0] == 0)
+    vname = n->var.name;
 
   bool noload = b->noload; // save
   b->noload = false;
 
   if (NodeIsConst(n)) {
     // immutable variable
-    if (init) {
-      n->irval = init;
-    } else if (n->var.init) {
-      n->irval = build_expr(b, n->var.init, debugname);
+    if (n->var.init) {
+      n->irval = build_expr(b, n->var.init, vname);
     } else {
       n->irval = build_default_value(b, n->type);
     }
-  } else {
-    // mutable variable
-    // See https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/LangImpl07.html
-    LLVMTypeRef ty = get_type(b, n->type);
-    n->irval = LLVMBuildAlloca(b->builder, ty, debugname);
-
-    bool store = true;
-
-    if (init || n->var.init) {
-      if (!init) {
-        Value outer_varalloca = set_varalloca(b, n->irval);
-        init = build_expr(b, n->var.init, debugname);
-        if (b->varalloc == NULL) {
-          // varalloc used -- skip store of init
-          store = false;
-        }
-        b->varalloc = outer_varalloca; // restore
-      }
-    } else {
-      // zero initialize
-      init = LLVMConstNull(ty);
-    }
-
-    if (store)
-      store_or_copy(b, init, n->irval);
+    b->noload = noload; // restore
+    return (Value)n->irval;
   }
 
-  b->noload = noload; // restore
+  // mutable variable
+  LLVMTypeRef ty = get_type(b, n->type);
 
+  #if DEBUG
+  char namebuf[128];
+  snprintf(namebuf, sizeof(namebuf), "var_%s", vname);
+  vname = namebuf;
+  #endif
+
+  dlog("var type: %s", fmttype(ty));
+  n->irval = LLVMBuildAlloca(b->builder, ty, vname);
+
+  bool store = true;
+
+  Value init;
+  if (n->var.init) {
+    Value outer_varalloca = set_varalloca(b, n->irval);
+    init = build_expr(b, n->var.init, vname);
+    dlog("var init: %s = %s", fmttype(LLVMTypeOf(init)), fmtvalue(init));
+    if (b->varalloc == NULL) {
+      // varalloc used -- skip store of init
+      store = false;
+    }
+    b->varalloc = outer_varalloca; // restore
+  } else {
+    // zero initialize
+    init = LLVMConstNull(ty);
+  }
+
+  if (store)
+    build_store(b, init, n->irval);
+
+  b->noload = noload; // restore
   return (Value)n->irval;
 }
 
 
-static Value build_var(B* b, Node* n, const char* debugname) {
+static Value build_var(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NVar);
 
   // build var if needed
   if (!n->irval) {
     bool mutable = b->mutable; b->mutable = !NodeIsConst(n); // push "mutable"
-    build_var_def(b, n, debugname, NULL);
+    build_var_def(b, n, vname);
     b->mutable = mutable; // pop "mutable"
   }
 
-  return load_var(b, n, debugname);
+  return load_var(b, n, vname);
 }
 
 
@@ -1274,7 +1363,7 @@ static Value build_global_var(B* b, Node* n) {
 }
 
 
-static Value build_id_read(B* b, Node* n, const char* debugname) {
+static Value build_id_read(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NId);
   notnull(n->id.target); // should be resolved
 
@@ -1284,33 +1373,33 @@ static Value build_id_read(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_assign_var(B* b, Node* n, const char* debugname) {
+static Value build_assign_var(B* b, Node* n, const char* vname) {
   asserteq_debug(n->op.left->kind, NVar);
 
   const char* name = n->op.left->var.name;
   Value ptr = build_expr_noload(b, n->op.left, name);
 
+  // build rvalue into the var's memory (varalloc)
+  Value outer_varalloca = set_varalloca(b, ptr);
   Value right = build_expr_noload(b, n->op.right, "rvalue");
-  if (LLVMGetTypeKind(LLVMTypeOf(right)) == LLVMPointerTypeKind) {
-    u32 dst_align = LLVMGetAlignment(ptr);
-    u32 src_align = dst_align;
-    LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(ptr));
-    LLVMBuildMemCpy(b->builder, ptr, dst_align, right, src_align, LLVMSizeOf(ty));
-  } else {
-    store(b, right, ptr);
-  }
+  bool store = b->varalloc != NULL; // varalloc not used?
+  b->varalloc = outer_varalloca; // restore
+
+  if (store && right != ptr /* not e.g. "x = x" */)
+    build_store(b, right, ptr);
 
   // value of assignment is its new value
   if ((n->flags & NodeFlagRValue) && !b->noload) {
+    // TODO: can we just return "right" here instead..?
     LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(ptr));
-    return LLVMBuildLoad2(b->builder, ty, ptr, name);
+    return build_load(b, ty, ptr, name);
   }
 
   return NULL;
 }
 
 
-static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
+static Value build_assign_tuple(B* b, Node* n, const char* vname) {
   Node* targets = n->op.left;
   Node* sources = n->op.right;
   asserteq_debug(targets->kind, NTuple);
@@ -1329,7 +1418,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
       srcvalsv[i] = build_expr_mustload(b, srcn, "");
     } else {
       // variable definition
-      build_var_def(b, dstn, dstn->var.name, NULL);
+      build_var_def(b, dstn, dstn->var.name);
       srcvalsv[i] = load_var(b, dstn, dstn->var.name);
     }
     notnull(srcvalsv[i]);
@@ -1345,7 +1434,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
       if (dstn->kind != NVar)
         panic("TODO: dstn %s", NodeKindName(dstn->kind));
       Value ptr = notnull(build_expr_noload(b, dstn, dstn->var.name));
-      store(b, srcvalsv[i], ptr);
+      build_store(b, srcvalsv[i], ptr);
     }
   }
 
@@ -1359,7 +1448,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
         panic("TODO: dstn %s", NodeKindName(dstn->kind));
       srcvalsv[i] = load_var(b, dstn, dstn->var.name);
     }
-    result = build_anon_struct(b, srcvalsv, srcvalsc, debugname, Immutable);
+    result = build_anon_struct(b, srcvalsv, srcvalsc, vname, Immutable);
   }
 
   STK_ARRAY_DISPOSE(srcvalsv);
@@ -1367,7 +1456,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_assign_index(B* b, Node* n, const char* debugname) {
+static Value build_assign_index(B* b, Node* n, const char* vname) {
   asserteq_debug(n->op.left->kind, NIndex);
 
   Node* target = n->op.left->index.operand;      // i.e. "x" in "x[3] = y"
@@ -1382,7 +1471,7 @@ static Value build_assign_index(B* b, Node* n, const char* debugname) {
 
   if (targett->kind == NArrayType) {
     assert_debug(TypeEquals(b->build, targett->t.array.subtype, source->type));
-    Value arrayptr = notnull(build_expr_noload(b, target, debugname));
+    Value arrayptr = notnull(build_expr_noload(b, target, vname));
     assert_llvm_type_isptr(LLVMTypeOf(arrayptr));
 
     LLVMValueRef indexv[2] = {
@@ -1394,9 +1483,9 @@ static Value build_assign_index(B* b, Node* n, const char* debugname) {
     // the actual underlying allocated object and not the address one-past-the-end.
     LLVMTypeRef arrayty = LLVMGetElementType(LLVMTypeOf(arrayptr));
     Value elemptr = LLVMBuildInBoundsGEP2(
-      b->builder, arrayty, arrayptr, indexv, 2, debugname);
+      b->builder, arrayty, arrayptr, indexv, 2, vname);
 
-    store(b, srcval, elemptr);
+    build_store(b, srcval, elemptr);
     n->irval = srcval;
     return srcval; // value of assignment expression is its new value
   }
@@ -1406,14 +1495,14 @@ static Value build_assign_index(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_assign(B* b, Node* n, const char* debugname) {
+static Value build_assign(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NAssign);
   notnull(n->type);
 
   switch (n->op.left->kind) {
-    case NVar:   R_MUSTTAIL return build_assign_var(b, n, debugname);
-    case NTuple: R_MUSTTAIL return build_assign_tuple(b, n, debugname);
-    case NIndex: R_MUSTTAIL return build_assign_index(b, n, debugname);
+    case NVar:   R_MUSTTAIL return build_assign_var(b, n, vname);
+    case NTuple: R_MUSTTAIL return build_assign_tuple(b, n, vname);
+    case NIndex: R_MUSTTAIL return build_assign_index(b, n, vname);
     default:
       panic("TODO assign to %s", NodeKindName(n->op.left->kind));
       return NULL;
@@ -1421,7 +1510,7 @@ static Value build_assign(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_bin_op(B* b, Node* n, const char* debugname) {
+static Value build_bin_op(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NBinOp);
   notnull(n->type);
 
@@ -1538,14 +1627,14 @@ static Value build_bin_op(B* b, Node* n, const char* debugname) {
   if (n->op.op >= TEq && n->op.op <= TGEq) {
     // See how Go compares values: https://golang.org/ref/spec#Comparison_operators
     if (isfloat)
-      return LLVMBuildFCmp(b->builder, (LLVMRealPredicate)op, left, right, debugname);
-    return LLVMBuildICmp(b->builder, (LLVMIntPredicate)op, left, right, debugname);
+      return LLVMBuildFCmp(b->builder, (LLVMRealPredicate)op, left, right, vname);
+    return LLVMBuildICmp(b->builder, (LLVMIntPredicate)op, left, right, vname);
   }
-  return LLVMBuildBinOp(b->builder, (LLVMOpcode)op, left, right, debugname);
+  return LLVMBuildBinOp(b->builder, (LLVMOpcode)op, left, right, vname);
 }
 
 
-static Value build_if(B* b, Node* n, const char* debugname) {
+static Value build_if(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NIf);
   notnull(n->type);
 
@@ -1609,7 +1698,7 @@ static Value build_if(B* b, Node* n, const char* debugname) {
 }
 
 
-static Value build_namedval(B* b, Node* n, const char* debugname) {
+static Value build_namedval(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NNamedVal);
   Value v = build_expr(b, n->namedval.value, n->namedval.name);
   n->irval = n->namedval.value->irval;
@@ -1636,7 +1725,7 @@ static LLVMTypeRef refstruct_type_build(B* b) {
   //   ELSE
   //     T*
   //
-  LLVMTypeRef refty = LLVMStructCreateNamed(b->ctx, "co.ref");
+  LLVMTypeRef refty = LLVMStructCreateNamed(b->ctx, "REF");
   LLVMTypeRef fields_types[] = {
     b->t_i32ptr, // i32*
     b->t_i32,    // i32
@@ -1664,44 +1753,38 @@ static Value build_refstruct_store(B* b, Value refptr, Value valptr, Value genva
 
   if (LLVMTypeOf(valptr) != b->t_i32ptr)
     valptr = LLVMBuildPointerCast(b->builder, valptr, b->t_i32ptr, "ptr");
-  LLVMBuildStore(b->builder, valptr, ptrep);
-  LLVMBuildStore(b->builder, genval, genep);
+  build_store(b, valptr, ptrep);
+  build_store(b, genval, genep);
 
   return refptr;
 }
 
 
-// build_refstruct_new builds a "&x" operation, creating a "safe reference"
-// If ptr comes from the heap, genval should contain the generation value, else be i32(0).
-static Value build_refstruct_new(B* b, Value valptr, Value genval, const char* debugname) {
-  LLVMTypeRef refty = refstruct_type(b);
-  Value refptr = LLVMBuildAlloca(b->builder, refty, debugname);
-  return build_refstruct_store(b, refptr, valptr, genval);
-}
-
-
-// refstruct_deref builds a "*x" operation on a "safe reference", checking heap memory
-static Value refstruct_deref(
-  B* b, Value refptr, LLVMTypeRef elem_ty,
-  Value* nullable valptr_out, const char* debugname)
+// build_refstruct_deref builds a "*x" operation on a "safe reference",
+// checking heap memory
+static Value build_refstruct_deref(
+  B* b, Value ref, LLVMTypeRef elem_ty, Value* valptr_out, const char* vname)
 {
-  assert_llvm_type_isptr(LLVMTypeOf(notnull(refptr)));
-
   LLVMTypeRef refty = refstruct_type(b);
+  asserteq_debug(LLVMTypeOf(ref), refty); // ref must be %REF
 
-  Value ptrep = LLVMBuildStructGEP2(b->builder, refty, refptr, 0, "ref.ptr");
-  Value genep = LLVMBuildStructGEP2(b->builder, refty, refptr, 1, "ref.gen");
-
-  Value valptr = LLVMBuildLoad2(b->builder, b->t_i32ptr, ptrep, "ptr");
-  Value rgen = LLVMBuildLoad2(b->builder, b->t_i32, genep, "rgen");
+  Value valptr = LLVMBuildExtractValue(b->builder, ref, 0, dnamef(b, "%s_ptr", vname));
+  Value rgen = LLVMBuildExtractValue(b->builder, ref, 1, dnamef(b, "%s_gen", vname));
+  // Value ptrep = LLVMBuildStructGEP2(b->builder, refty, refptr, 0, "ref.ptr");
+  // Value genep = LLVMBuildStructGEP2(b->builder, refty, refptr, 1, "ref.gen");
+  // Value valptr = build_load(b, b->t_i32ptr, ptrep, "ptr");
+  // Value rgen = build_load(b, b->t_i32, genep, "rgen");
 
   // build check of gen
   Value fn = get_current_fun(b);
-  LLVMBasicBlockRef checkb = LLVMAppendBasicBlockInContext(b->ctx, fn, "mgencheck");
-  LLVMBasicBlockRef contb = LLVMAppendBasicBlockInContext(b->ctx, fn, "mgencheck.ok");
+  LLVMBasicBlockRef checkb = LLVMAppendBasicBlockInContext(
+    b->ctx, fn, dnamef(b, "refcheck_%s", vname));
+  LLVMBasicBlockRef contb = LLVMAppendBasicBlockInContext(
+    b->ctx, fn, dnamef(b, "refcheck_%s.ok", vname));
 
   // if gen != 0 then compare to gen at ptr memory
-  LLVMValueRef gen_ne_zero = LLVMBuildICmp(b->builder, LLVMIntNE, rgen, b->v_i32_0, "");
+  LLVMValueRef gen_ne_zero = LLVMBuildICmp(
+    b->builder, LLVMIntNE, rgen, b->v_i32_0, dnamef(b, "%s_hasgen", vname));
   LLVMBuildCondBr(b->builder, gen_ne_zero, checkb, contb);
 
   // gencheck failure branch (one per function shared by all defrefs)
@@ -1720,20 +1803,21 @@ static Value refstruct_deref(
     b->mgen_alloca = LLVMBuildAlloca(b->builder, refty, "failref");
 
     // build the "ref failed" branch
-    b->mgen_failb = LLVMAppendBasicBlockInContext(b->ctx, fn, "mgencheck.fail");
+    b->mgen_failb = LLVMAppendBasicBlockInContext(b->ctx, fn, "refcheck.fail");
     LLVMPositionBuilderAtEnd(b->builder, b->mgen_failb);
-    dlog("TODO: call panic in mgencheck.fail branch");
+    dlog("TODO: call panic in refcheck.fail branch");
     // TODO: pass b->mgen_alloca to panic/error call; it contains the bad ref
     LLVMBuildUnreachable(b->builder);
   }
 
   // gencheck branch (gen is non-zero)
   LLVMPositionBuilderAtEnd(b->builder, checkb);
-  build_refstruct_store(b, b->mgen_alloca, valptr, rgen); // copy ref to mgen_alloca
-  Value mgen = LLVMBuildLoad2(b->builder, b->t_i32, valptr, "mgen");
+  // build_refstruct_store(b, b->mgen_alloca, valptr, rgen); // copy ref to mgen_alloca
+  Value mgen = build_load(b, b->t_i32, valptr, dnamef(b, "%s_mgen", vname));
 
   // if gen != *((i32*)ptr) then goto mgen_failb
-  LLVMValueRef gen_ne = LLVMBuildICmp(b->builder, LLVMIntNE, rgen, mgen, "");
+  LLVMValueRef gen_ne = LLVMBuildICmp(
+    b->builder, LLVMIntNE, rgen, mgen, dnamef(b, "%s_isbadgen", vname));
   Value failbr = LLVMBuildCondBr(b->builder, gen_ne, b->mgen_failb, contb);
   set_br_unlikely(b, failbr);
   // LLVMValueRef gen_eq = LLVMBuildICmp(b->builder, LLVMIntEQ, rgen, mgen, "");
@@ -1749,90 +1833,118 @@ static Value refstruct_deref(
     valptr = LLVMBuildPointerCast(b->builder, valptr, final_ptrty, "ptr");
   }
 
-  Value v = LLVMBuildLoad2(b->builder, elem_ty, valptr, debugname);
+  Value v = build_load(b, elem_ty, valptr, vname);
   // TODO if gen != 0, cmp gen at v
 
-  if (valptr_out)
-    *valptr_out = valptr;
-
+  *valptr_out = valptr;
   return v;
 }
 
 
-// build_ref creates a reference (pointer) to value n
+// build_refstruct_new builds a "&x" operation, creating a "safe reference"
+// If ptr comes from the heap, genval should contain the generation value, else be i32(0).
+static Value build_refstruct_new(B* b, Value valptr, Value genval, const char* vname) {
+  LLVMTypeRef refty = refstruct_type(b);
+
+  #if DEBUG
+  char namebuf[128];
+  snprintf(namebuf, sizeof(namebuf), "ref_%s", vname);
+  vname = namebuf;
+  #endif
+
+  Value refptr = take_varalloca(b, refty); // use memory preallocated for var
+  if (!refptr) {
+    // TODO: can we use @llvm.lifetime.start to mark the lifetime range of this alloca?
+    refptr = LLVMBuildAlloca(b->builder, refty, vname);
+  }
+  return build_refstruct_store(b, refptr, valptr, genval); // => refptr
+}
+
+
+// build_ref creates a reference (pointer) to value n. i.e. "T => T*".
 // e.g. "&x" => "take the address of x"
-static Value build_ref(B* b, Node* n, const char* debugname) {
+static Value build_ref(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NRef);
 
-  n->irval = build_expr_noload(b, n->ref.target, debugname);
+  // take address of target
+  n->irval = build_expr_noload(b, n->ref.target, vname);
 
   // can only reference stuff that has a memory location
   asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(notnull(n->irval))), LLVMPointerTypeKind);
 
   // if building in safe mode, refs are "wide pointers", else just a pointer
-  if (!build_is_unsafe(b->build))
-    n->irval = build_refstruct_new(b, n->irval, b->v_i32_0, debugname);
+  if (b->build->safe) {
+    n->irval = build_refstruct_new(b, n->irval, b->v_i32_0, vname);
+    if (b->noload)
+      return NULL;
+    // replace the pointer address "T*" with "%REF{T*,gen}"
+    LLVMTypeRef refty = refstruct_type(b);
+    return build_load(b, refty, n->irval, vname);
+  }
 
   return n->irval;
 }
 
 
-// build_deref loads the value at reference n
+// build_deref loads the value at reference n. i.e. "T* => T".
 // e.g. "*x" => "load the value at address x"
-static Value build_deref(B* b, Node* n, Value* nullable valptr_out, const char* debugname) {
+static Value build_deref(B* b, Node* n, Value* valptr_out, const char* vname) {
   asserteq_debug(notnull(n->type)->kind, NRefType);
 
-  Value refptr = build_expr_noload(b, n, debugname);
+  #if DEBUG
+  if (vname[0] == 0 && n->kind == NId)
+    vname = n->id.name;
+  #endif
+
+  Value ref = build_expr(b, n, vname); // "T*" or "%REF{i32*,gen}"
 
   // if building in safe mode, refs are "wide pointers", else just a pointer
-  if (build_is_unsafe(b->build)) {
-    if (valptr_out)
-      *valptr_out = refptr;
-    if (b->noload)
-      return NULL;
-    // load the value at the referencing address
-    LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(notnull(refptr)));
-    return LLVMBuildLoad2(b->builder, elem_ty, refptr, debugname);
+  if (b->build->safe) {
+    LLVMTypeRef elem_ty = get_type(b, notnull(n->type)->t.ref); // e.g. "T*"
+    return build_refstruct_deref(b, ref, elem_ty, valptr_out, vname);
   }
 
-  LLVMTypeRef elem_ty = get_type(b, notnull(n->type)->t.ref); // e.g. "T" in "*T"
-  return refstruct_deref(b, refptr, elem_ty, valptr_out, debugname);
+  if (b->noload)
+    return NULL;
+
+  LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(notnull(ref)));
+  return build_load(b, elem_ty, ref, vname);
 }
 
 
-static Value build_prefix_op(B* b, Node* n, const char* debugname) {
+static Value build_prefix_op(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NPrefixOp);
   notnull(n->type);
 
   if (n->op.op == TStar)
-    return build_deref(b, n->op.left, (Value*)&n->irval, debugname);
+    return build_deref(b, n->op.left, (Value*)&n->irval, vname);
 
   panic("TODO NPrefixOp %s", fmtnode(n));
   return NULL;
 }
 
 
-static Value build_intlit(B* b, Node* n, const char* debugname) {
+static Value build_intlit(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NIntLit);
   notnull(n->type);
   return n->irval = LLVMConstInt(get_type(b, n->type), n->val.i, /*signext*/false);
 }
 
 
-static Value build_floatlit(B* b, Node* n, const char* debugname) {
+static Value build_floatlit(B* b, Node* n, const char* vname) {
   asserteq_debug(n->kind, NFloatLit);
   notnull(n->type);
   return n->irval = LLVMConstReal(get_type(b, n->type), n->val.f);
 }
 
 
-static Value build_expr(B* b, Node* n, const char* debugname) {
+static Value build_expr(B* b, Node* n, const char* vname) {
   notnull(n);
 
   #ifdef DEBUG_BUILD_EXPR
-    if (debugname && debugname[0]) {
+    if (vname && vname[0]) {
       dlog_mod(b, "→ %s %s <%s> (\"%s\")",
-        NodeKindName(n->kind), fmtnode(n), fmtnode(n->type), debugname);
+        NodeKindName(n->kind), fmtnode(n), fmtnode(n->type), vname);
     } else {
       dlog_mod(b, "→ %s %s <%s>",
         NodeKindName(n->kind), fmtnode(n), fmtnode(n->type));
@@ -1849,27 +1961,27 @@ static Value build_expr(B* b, Node* n, const char* debugname) {
   #endif
 
   switch (n->kind) {
-    case NArray:      RET(build_array(b, n, debugname));
-    case NAssign:     RET(build_assign(b, n, debugname));
-    case NBinOp:      RET(build_bin_op(b, n, debugname));
-    case NPrefixOp:   RET(build_prefix_op(b, n, debugname));
-    case NBlock:      RET(build_block(b, n, debugname));
-    case NCall:       RET(build_call(b, n, debugname));
-    case NField:      RET(build_field(b, n, debugname));
-    case NFloatLit:   RET(build_floatlit(b, n, debugname));
-    case NFun:        RET(build_fun(b, n, debugname));
-    case NId:         RET(build_id_read(b, n, debugname));
-    case NIf:         RET(build_if(b, n, debugname));
-    case NIndex:      RET(build_index(b, n, debugname));
-    case NSlice:      RET(build_slice(b, n, debugname));
-    case NIntLit:     RET(build_intlit(b, n, debugname));
-    case NNamedVal:   RET(build_namedval(b, n, debugname));
-    case NReturn:     RET(build_return(b, n, debugname));
-    case NSelector:   RET(build_selector(b, n, debugname));
-    case NStructType: RET(build_struct_type_expr(b, n, debugname));
-    case NTypeCast:   RET(build_typecast(b, n, debugname));
-    case NVar:        RET(build_var(b, n, debugname));
-    case NRef:        RET(build_ref(b, n, debugname));
+    case NArray:      RET(build_array(b, n, vname));
+    case NAssign:     RET(build_assign(b, n, vname));
+    case NBinOp:      RET(build_bin_op(b, n, vname));
+    case NPrefixOp:   RET(build_prefix_op(b, n, vname));
+    case NBlock:      RET(build_block(b, n, vname));
+    case NCall:       RET(build_call(b, n, vname));
+    case NField:      RET(build_field(b, n, vname));
+    case NFloatLit:   RET(build_floatlit(b, n, vname));
+    case NFun:        RET(build_fun(b, n, vname));
+    case NId:         RET(build_id_read(b, n, vname));
+    case NIf:         RET(build_if(b, n, vname));
+    case NIndex:      RET(build_index(b, n, vname));
+    case NSlice:      RET(build_slice(b, n, vname));
+    case NIntLit:     RET(build_intlit(b, n, vname));
+    case NNamedVal:   RET(build_namedval(b, n, vname));
+    case NReturn:     RET(build_return(b, n, vname));
+    case NSelector:   RET(build_selector(b, n, vname));
+    case NStructType: RET(build_struct_type_expr(b, n, vname));
+    case NTypeCast:   RET(build_typecast(b, n, vname));
+    case NVar:        RET(build_var(b, n, vname));
+    case NRef:        RET(build_ref(b, n, vname));
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;
@@ -2277,7 +2389,7 @@ bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple) {
 
   // emit
   const char* obj_file = "out1.o";
-  const char* asm_file = "out1.asm";
+  const char* asm_file = "out1.s";
   const char* bc_file  = "out1.bc";
   const char* ir_file  = "out1.ll";
   const char* exe_file = "out1.exe";
