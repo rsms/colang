@@ -1,6 +1,4 @@
-// fun bar(x &[int]) int
-
-fun main(arg1 int) int
+fun main(arg1 [int 3], arg2 int) int
   // a [int 3]
   // const K [int 3] = [10,20,30] // explicitly typed; type resolved by parse
   const K = [10,20,30] // ideally typed, resolved by type resolver
@@ -21,15 +19,15 @@ fun main(arg1 int) int
 
   // slices/refs of arrays (parse: done, resolve: done, LLVM: WIP)
   h = &K           // &[int 3]
-  cts1 = K[:]      // &[int 3]
-  cts2 = K[0:]     // &[int 3]
-  // cts3 = K[2:1] // error: invalid slice index: 2 > 1
-  // cts4 = K[:4]  // error: index 4 out of bounds, slicing array of length 3
-  cts5 = K[:2]     // &[int 2]
-  cts6 = K[1:2]    // &[int 1]
-  cts7 = K[2:2]    // &[int] -- runtime sized rather than [int 0] or nil
-  rts1 = K[0:arg1] // &[int]
-  cts8 = rts1[:2]  // &[int 2] -- upgrade to sized array type
+  // cts1 = K[:]      // &[int 3]
+  // cts2 = K[0:]     // &[int 3]
+  // // cts3 = K[2:1] // error: invalid slice index: 2 > 1
+  // // cts4 = K[:4]  // error: index 4 out of bounds, slicing array of length 3
+  // cts5 = K[:2]     // &[int 2]
+  // cts6 = K[1:2]    // &[int 1]
+  // cts7 = K[2:2]    // &[int] -- runtime sized rather than [int 0] or nil
+  // rts1 = K[0:arg1] // &[int]
+  // cts8 = rts1[:2]  // &[int 2] -- upgrade to sized array type
 
   // error: cannot reference a reference
   //var r1 &int
@@ -52,39 +50,10 @@ fun main(arg1 int) int
   // // h[1] = 9
 
 
-  // cts8[0]
 
-  0
-
-// one = 1
-
-
-
-// fun invert(color [3]int) nil {
-//   red = color[0]
-//   // color[0] = 255 - color[0]
-//   // color[1] = 255 - color[1]
-//   // color[2] = 255 - color[2]
-// }
-
-// fun main() {
-//   // x = i8(4)
-//   color = [3]int(255, 30, 0)
-//   // invert(color)
-//   // x
-//   color
-// }
-
-
-// multi-dimensional array
-// color2 [3][2]int = [[255, 255], [30, 255], [0, 255]]
-
-// // array of size defined by constant expression
-// array [acap]int // == (0,0,0,0)
-// acap = acap1
-// acap1 = 4 * acap2
-// acap2 = 2 as int8
-
-// array = [4]int()  // == (0,0,0,0)
-
-// slice = []int(1, 2, 3)
+  // K[1]
+  // K[arg2]
+  // h[1]
+  h[arg2]
+  // arg1[1]
+  // arg1[arg2]

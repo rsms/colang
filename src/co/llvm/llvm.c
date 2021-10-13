@@ -241,6 +241,46 @@ static Value build_copy(B* b, Value dstptr, Value srcptr, Value sizeval) {
 }
 
 
+// build_gep_load loads the value of field at index from sequence at memory location ptr
+static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
+  LLVMTypeRef vty = LLVMTypeOf(notnull(v));
+  LLVMTypeKind tykind = LLVMGetTypeKind(vty);
+
+  switch (tykind) {
+    case LLVMArrayTypeKind:
+      return LLVMGetElementAsConstant(v, index);
+    case LLVMPointerTypeKind:
+      break;
+    default:
+      panic("unexpected value type %s", fmttype(vty));
+  }
+
+  // v is a pointer: GEP
+  LLVMTypeRef seqty = LLVMGetElementType(vty);
+  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
+
+  assert_debug(seqty_kind == LLVMStructTypeKind || seqty_kind == LLVMArrayTypeKind);
+  assert_debug(index <
+    (seqty_kind == LLVMStructTypeKind ? LLVMCountStructElementTypes(seqty) :
+     LLVMGetArrayLength(seqty)) );
+
+  LLVMValueRef indexv[2] = {
+    b->v_i32_0,
+    LLVMConstInt(b->t_i32, index, /*signext*/false),
+  };
+
+  // "inbounds" — the result value of the GEP is undefined if the address is outside
+  // the actual underlying allocated object and not the address one-past-the-end.
+  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
+
+  LLVMTypeRef elem_ty = (
+    seqty_kind == LLVMStructTypeKind ? LLVMStructGetTypeAtIndex(seqty, index) :
+    LLVMGetElementType(seqty));
+
+  return build_load(b, elem_ty, elemptr, vname);
+}
+
+
 // set_br_likely marks a branch instruction as being likely to take the true branch
 static void set_br_likely(B* b, Value brinstr) {
   // see https://llvm.org/docs/BranchWeightMetadata.html
@@ -1090,143 +1130,6 @@ static Value build_struct_cons(B* b, Node* n, const char* vname) {
 }
 
 
-static Value build_selector(B* b, Node* n, const char* vname) {
-  asserteq_debug(n->kind, NSelector);
-  notnull(n->type);
-  assert_debug(n->sel.indices.len > 0); // GEP path should be resolved by type resolver
-
-  // #ifdef DEBUG
-  // fprintf(stderr, "[%s] GEP index path:", __func__);
-  // for (u32 i = 0; i < n->sel.indices.len; i++) {
-  //   fprintf(stderr, " %u", n->sel.indices.v[i]);
-  // }
-  // fprintf(stderr, "\n");
-  // #endif
-
-  Value ptr = notnull(build_expr_noload(b, n->sel.operand, vname));
-  LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
-
-  u32 nindices = n->sel.indices.len + 1; // first index is for pointer array/offset
-  STK_ARRAY_MAKE(indices, b->build->mem, LLVMValueRef, 16, nindices);
-  indices[0] = b->v_i32_0;
-  for (u32 i = 0; i < n->sel.indices.len; i++) {
-    indices[i + 1] = LLVMConstInt(b->t_i32, n->sel.indices.v[i], /*signext*/false);
-  }
-
-  // note: llvm kindly coalesces consecutive GEPs, meaning that nested NSelector nodes
-  // become a single GEP. e.g. "x.foo.bar" into nested struct "bar".
-
-  n->irval = LLVMBuildInBoundsGEP2(
-    b->builder, st_ty, ptr, indices, nindices, vname);
-
-  STK_ARRAY_DISPOSE(indices);
-
-  if (b->noload)
-    return n->irval;
-
-  LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(n->irval));
-  return build_load(b, elem_ty, n->irval, vname);
-}
-
-
-// gep_load loads the value of field at index from sequence at memory location ptr
-static Value gep_load(B* b, Value v, u32 index, const char* vname) {
-  LLVMTypeRef vty = LLVMTypeOf(notnull(v));
-  LLVMTypeKind tykind = LLVMGetTypeKind(vty);
-
-  switch (tykind) {
-    case LLVMArrayTypeKind:
-      return LLVMGetElementAsConstant(v, index);
-    case LLVMPointerTypeKind:
-      break;
-    default:
-      panic("unexpected value type %s", fmttype(vty));
-  }
-
-  // v is a pointer: GEP
-  LLVMTypeRef seqty = LLVMGetElementType(vty);
-  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
-
-  assert_debug(seqty_kind == LLVMStructTypeKind || seqty_kind == LLVMArrayTypeKind);
-  assert_debug(index <
-    (seqty_kind == LLVMStructTypeKind ? LLVMCountStructElementTypes(seqty) :
-     LLVMGetArrayLength(seqty)) );
-
-  LLVMValueRef indexv[2] = {
-    b->v_i32_0,
-    LLVMConstInt(b->t_i32, index, /*signext*/false),
-  };
-
-  // "inbounds" — the result value of the GEP is undefined if the address is outside
-  // the actual underlying allocated object and not the address one-past-the-end.
-  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
-
-  LLVMTypeRef elem_ty = (
-    seqty_kind == LLVMStructTypeKind ? LLVMStructGetTypeAtIndex(seqty, index) :
-    LLVMGetElementType(seqty));
-
-  return build_load(b, elem_ty, elemptr, vname);
-}
-
-
-static Value build_index(B* b, Node* n, const char* vname) {
-  asserteq_debug(n->kind, NIndex);
-  notnull(n->type);
-
-  Node* indexexpr = notnull(n->index.indexexpr);
-  Node* operand = notnull(n->index.operand);
-  assert_debug(indexexpr->val.i <= 0xFFFFFFFF);
-  u32 index = (u32)indexexpr->val.i;
-
-  // vname "operand.index"
-  #ifdef DEBUG
-  char vname2[256];
-  if (vname[0] == 0 && operand->kind == NVar) {
-    int len = snprintf(
-      vname2, sizeof(vname2), "%s.%u", operand->var.name, index);
-    if ((size_t)len >= sizeof(vname2))
-      vname2[sizeof(vname2) - 1] = '\0'; // truncate
-    vname = vname2;
-  }
-  #endif
-
-  Type* operandt = notnull(operand->type);
-
-optype_switch:
-  switch (operandt->kind) {
-    case NRefType:
-      operandt = operandt->t.ref;
-      goto optype_switch;
-
-    case NTupleType: {
-      asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-      Value v = notnull(build_expr_noload(b, operand, vname));
-      return gep_load(b, v, index, vname);
-    }
-
-    case NArrayType: {
-      asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-      Value v = notnull(build_expr_noload(b, operand, vname));
-      return gep_load(b, v, index, vname);
-    }
-
-    default:
-      panic("TODO: %s", NodeKindName(operand->type->kind));
-  }
-
-  return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
-}
-
-
-static Value build_slice(B* b, Node* n, const char* vname) {
-  asserteq_debug(n->kind, NSlice);
-  notnull(n->type);
-
-  panic("TODO");
-  return NULL;
-}
-
-
 static Value load_var(B* b, Node* n, const char* vname) {
   assert_debug(n->kind == NVar);
   Value v = (Value)n->irval;
@@ -1289,7 +1192,7 @@ static Value build_var_def(B* b, Node* n, const char* vname) {
   vname = namebuf;
   #endif
 
-  dlog("var type: %s", fmttype(ty));
+  // dlog("var type: %s", fmttype(ty));
   n->irval = LLVMBuildAlloca(b->builder, ty, vname);
 
   bool store = true;
@@ -1298,11 +1201,8 @@ static Value build_var_def(B* b, Node* n, const char* vname) {
   if (n->var.init) {
     Value outer_varalloca = set_varalloca(b, n->irval);
     init = build_expr(b, n->var.init, vname);
-    dlog("var init: %s = %s", fmttype(LLVMTypeOf(init)), fmtvalue(init));
-    if (b->varalloc == NULL) {
-      // varalloc used -- skip store of init
-      store = false;
-    }
+    // dlog("var init: %s = %s", fmttype(LLVMTypeOf(init)), fmtvalue(init));
+    store = b->varalloc != NULL; // varalloc used -- skip store of init
     b->varalloc = outer_varalloca; // restore
   } else {
     // zero initialize
@@ -1909,6 +1809,195 @@ static Value build_deref(B* b, Node* n, Value* valptr_out, const char* vname) {
 
   LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(notnull(ref)));
   return build_load(b, elem_ty, ref, vname);
+}
+
+
+static Value build_selector(B* b, Node* n, const char* vname) {
+  asserteq_debug(n->kind, NSelector);
+  notnull(n->type);
+  assert_debug(n->sel.indices.len > 0); // GEP path should be resolved by type resolver
+
+  // #ifdef DEBUG
+  // fprintf(stderr, "[%s] GEP index path:", __func__);
+  // for (u32 i = 0; i < n->sel.indices.len; i++) {
+  //   fprintf(stderr, " %u", n->sel.indices.v[i]);
+  // }
+  // fprintf(stderr, "\n");
+  // #endif
+
+  Value ptr = notnull(build_expr_noload(b, n->sel.operand, vname));
+  LLVMTypeRef st_ty = LLVMGetElementType(LLVMTypeOf(ptr));
+
+  u32 nindices = n->sel.indices.len + 1; // first index is for pointer array/offset
+  STK_ARRAY_MAKE(indices, b->build->mem, LLVMValueRef, 16, nindices);
+  indices[0] = b->v_i32_0;
+  for (u32 i = 0; i < n->sel.indices.len; i++) {
+    indices[i + 1] = LLVMConstInt(b->t_i32, n->sel.indices.v[i], /*signext*/false);
+  }
+
+  // note: llvm kindly coalesces consecutive GEPs, meaning that nested NSelector nodes
+  // become a single GEP. e.g. "x.foo.bar" into nested struct "bar".
+
+  n->irval = LLVMBuildInBoundsGEP2(
+    b->builder, st_ty, ptr, indices, nindices, vname);
+
+  STK_ARRAY_DISPOSE(indices);
+
+  if (b->noload)
+    return n->irval;
+
+  LLVMTypeRef elem_ty = LLVMGetElementType(LLVMTypeOf(n->irval));
+  return build_load(b, elem_ty, n->irval, vname);
+}
+
+
+static Value build_index(B* b, Node* n, const char* vname) {
+  asserteq_debug(n->kind, NIndex);
+  notnull(n->type);
+
+  Node* operand = notnull(n->index.operand);
+  u32 index = n->index.index;
+
+  // vname "operand.index"
+  #ifdef DEBUG
+  char vname2[256];
+  if (vname[0] == 0 && operand->kind == NVar && index != 0xFFFFFFFF) {
+    int len = snprintf(
+      vname2, sizeof(vname2), "%s.%u", operand->var.name, index);
+    if ((size_t)len >= sizeof(vname2))
+      vname2[sizeof(vname2) - 1] = '\0'; // truncate
+    vname = vname2;
+  }
+  #endif
+
+  Value v = notnull(build_expr_mustload(b, operand, vname));
+  dlog("v %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
+
+  LLVMTypeRef ty = LLVMTypeOf(v);
+
+  // automatic deref
+  if (ty == b->t_ref) {
+    // dereference safe ref, e.g. "%REF{i32*,gen}" => "[3 x i64]"
+    // get actual type of ref pointer
+    Type* operandt = notnull(operand->type);
+    asserteq_debug(operandt->kind, NRefType);
+    ty = get_type(b, operandt->t.ref);
+    v = build_refstruct_deref(b, v, ty, (Value*)&n->irval, dnamef(b, "%s.ptr", vname));
+    dlog("v' %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
+  } /*else if (LLVMGetTypeKind(ty) == LLVMPointerTypeKind) {
+    // dereference pointer, e.g. "[3 x i64]*" => "[3 x i64]"
+    assert_llvm_type_isptr(ty);
+    ty = LLVMGetElementType(ty);
+    //v = build_load(b, ty, v, vname);
+  }*/
+
+  dlog("ty %s", fmttype(ty));
+  dlog("v  %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
+
+  switch (LLVMGetTypeKind(ty)) {
+    case LLVMArrayTypeKind: { // "[3 x i64]" (not a pointer)
+      if (index != 0xFFFFFFFF) {
+        // constant index can use extractvalue instruction (basically offset)
+        return LLVMBuildExtractValue(b->builder, v, index, dnamef(b, "%s.val", vname));
+      }
+
+      // unbox operand to get to the storage owner (a function arg)
+      Node* vn = NodeUnbox(operand, /*unrefVars*/false);
+
+      // else: index is not constant; we need an intermediate alloca
+      Value irval = (Value)vn->irval;
+      LLVMTypeRef ty2 = irval ? LLVMTypeOf(irval) : NULL;
+      if (irval && LLVMGetTypeKind(ty2) == LLVMPointerTypeKind) {
+        // use existing memory
+        v = irval;
+        ty = ty2;
+      } else {
+        // no existing alloca; create one
+        #if DEBUG
+        if (vn->kind == NVar)
+          vname = vn->var.name;
+        #endif
+        Value ptr = LLVMBuildAlloca(b->builder, ty, dnamef(b, "%s.tmp", vname));
+        build_store(b, v, ptr);
+        v = ptr;
+        ty = LLVMTypeOf(ptr);
+        vn->irval = ptr;
+      }
+      // continue with GEP load below
+      break;
+    }
+
+    case LLVMPointerTypeKind:
+      break;
+
+    case LLVMVectorTypeKind:
+      dlog("TODO: use LLVMBuildExtractElement");
+      FALLTHROUGH;
+    default:
+      panic("unexpected operand type %s in index op", fmttype(ty));
+  }
+
+  // at this point v & ty must be a pointer to an array "[N x T]*"
+  assert_llvm_type_isptrkind(ty, LLVMArrayTypeKind);
+  assert_llvm_type_isptrkind(LLVMTypeOf(v), LLVMArrayTypeKind);
+
+  // index value is either a compile-time constant or something we need to compute
+  Value indexval;
+  if (index != 0xFFFFFFFF) {
+    indexval = LLVMConstInt(b->t_i32, index, /*signext*/false);
+  } else {
+    Node* indexexpr = notnull(n->index.indexexpr);
+    indexval = build_expr(b, indexexpr, dnamef(b, "%s.idx", vname));
+  }
+
+  // GEP load: v[indexval]
+  LLVMTypeRef seqty = LLVMGetElementType(ty); // e.g. "[3 x i32]"
+  LLVMValueRef indexv[2] = { b->v_i32_0, indexval };
+  Value ep = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
+  return build_load(b, LLVMGetElementType(seqty), ep, vname);
+
+  // Type* operandt = notnull(operand->type);
+  // optype_switch:
+  //   Value v = NULL;
+  //   switch (operandt->kind) {
+  //     case NRefType:
+  //       operandt = operandt->t.ref;
+  //       goto optype_switch;
+  //
+  //     case NTupleType: {
+  //       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
+  //       Value v = notnull(build_expr_noload(b, operand, vname));
+  //       return build_gep_load(b, v, index, vname);
+  //     }
+  //
+  //     case NArrayType: {
+  //       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
+  //       Value v = notnull(build_expr_mustload(b, operand, vname));
+  //       if (LLVMIsConstant(v)) {
+  //         // constant array
+  //         // LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
+  //         asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(v)), LLVMPointerTypeKind);
+  //         Value v = notnull(build_expr_noload(b, operand, vname));
+  //         return build_gep_load(b, v, index, vname);
+  //       }
+  //       LLVMTypeRef ty = LLVMTypeOf(v);
+  //       return LLVMBuildExtractValue(b->builder, v, index, dnamef(b, "%s.val", vname));
+  //     }
+  //
+  //     default:
+  //       panic("TODO: %s", NodeKindName(operand->type->kind));
+  //   }
+  //
+  // return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+}
+
+
+static Value build_slice(B* b, Node* n, const char* vname) {
+  asserteq_debug(n->kind, NSlice);
+  notnull(n->type);
+
+  panic("TODO");
+  return NULL;
 }
 
 

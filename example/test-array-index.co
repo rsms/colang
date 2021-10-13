@@ -1,0 +1,36 @@
+const K = [10,20,30]
+
+fun index_constarray_ct() int
+  K[1] // constant gep load
+
+fun index_constarray_rt(arg1 int) int
+  K[arg1] // gep load
+
+fun index_constarrayref_ct() int
+  r = &K // &[int 3]
+  r[1] // constant gep load
+
+fun index_constarrayref_ct(arg1 int) int
+  r = &K // &[int 3]
+  r[arg1] // gep load
+
+fun index_mutarrayref_ct() int
+  a = [10,20,30]
+  r = &a // mut&[int 3]
+  r[1] // gep load (not const since a is mut)
+
+fun index_mutarrayref_rt(arg1 int) int
+  a = [10,20,30]
+  r = &a // mut&[int 3]
+  r[arg1] // gep load
+
+fun index_mutarrayref_explicit_deref_rt(arg1 int) int
+  a = [10,20,30]
+  r = &a // mut&[int 3]
+  (*r)[arg1] // gep load
+
+fun index_argarray_ct(arg1 [int 3]) int
+  arg1[1] // extractvalue
+
+fun index_argarray_rt(arg1 [int 3], arg2 int) int
+  arg1[arg2] // gep load
