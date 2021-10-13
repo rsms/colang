@@ -769,7 +769,9 @@ static Node* pRefType(Parser* p, PFlag fl) {
 }
 
 
-static Type* pMutType(Parser* p, PFlag fl) {
+// MutType = "mut" Type
+//!PrefixParselet TMut
+static Node* PMut(Parser* p, PFlag fl) {
   Pos mut_pos = ScannerPos(&p->s);
   nexttok(p); // consume "mut"
 
@@ -784,23 +786,15 @@ static Type* pMutType(Parser* p, PFlag fl) {
 }
 
 
-// VarDef      = MutVarDecl | MutType
+// VarDef      = ConstVarDef | MutVarDecl
 // ConstVarDef = "const" Id Type? "=" Expr
 // MutVarDef   = "var" Id (Type | Type? "=" Expr)
-// MutType     = "var" Type
 //
 // e.g. "var x int", "var x = 4", "var x int = 4"
 // e.g. "const x int", "const x = 4", "const x int = 4"
 //
 //!PrefixParselet TVar TConst
 static Node* PVarOrConst(Parser* p, PFlag fl) {
-  if (fl & PFlagType) {
-    // MutType = "var" Type
-    if (R_LIKELY(p->s.tok == TMut))
-      return pMutType(p, fl);
-    syntaxerr(p, "unexpected %s", TokName(p->s.tok));
-  }
-
   bool isconst = p->s.tok == TConst;
   // Pos kwpos = ScannerPos(&p->s);
   nexttok(p); // consume "var" or "const"
@@ -1985,6 +1979,7 @@ static const Parselet parselets[TMax] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TAuto] = {PAuto, NULL, PREC_MEMBER},
   [TId] = {PId, PIdTrailing, PREC_ASSIGN},
+  [TMut] = {PMut, NULL, PREC_MEMBER},
   [TVar] = {PVarOrConst, NULL, PREC_MEMBER},
   [TConst] = {PVarOrConst, NULL, PREC_MEMBER},
   [TLParen] = {PGroup, PCall, PREC_MEMBER},
