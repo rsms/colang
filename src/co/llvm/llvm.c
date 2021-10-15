@@ -50,6 +50,11 @@
 // make the code more readable by using short name aliases
 typedef LLVMValueRef  Value;
 
+typedef enum {
+  Immutable = 0, // must be 0
+  Mutable   = 1, // must be 1
+} Mutability;
+
 // B is internal data used during IR construction
 typedef struct B {
   Build*          build; // Co build (package, mem allocator, etc)
@@ -75,12 +80,12 @@ typedef struct B {
   LLVMTargetMachineRef target;
 
   // build state
-  bool   noload;        // for NVar
-  bool   mutable;       // true if inside mutable data context
-  u32    fnest;         // function nest depth
-  Value  varalloc;      // memory preallocated for a var's init
-  SymMap internedTypes; // AST types, keyed by typeid
-  PtrMap defaultInits;  // constant initializers (LLVMTypeRef => Value)
+  bool       noload;        // for NVar
+  Mutability mut;       // true if inside mutable data context
+  u32        fnest;         // function nest depth
+  Value      varalloc;      // memory preallocated for a var's init
+  SymMap     internedTypes; // AST types, keyed by typeid
+  PtrMap     defaultInits;  // constant initializers (LLVMTypeRef => Value)
 
   // memory generation check (specific to current function)
   LLVMBasicBlockRef mgen_failb;
@@ -116,11 +121,6 @@ typedef struct B {
   u32 md_kind_prof; // "prof"
 
 } B;
-
-typedef enum {
-  Immutable,
-  Mutable,
-} Mutability;
 
 
 // development debugging support
@@ -197,6 +197,18 @@ static const char* fmttype(LLVMTypeRef ty) {
 #endif
 
 
+static Mutability set_mut(B* b, Mutability next) {
+  Mutability prev = b->mut;
+  b->mut = next;
+  return prev;
+}
+
+
+static Mutability set_mut_based_on_node_const(B* b, Node* n) {
+  return set_mut(b, (Mutability)!NodeIsConst(n));
+}
+
+
 static LLVMTypeRef refstruct_type(B*);
 
 
@@ -242,6 +254,20 @@ static Value build_copy(B* b, Value dstptr, Value srcptr, Value sizeval) {
 }
 
 
+static LLVMTypeRef seq_elem_type(LLVMTypeRef seqty, u32 index) {
+  switch (LLVMGetTypeKind(seqty)) {
+    case LLVMStructTypeKind:
+      return LLVMStructGetTypeAtIndex(seqty, index);
+    case LLVMArrayTypeKind:
+    case LLVMVectorTypeKind:
+    case LLVMScalableVectorTypeKind:
+      return LLVMGetElementType(seqty);
+    default:
+      panic("invalid seq type %s", fmttype(seqty));
+  }
+}
+
+
 // build_gep_load loads the value of field at index from sequence at memory location ptr
 static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
   LLVMTypeRef vty = LLVMTypeOf(notnull(v));
@@ -258,12 +284,14 @@ static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
 
   // v is a pointer: GEP
   LLVMTypeRef seqty = LLVMGetElementType(vty);
-  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
 
+  #if DEBUG
+  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
   assert_debug(seqty_kind == LLVMStructTypeKind || seqty_kind == LLVMArrayTypeKind);
   assert_debug(index <
     (seqty_kind == LLVMStructTypeKind ? LLVMCountStructElementTypes(seqty) :
      LLVMGetArrayLength(seqty)) );
+  #endif
 
   LLVMValueRef indexv[2] = {
     b->v_i32_0,
@@ -274,10 +302,7 @@ static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
   // the actual underlying allocated object and not the address one-past-the-end.
   Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
 
-  LLVMTypeRef elem_ty = (
-    seqty_kind == LLVMStructTypeKind ? LLVMStructGetTypeAtIndex(seqty, index) :
-    LLVMGetElementType(seqty));
-
+  LLVMTypeRef elem_ty = seq_elem_type(seqty, index);
   return build_load(b, elem_ty, elemptr, vname);
 }
 
@@ -313,6 +338,7 @@ static void set_br_unlikely(B* b, Value brinstr) {
 
 
 static LLVMTypeRef get_struct_type(B* b, Type* tn);
+static LLVMTypeRef get_tuple_type(B* b, Type* tn);
 static LLVMTypeRef get_array_type(B* b, Type* tn);
 
 
@@ -358,6 +384,9 @@ static LLVMTypeRef get_type(B* b, Type* nullable n) {
 
   case NStructType:
     R_MUSTTAIL return get_struct_type(b, n);
+
+  case NTupleType:
+    R_MUSTTAIL return get_tuple_type(b, n);
 
   case NArrayType:
     R_MUSTTAIL return get_array_type(b, n);
@@ -929,6 +958,25 @@ static LLVMTypeRef build_array_type(B* b, Type* n) {
 }
 
 
+static LLVMTypeRef build_tuple_type(B* b, Type* n) {
+  asserteq_debug(n->kind, NTupleType);
+
+  u32 typesc = n->t.tuple.a.len;
+  STK_ARRAY_MAKE(typesv, b->build->mem, LLVMTypeRef, 16, typesc);
+
+  bool noload = b->noload;
+  b->noload = false;
+  for (u32 i = 0; i < typesc; i++) {
+    typesv[i] = get_type(b, n->t.tuple.a.v[i]);
+  }
+  b->noload = noload; // restore
+
+  STK_ARRAY_DISPOSE(typesv);
+
+  return LLVMStructTypeInContext(b->ctx, typesv, typesc, /*packed*/false);
+}
+
+
 static LLVMTypeRef get_struct_type(B* b, Type* tn) {
   asserteq_debug(tn->kind, NStructType);
   if (!tn->irval) {
@@ -940,6 +988,19 @@ static LLVMTypeRef get_struct_type(B* b, Type* tn) {
         tn->irval = build_struct_type(b, tn);
         add_intern_type(b, tn, tn->irval);
       }
+    }
+  }
+  return tn->irval;
+}
+
+
+static LLVMTypeRef get_tuple_type(B* b, Type* tn) {
+  asserteq_debug(tn->kind, NTupleType);
+  if (!tn->irval) {
+    tn->irval = get_intern_type(b, tn);
+    if (!tn->irval) {
+      tn->irval = build_tuple_type(b, tn);
+      add_intern_type(b, tn, tn->irval);
     }
   }
   return tn->irval;
@@ -973,7 +1034,7 @@ static Value build_struct_type_expr(B* b, Type* n, const char* vname) {
 
 
 static Value build_anon_struct(
-  B* b, Value* values, u32 numvalues, const char* vname, Mutability mut)
+  B* b, Value* values, u32 numvalues, Value* ptr_out, const char* vname)
 {
   u32 nconst = 0;
   for (u32 i = 0; i < numvalues; i++)
@@ -982,11 +1043,14 @@ static Value build_anon_struct(
   if (nconst == numvalues) {
     // all values are constant
     Value init = LLVMConstStructInContext(b->ctx, values, numvalues, /*packed*/false);
-    if (mut == Mutable) {
+    if (b->mut == Mutable) {
       // struct will be modified; allocate on stack
-      Value ptr = LLVMBuildAlloca(b->builder, LLVMTypeOf(init), vname);
+      LLVMTypeRef ty = LLVMTypeOf(init);
+      Value ptr = take_varalloca(b, ty);
+      if (!ptr)
+        ptr = LLVMBuildAlloca(b->builder, ty, vname);
       build_store(b, init, ptr);
-      return ptr;
+      *ptr_out = ptr;
     } else {
       // struct is read-only; allocate as global
       LLVMValueRef ptr = LLVMAddGlobal(b->mod, LLVMTypeOf(init), vname);
@@ -994,13 +1058,12 @@ static Value build_anon_struct(
       LLVMSetInitializer(ptr, init);
       LLVMSetGlobalConstant(ptr, true);
       LLVMSetUnnamedAddr(ptr, true);
-
-      // LLVMValueRef args[1];
-      // args[0] = b->v_i32_0;
-      // return LLVMConstInBoundsGEP(ptr, args, 1);
-      return ptr;
+      *ptr_out = ptr;
     }
+    return init;
   }
+
+  // some values vary at runtime
 
   STK_ARRAY_DEFINE(typesv, LLVMTypeRef, 16);
   STK_ARRAY_INIT(typesv, b->build->mem, numvalues);
@@ -1009,7 +1072,9 @@ static Value build_anon_struct(
   }
 
   LLVMTypeRef ty = LLVMStructTypeInContext(b->ctx, typesv, numvalues, /*packed*/false);
-  Value ptr = LLVMBuildAlloca(b->builder, ty, vname);
+  Value ptr = take_varalloca(b, ty);
+  if (!ptr)
+    ptr = LLVMBuildAlloca(b->builder, ty, vname);
 
   for (u32 i = 0; i < numvalues; i++) {
     LLVMValueRef fieldptr = LLVMBuildStructGEP2(b->builder, ty, ptr, i, "");
@@ -1017,7 +1082,11 @@ static Value build_anon_struct(
   }
 
   STK_ARRAY_DISPOSE(typesv);
-  return ptr;
+  *ptr_out = ptr;
+  if (b->noload)
+    return NULL;
+
+  return build_load(b, ty, ptr, vname);
 }
 
 
@@ -1223,9 +1292,9 @@ static Value build_var(B* b, Node* n, const char* vname) {
 
   // build var if needed
   if (!n->irval) {
-    bool mutable = b->mutable; b->mutable = !NodeIsConst(n); // push "mutable"
+    Mutability mut = set_mut_based_on_node_const(b, n);
     build_var_def(b, n, vname);
-    b->mutable = mutable; // pop "mutable"
+    b->mut = mut; // restore
   }
 
   return load_var(b, n, vname);
@@ -1274,17 +1343,41 @@ static Value build_id_read(B* b, Node* n, const char* vname) {
 }
 
 
+static Value build_tuple(B* b, Node* n, const char* vname) {
+  asserteq_debug(n->kind, NTuple);
+  notnull(n->type);
+
+  u32 valuesc = n->array.a.len;
+  STK_ARRAY_MAKE(valuesv, b->build->mem, Value, 16, valuesc);
+
+  bool noload = b->noload;
+  b->noload = false;
+  for (u32 i = 0; i < valuesc; i++) {
+    valuesv[i] = build_expr(b, n->array.a.v[i], "");
+  }
+  b->noload = noload; // restore
+
+  Value v = build_anon_struct(b, valuesv, valuesc, (Value*)&n->irval, vname);
+
+  STK_ARRAY_DISPOSE(valuesv);
+  return v;
+}
+
+
 static Value build_assign_var(B* b, Node* n, const char* vname) {
   asserteq_debug(n->op.left->kind, NVar);
 
   const char* name = n->op.left->var.name;
   Value ptr = build_expr_noload(b, n->op.left, name);
 
+
   // build rvalue into the var's memory (varalloc)
+  Mutability outer_mut = set_mut(b, Mutable);
   Value outer_varalloca = set_varalloca(b, ptr);
   Value right = build_expr_noload(b, n->op.right, "rvalue");
   bool store = b->varalloc != NULL; // varalloc not used?
   b->varalloc = outer_varalloca; // restore
+  b->mut = outer_mut; // restore
 
   if (store && right != ptr /* not e.g. "x = x" */)
     build_store(b, right, ptr);
@@ -1326,6 +1419,7 @@ static Value build_assign_tuple(B* b, Node* n, const char* vname) {
   }
 
   // now store
+  Mutability outer_mut = set_mut(b, Mutable);
   for (u32 i = 0; i < srcvalsc; i++) {
     Node* srcn = sources->array.a.v[i];
     Node* dstn = targets->array.a.v[i];
@@ -1338,8 +1432,9 @@ static Value build_assign_tuple(B* b, Node* n, const char* vname) {
       build_store(b, srcvalsv[i], ptr);
     }
   }
+  b->mut = outer_mut; // restore
 
-  Value result = NULL;
+  Value v = NULL;
 
   // if the assignment is used as a value, make tuple val
   if ((n->flags & NodeFlagRValue) && !b->noload) {
@@ -1349,11 +1444,11 @@ static Value build_assign_tuple(B* b, Node* n, const char* vname) {
         panic("TODO: dstn %s", NodeKindName(dstn->kind));
       srcvalsv[i] = load_var(b, dstn, dstn->var.name);
     }
-    result = build_anon_struct(b, srcvalsv, srcvalsc, vname, Immutable);
+    v = build_anon_struct(b, srcvalsv, srcvalsc, (Value*)&n->irval, vname);
   }
 
   STK_ARRAY_DISPOSE(srcvalsv);
-  return result;
+  return v;
 }
 
 
@@ -1372,7 +1467,9 @@ static Value build_assign_index(B* b, Node* n, const char* vname) {
 
   if (targett->kind == NArrayType) {
     assert_debug(TypeEquals(b->build, targett->t.array.subtype, source->type));
+    Mutability outer_mut = set_mut(b, Mutable);
     Value arrayptr = notnull(build_expr_noload(b, target, vname));
+    b->mut = outer_mut; // restore
     assert_llvm_type_isptr(LLVMTypeOf(arrayptr));
 
     LLVMValueRef indexv[2] = {
@@ -1892,13 +1989,13 @@ static Value build_index(B* b, Node* n, const char* vname) {
     ty = LLVMTypeOf(v); // == LLVMPointerType(aty, 0)
   }
 
-  dlog("ty %s", fmttype(ty));
-  dlog("v  %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
-
   switch (LLVMGetTypeKind(ty)) {
+
     case LLVMArrayTypeKind: { // "[3 x i64]" (not a pointer)
       if (index != 0xFFFFFFFF) {
         // constant index can use extractvalue instruction (basically offset)
+        if (LLVMIsConstant(v))
+          return LLVMConstExtractValue(v, &index, 1);
         return LLVMBuildExtractValue(b->builder, v, index, dnamef(b, "%s.val", vname));
       }
 
@@ -1925,9 +2022,21 @@ static Value build_index(B* b, Node* n, const char* vname) {
         vn->irval = ptr;
       }
 
-      dlog("AFTER TMP LOAD ty %s", fmttype(ty));
-      dlog("AFTER TMP LOAD v  %s = %s", fmttype(LLVMTypeOf(v)), fmtvalue(v));
       // continue with GEP load below
+      break;
+    }
+
+    case LLVMStructTypeKind: {
+      // tuple
+      if (index != 0xFFFFFFFF && LLVMIsConstant(v))
+        return LLVMConstExtractValue(v, &index, 1);
+      // unbox operand to get to the storage owner
+      Node* vn = NodeUnbox(operand, /*unrefVars*/false);
+      // Note: at this point v might be a load and we will ignore it, leave it unused.
+      // We could clean it up with LLVMInstructionRemoveFromParent(v) but LLVM already
+      // does this during codegen (verified for x86_64), so we just leave it be.
+      v = (Value)vn->irval;
+      ty = LLVMTypeOf(v);
       break;
     }
 
@@ -1941,58 +2050,65 @@ static Value build_index(B* b, Node* n, const char* vname) {
       panic("unexpected operand type %s in index op", fmttype(ty));
   }
 
-  // at this point v & ty must be a pointer to an array "[N x T]*"
-  assert_llvm_type_isptrkind(ty, LLVMArrayTypeKind);
-  assert_llvm_type_isptrkind(LLVMTypeOf(v), LLVMArrayTypeKind);
+  // at this point v & ty must be a pointer to an array "[N x T]*" or struct (tuple)
+  // dlog("v [%d] %s = %s", LLVMGetTypeKind(ty), fmttype(ty), fmtvalue(v));
+
+  assert_llvm_type_isptr(ty);
+  LLVMTypeRef seqty = LLVMGetElementType(ty); // e.g. "[3 x i32]" or "{i32, i32}"
+  assert_debug(LLVMGetTypeKind(seqty) == LLVMArrayTypeKind ||
+               LLVMGetTypeKind(seqty) == LLVMStructTypeKind);
+  asserteq_debug(LLVMTypeOf(v), ty);
 
   // index value is either a compile-time constant or something we need to compute
   Value indexval;
   if (index != 0xFFFFFFFF) {
+    if (LLVMIsConstant(v) && LLVMGetTypeKind(seqty) == LLVMArrayTypeKind) {
+      // use constant value
+      assert_debug(index < LLVMGetArrayLength(seqty)); // or: bug in resolve_index
+      LLVMValueRef op = LLVMGetOperand(v, 0); // e.g. [3 x i64] [i64 1, i64 2, i64 3]
+      asserteq_debug(LLVMTypeOf(op), seqty);
+      return LLVMConstExtractValue(op, &index, 1);
+    }
+    // index is constant and LLVMBuildInBoundsGEP2 will build a constant GEP on v.
     indexval = LLVMConstInt(b->t_i32, index, /*signext*/false);
+    // note: LLVMBuildExtractValue is NOT able to produce better code than GEP
+    // in this case because it needs an intermediate load which in LLVM 13 produces
+    // superfluous code.
   } else {
+    // index was not resolved; it likely varies at runtime.
+    // Note: indexing a tuple (impl as stuct) always has compile-time index.
+    asserteq_debug(LLVMGetTypeKind(LLVMGetElementType(ty)), LLVMArrayTypeKind);
     Node* indexexpr = notnull(n->index.indexexpr);
     indexval = build_expr(b, indexexpr, dnamef(b, "%s.idx", vname));
+
+    if (LLVMIsConstant(v) &&
+        LLVMGetTypeKind(seqty) == LLVMArrayTypeKind &&
+        LLVMIsConstant(indexval) &&
+        LLVMIsAConstantInt(indexval) )
+    {
+      // use constant value
+      // TODO: does this actually happen? The resolver pass should set index
+      // if it is constant.
+      u64 index2 = LLVMConstIntGetZExtValue(indexval);
+      if (index2 <= 0xffffffff) {
+        index = (u32)index2;
+        u32 len = LLVMGetArrayLength(seqty);
+        if (index < len) {
+          LLVMValueRef op = LLVMGetOperand(v, 0); // e.g. [3 x i64] [i64 1, i64 2, i64 3]
+          return LLVMConstExtractValue(op, &index, 1);
+        } else {
+          build_errf(b->build, NodePosSpan(indexexpr),
+            "index %u out of bounds, accessing array of length %u", index, len);
+        }
+      }
+    }
   }
 
   // GEP load: v[indexval]
-  LLVMTypeRef seqty = LLVMGetElementType(ty); // e.g. "[3 x i32]"
+  LLVMTypeRef elem_ty = seq_elem_type(seqty, index);
   LLVMValueRef indexv[2] = { b->v_i32_0, indexval };
   Value ep = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
-  return build_load(b, LLVMGetElementType(seqty), ep, vname);
-
-  // Type* operandt = notnull(operand->type);
-  // optype_switch:
-  //   Value v = NULL;
-  //   switch (operandt->kind) {
-  //     case NRefType:
-  //       operandt = operandt->t.ref;
-  //       goto optype_switch;
-  //
-  //     case NTupleType: {
-  //       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-  //       Value v = notnull(build_expr_noload(b, operand, vname));
-  //       return build_gep_load(b, v, index, vname);
-  //     }
-  //
-  //     case NArrayType: {
-  //       asserteq_debug(indexexpr->kind, NIntLit); // must be resolved const
-  //       Value v = notnull(build_expr_mustload(b, operand, vname));
-  //       if (LLVMIsConstant(v)) {
-  //         // constant array
-  //         // LLVMTypeRef ty = LLVMGetElementType(LLVMTypeOf(v));
-  //         asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(v)), LLVMPointerTypeKind);
-  //         Value v = notnull(build_expr_noload(b, operand, vname));
-  //         return build_gep_load(b, v, index, vname);
-  //       }
-  //       LLVMTypeRef ty = LLVMTypeOf(v);
-  //       return LLVMBuildExtractValue(b->builder, v, index, dnamef(b, "%s.val", vname));
-  //     }
-  //
-  //     default:
-  //       panic("TODO: %s", NodeKindName(operand->type->kind));
-  //   }
-  //
-  // return LLVMConstInt(b->t_int, 0, /*signext*/false); // placeholder
+  return build_load(b, elem_ty, ep, vname);
 }
 
 
@@ -2057,7 +2173,6 @@ static Value build_expr(B* b, Node* n, const char* vname) {
     case NArray:      RET(build_array(b, n, vname));
     case NAssign:     RET(build_assign(b, n, vname));
     case NBinOp:      RET(build_bin_op(b, n, vname));
-    case NPrefixOp:   RET(build_prefix_op(b, n, vname));
     case NBlock:      RET(build_block(b, n, vname));
     case NCall:       RET(build_call(b, n, vname));
     case NField:      RET(build_field(b, n, vname));
@@ -2066,15 +2181,17 @@ static Value build_expr(B* b, Node* n, const char* vname) {
     case NId:         RET(build_id_read(b, n, vname));
     case NIf:         RET(build_if(b, n, vname));
     case NIndex:      RET(build_index(b, n, vname));
-    case NSlice:      RET(build_slice(b, n, vname));
     case NIntLit:     RET(build_intlit(b, n, vname));
     case NNamedVal:   RET(build_namedval(b, n, vname));
+    case NPrefixOp:   RET(build_prefix_op(b, n, vname));
+    case NRef:        RET(build_ref(b, n, vname));
     case NReturn:     RET(build_return(b, n, vname));
     case NSelector:   RET(build_selector(b, n, vname));
+    case NSlice:      RET(build_slice(b, n, vname));
     case NStructType: RET(build_struct_type_expr(b, n, vname));
+    case NTuple:      RET(build_tuple(b, n, vname));
     case NTypeCast:   RET(build_typecast(b, n, vname));
     case NVar:        RET(build_var(b, n, vname));
-    case NRef:        RET(build_ref(b, n, vname));
     default:
       panic("TODO node kind %s", NodeKindName(n->kind));
       break;

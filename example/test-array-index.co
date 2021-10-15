@@ -1,14 +1,23 @@
 const K = [10,20,30]
 
-fun index_constarray_ct() int
-  K[1] // constant gep load
+fun index_constarray_ct1() int
+  K[1] // constant int 20
 
-fun index_constarray_rt(arg1 int) int
+fun index_constarray_ct2() int
+  i = 1
+  K[i] // constant int 20
+
+fun index_constarray_rt1(arg1 int) int
   K[arg1] // gep load
+
+fun index_constarray_rt2() int
+  var i int
+  i = 1 // make i mutable
+  K[i] // gep load
 
 fun index_constarrayref_ct() int
   r = &K // &[int 3]
-  r[1] // constant gep load
+  r[1] // constant int 20
 
 fun index_constarrayref_ct(arg1 int) int
   r = &K // &[int 3]
@@ -41,9 +50,17 @@ fun index_argarray_ref_ct(arg1 &[int 3]) int
 fun index_argarray_ref_rt(arg1 &[int 3], arg2 int) int
   arg1[arg2] // gep load
 
-
 fun index_argarray_mutref_ct(arg1 mut&[int 3]) int
   arg1[1] // extractvalue
 
 fun index_argarray_mutref_rt(arg1 mut&[int 3], arg2 int) int
   arg1[arg2] // gep load
+
+fun index_tuple_ct() int
+  t = (1, 2, 3)
+  t[1] // constant int 2
+
+fun index_tuple_ct() int
+  t = (1, 2, 3)
+  t = (11, 22, 33)
+  t[1] // gep load
