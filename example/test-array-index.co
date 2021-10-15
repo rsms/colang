@@ -60,7 +60,7 @@ fun index_tuple_ct() int
   t = (1, 2, 3)
   t[1] // constant int 2
 
-fun index_tuple_ct() int
+fun index_tuple_rt() int
   t = (1, 2, 3)
-  t = (11, 22, 33)
+  t = (11, 22, 33) // force t to become a mutable local
   t[1] // gep load
