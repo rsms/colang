@@ -1334,8 +1334,6 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   n->call.receiver = useAsRValue(p, receiver);
   NodeTransferUnresolved(n, n->call.receiver);
 
-  dlog("n->call.receiver %s", fmtnode(n->call.receiver));
-
   // args
   n->call.args = NULL;
   if (!got(p, TRParen)) {

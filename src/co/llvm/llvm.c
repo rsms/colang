@@ -11,7 +11,7 @@
 #include <llvm-c/OrcEE.h>
 
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
-#define DEBUG_BUILD_EXPR
+//#define DEBUG_BUILD_EXPR
 
 // rtimer helpers
 #define ENABLE_RTIMER_LOGGING
@@ -182,7 +182,7 @@ static const char* fmttype(LLVMTypeRef ty) {
 
 
 // dnamef formats IR value names
-#if DEBUG
+#if defined(DEBUG) && defined(DEBUG_BUILD_EXPR)
   ATTR_FORMAT(printf, 2, 3)
   static const char* dnamef(B* b, const char* fmt, ...) {
     va_list ap;
@@ -245,13 +245,13 @@ static Value build_load(B* b, LLVMTypeRef elem_ty, Value ptr, const char* vname)
 }
 
 
-static Value build_copy(B* b, Value dstptr, Value srcptr, Value sizeval) {
-  asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(srcptr)), LLVMPointerTypeKind);
-  asserteq_debug(LLVMTypeOf(dstptr), LLVMTypeOf(srcptr));
-  u32 dst_align = LLVMGetAlignment(dstptr);
-  u32 src_align = LLVMGetAlignment(srcptr);
-  return LLVMBuildMemCpy(b->builder, dstptr, dst_align, srcptr, src_align, sizeval);
-}
+// static Value build_copy(B* b, Value dstptr, Value srcptr, Value sizeval) {
+//   asserteq_debug(LLVMGetTypeKind(LLVMTypeOf(srcptr)), LLVMPointerTypeKind);
+//   asserteq_debug(LLVMTypeOf(dstptr), LLVMTypeOf(srcptr));
+//   u32 dst_align = LLVMGetAlignment(dstptr);
+//   u32 src_align = LLVMGetAlignment(srcptr);
+//   return LLVMBuildMemCpy(b->builder, dstptr, dst_align, srcptr, src_align, sizeval);
+// }
 
 
 static LLVMTypeRef seq_elem_type(LLVMTypeRef seqty, u32 index) {
@@ -268,58 +268,58 @@ static LLVMTypeRef seq_elem_type(LLVMTypeRef seqty, u32 index) {
 }
 
 
-// build_gep_load loads the value of field at index from sequence at memory location ptr
-static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
-  LLVMTypeRef vty = LLVMTypeOf(notnull(v));
-  LLVMTypeKind tykind = LLVMGetTypeKind(vty);
+//// build_gep_load loads the value of field at index from sequence at memory location ptr
+//static Value build_gep_load(B* b, Value v, u32 index, const char* vname) {
+//  LLVMTypeRef vty = LLVMTypeOf(notnull(v));
+//  LLVMTypeKind tykind = LLVMGetTypeKind(vty);
+//
+//  switch (tykind) {
+//    case LLVMArrayTypeKind:
+//      return LLVMGetElementAsConstant(v, index);
+//    case LLVMPointerTypeKind:
+//      break;
+//    default:
+//      panic("unexpected value type %s", fmttype(vty));
+//  }
+//
+//  // v is a pointer: GEP
+//  LLVMTypeRef seqty = LLVMGetElementType(vty);
+//
+//  #if DEBUG
+//  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
+//  assert_debug(seqty_kind == LLVMStructTypeKind || seqty_kind == LLVMArrayTypeKind);
+//  assert_debug(index <
+//    (seqty_kind == LLVMStructTypeKind ? LLVMCountStructElementTypes(seqty) :
+//     LLVMGetArrayLength(seqty)) );
+//  #endif
+//
+//  LLVMValueRef indexv[2] = {
+//    b->v_i32_0,
+//    LLVMConstInt(b->t_i32, index, /*signext*/false),
+//  };
+//
+//  // "inbounds" — the result value of the GEP is undefined if the address is outside
+//  // the actual underlying allocated object and not the address one-past-the-end.
+//  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
+//
+//  LLVMTypeRef elem_ty = seq_elem_type(seqty, index);
+//  return build_load(b, elem_ty, elemptr, vname);
+//}
 
-  switch (tykind) {
-    case LLVMArrayTypeKind:
-      return LLVMGetElementAsConstant(v, index);
-    case LLVMPointerTypeKind:
-      break;
-    default:
-      panic("unexpected value type %s", fmttype(vty));
-  }
 
-  // v is a pointer: GEP
-  LLVMTypeRef seqty = LLVMGetElementType(vty);
-
-  #if DEBUG
-  LLVMTypeKind seqty_kind = LLVMGetTypeKind(seqty);
-  assert_debug(seqty_kind == LLVMStructTypeKind || seqty_kind == LLVMArrayTypeKind);
-  assert_debug(index <
-    (seqty_kind == LLVMStructTypeKind ? LLVMCountStructElementTypes(seqty) :
-     LLVMGetArrayLength(seqty)) );
-  #endif
-
-  LLVMValueRef indexv[2] = {
-    b->v_i32_0,
-    LLVMConstInt(b->t_i32, index, /*signext*/false),
-  };
-
-  // "inbounds" — the result value of the GEP is undefined if the address is outside
-  // the actual underlying allocated object and not the address one-past-the-end.
-  Value elemptr = LLVMBuildInBoundsGEP2(b->builder, seqty, v, indexv, 2, vname);
-
-  LLVMTypeRef elem_ty = seq_elem_type(seqty, index);
-  return build_load(b, elem_ty, elemptr, vname);
-}
-
-
-// set_br_likely marks a branch instruction as being likely to take the true branch
-static void set_br_likely(B* b, Value brinstr) {
-  // see https://llvm.org/docs/BranchWeightMetadata.html
-  if (b->md_br_likely == NULL) {
-    LLVMMetadataRef branch_weights = LLVMMDStringInContext2(b->ctx, "branch_weights", 14);
-    LLVMMetadataRef weight1 = LLVMValueAsMetadata(LLVMConstInt(b->t_i32, 100, 0));
-    LLVMMetadataRef weight2 = LLVMValueAsMetadata(b->v_i32_0);
-    LLVMMetadataRef mds[] = {branch_weights, weight1, weight2};
-    LLVMMetadataRef metadata = LLVMMDNodeInContext2(b->ctx, mds, 3);
-    b->md_br_likely = LLVMMetadataAsValue(b->ctx, metadata);
-  }
-  LLVMSetMetadata(brinstr, b->md_kind_prof, b->md_br_likely);
-}
+// // set_br_likely marks a branch instruction as being likely to take the true branch
+// static void set_br_likely(B* b, Value brinstr) {
+//   // see https://llvm.org/docs/BranchWeightMetadata.html
+//   if (b->md_br_likely == NULL) {
+//     LLVMMetadataRef branch_weights = LLVMMDStringInContext2(b->ctx, "branch_weights", 14);
+//     LLVMMetadataRef weight1 = LLVMValueAsMetadata(LLVMConstInt(b->t_i32, 100, 0));
+//     LLVMMetadataRef weight2 = LLVMValueAsMetadata(b->v_i32_0);
+//     LLVMMetadataRef mds[] = {branch_weights, weight1, weight2};
+//     LLVMMetadataRef metadata = LLVMMDNodeInContext2(b->ctx, mds, 3);
+//     b->md_br_likely = LLVMMetadataAsValue(b->ctx, metadata);
+//   }
+//   LLVMSetMetadata(brinstr, b->md_kind_prof, b->md_br_likely);
+// }
 
 
 // set_br_unlikely marks a branch instruction as being unlikely to take the true branch

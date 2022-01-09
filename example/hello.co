@@ -4,7 +4,7 @@ fun add(x, y int) auto {
 
 // fun print_i32(x int)
 
-fun main() {
+fun main() int {
   // a = 12 // equivalent to var a = 12
   // b = a
   // if a > 5 {
@@ -14,6 +14,6 @@ fun main() {
   a = 3
   b = 4
   r = add(a, b)
-  r + b
   // print_i32(r)
+  r + b // = 11
 }
