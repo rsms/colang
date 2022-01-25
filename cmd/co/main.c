@@ -37,9 +37,8 @@ int main(int argc, const char** argv) {
   #ifdef CO_WITH_LIBC
     Mem mem = mem_libc_allocator();
   #else
-    MemBufAllocator mema;
     static u8 memv[4096*8];
-    Mem mem = mem_buf_allocator_init(&mema, memv, sizeof(memv));
+    DEF_MEM_STACK_BUF_ALLOCATOR(mem, memv);
   #endif
 
 
