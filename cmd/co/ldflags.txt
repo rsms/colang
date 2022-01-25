@@ -1,0 +1,1 @@
+$LUAJIT/src/libluajit.a
