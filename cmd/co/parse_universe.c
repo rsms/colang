@@ -8,7 +8,7 @@ static struct {
   SymMapBucket bindings_storage[32];
 } g_scope = {0};
 
-static SymPool g_syms = {0};
+static SymPool g_universe_syms = {0};
 
 
 static void universe_init_scope() {
@@ -36,7 +36,7 @@ void universe_init() {
   init = true;
 
   // _symroot is defined by parse_universe_data.h
-  sympool_init(&g_syms, NULL, mem_nil_allocator(), _symroot);
+  sympool_init(&g_universe_syms, NULL, mem_nil_allocator(), _symroot);
   universe_init_scope();
 }
 
@@ -45,5 +45,5 @@ const Scope* universe_scope() {
 }
 
 const SymPool* universe_syms() {
-  return &g_syms;
+  return &g_universe_syms;
 }

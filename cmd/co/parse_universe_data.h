@@ -6,8 +6,10 @@
 // Define to run the generator during program initialization:
 #define RUN_GENERATOR 0
 
-static const Node _Type_type = {.kind=NTypeType};
-Node* Type_type = (Node*)&_Type_type;
+static const Node _kType_type = {.kind=NTypeType};
+Node* kType_type = (Node*)&_kType_type;
+static const Node _kNode_bad = {.kind=NBad};
+Node* kNode_bad = (Node*)&_kNode_bad;
 
 //-- BEGIN gen_constants()
 
@@ -125,39 +127,39 @@ static SymRBNode n_as = { kSym_as, false, &n_struct, &n_nil, };
 
 static SymRBNode* _symroot = &n_as;
 
-static const Type _kType_bool = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_bool = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_b,TF_KindBool,.basic={TC_bool,kSym_bool}}} };
-static const Type _kType_i8 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_i8 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_1,TF_KindInt | TF_Size1 | TF_Signed,.basic={TC_i8,kSym_i8}}} };
-static const Type _kType_u8 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_u8 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_2,TF_KindInt | TF_Size1,.basic={TC_u8,kSym_u8}}} };
-static const Type _kType_i16 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_i16 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_3,TF_KindInt | TF_Size2 | TF_Signed,.basic={TC_i16,kSym_i16}}} };
-static const Type _kType_u16 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_u16 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_4,TF_KindInt | TF_Size2,.basic={TC_u16,kSym_u16}}} };
-static const Type _kType_i32 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_i32 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_5,TF_KindInt | TF_Size4 | TF_Signed,.basic={TC_i32,kSym_i32}}} };
-static const Type _kType_u32 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_u32 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_6,TF_KindInt | TF_Size4,.basic={TC_u32,kSym_u32}}} };
-static const Type _kType_i64 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_i64 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_7,TF_KindInt | TF_Size8 | TF_Signed,.basic={TC_i64,kSym_i64}}} };
-static const Type _kType_u64 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_u64 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_8,TF_KindInt | TF_Size8,.basic={TC_u64,kSym_u64}}} };
-static const Type _kType_f32 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_f32 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_f,TF_KindF32 | TF_Size4 | TF_Signed,.basic={TC_f32,kSym_f32}}} };
-static const Type _kType_f64 = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_f64 = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_F,TF_KindF64 | TF_Size8 | TF_Signed,.basic={TC_f64,kSym_f64}}} };
-static const Type _kType_int = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_int = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_i,TF_KindInt | TF_Signed,.basic={TC_int,kSym_int}}} };
-static const Type _kType_uint = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_uint = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_u,TF_KindInt,.basic={TC_uint,kSym_uint}}} };
-static const Type _kType_nil = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_nil = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_0,TF_KindVoid,.basic={TC_nil,kSym_nil}}} };
-static const Type _kType_ideal = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_ideal = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_$2A,TF_KindVoid,.basic={TC_ideal,kSym_ideal}}} };
-static const Type _kType_str = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_str = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_s,TF_KindPointer,.basic={TC_str,kSym_str}}} };
-static const Type _kType_auto = {(Node*)&_Type_type,0,0,0,0,NBasicType,
+static const Type _kType_auto = {(Node*)&_kType_type,0,0,0,0,NBasicType,
   {.t={kSym_a,TF_KindVoid,.basic={TC_auto,kSym_auto}}} };
 static const Node _kNode_true = {(Node*)&_kType_bool,0,0,0,0,NBoolLit, .ival=1};
 static const Node _kNode_false = {(Node*)&_kType_bool,0,0,0,0,NBoolLit, .ival=0};
@@ -460,7 +462,7 @@ __attribute__((constructor,used)) static void gen_constants() {
   #define _(name, encoding, typeflags)                     \
     printf(                                                \
       "static const Type _kType_%s ="                      \
-      " {(Node*)&_Type_type,0,0,0,0,NBasicType,\n"         \
+      " {(Node*)&_kType_type,0,0,0,0,NBasicType,\n"         \
       "  {.t={kSym_%s,%s,.basic={TC_%s,kSym_%s}}} };\n",   \
       #name,  cidentc(encoding), #typeflags,  #name, #name \
   );

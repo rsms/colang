@@ -49,7 +49,7 @@ if [ -n "$WATCH" ]; then
             --recursive \
             cmd $(basename "$0")
     if [ -n "$RUN_PID" ]; then
-      kill $(jobs -p) && wait $(jobs -p) 2>/dev/null || true
+      kill $(jobs -p) 2>/dev/null && wait $(jobs -p) 2>/dev/null || true
       RUN_PID=
     fi
   done

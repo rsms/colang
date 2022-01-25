@@ -172,20 +172,20 @@ typedef struct Node      Type;      // AST type node (alias of Node)
 // Additionally, entries in DEF_TYPE_CODES_*_PUB are included in universe_syms()
 //
 // basic: housed in NBasicType, named & exported in the global scope
-#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlag) */\
-  _( bool  , 'b' , TF_KindBool )                           \
-  _( i8    , '1' , TF_KindInt | TF_Size1 | TF_Signed )     \
-  _( u8    , '2' , TF_KindInt | TF_Size1 )                 \
-  _( i16   , '3' , TF_KindInt | TF_Size2 | TF_Signed )     \
-  _( u16   , '4' , TF_KindInt | TF_Size2 )                 \
-  _( i32   , '5' , TF_KindInt | TF_Size4 | TF_Signed )     \
-  _( u32   , '6' , TF_KindInt | TF_Size4 )                 \
-  _( i64   , '7' , TF_KindInt | TF_Size8 | TF_Signed )     \
-  _( u64   , '8' , TF_KindInt | TF_Size8 )                 \
-  _( f32   , 'f' , TF_KindF32 | TF_Size4 | TF_Signed )     \
-  _( f64   , 'F' , TF_KindF64 | TF_Size8 | TF_Signed )     \
-  _( int   , 'i' , TF_KindInt            | TF_Signed )     \
-  _( uint  , 'u' , TF_KindInt )                            \
+#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlag)                    */\
+  _( bool      , 'b' , TF_KindBool )                                                       \
+  _( i8        , '1' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
+  _( u8        , '2' , TF_KindInt | TF_Size1 )                                             \
+  _( i16       , '3' , TF_KindInt | TF_Size2 | TF_Signed )                                 \
+  _( u16       , '4' , TF_KindInt | TF_Size2 )                                             \
+  _( i32       , '5' , TF_KindInt | TF_Size4 | TF_Signed )                                 \
+  _( u32       , '6' , TF_KindInt | TF_Size4 )                                             \
+  _( i64       , '7' , TF_KindInt | TF_Size8 | TF_Signed )                                 \
+  _( u64       , '8' , TF_KindInt | TF_Size8 )                                             \
+  _( f32       , 'f' , TF_KindF32 | TF_Size4 | TF_Signed )                                 \
+  _( f64       , 'F' , TF_KindF64 | TF_Size8 | TF_Signed )                                 \
+  _( int       , 'i' , TF_KindInt            | TF_Signed )                                 \
+  _( uint      , 'u' , TF_KindInt )                                                        \
 // end DEF_TYPE_CODES_BASIC_PUB
 #define DEF_TYPE_CODES_BASIC(_)                                                            \
   _( nil       , '0' , TF_KindVoid )                                                       \
@@ -495,13 +495,14 @@ static_assert(sizeof(Node) <= 112, "Node struct grew. Update this check (or reve
 
 // BuildCtx holds state for a Co compilation session
 struct BuildCtx {
-  Mem      mem;       // memory allocator
   bool     opt;       // optimize
   bool     debug;     // include debug information
   bool     safe;      // enable boundary checks and memory ref checks
-  SymPool* syms;      // symbol pool
   TypeCode sint_type; // concrete type of "int"
   TypeCode uint_type; // concrete type of "uint"
+
+  Mem      mem;       // memory allocator
+  SymPool* syms;      // symbol pool
   Array    diagarray; // all diagnostic messages produced. Stored in mem.
   PosMap   posmap;    // maps Source <-> Pos
 
@@ -624,13 +625,8 @@ struct Parser {
 // ======================================================================================
 // start of data
 
-extern const Node* NodeBad; // kind==NBad
-
-// #define _(name, _type, _val) \
-//   extern const Sym sym_##name; \
-//   extern Node* Const_##name;
-// DEF_CONST_NODES_PUB(_)
-// #undef _
+extern Node* kNode_bad; // kind=NBad
+extern Node* kType_type; // kind=NTypeType
 
 extern Type* kType_bool;
 extern Type* kType_i8;

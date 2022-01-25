@@ -1,9 +1,6 @@
 #include "coimpl.h"
 #include "coparse.h"
 
-static const Node _NodeBad = {.kind=NBad};
-const Node* NodeBad = &_NodeBad;
-
 const char* NodeKindName(NodeKind nk) {
   #ifdef DEBUG
     switch (nk) {
