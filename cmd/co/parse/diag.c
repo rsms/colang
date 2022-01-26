@@ -1,5 +1,4 @@
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
 
 static const char* const _DiagLevelName[DiagMAX + 1] = {
   "error",

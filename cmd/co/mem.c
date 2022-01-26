@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "mem.h"
 
 void* mem_dup2(Mem mem, const void* src, usize len, usize extraspace) {
   assert(mem != NULL);

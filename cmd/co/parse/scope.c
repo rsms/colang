@@ -1,5 +1,4 @@
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
 
 Scope* scope_new(Mem mem, const Scope* parent) {
   Scope* s = memalloct(mem, Scope);

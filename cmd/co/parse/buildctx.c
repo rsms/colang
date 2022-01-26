@@ -1,5 +1,4 @@
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdio.h> // vsnprintf
@@ -25,12 +24,12 @@ void buildctx_init(
   ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
   ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
   SymMapInit(&ctx->types, ctx->types_st, countof(ctx->types_st), mem);
-  array_init(&ctx->diagarray);
+  DiagnosticArrayInit(&ctx->diagarray);
   posmap_init(&ctx->posmap, mem);
 }
 
 void buildctx_dispose(BuildCtx* ctx) {
-  array_free(&ctx->diagarray, ctx->mem);
+  DiagnosticArrayFree(&ctx->diagarray, ctx->mem);
   SymMapDispose(&ctx->types);
   posmap_dispose(&ctx->posmap);
   #if DEBUG
@@ -41,7 +40,7 @@ void buildctx_dispose(BuildCtx* ctx) {
 Diagnostic* buildctx_mkdiag(BuildCtx* ctx) {
   Diagnostic* d = memalloct(ctx->mem, Diagnostic);
   d->build = ctx;
-  array_push(&ctx->diagarray, d, ctx->mem);
+  DiagnosticArrayPush(&ctx->diagarray, d, ctx->mem);
   return d;
 }
 

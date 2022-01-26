@@ -2,12 +2,11 @@
 #include <err.h>
 #include <lualib.h>
 #include <lauxlib.h>
-
-#include "coimpl.h"
-#include "coparse.h"
-
 // #include <lua.h>
 // #include <luajit.h>
+
+#include "parse/parse.h"
+
 
 void cli_usage(const char* prog) {
   fprintf(stdout, "usage: %s <lua-file>\n", prog);
@@ -27,11 +26,10 @@ void print_src_checksum(Mem mem, const Source* src) {
 int main(int argc, const char** argv) {
   universe_init();
 
-  dlog("sizeof(Node)      %lu", sizeof(Node));
-  dlog("sizeof(NodeKind)  %lu", sizeof(NodeKind));
-  dlog("sizeof(NodeFlags) %lu", sizeof(NodeFlags));
-  dlog("sizeof(Pos)       %lu", sizeof(Pos));
-  dlog("sizeof(NodeArray) %lu", sizeof(NodeArray));
+  dlog("Total: %3lu B (Node: %lu B)", NODE_UNION_SIZE, sizeof(Node));
+  dlog("  Stmt %3lu B", sizeof(Stmt));
+  dlog("  Expr %3lu B", sizeof(Expr));
+  dlog("  Type %3lu B", sizeof(Type));
 
   // select a memory allocator
   #ifdef CO_WITH_LIBC
@@ -41,6 +39,8 @@ int main(int argc, const char** argv) {
     DEF_MEM_STACK_BUF_ALLOCATOR(mem, memv);
   #endif
 
+  Type t = {0};
+  t.irval = NULL;
 
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
   // separately allocated data.

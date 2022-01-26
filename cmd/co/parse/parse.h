@@ -1,4 +1,9 @@
 #pragma once
+#include "../coimpl.h"
+#include "../mem.h"
+#include "../array.h"
+#include "../str.h"
+#include "../sym.h"
 
 ASSUME_NONNULL_BEGIN
 
@@ -11,17 +16,27 @@ typedef u8                DiagLevel;  // diagnostic level (Error, Warn ...)
 typedef struct Comment    Comment;    // source comment
 typedef struct Indent     Indent;     // source indentation
 typedef struct Scope      Scope;      // lexical scope
-typedef u8                TypeCode;   // TC_* constants
-typedef u16               TypeFlag;   // TF_* constants (enum TypeFlag)
-typedef u8                TypeKind;   // TF_Kind* constants (part of TypeFlag)
+typedef struct Pkg        Pkg;        // logical package, a unit of sources
+typedef struct Source     Source;     // an input source file
+
+// Pos is a compact representation of a source position: source file, line and column.
+// Limits: 1048575 number of sources, 1048575 max lines, 4095 max columns, 4095 max width.
+// Inspired by the Go compiler's xpos & lico.
+typedef u64            Pos;
+typedef struct PosMap  PosMap;  // maps Source to Pos indices
+typedef struct PosSpan PosSpan; // span in a Source
 
 // AST types
-typedef u16              Tok;       // language tokens (produced by Scanner)
-typedef struct Node      Node;      // AST node
-typedef u8               NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
-typedef u16              NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
-typedef struct NodeArray NodeArray; // dynamically-sized array of Nodes
-typedef struct Node      Type;      // AST type node (alias of Node)
+typedef u16         Tok;       // language tokens (produced by Scanner)
+typedef struct Node Node;      // AST node, basis for Stmt, Expr and Type
+typedef struct Stmt Stmt;      // AST statement
+typedef struct Expr Expr;      // AST expression
+typedef struct Type Type;      // AST type
+typedef u8          NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
+typedef u16         NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
+typedef u8          TypeCode;  // TC_* constants
+typedef u16         TypeFlags; // TF_* constants (enum TypeFlags)
+typedef u8          TypeKind;  // TF_Kind* constants (part of TypeFlags)
 
 
 // Tok definitions
@@ -172,7 +187,7 @@ typedef struct Node      Type;      // AST type node (alias of Node)
 // Additionally, entries in DEF_TYPE_CODES_*_PUB are included in universe_syms()
 //
 // basic: housed in NBasicType, named & exported in the global scope
-#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlag)                    */\
+#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                    */\
   _( bool      , 'b' , TF_KindBool )                                                       \
   _( i8        , '1' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
   _( u8        , '2' , TF_KindInt | TF_Size1 )                                             \
@@ -304,7 +319,7 @@ enum TypeKind {
   TF_Kind_NBIT = ILOG2(TF_Kind_MAX) + 1,
 } END_TYPED_ENUM(TypeKind)
 
-enum TypeFlag {
+enum TypeFlags {
   // implicitly includes TF_Kind* (enum TypeKind)
 
   // size in bytes
@@ -316,25 +331,27 @@ enum TypeFlag {
   TF_Size16 = 1 << (TF_Size_BITOFFS + 4), // = 16 bytes (128 bits) wide
   TF_Size_MAX = TF_Size16,
   TF_Size_NBIT = (ILOG2(TF_Size_MAX) + 1) - TF_Size_BITOFFS,
-  TF_Size_MASK = (TypeFlag)(~0) >> (sizeof(TypeFlag)*8 - TF_Size_BITOFFS) << TF_Size_NBIT,
+  TF_Size_MASK = (TypeFlags)(~0) >> (sizeof(TypeFlags)*8 - TF_Size_BITOFFS) << TF_Size_NBIT,
 
   // attributes
   TF_Attr_BITOFFS = ILOG2(TF_Size_MAX) + 1,
-  TF_Signed = 1 << TF_Attr_BITOFFS, // is signed (integers only)
-} END_TYPED_ENUM(TypeFlag)
+  #define B TF_Attr_BITOFFS
+  TF_Signed     = 1 << B,       // is signed (integers only)
+  TF_CustomInit = 1 << (B + 1), // struct has fields w/ non-zero initializer
+  #undef B
+} END_TYPED_ENUM(TypeFlags)
 
 enum NodeFlags {
-  NF_Unresolved  = 1 << 0,  // contains unresolved references. MUST BE VALUE 1!
-  NF_Const       = 1 << 1,  // constant; value known at compile time (comptime)
-  NF_Base        = 1 << 2,  // [struct field] the field is a base of the struct
-  NF_RValue      = 1 << 4,  // resolved as rvalue
-  NF_Param       = 1 << 5,  // [Var] function parameter
-  NF_MacroParam  = 1 << 6,  // [Var] macro parameter
-  NF_CustomInit  = 1 << 7,  // [StructType] has fields w/ non-zero initializer
-  NF_Unused      = 1 << 8,  // [Var] never referenced
-  NF_Public      = 1 << 9,  // [Var|Fun] public visibility (aka published, exported)
-  NF_Named       = 1 << 11, // [Tuple when used as args] has named argument
-  NF_PartialType = 1 << 12, // Type resolver should visit even if the node is typed
+  NF_Unresolved  = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
+  NF_Const       = 1 << 1, // constant; value known at compile time (comptime)
+  NF_Base        = 1 << 2, // [struct field] the field is a base of the struct
+  NF_RValue      = 1 << 3, // resolved as rvalue
+  NF_Param       = 1 << 4, // [Var] function parameter
+  NF_MacroParam  = 1 << 5, // [Var] macro parameter
+  NF_Unused      = 1 << 6, // [Var] never referenced
+  NF_Public      = 1 << 7, // [Var|Fun] public visibility (aka published, exported)
+  NF_Named       = 1 << 8, // [Tuple when used as args] has named argument
+  TF_PartialType = 1 << 9, // Type resolver should visit even if the node is typed
   // Changing this? Remember to update NodeFlagsStr impl
 } END_TYPED_ENUM(NodeFlags)
 
@@ -356,144 +373,216 @@ enum ParseFlags {
 // msg is a preformatted error message and is only valid until this function returns.
 typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
-// NodeArray is a typed Array of Node* elements
-struct NodeArray { Array a; };
+// NodeArray
+DEF_TYPED_ARRAY(NodeArray, Node*)
+
+// Node types (union'ed in Node struct)
+struct CommentNode {
+  u32       len;
+  const u8* ptr;
+};
+struct IdNode {
+  Sym   name;
+  Node* target;
+};
+struct BinOpNode {
+  Tok   op;
+  Node* left;
+  Node* right;
+};
+struct UnaryOpNode { // used for NPrefixOp, NPostfixOp, NReturn, NAssign
+  Tok   op;
+  Node* expr;
+};
+struct FileNode { // used for  NFile, NPkg
+  const Str       name;         // reference to str in corresponding Source/Pkg struct
+  Scope* nullable scope;
+  NodeArray       a;            // array of nodes
+  Node*           a_storage[4]; // in-struct storage for the first few entries of a
+};
+struct ArrayNode { // used for NTuple, NBlock, NArray
+  NodeArray a;            // array of nodes
+  Node*     a_storage[5]; // in-struct storage for the first few entries of a
+};
+struct FunNode {
+  Node* nullable params;  // input params (NTuple or NULL if none)
+  Node* nullable result;  // output results (NTuple | NExpr)
+  Sym   nullable name;    // NULL for lambda
+  Node* nullable body;    // NULL for fun-declaration
+};
+struct MacroNode {
+  Node* nullable params;  // input params (NTuple or NULL if none)
+  Sym   nullable name;
+  Node*          template;
+};
+struct CallNode {
+  Node* receiver;      // Fun or Id
+  Node* nullable args; // NULL if there are no args, else a NTuple
+};
+struct TypeCastNode {
+  Node* receiver;      // Type or Id
+  Node* nullable args; // NULL if there are no args, else a NTuple
+};
+struct FieldNode {
+  u32            nrefs; // reference count
+  u32            index; // argument index or struct index
+  Sym            name;
+  Node* nullable init;  // initial value (may be NULL)
+};
+struct VarNode {
+  bool           isconst; // immutable storage? (true for "const x" vars)
+  u32            nrefs;   // reference count
+  u32            index;   // argument index (used by function parameters)
+  Sym            name;
+  Node* nullable init;    // initial/default value
+};
+struct RefNode {
+  Node* target;
+};
+struct NamedValNode {
+  Sym   name;
+  Node* value;
+};
+struct SelectorNode { // Selector = Expr "." ( Ident | Selector )
+  Node*    operand;
+  Sym      member;  // id
+  U32Array indices; // GEP index path
+  u32      indices_st[4]; // indices storage
+};
+struct IndexNode { // Index = Expr "[" Expr "]"
+  Node* operand;
+  Node* indexexpr;
+  u32   index; // 0xffffffff if indexexpr is not a compile-time constant
+};
+struct SliceNode { // Slice = Expr "[" Expr? ":" Expr? "]"
+  Node*          operand;
+  Node* nullable start;
+  Node* nullable end;
+};
+struct IfNode {
+  Node*          cond;
+  Node*          thenb;
+  Node* nullable elseb; // NULL or expr
+};
+
+// --- type nodes ---
+struct BasicTypeNode {
+  TypeCode typeCode;
+  Sym      name;
+};
+struct ArrayTypeNode {
+  Node* nullable sizeexpr; // NULL for inferred types
+  u32            size;     // used for array. 0 until sizeexpr is resolved
+  Node*          subtype;
+};
+struct TupleTypeNode {
+  NodeArray a;            // Node[]
+  Node*     a_storage[4]; // in-struct storage for the first few elements
+};
+struct StructTypeNode {
+  Sym nullable name;         // NULL for anonymous structs
+  NodeArray    a;            // NField[]
+  Node*        a_storage[3]; // in-struct storage for the first few fields
+};
+struct FunTypeNode {
+  Node* nullable params; // NTuple of NVar or null if no params
+  Type* nullable result; // NTupleType of types or single type
+};
 
 
-// NodeKind       kind;   // kind of node (e.g. NId)
-// NodeFlags      flags;  // flags describe meta attributes of the node
-// Pos            pos;    // source origin & position
-// Pos            endpos; // Used by compound types like tuple. NoPos means "only use pos".
-// Type* nullable type;   // value type. NULL if unknown.
-// void* nullable irval;  // used by IR builders for temporary storage
 struct Node {
-  Type* nullable type;   // value type. NULL if unknown.
   void* nullable irval;  // used by IR builders for temporary storage
   Pos            pos;    // source origin & position
-  Pos            endpos; // Used by compound types like tuple. NoPos means "only use pos".
+  Pos            endpos; // NoPos means "only use pos".
   NodeFlags      flags;  // flags describe meta attributes of the node
   NodeKind       kind;   // kind of node (e.g. NId)
+};
+
+// trick using C11 seamless struct extension to get compiler type checking on Node
+struct Stmt { struct Node;
   union {
-    u64    ival;  // NBoolLit, NIntLit  (Note: Co2 uses NVal & CType)
-    double fval;  // NFloatLit
-    Str    sval;  // NStrLit
-    /* str */ struct { // NComment
-      const u8* ptr;
-      size_t    len;
-    } str;
-    /* id */ struct { // NId
-      Sym   name;
-      Node* target;
-    } id;
-    /* op */ struct { // NBinOp, NPrefixOp, NPostfixOp, NReturn, NAssign
-      Node*          left;
-      Node* nullable right;  // NULL for PrefixOp & PostfixOp
-      Tok            op;
-    } op;
-    /* cunit */ struct { // NFile, NPkg
-      const Str       name;         // reference to str in corresponding Source/Pkg struct
-      Scope* nullable scope;
-      NodeArray       a;            // array of nodes
-      Node*           a_storage[4]; // in-struct storage for the first few entries of a
-    } cunit;
-    /* array */ struct { // NTuple, NBlock, NArray
-      NodeArray a;            // array of nodes
-      Node*     a_storage[6]; // in-struct storage for the first few entries of a
-    } array;
-    /* fun */ struct { // NFun
-      Node* nullable params;  // input params (NTuple or NULL if none)
-      Node* nullable result;  // output results (NTuple | NExpr)
-      Sym   nullable name;    // NULL for lambda
-      Node* nullable body;    // NULL for fun-declaration
-    } fun;
-    /* macro */ struct { // NMacro
-      Node* nullable params;  // input params (NTuple or NULL if none)
-      Sym   nullable name;
-      Node*          template;
-    } macro;
-    /* call */ struct { // NCall, NTypeCast
-      Node* receiver;      // Fun, Id or type
-      Node* nullable args; // NULL if there are no args, else a NTuple
-    } call;
-    /* field */ struct { // NField
-      Sym            name;
-      Node* nullable init;  // initial value (may be NULL)
-      u32            nrefs; // reference count
-      u32            index; // argument index or struct index
-    } field;
-    /* var */ struct { // NVar
-      Sym            name;
-      Node* nullable init;    // initial/default value
-      u32            nrefs;   // reference count
-      u32            index;   // argument index (used by function parameters)
-      bool           isconst; // immutable storage? (true for "const x" vars)
-    } var;
-    /* ref */ struct { // NRef
-      Node* target;
-    } ref;
-    /* namedval */ struct { // NNamedVal
-      Sym   name;
-      Node* value;
-    } namedval;
-    /* sel */ struct { // NSelector = Expr "." ( Ident | Selector )
-      Node*    operand;
-      Sym      member;  // id
-      U32Array indices; // GEP index path
-      u32      indices_st[10]; // indices storage
-    } sel;
-    /* index */ struct { // NIndex = Expr "[" Expr "]"
-      Node* operand;
-      Node* indexexpr;
-      u32   index; // 0xffffffff if indexexpr is not a compile-time constant
-    } index;
-    /* slice */ struct { // NSlice = Expr "[" Expr? ":" Expr? "]"
-      Node*          operand;
-      Node* nullable start;
-      Node* nullable end;
-    } slice;
-    /* cond */ struct { // NIf
-      Node*          cond;
-      Node*          thenb;
-      Node* nullable elseb; // NULL or expr
-    } cond;
+    struct FileNode    nfile;
+    struct FileNode    npkg;
+    struct CommentNode ncomment;
+  };
+};
+struct Expr { struct Node;
+  Type* nullable type; // value type. NULL if unknown.
+  union {
+    u64                 intval; // NBoolLit, NIntLit
+    double              numval; // NFloatLit
+    Str                 strval; // NStrLit
+    struct IdNode       id;
+    struct BinOpNode    binop;
+    struct UnaryOpNode  unaryop; // NPrefixOp, NPostfixOp, NReturn, NAssign
+    struct ArrayNode    tuple;
+    struct ArrayNode    block;
+    struct ArrayNode    array;
+    struct FunNode      fun;
+    struct MacroNode    macro;
+    struct CallNode     call;
+    struct TypeCastNode typecast;
+    struct FieldNode    field;
+    struct VarNode      var;
+    struct RefNode      ref;
+    struct NamedValNode namedval;
+    struct SelectorNode selector;
+    struct IndexNode    index;
+    struct SliceNode    slice;
+    struct IfNode       iff;
+  };
+};
+struct Type { struct Node;
+  TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
+  Sym nullable tid;    // initially NULL for user-defined types, computed as needed
+  union {
+    Type*                 tref;  // NRefType element
+    Type*                 ttype; // NTypeType type
+    struct BasicTypeNode  tbasic;
+    struct ArrayTypeNode  tarray;
+    struct TupleTypeNode  ttuple;
+    struct StructTypeNode tstruct;
+    struct FunTypeNode    tfun;
+  };
+};
+#define NODE_UNION_SIZE sizeof(struct{union{Stmt a;Expr b;Type c;};})
+static_assert(NODE_UNION_SIZE <= 96, "Node structs grew! (update this check)");
 
-    // Type
-    /* t */ struct {
-      Sym nullable id; // lazy; initially NULL. Computed from Node.
-      TypeFlag     flags; // Note: used to be TypeKind kind
-      union {
-        /* basic */ struct { // NBasicType (int, bool, auto, etc)
-          TypeCode typeCode;
-          Sym      name;
-        } basic;
-        /* array */ struct { // NArrayType
-          Node* nullable sizeexpr; // NULL for inferred types
-          u32            size;     // used for array. 0 until sizeexpr is resolved
-          Node*          subtype;
-        } array;
-        /* tuple */ struct { // NTupleType
-          NodeArray a;            // Node[]
-          Node*     a_storage[4]; // in-struct storage for the first few elements
-        } tuple;
-        /* struc */ struct { // NStructType
-          Sym nullable name;         // NULL for anonymous structs
-          NodeArray    a;            // NField[]
-          Node*        a_storage[3]; // in-struct storage for the first few fields
-        } struc;
-        /* fun */ struct { // NFunType
-          Node* nullable params; // NTuple of NVar or null if no params
-          Type* nullable result; // NTupleType of types or single type
-        } fun;
-        Type* ref;  // NRefType element
-        Type* type; // NTypeType type
-      };
-    } t;
+struct Pkg {
+  Str     id;      // fully qualified name (e.g. "bar/cat"); TODO: consider using Sym
+  Source* srclist; // list of sources (linked via Source.next)
+};
 
-  }; // union
-}; // struct Node
-static_assert(sizeof(Node) <= 112, "Node struct grew. Update this check (or revert change)");
+struct Source {
+  Source*   next;       // list link
+  Str       filename;   // copy of filename given to source_open
+  const u8* body;       // file body (usually mmap'ed)
+  u32       len;        // size of body in bytes
+  int       fd;         // file descriptor
+  u8        sha256[32]; // SHA-256 checksum of body, set with source_checksum
+  bool      ismmap;     // true if the file is memory-mapped
+};
 
-// BuildCtx holds state for a Co compilation session
+struct PosMap {
+  Mem      mem; // used to allocate extra memory for a
+  PtrArray a;
+  void*    a_storage[32]; // slot 0 is always NULL
+};
+
+struct PosSpan {
+  Pos start;
+  Pos end; // inclusive, unless it's NoPos
+};
+
+struct Diagnostic {
+  BuildCtx*   build;
+  DiagLevel   level;
+  PosSpan     pos;
+  const char* message;
+};
+
+DEF_TYPED_ARRAY(DiagnosticArray, Diagnostic*)
+
 struct BuildCtx {
   bool     opt;       // optimize
   bool     debug;     // include debug information
@@ -501,10 +590,10 @@ struct BuildCtx {
   TypeCode sint_type; // concrete type of "int"
   TypeCode uint_type; // concrete type of "uint"
 
-  Mem      mem;       // memory allocator
-  SymPool* syms;      // symbol pool
-  Array    diagarray; // all diagnostic messages produced. Stored in mem.
-  PosMap   posmap;    // maps Source <-> Pos
+  Mem             mem;       // memory allocator
+  SymPool*        syms;      // symbol pool
+  DiagnosticArray diagarray; // all diagnostic messages produced. Stored in mem.
+  PosMap          posmap;    // maps Source <-> Pos
 
   // interned types
   struct {
@@ -520,13 +609,6 @@ struct BuildCtx {
   void* nullable        userdata;  // custom user data passed to error handler
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   u32                   errcount;  // total number of errors since last call to build_init
-};
-
-struct Diagnostic {
-  BuildCtx*   build;
-  DiagLevel   level;
-  PosSpan     pos;
-  const char* message;
 };
 
 // Comment is a scanned comment
@@ -625,6 +707,9 @@ struct Parser {
 // ======================================================================================
 // start of data
 
+// NoPos is a valid unknown position; pos_isknown(NoPos) returns false.
+static const Pos NoPos = 0;
+
 extern Node* kNode_bad; // kind=NBad
 extern Node* kType_type; // kind=NTypeType
 
@@ -653,15 +738,16 @@ extern Node* kNode_nil;
 // ======================================================================================
 // start of functions
 
+// ---- types
 
-// TF_Kind returns the TF_Kind* value of a TypeFlag
-inline static TypeKind TF_Kind(TypeFlag tf) { return tf & ((1 << TF_Kind_NBIT) - 1); }
+// TF_Kind returns the TF_Kind* value of a TypeFlags
+inline static TypeKind TF_Kind(TypeFlags tf) { return tf & ((1 << TF_Kind_NBIT) - 1); }
 
-// TF_Size returns the storage size in bytes for a TypeFlag
-inline static u8 TF_Size(TypeFlag tf) { return (tf & TF_Size_MASK) >> TF_Size_BITOFFS; }
+// TF_Size returns the storage size in bytes for a TypeFlags
+inline static u8 TF_Size(TypeFlags tf) { return (tf & TF_Size_MASK) >> TF_Size_BITOFFS; }
 
 // TF_IsSigned returns true if TF_Signed is set for tf
-inline static bool TF_IsSigned(TypeFlag tf) { return (tf & TF_Signed) != 0; }
+inline static bool TF_IsSigned(TypeFlags tf) { return (tf & TF_Signed) != 0; }
 
 // TypeCodeEncoding
 // Lookup table TypeCode => string encoding char
@@ -669,32 +755,144 @@ extern const char _TypeCodeEncodingMap[TC_END];
 ALWAYS_INLINE static char TypeCodeEncoding(TypeCode t) { return _TypeCodeEncodingMap[t]; }
 
 
-// tokname returns a printable name for a token (second part in TOKENS definition)
-const char* tokname(Tok);
-
-// langtok returns the Tok representing this sym in the language syntax.
-// Either returns a keyword token or TId if s is not a keyword.
-static Tok langtok(Sym s);
-
-// ----
-
-Scope* nullable scope_new(Mem mem, const Scope* nullable parent);
-void scope_free(Scope*, Mem mem);
-// scope_assoc returns replaced value (or NULL) in valuep_inout
-static error scope_assoc(Scope* s, Sym key, const Node** valuep_inout);
-const Node* nullable scope_lookup(const Scope*, Sym);
-
-// ----
+// ---- universe
 
 void universe_init();
 const Scope* universe_scope();
 const SymPool* universe_syms();
 
-// ----
+// ---- Pkg
 
-DEF_TYPED_ARRAY_FUNCTIONS(NodeArray, a, Node, narray)
+void pkg_add_source(Pkg* pkg, Source* src); // add src to pkg->srclist
+error pkg_add_file(Pkg* pkg, Mem mem, const char* filename);
+error pkg_add_dir(Pkg* pkg, Mem mem, const char* filename); // add all *.co files in dir
 
-// ----
+// ---- Source
+
+error source_open_file(Source* src, Mem mem, const char* filename);
+error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len);
+error source_body_open(Source* src);
+error source_body_close(Source* src);
+error source_close(Source* src); // src can be reused with open after this call
+void  source_checksum(Source* src); // populates src->sha256 <= sha256(src->body)
+
+// ---- Pos
+
+void posmap_init(PosMap* pm, Mem mem);
+void posmap_dispose(PosMap* pm);
+
+// posmap_origin retrieves the origin for source, allocating one if needed.
+// See pos_source for the inverse function.
+u32 posmap_origin(PosMap* pm, Source* source);
+
+// pos_source looks up the source for a pos. The inverse of posmap_origin.
+// Returns NULL for unknown positions.
+static Source* nullable pos_source(const PosMap* pm, Pos p);
+
+static Pos pos_make(u32 origin, u32 line, u32 col, u32 width);
+static Pos pos_make_unchecked(u32 origin, u32 line, u32 col, u32 width); // no bounds checks!
+
+static u32 pos_origin(Pos p); // 0 for pos without origin
+static u32 pos_line(Pos p);
+static u32 pos_col(Pos p);
+static u32 pos_width(Pos p);
+
+static Pos pos_with_origin(Pos p, u32 origin); // returns copy of p with specific origin
+static Pos pos_with_line(Pos p, u32 line);   // returns copy of p with specific line
+static Pos pos_with_col(Pos p, u32 col);    // returns copy of p with specific col
+static Pos pos_with_width(Pos p, u32 width);  // returns copy of p with specific width
+
+// pos_with_adjusted_start returns a copy of p with its start and width adjusted by deltacol.
+// Can not overflow; the result is clamped.
+Pos pos_with_adjusted_start(Pos p, i32 deltacol);
+
+// pos_union returns a Pos that covers the column extent of both a and b.
+// a and b must be on the same line.
+Pos pos_union(Pos a, Pos b);
+
+// pos_isknown reports whether the position is a known position.
+static bool pos_isknown(Pos);
+
+// pos_isbefore reports whether the position p comes before q in the source.
+// For positions with different bases, ordering is by origin.
+static bool pos_isbefore(Pos p, Pos q);
+
+// pos_isafter reports whether the position p comes after q in the source.
+// For positions with different bases, ordering is by origin.
+static bool pos_isafter(Pos p, Pos q);
+
+// pos_str appends "file:line:col" to dst
+Str pos_str(const PosMap*, Pos, Str dst);
+
+// pos_fmt appends "file:line:col: format ..." to s, including source context
+Str pos_fmt(const PosMap*, PosSpan, Str s, const char* fmt, ...) ATTR_FORMAT(printf, 4, 5);
+Str pos_fmtv(const PosMap*, PosSpan, Str s, const char* fmt, va_list);
+
+// --- Pos inline implementations
+
+// Layout constants: 20 bits origin, 20 bits line, 12 bits column, 12 bits width.
+// Limits: sources: 1048575, lines: 1048575, columns: 4095, width: 4095
+// If this is too tight, we can either make lico 64b wide, or we can introduce a tiered encoding
+// where we remove column information as line numbers grow bigger; similar to what gcc does.
+static const u64 _pos_widthBits  = 12;
+static const u64 _pos_colBits    = 12;
+static const u64 _pos_lineBits   = 20;
+static const u64 _pos_originBits = 64 - _pos_lineBits - _pos_colBits - _pos_widthBits;
+
+static const u64 _pos_originMax = (1llu << _pos_originBits) - 1;
+static const u64 _pos_lineMax   = (1llu << _pos_lineBits) - 1;
+static const u64 _pos_colMax    = (1llu << _pos_colBits) - 1;
+static const u64 _pos_widthMax  = (1llu << _pos_widthBits) - 1;
+
+static const u64 _pos_originShift = _pos_originBits + _pos_colBits + _pos_widthBits;
+static const u64 _pos_lineShift   = _pos_colBits + _pos_widthBits;
+static const u64 _pos_colShift    = _pos_widthBits;
+
+inline static Pos pos_make_unchecked(u32 origin, u32 line, u32 col, u32 width) {
+  return (Pos)( ((u64)origin << _pos_originShift)
+              | ((u64)line << _pos_lineShift)
+              | ((u64)col << _pos_colShift)
+              | width );
+}
+inline static Pos pos_make(u32 origin, u32 line, u32 col, u32 width) {
+  return pos_make_unchecked(
+    MIN(_pos_originMax, origin),
+    MIN(_pos_lineMax, line),
+    MIN(_pos_colMax, col),
+    MIN(_pos_widthMax, width));
+}
+inline static u32 pos_origin(Pos p) { return p >> _pos_originShift; }
+inline static u32 pos_line(Pos p)   { return (p >> _pos_lineShift) & _pos_lineMax; }
+inline static u32 pos_col(Pos p)    { return (p >> _pos_colShift) & _pos_colMax; }
+inline static u32 pos_width(Pos p)   { return p & _pos_widthMax; }
+
+// TODO: improve the efficiency of these
+inline static Pos pos_with_origin(Pos p, u32 origin) {
+  return pos_make_unchecked(
+    MIN(_pos_originMax, origin), pos_line(p), pos_col(p), pos_width(p));
+}
+inline static Pos pos_with_line(Pos p, u32 line) {
+  return pos_make_unchecked(
+    pos_origin(p), MIN(_pos_lineMax, line), pos_col(p), pos_width(p));
+}
+inline static Pos pos_with_col(Pos p, u32 col) {
+  return pos_make_unchecked(
+    pos_origin(p), pos_line(p), MIN(_pos_colMax, col), pos_width(p));
+}
+inline static Pos pos_with_width(Pos p, u32 width) {
+  return pos_make_unchecked(
+    pos_origin(p), pos_line(p), pos_col(p), MIN(_pos_widthMax, width));
+}
+inline static bool pos_isbefore(Pos p, Pos q) { return p < q; }
+inline static bool pos_isafter(Pos p, Pos q) { return p > q; }
+inline static bool pos_isknown(Pos p) {
+  return pos_origin(p) != 0 || pos_line(p) != 0;
+}
+inline static Source* nullable pos_source(const PosMap* pm, Pos p) {
+  return (Source*)pm->a.v[pos_origin(p)];
+}
+
+// ---- BuildCtx
 
 // buildctx_init initializes a BuildCtx structure
 void buildctx_init(BuildCtx*,
@@ -726,7 +924,7 @@ void buildctx_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(pri
 // buildctx_warnf calls buildctx_diagf with DiagNote
 void buildctx_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-// ----
+// ---- diagnostics
 
 // diag_fmt appends to dst a ready-to-print representation of a diagnostic message
 Str diag_fmt(const Diagnostic*, Str dst);
@@ -740,7 +938,18 @@ void diag_free(Diagnostic*);
 // DiagLevelName returns a printable string like "error"
 const char* DiagLevelName(DiagLevel);
 
-// ----
+// ---- parsing
+
+// tokname returns a printable name for a token (second part in TOKENS definition)
+const char* tokname(Tok);
+
+// langtok returns the Tok representing this sym in the language syntax.
+// Either returns a keyword token or TId if sym is not a keyword.
+inline static Tok langtok(Sym s) {
+  // Bits [4-8) represents offset into Tok enum when s is a language keyword.
+  u8 kwindex = symflags(s);
+  return kwindex == 0 ? TId : TKeywordsStart + kwindex;
+}
 
 // scan_init initializes a scanner. Returns false if SourceOpenBody fails.
 error scan_init(Scanner*, BuildCtx*, Source*, ParseFlags);
@@ -753,11 +962,14 @@ void scan_dispose(Scanner*);
 Tok scan_next(Scanner*);
 
 // scan_pos returns the source position of s->tok (current token)
-static Pos scan_pos(const Scanner* s);
+Pos scan_pos(const Scanner* s);
 
 // scan_tokstr returns a token's string value and length, which is a pointer
 // into the source's body.
-static const u8* scan_tokstr(const Scanner* s, usize* len_out);
+inline static const u8* scan_tokstr(const Scanner* s, usize* len_out) {
+  *len_out = (usize)(s->tokend - s->tokstart);
+  return s->tokstart;
+}
 
 // scan_comment_pop removes and returns the least recently scanned comment.
 // The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
@@ -767,7 +979,14 @@ Comment* nullable scan_comment_pop(Scanner* s);
 // Expects p to be zero-initialized on first call. Can reuse p after return.
 Node* nullable parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
 
-// ----
+// ---- AST
+
+Scope* nullable scope_new(Mem mem, const Scope* nullable parent);
+void scope_free(Scope*, Mem mem);
+const Node* nullable scope_lookup(const Scope*, Sym);
+inline static error scope_assoc(Scope* s, Sym key, const Node** valuep_inout) {
+  return SymMapSet(&s->bindings, key, (void**)valuep_inout);
+}
 
 const char* NodeKindName(NodeKind); // e.g. "NIntLit"
 const char* TypeKindName(TypeKind); // e.g. "integer"
@@ -785,8 +1004,6 @@ inline static bool NodeIsType(const Node* n) {
   return n->kind > NodeKind_START_TYPE;
 }
 
-static bool NodeIsExpr(const Node*);
-
 inline static bool NodeIsPrimitiveConst(const Node* n) {
   switch (n->kind) {
     case NNil:
@@ -798,50 +1015,15 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
   }
 }
 
-
-// ---------------------------------------------------------------------------------
-// implementations
-
-inline static Tok langtok(Sym s) {
-  // Bits [4-8) represents offset into Tok enum when s is a language keyword.
-  u8 kwindex = symflags(s);
-  return kwindex == 0 ? TId : TKeywordsStart + kwindex;
+inline static Node* NodeCopy(Mem mem, const Node* n) {
+  Node* n2 = (Node*)memalloc(mem, sizeof(Node));
+  memcpy(n2, n, sizeof(Node));
+  return n2;
 }
 
-inline static error scope_assoc(Scope* s, Sym key, const Node** valuep_inout) {
-  return SymMapSet(&s->bindings, key, (void**)valuep_inout);
-}
-
-inline static const u8* scan_tokstr(const Scanner* s, usize* len_out) {
-  *len_out = (usize)(s->tokend - s->tokstart);
-  return s->tokstart;
-}
-
-inline static Pos scan_pos(const Scanner* s) {
-  // assert(s->tokend >= s->tokstart);
-  u32 col = 1 + (u32)((uintptr)s->tokstart - (uintptr)s->linestart);
-  u32 span = s->tokend - s->tokstart;
-  return pos_make(s->srcposorigin, s->lineno, col, span);
-}
-
-bool _TypeEquals(BuildCtx* ctx, Type* x, Type* y); // impl typeid.c
-
+bool _TypeEquals(BuildCtx* ctx, Type* x, Type* y); // impl parse_type.c
 inline static bool TypeEquals(BuildCtx* ctx, Type* x, Type* y) {
   return x == y || _TypeEquals(ctx, x, y);
 }
-
-// inline static Node* nullable NodeEvalUint(BuildCtx* ctx, Node* expr) {
-//   auto zn = NodeEval(ctx, expr, Type_uint, NodeEvalMustSucceed);
-//
-//   #if DEBUG
-//   if (zn) {
-//     asserteq_debug(zn->kind, NIntLit);
-//     asserteq_debug(zn->val.ct, CType_int);
-//   }
-//   #endif
-//
-//   // result in zn->val.i
-//   return zn;
-// }
 
 ASSUME_NONNULL_END

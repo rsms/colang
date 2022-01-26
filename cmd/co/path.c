@@ -1,4 +1,6 @@
 #include "coimpl.h"
+#include "path.h"
+#include "sys.h"
 
 bool path_isabs(const char* filename) {
   #ifdef WIN32
@@ -12,7 +14,7 @@ const char* path_cwdrel(const char* path) {
     return path;
 
   char cwd[512];
-  if (os_getcwd(cwd, sizeof(cwd)) != 0)
+  if (sys_getcwd(cwd, sizeof(cwd)) != 0)
     return path;
 
   usize pathlen = strlen(path);

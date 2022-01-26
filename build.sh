@@ -74,7 +74,7 @@ if [ "$BUILD_MODE" = "opt" ]; then
   CFLAGS+=( -O3 )
   LDFLAGS+=( -dead_strip -flto )
 else
-  CFLAGS+=( -DDEBUG )
+  CFLAGS+=( -DDEBUG -ferror-limit=10 )
 fi
 
 case "$(uname -s)" in
@@ -101,6 +101,7 @@ case "$(uname -s)" in
   ;;
 esac
 
+# Note: -fms-extensions -Wno-microsoft enables C11 composable structs in clang & GCC
 
 cat << _END > build.ninja
 ninja_required_version = 1.3
@@ -120,7 +121,7 @@ cflags = $
   $SKIA_DEFS
 
 cflags_c = $
-  -std=c11
+  -std=c11 -fms-extensions -Wno-microsoft
 
 cflags_cxx = $
   -std=c++14 $
@@ -177,6 +178,7 @@ for d in cmd/*; do
 
   # load custom CFLAGS
   EXTRA_CFLAGS=()
+  # EXTRA_CFLAGS+=( -I"$d" )
   CFLAGS_FILE=$d/cflags.txt
   [ -f "$CFLAGS_FILE" ] && EXTRA_CFLAGS+=( $(cat "$CFLAGS_FILE") )
 

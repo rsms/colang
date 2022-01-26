@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "unicode.h"
 
 Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
   u8 b = *buf;

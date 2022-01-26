@@ -1,7 +1,5 @@
-#include "coimpl.h"
-#include "coparse.h"
-
-#include "parse_universe_data.h"
+#include "parse.h"
+#include "universe_data.h"
 
 static struct {
   Scope        s;

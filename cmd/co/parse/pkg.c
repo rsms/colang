@@ -1,5 +1,5 @@
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
+#include "../sys.h"
 
 void pkg_add_source(Pkg* pkg, Source* src) {
   if (pkg->srclist)
@@ -19,18 +19,18 @@ error pkg_add_file(Pkg* pkg, Mem mem, const char* filename) {
 }
 
 error pkg_add_dir(Pkg* pkg, Mem mem, const char* filename) {
-  fs_dir d;
-  error err = fs_dir_open(filename, &d);
+  FSDir d;
+  error err = sys_dir_open(filename, &d);
   if (err)
     return err;
 
-  fs_dirent e;
+  FSDirEnt e;
   error err1;
-  while ((err = fs_dir_read(d, &e)) > 0) {
+  while ((err = sys_dir_read(d, &e)) > 0) {
     switch (e.type) {
-      case FS_DIRENT_REG:
-      case FS_DIRENT_LNK:
-      case FS_DIRENT_UNKNOWN:
+      case FSDirEnt_REG:
+      case FSDirEnt_LNK:
+      case FSDirEnt_UNKNOWN:
         if (e.namlen > 3 && e.name[0] != '.' && strcmp(&e.name[e.namlen-2], ".co") == 0) {
           if ((err = pkg_add_file(pkg, mem, e.name)))
             goto end;
@@ -41,6 +41,6 @@ error pkg_add_dir(Pkg* pkg, Mem mem, const char* filename) {
     }
   }
 end:
-  err1 = fs_dir_close(d);
+  err1 = sys_dir_close(d);
   return err < 0 ? err : err1;
 }

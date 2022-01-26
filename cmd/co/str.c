@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "str.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdio.h>

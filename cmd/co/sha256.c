@@ -23,6 +23,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 */
 #include "coimpl.h"
+#include "sha256.h"
 
 #define TOTAL_LEN_LEN 8
 #define SIZE_OF_SHA_256_HASH 32

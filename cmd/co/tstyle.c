@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "tstyle.h"
 
 #ifdef CO_WITH_LIBC
   #include <unistd.h>  // isatty
@@ -70,24 +71,24 @@ TStyleTable TSTyleForStderr() {
 
 // ----------------------------------------------------------------------------------------------
 
-void StyleStackInit(StyleStack* sstack, Mem mem, TStyleTable styles) {
+void TStyleStackInit(TStyleStack* sstack, Mem mem, TStyleTable styles) {
   sstack->mem = mem;
-  array_init_storage(&sstack->stack, sstack->stack_storage, countof(sstack->stack_storage));
+  CStrArrayInitStorage(&sstack->stack, sstack->stack_storage, countof(sstack->stack_storage));
   assert(styles != NULL);
   sstack->styles = styles;
 }
 
-void StyleStackDispose(StyleStack* sstack) {
-  array_free(&sstack->stack, sstack->mem);
+void TStyleStackDispose(TStyleStack* sstack) {
+  CStrArrayFree(&sstack->stack, sstack->mem);
 }
 
-static Str style_append(StyleStack* sstack, Str s, const char* suffix) {
+static Str style_append(TStyleStack* sstack, Str s, const char* suffix) {
   u32 len = (u32)strlen(suffix);
   sstack->nbyteswritten += len;
   return str_appendn(s, suffix, len);
 }
 
-static Str style_apply(StyleStack* sstack, Str s) {
+static Str style_apply(TStyleStack* sstack, Str s) {
   if (sstack->stack.len == 0)
     return style_append(sstack, s, sstack->styles[TStyle_none]);
   bool nofg = true;
@@ -109,17 +110,17 @@ static Str style_apply(StyleStack* sstack, Str s) {
   return s;
 }
 
-Str StyleStackPush(StyleStack* sstack, Str s, TStyle style) {
+Str TStyleStackPush(TStyleStack* sstack, Str s, TStyle style) {
   if (sstack->styles == TStyleNone)
     return s;
   const char* stylestr = sstack->styles[style];
-  array_push(&sstack->stack, (void*)stylestr, sstack->mem);
+  CStrArrayPush(&sstack->stack, (void*)stylestr, sstack->mem);
   return style_apply(sstack, s);
 }
 
-Str StyleStackPop(StyleStack* sstack, Str s) {
+Str TStyleStackPop(TStyleStack* sstack, Str s) {
   if (sstack->styles == TStyleNone)
     return s;
-  array_pop(&sstack->stack);
+  CStrArrayPop(&sstack->stack);
   return style_apply(sstack, s);
 }

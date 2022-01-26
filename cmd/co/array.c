@@ -1,87 +1,69 @@
 #include "coimpl.h"
+#include "array.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdlib.h> // for qsort_r
 #endif
 
-// ARRAY_CAP_STEP defines a power-of-two which the cap must be aligned to.
-// This is used to round up growth. I.e. grow by 60 with a cap of 32 would increase the cap
-// to 96 (= 32 + (align2(60, ARRAY_CAP_STEP=32) = 64)).
-#define ARRAY_CAP_STEP 32
-
-typedef struct SortCtx {
-  array_sort_fun f;
-  void*          userdata;
-} SortCtx;
+#define MAX_EXTRA_CAP(elemsize) ((usize)4096/elemsize)
 
 
-static int _sort(void* ctx, const void* s1p, const void* s2p) {
-  return ((SortCtx*)ctx)->f(
-    *((const void**)s1p),
-    *((const void**)s2p),
-    ((SortCtx*)ctx)->userdata
-  );
-}
+error array_grow(PtrArray* a, usize elemsize, usize count, Mem mem) {
 
-void array_sort(Array* a, array_sort_fun f, void* userdata) {
-  #ifdef CO_WITH_LIBC
-    SortCtx ctx = { f, userdata };
-    qsort_r(a->v, a->len, sizeof(void*), &ctx, &_sort);
-  #else
-    assert(!"array_sort not implemented");
-  #endif
-}
+  // count = cap < MAX_EXTRA_CAP ? min(MAX_EXTRA_CAP, count * 2) : count
+  if (a->cap < MAX_EXTRA_CAP(elemsize))
+    count = (usize)MIN( (u64)(MAX_EXTRA_CAP(elemsize) - a->cap), (u64)count * 2 );
 
-error array_grow(Array* a, u32 addl, Mem mem) {
-  usize reqcap = (usize)a->cap + addl;
-  usize cap = ALIGN2(reqcap, ARRAY_CAP_STEP);
-  usize z = array_size(sizeof(void*), cap);
-  if (z == USIZE_MAX || cap > U32_MAX)
+  // newcap = a->cap + count
+  usize newcap;
+  if (check_add_overflow((usize)a->cap, count, &newcap) || newcap > TYPED_ARRAY_CAP_MAX)
     return err_overflow;
 
-  if (!a->onstack || a->v == NULL) {
-    void* v = memrealloc(mem, a->v, z);
+  // nbyte = newcap * elemsize
+  usize nbyte;
+  if (check_mul_overflow(newcap, elemsize, &nbyte))
+    return err_overflow;
+
+  void** v;
+  if (a->ext) { // moving data from external storage to mem-allocated storage
+    v = (void**)memalloc(mem, nbyte);
     if (!v)
       return err_nomem;
-    a->v = v;
-    a->cap = (u32)cap;
-    return 0;
+    memcpy(v, a->v, elemsize * a->len);
+  } else {
+    v = memrealloc(mem, a->v, nbyte);
+    if (!v)
+      return err_nomem;
   }
 
-  // moving array from stack to heap
-  void** v = (void**)memalloc(mem, z);
-  if (!v)
-    return err_nomem;
-  memcpy(v, a->v, sizeof(void*) * a->len);
   a->v = v;
-  a->cap = (u32)cap;
-  a->onstack = false;
+  a->cap = (u32)newcap;
+  a->ext = 0;
   return 0;
 }
 
-isize array_indexof(Array* a, void* nullable entry) {
+i32 array_indexof(const PtrArray* a, usize elemsize, const void* elemp) {
   for (u32 i = 0; i < a->len; i++) {
-    if (a->v[i] == entry)
-      return (isize)i;
+    if (memcmp(&a->v[i], elemp, elemsize) == 0)
+      return (i32)i;
   }
   return -1;
 }
 
-isize array_lastindexof(Array* a, void* nullable entry) {
+i32 array_lastindexof(const PtrArray* a, usize elemsize, const void* elemp) {
   for (u32 i = a->len; i--; ) {
-    if (a->v[i] == entry)
-      return (isize)i;
+    if (memcmp(&a->v[i], elemp, elemsize) == 0)
+      return (i32)i;
   }
   return -1;
 }
 
-void array_remove(Array* a, u32 start, u32 count) {
-  assert(start + count <= a->len);
-  // array_remove( [0 1 2 3 4 5 6 7] start=2 count=3 ) => [0 1 5 6 7]
+void array_remove(PtrArray* a, usize elemsize, u32 startindex, u32 count) {
+  count = MIN(count, a->len - startindex);
+  // array_remove( [0 1 2 3 4 5 6 7] startindex=2 count=3 ) => [0 1 5 6 7]
   //
-  for (u32 i = start + count; i < a->len; i++) {
-    a->v[i - count] = a->v[i];
-  }
+  for (u32 i = startindex + count; i < a->len; i++)
+    a->v[(i - count) * elemsize] = a->v[i * elemsize];
   // [0 1 2 3 4 5 6 7]   a->v[5-3] = a->v[5]  =>  [0 1 5 3 4 5 6 7]
   //      ^     i
   //
@@ -95,20 +77,42 @@ void array_remove(Array* a, u32 start, u32 count) {
   a->len -= count;
 }
 
+// copies src of srclen to dst, starting at dst->v[start], growing dst if needed.
+error array_copy(
+  PtrArray* dst, usize elemsize, u32 startindex, const void* srcv, u32 srclen, Mem mem)
+{
+  // needcap = startindex + srclen;
+  u32 needcap;
+  if (check_add_overflow(startindex, srclen, &needcap) || needcap > TYPED_ARRAY_CAP_MAX)
+    return err_overflow;
 
-// array_copy copies src of srclen to a, starting at a.v[start], growing a if needed using m.
-void array_copy(Array* a, u32 start, const void* src, u32 srclen, Mem mem) {
-  u32 capNeeded = start + srclen;
-  if (capNeeded > a->cap) {
-    if (a->v == NULL) {
-      // initial allocation to exactly the size needed
-      a->v = (void*)memalloc(mem, sizeof(void*) * capNeeded);
-      a->cap = capNeeded;
-      a->onstack = false;
+  if (dst->cap < needcap) {
+    if (dst->v == NULL) {
+      // nbyte = needcap * elemsize
+      usize nbyte;
+      if (check_mul_overflow((usize)needcap, elemsize, &nbyte))
+        return err_overflow;
+      dst->v = (void*)memalloc(mem, nbyte);
+      dst->cap = needcap;
+      dst->ext = 0;
     } else {
-      array_grow(a, capNeeded - a->cap, mem);
+      error err = array_grow(dst, elemsize, needcap - dst->cap, mem);
+      if (err)
+        return err;
     }
   }
-  memcpy(&a->v[start], src, srclen * sizeof(void*));
-  a->len = MAX(a->len, start + srclen);
+
+  // note: no overflow check on srclen*elemsize since we check cap already
+  memcpy(&dst->v[startindex * elemsize], srcv, srclen * elemsize);
+  dst->len = MAX(dst->len, startindex + srclen);
+  return 0;
 }
+
+void array_sort(PtrArray* a, usize elemsize, PtrArraySortFun f, void* ctx) {
+  #ifdef CO_WITH_LIBC
+    qsort_r(a->v, a->len, elemsize, ctx, (int(*)(void*,const void*,const void*))f);
+  #else
+    assert(!"array_sort not implemented");
+  #endif
+}
+

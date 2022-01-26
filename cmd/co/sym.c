@@ -3,6 +3,7 @@
 // for equality by pointer value. It's used for identifiers.
 //
 #include "coimpl.h"
+#include "sym.h"
 
 // xxhash used for symbol hashing
 #pragma GCC diagnostic push

@@ -1,24 +1,25 @@
-#include "coimpl.h"
+#include "parse.h"
+#include "../tstyle.h"
 
 void posmap_init(PosMap* pm, Mem mem) {
-  array_init_storage(&pm->a, pm->a_storage, countof(pm->a_storage));
+  PtrArrayInitStorage(&pm->a, pm->a_storage, countof(pm->a_storage));
   // the first slot is used to return NULL in pos_source for unknown positions
   pm->a.v[0] = NULL;
   pm->a.len++;
 }
 
 void posmap_dispose(PosMap* pm) {
-  array_free(&pm->a, pm->mem);
+  PtrArrayFree(&pm->a, pm->mem);
 }
 
-u32 posmap_origin(PosMap* pm, void* origin) {
-  assert(origin != NULL);
+u32 posmap_origin(PosMap* pm, Source* source) {
+  assert(source != NULL);
   for (u32 i = 0; i < pm->a.len; i++) {
-    if (pm->a.v[i] == origin)
+    if (pm->a.v[i] == source)
       return i;
   }
   u32 i = pm->a.len;
-  array_push(&pm->a, origin, pm->mem);
+  PtrArrayPush(&pm->a, source, pm->mem);
   return i;
 }
 

@@ -1,4 +1,5 @@
-#include "coimpl.h"
+#include "parse.h"
+#include "../sha256.h"
 
 #ifdef CO_WITH_LIBC
   #include <errno.h> // errno

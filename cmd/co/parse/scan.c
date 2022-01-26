@@ -1,5 +1,5 @@
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
+#include "../unicode.h"
 
 // Enable to dlog ">> TOKEN VALUE at SOURCELOC" on each call to SNext
 //#define SCANNER_DEBUG_TOKEN_PRODUCTION
@@ -115,6 +115,13 @@ void scan_dispose(Scanner* s) {
       break;
     memfree(s->build->mem, c);
   }
+}
+
+Pos scan_pos(const Scanner* s) {
+  // assert(s->tokend >= s->tokstart);
+  u32 col = 1 + (u32)((uintptr)s->tokstart - (uintptr)s->linestart);
+  u32 span = s->tokend - s->tokstart;
+  return pos_make(s->srcposorigin, s->lineno, col, span);
 }
 
 

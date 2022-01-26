@@ -33,8 +33,7 @@
 // enable debug messages for resolve_id()
 //#define DEBUG_LOOKUPSYM
 //
-#include "coimpl.h"
-#include "coparse.h"
+#include "parse.h"
 
 ASSUME_NONNULL_BEGIN
 
