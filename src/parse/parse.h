@@ -26,12 +26,6 @@ typedef struct PosSpan PosSpan; // span in a Source
 
 // AST types
 typedef u16         Tok;       // language tokens (produced by Scanner)
-typedef struct Node Node;      // AST node, basis for Stmt, Expr and Type
-typedef struct Stmt Stmt;      // AST statement
-typedef struct Expr Expr;      // AST expression
-typedef struct Type Type;      // AST type
-typedef u8          NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
-typedef u16         NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 typedef u8          TypeCode;  // TC_* constants
 typedef u16         TypeFlags; // TF_* constants (enum TypeFlags)
 typedef u8          TypeKind;  // TF_Kind* constants (part of TypeFlags)

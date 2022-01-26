@@ -12,8 +12,8 @@ def err(msg):
   print(msg)
   sys.exit(1)
 
-# "struct name { struct parent;"
-node_struct_re = re.compile(r'\n\s*struct\s+([^\s\n]+)\s*\{[\n\s]*struct\s+([^\s]+)\s*;')
+# "struct name { struct? parent;"
+node_struct_re = re.compile(r'\n\s*struct\s+([^\s\n]+)\s*\{[\n\s]*(?:struct\s+|)([^\s]+)\s*;')
 
 # parse CLI
 if len(sys.argv) < 4:

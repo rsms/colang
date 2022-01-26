@@ -1,5 +1,14 @@
 // AST nodes
 ASSUME_NONNULL_BEGIN
+
+typedef struct Node    Node;      // AST node, basis for Stmt, Expr and Type
+typedef struct Stmt    Stmt;      // AST statement
+typedef struct Expr    Expr;      // AST expression
+typedef struct LitExpr LitExpr; // AST constant literal expression
+typedef struct Type    Type;      // AST type
+typedef u8             NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
+typedef u16            NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
+
 DEF_TYPED_ARRAY(NodeArray, Node*)
 
 struct Node {
@@ -10,142 +19,142 @@ struct Node {
   NodeKind       kind;   // kind of node (e.g. NId)
 };
 
-struct Stmt { struct Node;
+struct Stmt { Node;
 };
-struct Expr { struct Node;
+struct Expr { Node;
   Type* nullable type; // value type. NULL if unknown.
 };
-struct LitExpr { struct Expr;
+struct LitExpr { Expr;
 };
-struct Type { struct Node;
+struct Type { Node;
   TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
 };
 
-struct BadNode { struct Stmt; }; // substitute "filler" for invalid syntax
-struct PkgNode { struct Stmt;
+struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
+struct PkgNode { Stmt;
   const Str       name;         // reference to str in corresponding Pkg struct
   Scope* nullable scope;
   NodeArray       a;            // array of nodes
   Node*           a_storage[4]; // in-struct storage for the first few entries of a
 };
-struct FileNode { struct Stmt;
+struct FileNode { Stmt;
   const Str       name;         // reference to str in corresponding Source struct
   Scope* nullable scope;
   NodeArray       a;            // array of nodes
   Node*           a_storage[4]; // in-struct storage for the first few entries of a
 };
-struct CommentNode { struct Stmt;
+struct CommentNode { Stmt;
   u32       len;
   const u8* ptr;
 };
 
 // expressions (literal constants)
-struct BoolLitNode  { struct LitExpr; u64 ival; }; // boolean literal
-struct IntLitNode   { struct LitExpr; u64 ival; }; // integer literal
-struct FloatLitNode { struct LitExpr; f64 fval; }; // floating-point literal
-struct StrLitNode   { struct LitExpr; Str sval; }; // string literal
-struct NilNode      { struct LitExpr; };           // the nil atom
+struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
+struct IntLitNode   { LitExpr; u64 ival; }; // integer literal
+struct FloatLitNode { LitExpr; f64 fval; }; // floating-point literal
+struct StrLitNode   { LitExpr; Str sval; }; // string literal
+struct NilNode      { LitExpr; };           // the nil atom
 
 // expressions
-struct IdNode { struct Expr;
+struct IdNode { Expr;
   Sym   name;
   Node* target;
 };
-struct BinOpNode { struct Expr;
+struct BinOpNode { Expr;
   Tok   op;
   Node* left;
   Node* right;
 };
-struct UnaryOpNode { struct Expr; // used for NPrefixOp, NPostfixOp, NReturn, NAssign
+struct UnaryOpNode { Expr; // used for NPrefixOp, NPostfixOp, NReturn, NAssign
   Tok   op;
   Node* expr;
 };;
-struct ArrayNode { struct Expr; // used for NTuple, NBlock, NArray
+struct ArrayNode { Expr; // used for NTuple, NBlock, NArray
   NodeArray a;            // array of nodes
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
 };
-struct FunNode { struct Expr;
+struct FunNode { Expr;
   Node* nullable params;  // input params (NTuple or NULL if none)
   Node* nullable result;  // output results (NTuple | NExpr)
   Sym   nullable name;    // NULL for lambda
   Node* nullable body;    // NULL for fun-declaration
 };
-struct MacroNode { struct Expr;
+struct MacroNode { Expr;
   Node* nullable params;  // input params (NTuple or NULL if none)
   Sym   nullable name;
   Node*          template;
 };
-struct CallNode { struct Expr;
+struct CallNode { Expr;
   Node* receiver;      // Fun or Id
   Node* nullable args; // NULL if there are no args, else a NTuple
 };
-struct TypeCastNode { struct Expr;
+struct TypeCastNode { Expr;
   Node* receiver;      // Type or Id
   Node* nullable args; // NULL if there are no args, else a NTuple
 };
-struct FieldNode { struct Expr;
+struct FieldNode { Expr;
   u32            nrefs; // reference count
   u32            index; // argument index or struct index
   Sym            name;
   Node* nullable init;  // initial value (may be NULL)
 };
-struct VarNode { struct Expr;
+struct VarNode { Expr;
   bool           isconst; // immutable storage? (true for "const x" vars)
   u32            nrefs;   // reference count
   u32            index;   // argument index (used by function parameters)
   Sym            name;
   Node* nullable init;    // initial/default value
 };
-struct RefNode { struct Expr;
+struct RefNode { Expr;
   Node* target;
 };
-struct NamedValNode { struct Expr;
+struct NamedValNode { Expr;
   Sym   name;
   Node* value;
 };
-struct SelectorNode { struct Expr; // Selector = Expr "." ( Ident | Selector )
+struct SelectorNode { Expr; // Selector = Expr "." ( Ident | Selector )
   Node*    operand;
   Sym      member;  // id
   U32Array indices; // GEP index path
   u32      indices_st[4]; // indices storage
 };
-struct IndexNode { struct Expr; // Index = Expr "[" Expr "]"
+struct IndexNode { Expr; // Index = Expr "[" Expr "]"
   Node* operand;
   Node* indexexpr;
   u32   index; // 0xffffffff if indexexpr is not a compile-time constant
 };
-struct SliceNode { struct Expr; // Slice = Expr "[" Expr? ":" Expr? "]"
+struct SliceNode { Expr; // Slice = Expr "[" Expr? ":" Expr? "]"
   Node*          operand;
   Node* nullable start;
   Node* nullable end;
 };
-struct IfNode { struct Expr;
+struct IfNode { Expr;
   Node*          cond;
   Node*          thenb;
   Node* nullable elseb; // NULL or expr
 };
 
 // types
-struct BasicTypeNode { struct Type;
+struct BasicTypeNode { Type;
   TypeCode typeCode;
   Sym      name;
 };
-struct ArrayTypeNode { struct Type;
+struct ArrayTypeNode { Type;
   Node* nullable sizeexpr; // NULL for inferred types
   u32            size;     // used for array. 0 until sizeexpr is resolved
   Node*          subtype;
 };
-struct TupleTypeNode { struct Type;
+struct TupleTypeNode { Type;
   NodeArray a;            // Node[]
   Node*     a_storage[4]; // in-struct storage for the first few elements
 };
-struct StructTypeNode { struct Type;
+struct StructTypeNode { Type;
   Sym nullable name;         // NULL for anonymous structs
   NodeArray    a;            // NField[]
   Node*        a_storage[3]; // in-struct storage for the first few fields
 };
-struct FunTypeNode { struct Type;
+struct FunTypeNode { Type;
   Node* nullable params; // NTuple of NVar or null if no params
   Type* nullable result; // NTupleType of types or single type
 };
