@@ -26,7 +26,7 @@ void print_src_checksum(Mem mem, const Source* src) {
 int main(int argc, const char** argv) {
   universe_init();
 
-  dlog("Total: %3lu B (Node: %lu B)", NODE_UNION_SIZE, sizeof(Node));
+  // dlog("Total: %3lu B (Node: %lu B)", NODE_UNION_SIZE, sizeof(Node));
   dlog("  Stmt %3lu B", sizeof(Stmt));
   dlog("  Expr %3lu B", sizeof(Expr));
   dlog("  Type %3lu B", sizeof(Type));

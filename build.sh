@@ -45,9 +45,9 @@ if [ -n "$WATCH" ]; then
       RUN_PID=$!
     fi
     fswatch --one-event --extended --latency=0.1 \
-            --exclude='.*' --include='\.(c|cc|cpp|m|mm|h|hh|sh)$' \
+            --exclude='.*' --include='\.(c|cc|cpp|m|mm|h|hh|sh|py)$' \
             --recursive \
-            cmd $(basename "$0")
+            src $(basename "$0")
     if [ -n "$RUN_PID" ]; then
       kill $(jobs -p) 2>/dev/null && wait $(jobs -p) 2>/dev/null || true
       RUN_PID=
@@ -56,20 +56,17 @@ if [ -n "$WATCH" ]; then
   exit 0
 fi
 
-# set SKIA_DEBUG=1 in env to use Skia debug build
-#
-LUAJIT=deps/luajit
-SKIA=deps/skia
-SKIA_OUT=$SKIA/out/release
-[ -n "$SKIA_DEBUG" ] && SKIA_OUT=$SKIA/out/debug
-SKIA_DEFS=$(grep 'defines =' $SKIA_OUT/obj/skia.ninja | sed 's/defines = //')
-SKIA_APP_SOURCES=(
-  $SKIA/tools/sk_app/CommandSet.cpp \
-  $SKIA/tools/sk_app/Window.cpp \
-  $SKIA/tools/sk_app/WindowContext.cpp \
-)
 CFLAGS=( $CFLAGS )
 LDFLAGS=( $LDFLAGS )
+
+CFLAGS+=( -DCO_WITH_LIBC )  # TODO: wasm
+
+WITH_LUAJIT=true
+if $WITH_LUAJIT; then
+  CFLAGS+=( -Ideps/luajit/src -DCO_WITH_LUAJIT )
+  LDFLAGS+=( deps/luajit/src/libluajit.a )
+fi
+
 if [ "$BUILD_MODE" = "opt" ]; then
   CFLAGS+=( -O3 )
   LDFLAGS+=( -dead_strip -flto )
@@ -77,29 +74,23 @@ else
   CFLAGS+=( -DDEBUG -ferror-limit=10 )
 fi
 
-case "$(uname -s)" in
-  Darwin)
-    SYSROOT=$(echo /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOS*.sdk | cut -d' ' -f1)
-    [ -d $SYSROOT ] || SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
-    [ -d $SYSROOT ] || _err "$SYSROOT not found"
-    SKIA_APP_SOURCES+=(
-      $SKIA/tools/sk_app/MetalWindowContext.mm \
-      $SKIA/tools/sk_app/mac/main_mac.mm \
-      $SKIA/tools/sk_app/mac/MetalWindowContext_mac.mm \
-      $SKIA/tools/sk_app/mac/Window_mac.mm \
-    )
-    LDFLAGS+=(
-      -isysroot $SYSROOT \
-      -Wl,-w \
-      -Wl,-platform_version,macos,10.15,11.00 \
-      -Wl,-rpath,@loader_path/. \
-      -framework ApplicationServices \
-      -framework AppKit \
-      -framework Quartz \
-      -framework Metal \
-    )
-  ;;
-esac
+# case "$(uname -s)" in
+#   Darwin)
+#     SYSROOT=$(echo /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOS*.sdk | cut -d' ' -f1)
+#     [ -d $SYSROOT ] || SYSROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk
+#     [ -d $SYSROOT ] || _err "$SYSROOT not found"
+#     LDFLAGS+=(
+#       -isysroot $SYSROOT \
+#       -Wl,-w \
+#       -Wl,-platform_version,macos,10.15,11.00 \
+#       -Wl,-rpath,@loader_path/. \
+#       -framework ApplicationServices \
+#       -framework AppKit \
+#       -framework Quartz \
+#       -framework Metal \
+#     )
+#   ;;
+# esac
 
 # Note: -fms-extensions -Wno-microsoft enables C11 composable structs in clang & GCC
 
@@ -116,9 +107,7 @@ cflags = $
   -Wno-unused-parameter $
   -Werror=implicit-function-declaration $
   -Wcovered-switch-default $
-  ${CFLAGS[@]} $
-  -I$LUAJIT/src $
-  $SKIA_DEFS
+  ${CFLAGS[@]}
 
 cflags_c = $
   -std=c11 -fms-extensions -Wno-microsoft
@@ -128,8 +117,7 @@ cflags_cxx = $
   -Wno-c++17-extensions $
   -fvisibility-inlines-hidden $
   -fno-exceptions $
-  -fno-rtti $
-  -I$SKIA
+  -fno-rtti
 
 ldflags = ${LDFLAGS[@]}
 
@@ -147,89 +135,36 @@ rule cxx
   depfile = \$out.d
   description = compile \$in
 
+rule ast_gen
+  command = python3 src/parse/ast_gen.py \$in \$out
+
+build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c
 _END
 
-
-SKIA_APP_OBJECTS=()
-for SOURCE in ${SKIA_APP_SOURCES[@]}; do
+SOURCES=( $(find src -name '*.c' -or -name '*.cc' -or -name '*.mm') )
+OBJECTS=()
+for SOURCE in "${SOURCES[@]}"; do
   OBJECT=\$objdir/${SOURCE//\//.}.o
-  SKIA_APP_OBJECTS+=( "$OBJECT" )
+  OBJECTS+=( "$OBJECT" )
   case "$SOURCE" in
-    *.c|*.m)         echo "build $OBJECT: cc $SOURCE" >> build.ninja ;;
-    *.cc|*.cpp|*.mm) echo "build $OBJECT: cxx $SOURCE" >> build.ninja ;;
+    *.c|*.m)
+      echo "build $OBJECT: cc $SOURCE" >> build.ninja
+      if [ -n "$EXTRA_CFLAGS" ]; then
+        echo "  cflags = \$cflags ${EXTRA_CFLAGS[@]}" >> build.ninja
+      fi
+      ;;
+    *.cc|*.cpp|*.mm)
+      echo "build $OBJECT: cxx $SOURCE" >> build.ninja
+      ;;
   esac
 done
-
-ALL=()
-for d in cmd/*; do
-  case "$d" in .*) continue ;; esac # skip dot files
-  [ -d "$d" ] || continue # skip non-dirs
-  if ! [ -f "$d/main.c" -o -f "$d/main.cc" ]; then
-    echo "skipping dir $d (does not contain a main.c or main.cc file)"
-    continue
-  fi
-
-  if [ -f $d/build.ninja ]; then
-    echo "subninja build.ninja" >> build.ninja
-    continue
-  fi
-
-  OBJECTS=()
-
-  # load custom CFLAGS
-  EXTRA_CFLAGS=()
-  # EXTRA_CFLAGS+=( -I"$d" )
-  CFLAGS_FILE=$d/cflags.txt
-  [ -f "$CFLAGS_FILE" ] && EXTRA_CFLAGS+=( $(cat "$CFLAGS_FILE") )
-
-  # load custom LDFLAGS
-  EXTRA_LDFLAGS=()
-  LDFLAGS_FILE=$d/ldflags.txt
-  if [ -f "$LDFLAGS_FILE" ]; then
-    for s in $(cat "$LDFLAGS_FILE"); do
-      if [ "$s" = "\$LIB_SKIA_APP" ]; then
-        OBJECTS+=( "${SKIA_APP_OBJECTS[@]}" )
-      else
-        s=${s//\$SKIA/$SKIA_OUT}
-        s=${s//\$LUAJIT/$LUAJIT}
-        EXTRA_LDFLAGS+=( "$s" )
-      fi
-    done
-  fi
-
-  # find source files
-  SOURCES=( $(find "$d" -name '*.c' -or -name '*.cc' -or -name '*.mm') )
-  for SOURCE in "${SOURCES[@]}"; do
-    OBJECT=\$objdir/${SOURCE//\//.}.o
-    OBJECTS+=( "$OBJECT" )
-    case "$SOURCE" in
-      *.c|*.m)
-        echo "build $OBJECT: cc $SOURCE" >> build.ninja
-        if [ -n "$EXTRA_CFLAGS" ]; then
-          echo "  cflags = \$cflags ${EXTRA_CFLAGS[@]}" >> build.ninja
-        fi
-        ;;
-      *.cc|*.cpp|*.mm)
-        echo "build $OBJECT: cxx $SOURCE" >> build.ninja
-        ;;
-    esac
-  done
-
-  EXE=$(basename "$d")
-  ALL+=( $EXE )
-
-  echo "build \$outdir/$EXE: link ${OBJECTS[@]}" >> build.ninja
-  if [ -n "$EXTRA_LDFLAGS" ]; then
-    echo "  ldflags = \$ldflags ${EXTRA_LDFLAGS[@]}" >> build.ninja
-  fi
-done
-
 echo >> build.ninja
-for target in "${ALL[@]}"; do
-  echo "build $target: phony \$outdir/$target" >> build.ninja
-done
 
-echo "default ${ALL[@]}" >> build.ninja
+echo "build co: phony \$outdir/co" >> build.ninja
+echo "build \$outdir/co: link ${OBJECTS[@]} | \$objdir/ast_gen.mark" >> build.ninja
+echo >> build.ninja
+
+echo "default co" >> build.ninja
 
 if [ -n "$RUN" ]; then
   ninja "$@"

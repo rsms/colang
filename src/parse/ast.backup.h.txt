@@ -1,0 +1,233 @@
+// AST nodes
+ASSUME_NONNULL_BEGIN
+DEF_TYPED_ARRAY(NodeArray, Node*)
+
+struct Node {
+  void* nullable irval;  // used by IR builders for temporary storage
+  Pos            pos;    // source origin & position
+  Pos            endpos; // NoPos means "only use pos".
+  NodeFlags      flags;  // flags describe meta attributes of the node
+  NodeKind       kind;   // kind of node (e.g. NId)
+};
+
+// trick using C11 seamless struct extension to get compiler type checking on Node
+struct Stmt { Node; };
+struct Expr { Node;
+  Type* nullable type; // value type. NULL if unknown.
+};
+struct Type { Node;
+  TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
+  Sym nullable tid;    // initially NULL for user-defined types, computed as needed
+};
+
+struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
+struct PkgNode { Stmt;
+  const Str       name;         // reference to str in corresponding Pkg struct
+  Scope* nullable scope;
+  NodeArray       a;            // array of nodes
+  Node*           a_storage[4]; // in-struct storage for the first few entries of a
+};
+struct FileNode { Stmt;
+  const Str       name;         // reference to str in corresponding Source struct
+  Scope* nullable scope;
+  NodeArray       a;            // array of nodes
+  Node*           a_storage[4]; // in-struct storage for the first few entries of a
+};
+struct CommentNode { Stmt;
+  u32       len;
+  const u8* ptr;
+};
+
+// expressions
+struct IdNode { Expr;
+  Sym   name;
+  Node* target;
+};
+struct BinOpNode { Expr;
+  Tok   op;
+  Node* left;
+  Node* right;
+};
+struct UnaryOpNode { Expr; // used for NPrefixOp, NPostfixOp, NReturn, NAssign
+  Tok   op;
+  Node* expr;
+};;
+struct ArrayNode { Expr; // used for NTuple, NBlock, NArray
+  NodeArray a;            // array of nodes
+  Node*     a_storage[5]; // in-struct storage for the first few entries of a
+};
+struct FunNode { Expr;
+  Node* nullable params;  // input params (NTuple or NULL if none)
+  Node* nullable result;  // output results (NTuple | NExpr)
+  Sym   nullable name;    // NULL for lambda
+  Node* nullable body;    // NULL for fun-declaration
+};
+struct MacroNode { Expr;
+  Node* nullable params;  // input params (NTuple or NULL if none)
+  Sym   nullable name;
+  Node*          template;
+};
+struct CallNode { Expr;
+  Node* receiver;      // Fun or Id
+  Node* nullable args; // NULL if there are no args, else a NTuple
+};
+struct TypeCastNode { Expr;
+  Node* receiver;      // Type or Id
+  Node* nullable args; // NULL if there are no args, else a NTuple
+};
+struct FieldNode { Expr;
+  u32            nrefs; // reference count
+  u32            index; // argument index or struct index
+  Sym            name;
+  Node* nullable init;  // initial value (may be NULL)
+};
+struct VarNode { Expr;
+  bool           isconst; // immutable storage? (true for "const x" vars)
+  u32            nrefs;   // reference count
+  u32            index;   // argument index (used by function parameters)
+  Sym            name;
+  Node* nullable init;    // initial/default value
+};
+struct RefNode { Expr;
+  Node* target;
+};
+struct NamedValNode { Expr;
+  Sym   name;
+  Node* value;
+};
+struct SelectorNode { Expr; // Selector = Expr "." ( Ident | Selector )
+  Node*    operand;
+  Sym      member;  // id
+  U32Array indices; // GEP index path
+  u32      indices_st[4]; // indices storage
+};
+struct IndexNode { Expr; // Index = Expr "[" Expr "]"
+  Node* operand;
+  Node* indexexpr;
+  u32   index; // 0xffffffff if indexexpr is not a compile-time constant
+};
+struct SliceNode { Expr; // Slice = Expr "[" Expr? ":" Expr? "]"
+  Node*          operand;
+  Node* nullable start;
+  Node* nullable end;
+};
+struct IfNode { Expr;
+  Node*          cond;
+  Node*          thenb;
+  Node* nullable elseb; // NULL or expr
+};
+
+// types
+struct BasicTypeNode { Type;
+  TypeCode typeCode;
+  Sym      name;
+};
+struct ArrayTypeNode { Type;
+  Node* nullable sizeexpr; // NULL for inferred types
+  u32            size;     // used for array. 0 until sizeexpr is resolved
+  Node*          subtype;
+};
+struct TupleTypeNode { Type;
+  NodeArray a;            // Node[]
+  Node*     a_storage[4]; // in-struct storage for the first few elements
+};
+struct StructTypeNode { Type;
+  Sym nullable name;         // NULL for anonymous structs
+  NodeArray    a;            // NField[]
+  Node*        a_storage[3]; // in-struct storage for the first few fields
+};
+struct FunTypeNode { Type;
+  Node* nullable params; // NTuple of NVar or null if no params
+  Type* nullable result; // NTupleType of types or single type
+};
+
+
+// NodeKind for Nodes
+// statements
+#define DEF_NODE_KINDS_STMT(_) \
+  _( NNone     ) \
+  _( NBad      ) /* substitute "filler node" for invalid syntax */ \
+  _( NPkg      ) \
+  _( NFile     ) \
+  _( NTypeType ) /* type of a type */ \
+// end DEF_NODE_KINDS_STMT
+// literal constants
+#define DEF_NODE_KINDS_CONSTLIT(_) \
+  _( NBoolLit  ) /* boolean literal */ \
+  _( NIntLit   ) /* integer literal */ \
+  _( NFloatLit ) /* floating-point literal */ \
+  _( NStrLit   ) /* string literal */ \
+  _( NNil      ) /* the nil atom */ \
+// end DEF_NODE_KINDS_CONSTLIT
+// expressions
+#define DEF_NODE_KINDS_EXPR(_) \
+  _( NAssign    ) \
+  _( NBlock     ) \
+  _( NCall      ) \
+  _( NField     ) \
+  _( NSelector  ) \
+  _( NIndex     ) \
+  _( NSlice     ) \
+  _( NFun       ) \
+  _( NId        ) \
+  _( NIf        ) \
+  _( NVar       ) \
+  _( NRef       ) \
+  _( NNamedVal  ) \
+  _( NBinOp     ) \
+  _( NPrefixOp  ) \
+  _( NPostfixOp ) \
+  _( NReturn    ) \
+  _( NArray     ) \
+  _( NTuple     ) \
+  _( NTypeCast  ) \
+  _( NMacro     ) /* TODO: different NodeClass */ \
+// end DEF_NODE_KINDS_EXPR
+// types
+#define DEF_NODE_KINDS_TYPE(_) \
+  _( NBasicType  ) /* int, bool, ... */ \
+  _( NRefType    ) /* &T */ \
+  _( NArrayType  ) /* [4]int, []int */ \
+  _( NTupleType  ) /* (float,bool,int) */ \
+  _( NStructType ) /* struct{foo float; y bool} */ \
+  _( NFunType    ) /* fun(int,int)(float,bool) */ \
+// end DEF_NODE_KINDS_TYPE
+
+
+enum NodeKind {
+  #define I_ENUM(name) name,
+
+  DEF_NODE_KINDS_STMT(I_ENUM)
+  NodeKind_END_STMT,
+
+  NodeKind_START_CONSTLIT = NodeKind_END_STMT,
+  DEF_NODE_KINDS_CONSTLIT(I_ENUM)
+  NodeKind_END_CONSTLIT,
+
+  NodeKind_START_EXPR = NodeKind_END_CONSTLIT,
+  DEF_NODE_KINDS_EXPR(I_ENUM)
+  NodeKind_END_EXPR,
+
+  NodeKind_START_TYPE = NodeKind_END_EXPR,
+  DEF_NODE_KINDS_TYPE(I_ENUM)
+
+  #undef I_ENUM
+} END_TYPED_ENUM(NodeKind)
+
+
+enum NodeFlags {
+  NF_Unresolved  = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
+  NF_Const       = 1 << 1, // constant; value known at compile time (comptime)
+  NF_Base        = 1 << 2, // [struct field] the field is a base of the struct
+  NF_RValue      = 1 << 3, // resolved as rvalue
+  NF_Param       = 1 << 4, // [Var] function parameter
+  NF_MacroParam  = 1 << 5, // [Var] macro parameter
+  NF_Unused      = 1 << 6, // [Var] never referenced
+  NF_Public      = 1 << 7, // [Var|Fun] public visibility (aka published, exported)
+  NF_Named       = 1 << 8, // [Tuple when used as args] has named argument
+  TF_PartialType = 1 << 9, // Type resolver should visit even if the node is typed
+  // Changing this? Remember to update NodeFlagsStr impl
+} END_TYPED_ENUM(NodeFlags)
+
+
+ASSUME_NONNULL_END

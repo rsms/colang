@@ -1,6 +1,0 @@
-$LIB_SKIA_APP
-$SKIA/libsktext.a
-$SKIA/libskshaper.a
-$SKIA/libskunicode.a
-$SKIA/libskia.a
-$LUAJIT/src/libluajit.a

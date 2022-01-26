@@ -1,21 +1,5 @@
 #include "parse.h"
 
-const char* NodeKindName(NodeKind nk) {
-  #ifdef DEBUG
-    switch (nk) {
-      #define I_ENUM(name) case name: return #name;
-      DEF_NODE_KINDS_STMT(I_ENUM)
-      DEF_NODE_KINDS_CONSTLIT(I_ENUM)
-      DEF_NODE_KINDS_EXPR(I_ENUM)
-      DEF_NODE_KINDS_TYPE(I_ENUM)
-      #undef I_ENUM
-      default: return "?";
-    }
-  #else
-    return "";
-  #endif
-}
-
 const char* TypeKindName(TypeKind tk) {
   switch ((enum TypeKind)TF_Kind(tk)) {
     case TF_KindVoid:    return "void";

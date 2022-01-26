@@ -284,14 +284,6 @@ fi
 # -----------------------------------------------------------------------
 
 
-echo "---------- depot_tools ----------"
-DEPOT_TOOLS_REV=2e486c0d9d44e651a4def1d8397e4dfa1871ee65
-_git_dep $DEPS/depot_tools \
-  https://chromium.googlesource.com/chromium/tools/depot_tools.git \
-  $DEPOT_TOOLS_REV || true
-echo "ready: $DEPS/depot_tools (git $DEPOT_TOOLS_REV)"
-
-
 echo "---------- luajit ----------"
 LUAJIT_REV=v2.1.0-beta3  # See https://repo.or.cz/luajit-2.0.git/tags
 if _git_dep $DEPS/luajit https://luajit.org/git/luajit.git $LUAJIT_REV; then
@@ -301,66 +293,6 @@ if _git_dep $DEPS/luajit https://luajit.org/git/luajit.git $LUAJIT_REV; then
     MACOSX_DEPLOYMENT_TARGET=10.15 CFLAGS="-DLUAJIT_ENABLE_GC64" make -j$(nproc) )
 fi
 echo "ready: $DEPS/luajit (git $LUAJIT_REV)"
-
-
-echo "---------- skia ----------"
-#              ./config.sh # builds deps/skia/out/release
-# SKIA_DEBUG=1 ./config.sh # builds deps/skia/out/debug
-#
-SKIA_REV=canvaskit/0.32.0
-[ -n "$SKIA_DEBUG" ] && SKIA_DEBUG=true    || SKIA_DEBUG=false
-$SKIA_DEBUG          && SKIA_OUT=out/debug || SKIA_OUT=out/release
-if _git_dep $DEPS/skia https://skia.googlesource.com/skia.git $SKIA_REV ||
-   [ ! -f $DEPS/skia/$SKIA_OUT/configured ] ||
-   [ ! -f $DEPS/skia/$SKIA_OUT/built ] ||
-   [ "$SCRIPT_FILE" -nt $DEPS/skia/$SKIA_OUT/configured ]
-then
-  rm -rf $DEPS/skia/$SKIA_OUT/configured
-  rm -rf $DEPS/skia/$SKIA_OUT/built
-  if ! (\
-    export PATH=$PATH:$DEPS_ABS/depot_tools
-    cd $DEPS/skia
-    python2 tools/git-sync-deps
-    gn gen $SKIA_OUT --args="\
-      is_official_build=$($SKIA_DEBUG && echo "false" || echo "true") \
-      is_debug=$SKIA_DEBUG \
-      is_component_build=false \
-      \
-      skia_use_libjpeg_turbo_decode=true \
-      skia_use_libjpeg_turbo_encode=true \
-      skia_use_libpng_decode=true \
-      skia_use_libpng_encode=true \
-      skia_use_libwebp_decode=true \
-      skia_use_libwebp_encode=true \
-      skia_use_libheif=true \
-      skia_use_freetype=true \
-      skia_use_angle=false \
-      \
-      skia_use_system_harfbuzz=false \
-      skia_use_system_icu=false \
-      skia_use_system_freetype2=false \
-      skia_use_system_libjpeg_turbo=false \
-      skia_use_system_libpng=false \
-      skia_use_system_libwebp=false \
-      skia_use_system_zlib=false \
-      skia_use_system_expat=false \
-      \
-      skia_use_gl=false \
-      skia_use_metal=true \
-      "
-  ); then
-    echo "Try: rm -rf $DEPS/skia && $0"
-    exit 1
-  fi
-  touch $DEPS/skia/$SKIA_OUT/configured
-fi
-if [ ! -f $DEPS/skia/$SKIA_OUT/built ]; then
-  echo "building $DEPS/skia/$SKIA_OUT"
-  ninja -C $DEPS/skia/$SKIA_OUT
-  touch $DEPS/skia/$SKIA_OUT/built
-fi
-
-echo "ready: $DEPS/skia (git $SKIA_REV)"
 
 
 touch $DEPS/configured
