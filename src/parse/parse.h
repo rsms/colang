@@ -36,11 +36,9 @@ enum ParseFlags {
   ParseOpt          = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
 } END_TYPED_ENUM(ParseFlags)
 
-
 // DiagHandler callback type.
 // msg is a preformatted error message and is only valid until this function returns.
 typedef void(DiagHandler)(Diagnostic* d, void* userdata);
-
 
 struct Diagnostic {
   BuildCtx*   build;
@@ -197,7 +195,7 @@ void buildctx_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(pri
 // buildctx_warnf calls buildctx_diagf with DiagNote
 void buildctx_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-// ---- diagnostics
+// ----
 
 // diag_fmt appends to dst a ready-to-print representation of a diagnostic message
 Str diag_fmt(const Diagnostic*, Str dst);
@@ -211,7 +209,7 @@ void diag_free(Diagnostic*);
 // DiagLevelName returns a printable string like "error"
 const char* DiagLevelName(DiagLevel);
 
-// ---- parsing
+// ----
 
 // scan_init initializes a scanner. Returns false if SourceOpenBody fails.
 error scan_init(Scanner*, BuildCtx*, Source*, ParseFlags);
@@ -241,29 +239,12 @@ Comment* nullable scan_comment_pop(Scanner* s);
 // Expects p to be zero-initialized on first call. Can reuse p after return.
 Node* nullable parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
 
-// ---- AST
 
-
-inline static bool NodeIsPrimitiveConst(const Node* n) {
-  switch (n->kind) {
-    case NNil:
-    case NBasicType:
-    case NBoolLit:
-      return true;
-    default:
-      return false;
-  }
-}
-
-inline static Node* NodeCopy(Mem mem, const Node* n) {
-  Node* n2 = (Node*)memalloc(mem, sizeof(Node));
-  memcpy(n2, n, sizeof(Node));
-  return n2;
-}
-
+static bool TypeEquals(BuildCtx* ctx, Type* x, Type* y); // true if x is same type as y
 bool _TypeEquals(BuildCtx* ctx, Type* x, Type* y); // impl parse_type.c
 inline static bool TypeEquals(BuildCtx* ctx, Type* x, Type* y) {
   return x == y || _TypeEquals(ctx, x, y);
 }
+
 
 ASSUME_NONNULL_END

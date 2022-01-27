@@ -394,6 +394,23 @@ union NodeUnion {
 // keep the size of nodes in check. Update this if needed.
 static_assert(sizeof(union NodeUnion) == 96, "AST size changed");
 
+inline static bool NodeIsPrimitiveConst(const Node* n) {
+  return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;
+}
+
+inline static Node* nullable NodeAlloc(Mem mem) {
+  return (Node*)memalloc(mem, sizeof(union NodeUnion));
+}
+
+inline static Node* nullable NodeCopy(Mem mem, const Node* n) {
+  Node* n2 = NodeAlloc(mem);
+  if (n2) {
+    memcpy(n2, n, sizeof(Node));
+    // TODO: Field and Var are reference counted, for IdNode maybe update target->nref?
+  }
+  return n2;
+}
+
 Scope* nullable scope_new(Mem mem, const Scope* nullable parent);
 void scope_free(Scope*, Mem mem);
 const Node* nullable scope_lookup(const Scope*, Sym);
