@@ -6,6 +6,7 @@
 // #include <luajit.h>
 
 #include "parse/parse.h"
+#include "sys.h"
 
 
 void cli_usage(const char* prog) {

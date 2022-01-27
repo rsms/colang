@@ -7,9 +7,11 @@ OUTDIR=out
 BUILD_MODE=safe  # debug | safe | fast
 WATCH=
 RUN=
+NINJA_ARGS=()
 
 while [[ $# -gt 0 ]]; do case "$1" in
   -w)      WATCH=1; shift ;;
+  -v)      NINJA_ARGS+=(-v); shift ;;
   -run=*)  RUN=${1:5}; shift ;;
   -debug)  BUILD_MODE=debug; shift ;;
   -safe)   BUILD_MODE=safe; shift ;;
@@ -42,12 +44,11 @@ if [ -n "$WATCH" ]; then
   while true; do
     echo -e "\x1bc"  # clear screen ("scroll to top" style)
     BUILD_OK=1
-    BUILD_ARGS=( "-$BUILD_MODE" "$@" )
-    "./$(basename "$0")" "${BUILD_ARGS[@]}" || BUILD_OK=
+    bash "./$(basename "$0")" "-$BUILD_MODE" "${NINJA_ARGS[@]}" "$@" || BUILD_OK=
     printf "\e[2m> watching files for changes...\e[m\n"
     if [ -n "$BUILD_OK" -a -n "$RUN" ]; then
       export ASAN_OPTIONS=detect_stack_use_after_return=1
-      echo $RUN
+      echo "running $RUN"
       ( trap 'kill $(jobs -p)' SIGINT ; $RUN ; echo "$RUN exited $?" ) &
       RUN_PID=$!
     fi
@@ -106,7 +107,8 @@ fi
 if [ "$BUILD_MODE" != "debug" ]; then
   CFLAGS+=( -O3 -march=native )
   [ "$BUILD_MODE" = "fast" ] && CFLAGS+=( -DNDEBUG )
-  LDFLAGS+=( -dead_strip -flto )
+  LDFLAGS+=( -flto )
+  # LDFLAGS+=( -dead_strip )
 else
   CFLAGS+=( -DDEBUG -ferror-limit=10 )
 fi
@@ -151,7 +153,7 @@ cflags_cxx = $
   -fno-exceptions $
   -fno-rtti
 
-ldflags = ${LDFLAGS[@]}
+ldflags = -g ${LDFLAGS[@]}
 
 rule link
   command = c++ \$ldflags -o \$out \$in
@@ -173,34 +175,43 @@ rule ast_gen
 build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c | src/parse/ast_gen.py
 _END
 
-SOURCES=( $(find src -name '*.c' -or -name '*.cc' -or -name '*.mm') )
-OBJECTS=()
-for SOURCE in "${SOURCES[@]}"; do
-  OBJECT=\$objdir/${SOURCE//\//.}.o
-  OBJECTS+=( "$OBJECT" )
-  case "$SOURCE" in
-    *.c|*.m)
-      echo "build $OBJECT: cc $SOURCE" >> build.ninja
-      if [ -n "$EXTRA_CFLAGS" ]; then
-        echo "  cflags = \$cflags ${EXTRA_CFLAGS[@]}" >> build.ninja
-      fi
-      ;;
-    *.cc|*.cpp|*.mm)
-      echo "build $OBJECT: cxx $SOURCE" >> build.ninja
-      ;;
-  esac
-done
+_objfile() { echo \$objdir/${1//\//.}.o; }
+_gen_obj_build_rules() {
+  local CFLAGS=$1 ; shift
+  local CXXFLAGS=$1 ; shift
+  local OBJECT
+  for SOURCE in "$@"; do
+    OBJECT=$(_objfile "$SOURCE")
+    case "$SOURCE" in
+      *.c|*.m)
+        echo "build $OBJECT: cc $SOURCE" >> build.ninja
+        [ -n "$CFLAGS" ] &&
+          echo "  cflags = \$cflags $CFLAGS" >> build.ninja
+        ;;
+      *.cc|*.cpp|*.mm)
+        echo "build $OBJECT: cxx $SOURCE" >> build.ninja
+        [ -n "$CXXFLAGS" ] &&
+          echo "  cflags = \$cflags $CXXFLAGS" >> build.ninja
+        ;;
+      *) _err "don't know how to compile this file type ($SOURCE)"
+    esac
+    echo "$OBJECT"
+  done
+}
+
+CO_OBJECTS=( $(_gen_obj_build_rules "" "" $(find src -name '*.c')) )
 echo >> build.ninja
 
 echo "build co: phony \$outdir/co" >> build.ninja
-echo "build \$outdir/co: link ${OBJECTS[@]} | \$objdir/ast_gen.mark" >> build.ninja
+echo "build \$outdir/co: link ${CO_OBJECTS[@]} | \$objdir/ast_gen.mark" >> build.ninja
 echo >> build.ninja
 
 echo "default co" >> build.ninja
 
+echo ninja "${NINJA_ARGS[@]}" "$@"
 if [ -n "$RUN" ]; then
-  ninja "$@"
+  ninja "${NINJA_ARGS[@]}" "$@"
   echo $RUN
   exec $RUN
 fi
-exec ninja "$@"
+exec ninja "${NINJA_ARGS[@]}" "$@"

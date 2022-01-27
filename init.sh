@@ -34,6 +34,7 @@ _git_dep() {
   local FORCE=false
   [ "$(cat "$DIR/git-version" 2>/dev/null)" != "$GIT_TREE" ] ||
     return 1
+  [ -d "$DIR" ] && [ ! -d "$DIR/.git" ] && rm -rf "$DIR"
   if [ ! -d "$DIR" ]; then
     git clone "$GIT_URL" "$DIR"
     FORCE=true
@@ -293,6 +294,7 @@ if _git_dep $DEPS/luajit https://luajit.org/git/luajit.git $LUAJIT_REV; then
     MACOSX_DEPLOYMENT_TARGET=10.15 CFLAGS="-DLUAJIT_ENABLE_GC64" make -j$(nproc) )
 fi
 echo "ready: $DEPS/luajit (git $LUAJIT_REV)"
+
 
 
 touch $DEPS/configured
