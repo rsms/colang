@@ -245,7 +245,7 @@ Str str_appendhex_lc(Str s, const u8* data, u32 len) {
 }
 
 Str str_appendu64(Str s, u64 v, u32 base) {
-  char buf[20]; // 18446744073709551615 (0xFFFFFFFFFFFFFFFF)
+  char buf[64];
   static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
   base = MIN(base, 62);
   char* p = buf;

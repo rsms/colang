@@ -188,13 +188,24 @@ typedef unsigned long          uintptr;
   #define ASAN_DISABLE_ADDR_ATTR
 #endif
 
+#ifdef CO_WITH_LIBC
+  void abort(void); // stdlib.h
+#elif __has_builtin(__builtin_trap)
+  #define abort __builtin_trap
+#else
+  #error no abort()
+#endif
+
+#if __has_builtin(__builtin_trap)
+  #define TRAP __builtin_trap
+#else
+  #define TRAP abort
+#endif
+
 #if __has_builtin(__builtin_unreachable)
   #define UNREACHABLE __builtin_unreachable()
-#elif defined(CO_WITH_LIBC)
-  void abort(void); // stdlib.h
-  #define UNREACHABLE abort()
 #else
-  #error no UNREACHABLE support
+  #define UNREACHABLE TRAP()
 #endif
 
 #ifndef offsetof
@@ -436,7 +447,7 @@ const char* error_str(error);
 // ======================================================================================
 // panic & assert
 
-// panic prints msg to stderr and calls abort()
+// panic prints msg to stderr and calls TRAP()
 #define panic(fmt, ...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
 
 NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...)
@@ -475,11 +486,20 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   #define dlog(format, ...) ((void)0)
 #endif
 
-#define errlog(format, ...) (({ \
-  fprintf(stderr, "error: " format " (%s:%d)\n", \
-    ##__VA_ARGS__, __FILE__, __LINE__); \
-  fflush(stderr); \
-}))
+// void errlog(const char* fmt, ...)
+#ifdef CO_WITH_LIBC
+  ASSUME_NONNULL_END
+  #include <stdio.h>
+  ASSUME_NONNULL_BEGIN
+  #define errlog(format, ...) (({ \
+    fprintf(stderr, "error: " format " (%s:%d)\n", \
+      ##__VA_ARGS__, __FILE__, __LINE__); \
+    fflush(stderr); \
+  }))
+#else
+  #warning errlog not implemented for no-libc
+  #define errlog(format, ...) ((void)0)
+#endif
 
 
 // ======================================================================================

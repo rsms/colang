@@ -8,9 +8,7 @@
 #endif
 
 NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...) {
-  #ifndef CO_WITH_LIBC
-    UNREACHABLE;
-  #else
+  #ifdef CO_WITH_LIBC
     file = path_cwdrel(file);
     FILE* fp = stderr;
     flockfile(fp);
@@ -33,7 +31,6 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
     funlockfile(fp);
     fflush(fp);
     fsync(STDERR_FILENO);
-
-    abort();
   #endif
+  abort();
 }

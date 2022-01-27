@@ -514,17 +514,20 @@ static void gen_constants() {
 
 /* end if RUN_GENERATOR */
 #elif !defined(NDEBUG)
+
 __attribute__((constructor)) static void debug_check() {
   u8 membuf[2048];
   DEF_MEM_STACK_BUF_ALLOCATOR(mem, membuf);
   Str s = gen_checksum(str_make(mem, sizeof(membuf)/2));
   if (strcmp(debugSymCheck, s->p) != 0) {
-    printf("——————————————————————————————————————————————————————————————————————\n");
-    printf("                    WARNING: Keywords changed\n");
-    printf("——————————————————————————————————————————————————————————————————————\n");
-    printf("Define RUN_GENERATOR in %s to run code generator.\n", __FILE__);
-    printf("\ndebugSymCheck:\n%s\n\ndetected:\n%s\n", debugSymCheck, s->p);
-    printf("——————————————————————————————————————————————————————————————————————\n\n");
+    errlog(
+      "——————————————————————————————————————————————————————————————————————\n"
+      "                    WARNING: Keywords changed\n"
+      "——————————————————————————————————————————————————————————————————————\n"
+      "Define RUN_GENERATOR in %s to run code generator.\n"
+      "\ndebugSymCheck:\n%s\n\ndetected:\n%s\n"
+      "——————————————————————————————————————————————————————————————————————\n\n",
+      __FILE__, debugSymCheck, s->p);
   }
 }
 #endif
