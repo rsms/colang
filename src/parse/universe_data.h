@@ -4,7 +4,7 @@
 //       Currently it is really hard to use when e.g. changing types (TypeCode_*).
 //
 // Define to run the generator during program initialization:
-#define RUN_GENERATOR 1
+#define RUN_GENERATOR 0
 
 // static const Node _kType_type = {.kind=NTypeType};
 // Node* kType_type = (Node*)&_kType_type;

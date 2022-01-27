@@ -1,4 +1,4 @@
-local f = io.open("cmd/zs/foo.zs")
+local f = io.open("misc/zs.lua")
 local src = f:read("a")
 f:close()
 print(src)

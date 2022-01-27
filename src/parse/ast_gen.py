@@ -137,12 +137,15 @@ outc.append('const char* NodeKindName(NodeKind k) {')
 outc.append('  // kNodeNameTable[NodeKind] => const char* name')
 outc.append('  static const char* const kNodeNameTable[%d] = {' % len(leafnames))
 outtmp = ['"%s",' % strip_node_suffix(name) for name in leafnames]
-outtmp[len(outtmp)-1] = outtmp[len(outtmp)-1][:len(outtmp[len(outtmp)-1])-1] # strip last ','
 output_compact(outc, outtmp, 80, '    ')
 outc.append('  };')
 outc.append('  return k < %d ? kNodeNameTable[k] : "?";' % len(leafnames))
 outc.append('}')
 outc.append('')
+
+# node typedefs
+outh += ['typedef struct %s %s;' % (name, name) for name in leafnames]
+outh.append('')
 
 # NodeKindIs*
 outh.append('// bool NodeKindIs<kind>(NodeKind)')
@@ -190,9 +193,15 @@ for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
     continue # skip root type
-  is_leaf = len(subtypes) == 0
   outh.append('#define as_%s(n) ({ NodeAssert%s(n); (%s*)(n); })' % (name, shortname, name))
   # outh.append('')
+outh.append('')
+
+# union NodeUnion
+outh.append('union NodeUnion {')
+outtmp = ['%s _%d;' % (leafnames[i], i) for i in range(0, len(leafnames))]
+output_compact(outh, outtmp, 80, '  ')
+outh.append('};')
 outh.append('')
 
 

@@ -26,8 +26,7 @@ void print_src_checksum(Mem mem, const Source* src) {
 int main(int argc, const char** argv) {
   universe_init();
 
-  // dlog("Total: %3lu B (Node: %lu B)", NODE_UNION_SIZE, sizeof(Node));
-  dlog("  Stmt %3lu B", sizeof(Stmt));
+  dlog("Total: %3lu B", sizeof(union NodeUnion));
   dlog("  Expr %3lu B", sizeof(Expr));
   dlog("  Type %3lu B", sizeof(Type));
 
@@ -91,12 +90,13 @@ int main(int argc, const char** argv) {
   luaL_openlibs(L);
 
   // load script
-  int status = luaL_loadfile(L, "cmd/zs/zs.lua");
+  const char* filename = "misc/zs.lua";
+  int status = luaL_loadfile(L, filename);
   if (status != 0)
     panic("luaL_loadfile: %s", lua_tostring(L, -1));
 
   // run script
-  printf("[evaluating Lua script cmd/zs/zs.lua]\n");
+  printf("[evaluating Lua script %s]\n", filename);
   int ret = lua_pcall(L, 0, 0, 0);
   if (ret != 0)
     panic("lua_pcall: %s", lua_tostring(L, -1));

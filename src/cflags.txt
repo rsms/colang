@@ -1,1 +1,0 @@
--DCO_WITH_LIBC

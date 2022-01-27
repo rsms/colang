@@ -140,7 +140,7 @@ rule cxx
 rule ast_gen
   command = python3 src/parse/ast_gen.py \$in \$out
 
-build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c
+build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c | src/parse/ast_gen.py
 _END
 
 SOURCES=( $(find src -name '*.c' -or -name '*.cc' -or -name '*.mm') )

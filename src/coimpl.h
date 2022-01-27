@@ -163,6 +163,12 @@ typedef unsigned long          uintptr;
   #define WARN_UNUSED_RESULT
 #endif
 
+#if __has_attribute(__packed__)
+  #define ATTR_PACKED __attribute__((__packed__))
+#else
+  #define ATTR_PACKED
+#endif
+
 #if __has_attribute(malloc)
   #define ATTR_MALLOC __attribute__((malloc))
 #else

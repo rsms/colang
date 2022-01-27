@@ -10,6 +10,7 @@ typedef u8             NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16            NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
 DEF_TYPED_ARRAY(NodeArray, Node*)
+DEF_TYPED_ARRAY(TypeArray, Type*)
 
 struct Node {
   void* nullable irval;  // used by IR builders for temporary storage
@@ -17,20 +18,18 @@ struct Node {
   Pos            endpos; // NoPos means "only use pos".
   NodeFlags      flags;  // flags describe meta attributes of the node
   NodeKind       kind;   // kind of node (e.g. NId)
-};
+} ATTR_PACKED;
 
-struct Stmt { Node;
-};
+struct Stmt { Node; } ATTR_PACKED;
 struct Expr { Node;
   Type* nullable type; // value type. NULL if unknown.
-};
-struct LitExpr { Expr;
-};
-struct Type { Node;
+} ATTR_PACKED;
+struct Type { Node ;
   TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
-};
+} ATTR_PACKED;
 
+// statements
 struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
 struct PkgNode { Stmt;
   const Str       name;         // reference to str in corresponding Pkg struct
@@ -48,12 +47,9 @@ struct CommentNode { Stmt;
   u32       len;
   const u8* ptr;
 };
-struct LolNode { Stmt;
-  u32       len;
-  const u8* ptr;
-};
 
-// expressions (literal constants)
+// literal constant expressions
+struct LitExpr { Expr; } ATTR_PACKED;
 struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
 struct IntLitNode   { LitExpr; u64 ival; }; // integer literal
 struct FloatLitNode { LitExpr; f64 fval; }; // floating-point literal
@@ -67,22 +63,22 @@ struct IdNode { Expr;
 };
 struct BinOpNode { Expr;
   Tok   op;
-  Node* left;
-  Node* right;
+  Expr* left;
+  Expr* right;
 };
 struct UnaryOpNode { Expr; // used for NPrefixOp, NPostfixOp, NReturn, NAssign
   Tok   op;
-  Node* expr;
+  Expr* expr;
 };;
 struct ArrayNode { Expr; // used for NTuple, NBlock, NArray
   NodeArray a;            // array of nodes
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
 };
 struct FunNode { Expr;
-  Node* nullable params;  // input params (NTuple or NULL if none)
-  Node* nullable result;  // output results (NTuple | NExpr)
+  Expr* nullable params;  // input params (NTuple or NULL if none)
+  Expr* nullable result;  // output results (NTuple | NExpr)
   Sym   nullable name;    // NULL for lambda
-  Node* nullable body;    // NULL for fun-declaration
+  Expr* nullable body;    // NULL for fun-declaration
 };
 struct MacroNode { Expr;
   Node* nullable params;  // input params (NTuple or NULL if none)
@@ -90,8 +86,8 @@ struct MacroNode { Expr;
   Node*          template;
 };
 struct CallNode { Expr;
-  Node* receiver;      // Fun or Id
-  Node* nullable args; // NULL if there are no args, else a NTuple
+  Expr* receiver;      // Fun or Id
+  Expr* nullable args; // NULL if there are no args, else a NTuple
 };
 struct TypeCastNode { Expr;
   Node* receiver;      // Type or Id
@@ -101,42 +97,42 @@ struct FieldNode { Expr;
   u32            nrefs; // reference count
   u32            index; // argument index or struct index
   Sym            name;
-  Node* nullable init;  // initial value (may be NULL)
+  Expr* nullable init;  // initial value (may be NULL)
 };
 struct VarNode { Expr;
-  bool           isconst; // immutable storage? (true for "const x" vars)
+  bool           isconst; // immutable storage? (true for "const x" vars) TODO: use NF_*
   u32            nrefs;   // reference count
   u32            index;   // argument index (used by function parameters)
   Sym            name;
-  Node* nullable init;    // initial/default value
+  Expr* nullable init;    // initial/default value
 };
 struct RefNode { Expr;
   Node* target;
 };
 struct NamedValNode { Expr;
   Sym   name;
-  Node* value;
+  Expr* value;
 };
 struct SelectorNode { Expr; // Selector = Expr "." ( Ident | Selector )
-  Node*    operand;
-  Sym      member;  // id
+  u32      indices_st[7]; // indices storage
   U32Array indices; // GEP index path
-  u32      indices_st[4]; // indices storage
+  Expr*    operand;
+  Sym      member;  // id
 };
 struct IndexNode { Expr; // Index = Expr "[" Expr "]"
-  Node* operand;
-  Node* indexexpr;
   u32   index; // 0xffffffff if indexexpr is not a compile-time constant
+  Expr* operand;
+  Expr* indexexpr;
 };
 struct SliceNode { Expr; // Slice = Expr "[" Expr? ":" Expr? "]"
-  Node*          operand;
-  Node* nullable start;
-  Node* nullable end;
+  Expr*          operand;
+  Expr* nullable start;
+  Expr* nullable end;
 };
 struct IfNode { Expr;
-  Node*          cond;
-  Node*          thenb;
-  Node* nullable elseb; // NULL or expr
+  Expr*          cond;
+  Expr*          thenb;
+  Expr* nullable elseb; // NULL or expr
 };
 
 // types
@@ -145,18 +141,18 @@ struct BasicTypeNode { Type;
   Sym      name;
 };
 struct ArrayTypeNode { Type;
-  Node* nullable sizeexpr; // NULL for inferred types
   u32            size;     // used for array. 0 until sizeexpr is resolved
-  Node*          subtype;
+  Node* nullable sizeexpr; // NULL for inferred types
+  Type*          subtype;
 };
 struct TupleTypeNode { Type;
-  NodeArray a;            // Node[]
-  Node*     a_storage[4]; // in-struct storage for the first few elements
+  TypeArray a;            // Node[]
+  Type*     a_storage[5]; // in-struct storage for the first few elements
 };
 struct StructTypeNode { Type;
   Sym nullable name;         // NULL for anonymous structs
-  NodeArray    a;            // NField[]
-  Node*        a_storage[3]; // in-struct storage for the first few fields
+  TypeArray    a;            // NField[]
+  Type*        a_storage[4]; // in-struct storage for the first few fields
 };
 struct FunTypeNode { Type;
   Node* nullable params; // NTuple of NVar or null if no params
@@ -174,7 +170,7 @@ enum NodeFlags {
   NF_Unused      = 1 << 6, // [Var] never referenced
   NF_Public      = 1 << 7, // [Var|Fun] public visibility (aka published, exported)
   NF_Named       = 1 << 8, // [Tuple when used as args] has named argument
-  TF_PartialType = 1 << 9, // Type resolver should visit even if the node is typed
+  NF_PartialType = 1 << 9, // Type resolver should visit even if the node is typed
   // Changing this? Remember to update NodeFlagsStr impl
 } END_TYPED_ENUM(NodeFlags)
 
@@ -187,61 +183,90 @@ enum NodeKind {
     NPkg         =  1, // struct PkgNode
     NFile        =  2, // struct FileNode
     NComment     =  3, // struct CommentNode
-    NLol         =  4, // struct LolNode
-  NStmt_END      =  4,
-  NExpr_BEG      =  5,
-    NLitExpr_BEG =  5,
-      NBoolLit   =  5, // struct BoolLitNode
-      NIntLit    =  6, // struct IntLitNode
-      NFloatLit  =  7, // struct FloatLitNode
-      NStrLit    =  8, // struct StrLitNode
-      NNil       =  9, // struct NilNode
-    NLitExpr_END =  9,
-    NId          = 10, // struct IdNode
-    NBinOp       = 11, // struct BinOpNode
-    NUnaryOp     = 12, // struct UnaryOpNode
-    NArray       = 13, // struct ArrayNode
-    NFun         = 14, // struct FunNode
-    NMacro       = 15, // struct MacroNode
-    NCall        = 16, // struct CallNode
-    NTypeCast    = 17, // struct TypeCastNode
-    NField       = 18, // struct FieldNode
-    NVar         = 19, // struct VarNode
-    NRef         = 20, // struct RefNode
-    NNamedVal    = 21, // struct NamedValNode
-    NSelector    = 22, // struct SelectorNode
-    NIndex       = 23, // struct IndexNode
-    NSlice       = 24, // struct SliceNode
-    NIf          = 25, // struct IfNode
-  NExpr_END      = 25,
-  NType_BEG      = 26,
-    NBasicType   = 26, // struct BasicTypeNode
-    NArrayType   = 27, // struct ArrayTypeNode
-    NTupleType   = 28, // struct TupleTypeNode
-    NStructType  = 29, // struct StructTypeNode
-    NFunType     = 30, // struct FunTypeNode
-  NType_END      = 30,
+  NStmt_END      =  3,
+  NExpr_BEG      =  4,
+    NLitExpr_BEG =  4,
+      NBoolLit   =  4, // struct BoolLitNode
+      NIntLit    =  5, // struct IntLitNode
+      NFloatLit  =  6, // struct FloatLitNode
+      NStrLit    =  7, // struct StrLitNode
+      NNil       =  8, // struct NilNode
+    NLitExpr_END =  8,
+    NId          =  9, // struct IdNode
+    NBinOp       = 10, // struct BinOpNode
+    NUnaryOp     = 11, // struct UnaryOpNode
+    NArray       = 12, // struct ArrayNode
+    NFun         = 13, // struct FunNode
+    NMacro       = 14, // struct MacroNode
+    NCall        = 15, // struct CallNode
+    NTypeCast    = 16, // struct TypeCastNode
+    NField       = 17, // struct FieldNode
+    NVar         = 18, // struct VarNode
+    NRef         = 19, // struct RefNode
+    NNamedVal    = 20, // struct NamedValNode
+    NSelector    = 21, // struct SelectorNode
+    NIndex       = 22, // struct IndexNode
+    NSlice       = 23, // struct SliceNode
+    NIf          = 24, // struct IfNode
+  NExpr_END      = 24,
+  NType_BEG      = 25,
+    NBasicType   = 25, // struct BasicTypeNode
+    NArrayType   = 26, // struct ArrayTypeNode
+    NTupleType   = 27, // struct TupleTypeNode
+    NStructType  = 28, // struct StructTypeNode
+    NFunType     = 29, // struct FunTypeNode
+  NType_END      = 29,
 } END_TYPED_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
 const char* NodeKindName(NodeKind);
 
+typedef struct BadNode BadNode;
+typedef struct PkgNode PkgNode;
+typedef struct FileNode FileNode;
+typedef struct CommentNode CommentNode;
+typedef struct BoolLitNode BoolLitNode;
+typedef struct IntLitNode IntLitNode;
+typedef struct FloatLitNode FloatLitNode;
+typedef struct StrLitNode StrLitNode;
+typedef struct NilNode NilNode;
+typedef struct IdNode IdNode;
+typedef struct BinOpNode BinOpNode;
+typedef struct UnaryOpNode UnaryOpNode;
+typedef struct ArrayNode ArrayNode;
+typedef struct FunNode FunNode;
+typedef struct MacroNode MacroNode;
+typedef struct CallNode CallNode;
+typedef struct TypeCastNode TypeCastNode;
+typedef struct FieldNode FieldNode;
+typedef struct VarNode VarNode;
+typedef struct RefNode RefNode;
+typedef struct NamedValNode NamedValNode;
+typedef struct SelectorNode SelectorNode;
+typedef struct IndexNode IndexNode;
+typedef struct SliceNode SliceNode;
+typedef struct IfNode IfNode;
+typedef struct BasicTypeNode BasicTypeNode;
+typedef struct ArrayTypeNode ArrayTypeNode;
+typedef struct TupleTypeNode TupleTypeNode;
+typedef struct StructTypeNode StructTypeNode;
+typedef struct FunTypeNode FunTypeNode;
+
 // bool NodeKindIs<kind>(NodeKind)
 #define NodeKindIsStmt(nkind) ((int)(nkind)-NStmt_BEG <= (int)NStmt_END-NStmt_BEG)
 #define NodeKindIsExpr(nkind) ((int)(nkind)-NExpr_BEG <= (int)NExpr_END-NExpr_BEG)
-#define NodeKindIsLitExpr(nkind) ((int)(nkind)-NLitExpr_BEG <= (int)NLitExpr_END-NLitExpr_BEG)
 #define NodeKindIsType(nkind) ((int)(nkind)-NType_BEG <= (int)NType_END-NType_BEG)
+#define NodeKindIsLitExpr(nkind) ((int)(nkind)-NLitExpr_BEG <= (int)NLitExpr_END-NLitExpr_BEG)
 
 // bool NodeIs<kind>(const Node*)
 #define NodeIsStmt(n) NodeKindIsStmt((n)->kind)
 #define NodeIsExpr(n) NodeKindIsExpr((n)->kind)
-#define NodeIsLitExpr(n) NodeKindIsLitExpr((n)->kind)
 #define NodeIsType(n) NodeKindIsType((n)->kind)
 #define NodeIsBad(n) ((n)->kind==NBad)
 #define NodeIsPkg(n) ((n)->kind==NPkg)
 #define NodeIsFile(n) ((n)->kind==NFile)
 #define NodeIsComment(n) ((n)->kind==NComment)
-#define NodeIsLol(n) ((n)->kind==NLol)
+#define NodeIsLitExpr(n) NodeKindIsLitExpr((n)->kind)
 #define NodeIsBoolLit(n) ((n)->kind==NBoolLit)
 #define NodeIsIntLit(n) ((n)->kind==NIntLit)
 #define NodeIsFloatLit(n) ((n)->kind==NFloatLit)
@@ -272,13 +297,12 @@ const char* NodeKindName(NodeKind);
 // void NodeAssert<kind>(const Node*)
 #define NodeAssertStmt(n) assertf(NodeKindIsStmt((n)->kind),"%d",(n)->kind)
 #define NodeAssertExpr(n) assertf(NodeKindIsExpr((n)->kind),"%d",(n)->kind)
-#define NodeAssertLitExpr(n) assertf(NodeKindIsLitExpr((n)->kind),"%d",(n)->kind)
 #define NodeAssertType(n) assertf(NodeKindIsType((n)->kind),"%d",(n)->kind)
 #define NodeAssertBad(n) assertf((n)->kind==NBad,"%d",(n)->kind)
 #define NodeAssertPkg(n) assertf((n)->kind==NPkg,"%d",(n)->kind)
 #define NodeAssertFile(n) assertf((n)->kind==NFile,"%d",(n)->kind)
 #define NodeAssertComment(n) assertf((n)->kind==NComment,"%d",(n)->kind)
-#define NodeAssertLol(n) assertf((n)->kind==NLol,"%d",(n)->kind)
+#define NodeAssertLitExpr(n) assertf(NodeKindIsLitExpr((n)->kind),"%d",(n)->kind)
 #define NodeAssertBoolLit(n) assertf((n)->kind==NBoolLit,"%d",(n)->kind)
 #define NodeAssertIntLit(n) assertf((n)->kind==NIntLit,"%d",(n)->kind)
 #define NodeAssertFloatLit(n) assertf((n)->kind==NFloatLit,"%d",(n)->kind)
@@ -309,13 +333,12 @@ const char* NodeKindName(NodeKind);
 // <type>* as_<type>(Node* n)
 #define as_Stmt(n) ({ NodeAssertStmt(n); (Stmt*)(n); })
 #define as_Expr(n) ({ NodeAssertExpr(n); (Expr*)(n); })
-#define as_LitExpr(n) ({ NodeAssertLitExpr(n); (LitExpr*)(n); })
 #define as_Type(n) ({ NodeAssertType(n); (Type*)(n); })
 #define as_BadNode(n) ({ NodeAssertBad(n); (BadNode*)(n); })
 #define as_PkgNode(n) ({ NodeAssertPkg(n); (PkgNode*)(n); })
 #define as_FileNode(n) ({ NodeAssertFile(n); (FileNode*)(n); })
 #define as_CommentNode(n) ({ NodeAssertComment(n); (CommentNode*)(n); })
-#define as_LolNode(n) ({ NodeAssertLol(n); (LolNode*)(n); })
+#define as_LitExpr(n) ({ NodeAssertLitExpr(n); (LitExpr*)(n); })
 #define as_BoolLitNode(n) ({ NodeAssertBoolLit(n); (BoolLitNode*)(n); })
 #define as_IntLitNode(n) ({ NodeAssertIntLit(n); (IntLitNode*)(n); })
 #define as_FloatLitNode(n) ({ NodeAssertFloatLit(n); (FloatLitNode*)(n); })
@@ -343,6 +366,19 @@ const char* NodeKindName(NodeKind);
 #define as_StructTypeNode(n) ({ NodeAssertStructType(n); (StructTypeNode*)(n); })
 #define as_FunTypeNode(n) ({ NodeAssertFunType(n); (FunTypeNode*)(n); })
 
+union NodeUnion {
+  BadNode _0; PkgNode _1; FileNode _2; CommentNode _3; BoolLitNode _4;
+  IntLitNode _5; FloatLitNode _6; StrLitNode _7; NilNode _8; IdNode _9;
+  BinOpNode _10; UnaryOpNode _11; ArrayNode _12; FunNode _13; MacroNode _14;
+  CallNode _15; TypeCastNode _16; FieldNode _17; VarNode _18; RefNode _19;
+  NamedValNode _20; SelectorNode _21; IndexNode _22; SliceNode _23; IfNode _24;
+  BasicTypeNode _25; ArrayTypeNode _26; TupleTypeNode _27; StructTypeNode _28;
+  FunTypeNode _29;
+};
+
 //END GENERATED CODE
+
+// keep the size of nodes in check. Update this if needed.
+static_assert(sizeof(union NodeUnion) == 96, "AST size changed");
 
 ASSUME_NONNULL_END
