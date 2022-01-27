@@ -48,6 +48,10 @@ struct CommentNode { Stmt;
   u32       len;
   const u8* ptr;
 };
+struct LolNode { Stmt;
+  u32       len;
+  const u8* ptr;
+};
 
 // expressions (literal constants)
 struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
@@ -183,39 +187,40 @@ enum NodeKind {
     NPkg         =  1, // struct PkgNode
     NFile        =  2, // struct FileNode
     NComment     =  3, // struct CommentNode
-  NStmt_END      =  3,
-  NExpr_BEG      =  4,
-    NLitExpr_BEG =  4,
-      NBoolLit   =  4, // struct BoolLitNode
-      NIntLit    =  5, // struct IntLitNode
-      NFloatLit  =  6, // struct FloatLitNode
-      NStrLit    =  7, // struct StrLitNode
-      NNil       =  8, // struct NilNode
-    NLitExpr_END =  8,
-    NId          =  9, // struct IdNode
-    NBinOp       = 10, // struct BinOpNode
-    NUnaryOp     = 11, // struct UnaryOpNode
-    NArray       = 12, // struct ArrayNode
-    NFun         = 13, // struct FunNode
-    NMacro       = 14, // struct MacroNode
-    NCall        = 15, // struct CallNode
-    NTypeCast    = 16, // struct TypeCastNode
-    NField       = 17, // struct FieldNode
-    NVar         = 18, // struct VarNode
-    NRef         = 19, // struct RefNode
-    NNamedVal    = 20, // struct NamedValNode
-    NSelector    = 21, // struct SelectorNode
-    NIndex       = 22, // struct IndexNode
-    NSlice       = 23, // struct SliceNode
-    NIf          = 24, // struct IfNode
-  NExpr_END      = 24,
-  NType_BEG      = 25,
-    NBasicType   = 25, // struct BasicTypeNode
-    NArrayType   = 26, // struct ArrayTypeNode
-    NTupleType   = 27, // struct TupleTypeNode
-    NStructType  = 28, // struct StructTypeNode
-    NFunType     = 29, // struct FunTypeNode
-  NType_END      = 29,
+    NLol         =  4, // struct LolNode
+  NStmt_END      =  4,
+  NExpr_BEG      =  5,
+    NLitExpr_BEG =  5,
+      NBoolLit   =  5, // struct BoolLitNode
+      NIntLit    =  6, // struct IntLitNode
+      NFloatLit  =  7, // struct FloatLitNode
+      NStrLit    =  8, // struct StrLitNode
+      NNil       =  9, // struct NilNode
+    NLitExpr_END =  9,
+    NId          = 10, // struct IdNode
+    NBinOp       = 11, // struct BinOpNode
+    NUnaryOp     = 12, // struct UnaryOpNode
+    NArray       = 13, // struct ArrayNode
+    NFun         = 14, // struct FunNode
+    NMacro       = 15, // struct MacroNode
+    NCall        = 16, // struct CallNode
+    NTypeCast    = 17, // struct TypeCastNode
+    NField       = 18, // struct FieldNode
+    NVar         = 19, // struct VarNode
+    NRef         = 20, // struct RefNode
+    NNamedVal    = 21, // struct NamedValNode
+    NSelector    = 22, // struct SelectorNode
+    NIndex       = 23, // struct IndexNode
+    NSlice       = 24, // struct SliceNode
+    NIf          = 25, // struct IfNode
+  NExpr_END      = 25,
+  NType_BEG      = 26,
+    NBasicType   = 26, // struct BasicTypeNode
+    NArrayType   = 27, // struct ArrayTypeNode
+    NTupleType   = 28, // struct TupleTypeNode
+    NStructType  = 29, // struct StructTypeNode
+    NFunType     = 30, // struct FunTypeNode
+  NType_END      = 30,
 } END_TYPED_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -236,6 +241,7 @@ const char* NodeKindName(NodeKind);
 #define NodeIsPkg(n) ((n)->kind==NPkg)
 #define NodeIsFile(n) ((n)->kind==NFile)
 #define NodeIsComment(n) ((n)->kind==NComment)
+#define NodeIsLol(n) ((n)->kind==NLol)
 #define NodeIsBoolLit(n) ((n)->kind==NBoolLit)
 #define NodeIsIntLit(n) ((n)->kind==NIntLit)
 #define NodeIsFloatLit(n) ((n)->kind==NFloatLit)
@@ -272,6 +278,7 @@ const char* NodeKindName(NodeKind);
 #define NodeAssertPkg(n) assertf((n)->kind==NPkg,"%d",(n)->kind)
 #define NodeAssertFile(n) assertf((n)->kind==NFile,"%d",(n)->kind)
 #define NodeAssertComment(n) assertf((n)->kind==NComment,"%d",(n)->kind)
+#define NodeAssertLol(n) assertf((n)->kind==NLol,"%d",(n)->kind)
 #define NodeAssertBoolLit(n) assertf((n)->kind==NBoolLit,"%d",(n)->kind)
 #define NodeAssertIntLit(n) assertf((n)->kind==NIntLit,"%d",(n)->kind)
 #define NodeAssertFloatLit(n) assertf((n)->kind==NFloatLit,"%d",(n)->kind)
@@ -308,6 +315,7 @@ const char* NodeKindName(NodeKind);
 #define as_PkgNode(n) ({ NodeAssertPkg(n); (PkgNode*)(n); })
 #define as_FileNode(n) ({ NodeAssertFile(n); (FileNode*)(n); })
 #define as_CommentNode(n) ({ NodeAssertComment(n); (CommentNode*)(n); })
+#define as_LolNode(n) ({ NodeAssertLol(n); (LolNode*)(n); })
 #define as_BoolLitNode(n) ({ NodeAssertBoolLit(n); (BoolLitNode*)(n); })
 #define as_IntLitNode(n) ({ NodeAssertIntLit(n); (IntLitNode*)(n); })
 #define as_FloatLitNode(n) ({ NodeAssertFloatLit(n); (FloatLitNode*)(n); })

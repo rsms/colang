@@ -92,7 +92,9 @@ fi
 #   ;;
 # esac
 
-# Note: -fms-extensions -Wno-microsoft enables C11 composable structs in clang & GCC
+# Note: -fms-extensions enables composable structs in clang & GCC
+# See https://gcc.gnu.org/onlinedocs/gcc-11.2.0/gcc/Unnamed-Fields.html
+# TODO: test with gcc; may require -fplan9-extensions
 
 cat << _END > build.ninja
 ninja_required_version = 1.3
