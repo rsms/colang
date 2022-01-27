@@ -39,9 +39,6 @@ int main(int argc, const char** argv) {
     DEF_MEM_STACK_BUF_ALLOCATOR(mem, memv);
   #endif
 
-  Type t = {0};
-  t.irval = NULL;
-
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
   // separately allocated data.
 
