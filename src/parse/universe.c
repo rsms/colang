@@ -1,4 +1,6 @@
-#include "parse.h"
+#include "../coimpl.h"
+#include "universe.h"
+
 #include "universe_data.h"
 
 static struct {
@@ -10,21 +12,22 @@ static SymPool g_universe_syms = {0};
 
 
 static void universe_init_scope() {
-  assert(g_scope.s.bindings.buckets == NULL);
-
   SymMapInit(
     &g_scope.s.bindings,
     g_scope.bindings_storage,
     countof(g_scope.bindings_storage),
     mem_nil_allocator());
 
-  // #define X(name, ...) SymMapSet(&s->bindings, sym_##name, (void**)&Type_##name);
-  // TYPE_SYMS(X)
-  // #undef X
-
-  // #define X(name, _typ, _val) SymMapSet(&s->bindings, sym_##name, (void**)&Const_##name);
-  // PREDEFINED_CONSTANTS(X)
-  // #undef X
+  #ifndef RUN_GENERATOR
+  #define _(name, ...) SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kType_##name);
+  DEF_TYPE_CODES_BASIC_PUB(_)
+  DEF_TYPE_CODES_BASIC(_)
+  DEF_TYPE_CODES_PUB(_)
+  #undef _
+  #define _(name, ...) SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kExpr_##name);
+  DEF_CONST_NODES_PUB(_)
+  #undef _
+  #endif
 }
 
 void universe_init() {

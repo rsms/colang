@@ -1,5 +1,10 @@
 // co runtime types
+#pragma once
 ASSUME_NONNULL_BEGIN
+
+typedef u8  TypeCode;  // TC_* constants
+typedef u16 TypeFlags; // TF_* constants (enum TypeFlags)
+typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 
 // TypeCode identifies all types.
 //
@@ -107,5 +112,19 @@ enum TypeFlags {
 } END_TYPED_ENUM(TypeFlags)
 
 const char* TypeKindName(TypeKind); // e.g. "integer"
+
+// TF_Kind returns the TF_Kind* value of a TypeFlags
+inline static TypeKind TF_Kind(TypeFlags tf) { return tf & ((1 << TF_Kind_NBIT) - 1); }
+
+// TF_Size returns the storage size in bytes for a TypeFlags
+inline static u8 TF_Size(TypeFlags tf) { return (tf & TF_Size_MASK) >> TF_Size_BITOFFS; }
+
+// TF_IsSigned returns true if TF_Signed is set for tf
+inline static bool TF_IsSigned(TypeFlags tf) { return (tf & TF_Signed) != 0; }
+
+// TypeCodeEncoding
+// Lookup table TypeCode => string encoding char
+extern const char _TypeCodeEncodingMap[TC_END];
+ALWAYS_INLINE static char TypeCodeEncoding(TypeCode t) { return _TypeCodeEncodingMap[t]; }
 
 ASSUME_NONNULL_END

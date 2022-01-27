@@ -1,3 +1,9 @@
+// language syntax tokens
+#pragma once
+ASSUME_NONNULL_BEGIN
+
+typedef u16 Tok;
+
 // Tok definitions
 #define DEF_TOKENS(_)   \
   _( TNone  , "TNone" ) \
@@ -82,7 +88,6 @@
 // end DEF_TOKENS_KEYWORD
 // Limited to a total of 31 keywords. See parse_scan.c
 
-
 enum Tok {
   #define I_ENUM(name, _str) name,
 
@@ -101,3 +106,17 @@ enum Tok {
 // We only have 5 bits to encode tokens in Sym. Additionally, the value 0 is reserved
 // for "not a keyword", leaving the max number of values at 31 (i.e. 2^5=32-1).
 static_assert(TKeywordsEnd - TKeywordsStart < 32, "too many keywords");
+
+
+// tokname returns a printable name for a token (second part in TOKENS definition)
+const char* tokname(Tok);
+
+// langtok returns the Tok representing this sym in the language syntax.
+// Either returns a keyword token or TId if sym is not a keyword.
+inline static Tok langtok(Sym s) {
+  // Bits [4-8) represents offset into Tok enum when s is a language keyword.
+  u8 kwindex = symflags(s);
+  return kwindex == 0 ? TId : TKeywordsStart + kwindex;
+}
+
+ASSUME_NONNULL_END

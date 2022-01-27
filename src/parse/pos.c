@@ -1,5 +1,6 @@
-#include "parse.h"
+#include "../coimpl.h"
 #include "../tstyle.h"
+#include "pos.h"
 
 void posmap_init(PosMap* pm, Mem mem) {
   PtrArrayInitStorage(&pm->a, pm->a_storage, countof(pm->a_storage));

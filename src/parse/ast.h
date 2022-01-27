@@ -1,11 +1,18 @@
 // AST nodes
+#pragma once
+#include "../array.h"
+#include "../sym.h"
+#include "token.h"
+#include "type.h"
+#include "pos.h"
 ASSUME_NONNULL_BEGIN
 
 typedef struct Node    Node;      // AST node, basis for Stmt, Expr and Type
 typedef struct Stmt    Stmt;      // AST statement
 typedef struct Expr    Expr;      // AST expression
-typedef struct LitExpr LitExpr; // AST constant literal expression
+typedef struct LitExpr LitExpr;   // AST constant literal expression
 typedef struct Type    Type;      // AST type
+typedef struct Scope   Scope;     // lexical namespace (may be chained)
 typedef u8             NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16            NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
@@ -20,16 +27,8 @@ struct Node {
   NodeKind       kind;   // kind of node (e.g. NId)
 } ATTR_PACKED;
 
-struct Stmt { Node; } ATTR_PACKED;
-struct Expr { Node;
-  Type* nullable type; // value type. NULL if unknown.
-} ATTR_PACKED;
-struct Type { Node ;
-  TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
-  Sym nullable tid;    // initially NULL for user-defined types, computed as needed
-} ATTR_PACKED;
-
 // statements
+struct Stmt { Node; } ATTR_PACKED;
 struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
 struct PkgNode { Stmt;
   const Str       name;         // reference to str in corresponding Pkg struct
@@ -48,6 +47,11 @@ struct CommentNode { Stmt;
   const u8* ptr;
 };
 
+// expressions
+struct Expr { Node;
+  Type* nullable type; // value type. NULL if unknown.
+} ATTR_PACKED;
+
 // literal constant expressions
 struct LitExpr { Expr; } ATTR_PACKED;
 struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
@@ -56,7 +60,6 @@ struct FloatLitNode { LitExpr; f64 fval; }; // floating-point literal
 struct StrLitNode   { LitExpr; Str sval; }; // string literal
 struct NilNode      { LitExpr; };           // the nil atom
 
-// expressions
 struct IdNode { Expr;
   Sym   name;
   Node* target;
@@ -136,6 +139,10 @@ struct IfNode { Expr;
 };
 
 // types
+struct Type { Node ;
+  TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
+  Sym nullable tid;    // initially NULL for user-defined types, computed as needed
+} ATTR_PACKED;
 struct BasicTypeNode { Type;
   TypeCode typeCode;
   Sym      name;
@@ -157,6 +164,12 @@ struct StructTypeNode { Type;
 struct FunTypeNode { Type;
   Node* nullable params; // NTuple of NVar or null if no params
   Type* nullable result; // NTupleType of types or single type
+};
+
+
+struct Scope {
+  const Scope* parent;
+  SymMap       bindings; // must be last member
 };
 
 
@@ -255,17 +268,16 @@ typedef struct FunTypeNode FunTypeNode;
 // bool NodeKindIs<kind>(NodeKind)
 #define NodeKindIsStmt(nkind) ((int)(nkind)-NStmt_BEG <= (int)NStmt_END-NStmt_BEG)
 #define NodeKindIsExpr(nkind) ((int)(nkind)-NExpr_BEG <= (int)NExpr_END-NExpr_BEG)
-#define NodeKindIsType(nkind) ((int)(nkind)-NType_BEG <= (int)NType_END-NType_BEG)
 #define NodeKindIsLitExpr(nkind) ((int)(nkind)-NLitExpr_BEG <= (int)NLitExpr_END-NLitExpr_BEG)
+#define NodeKindIsType(nkind) ((int)(nkind)-NType_BEG <= (int)NType_END-NType_BEG)
 
 // bool NodeIs<kind>(const Node*)
 #define NodeIsStmt(n) NodeKindIsStmt((n)->kind)
-#define NodeIsExpr(n) NodeKindIsExpr((n)->kind)
-#define NodeIsType(n) NodeKindIsType((n)->kind)
 #define NodeIsBad(n) ((n)->kind==NBad)
 #define NodeIsPkg(n) ((n)->kind==NPkg)
 #define NodeIsFile(n) ((n)->kind==NFile)
 #define NodeIsComment(n) ((n)->kind==NComment)
+#define NodeIsExpr(n) NodeKindIsExpr((n)->kind)
 #define NodeIsLitExpr(n) NodeKindIsLitExpr((n)->kind)
 #define NodeIsBoolLit(n) ((n)->kind==NBoolLit)
 #define NodeIsIntLit(n) ((n)->kind==NIntLit)
@@ -288,6 +300,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define NodeIsIndex(n) ((n)->kind==NIndex)
 #define NodeIsSlice(n) ((n)->kind==NSlice)
 #define NodeIsIf(n) ((n)->kind==NIf)
+#define NodeIsType(n) NodeKindIsType((n)->kind)
 #define NodeIsBasicType(n) ((n)->kind==NBasicType)
 #define NodeIsArrayType(n) ((n)->kind==NArrayType)
 #define NodeIsTupleType(n) ((n)->kind==NTupleType)
@@ -296,12 +309,11 @@ typedef struct FunTypeNode FunTypeNode;
 
 // void NodeAssert<kind>(const Node*)
 #define NodeAssertStmt(n) assertf(NodeKindIsStmt((n)->kind),"%d",(n)->kind)
-#define NodeAssertExpr(n) assertf(NodeKindIsExpr((n)->kind),"%d",(n)->kind)
-#define NodeAssertType(n) assertf(NodeKindIsType((n)->kind),"%d",(n)->kind)
 #define NodeAssertBad(n) assertf((n)->kind==NBad,"%d",(n)->kind)
 #define NodeAssertPkg(n) assertf((n)->kind==NPkg,"%d",(n)->kind)
 #define NodeAssertFile(n) assertf((n)->kind==NFile,"%d",(n)->kind)
 #define NodeAssertComment(n) assertf((n)->kind==NComment,"%d",(n)->kind)
+#define NodeAssertExpr(n) assertf(NodeKindIsExpr((n)->kind),"%d",(n)->kind)
 #define NodeAssertLitExpr(n) assertf(NodeKindIsLitExpr((n)->kind),"%d",(n)->kind)
 #define NodeAssertBoolLit(n) assertf((n)->kind==NBoolLit,"%d",(n)->kind)
 #define NodeAssertIntLit(n) assertf((n)->kind==NIntLit,"%d",(n)->kind)
@@ -324,6 +336,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define NodeAssertIndex(n) assertf((n)->kind==NIndex,"%d",(n)->kind)
 #define NodeAssertSlice(n) assertf((n)->kind==NSlice,"%d",(n)->kind)
 #define NodeAssertIf(n) assertf((n)->kind==NIf,"%d",(n)->kind)
+#define NodeAssertType(n) assertf(NodeKindIsType((n)->kind),"%d",(n)->kind)
 #define NodeAssertBasicType(n) assertf((n)->kind==NBasicType,"%d",(n)->kind)
 #define NodeAssertArrayType(n) assertf((n)->kind==NArrayType,"%d",(n)->kind)
 #define NodeAssertTupleType(n) assertf((n)->kind==NTupleType,"%d",(n)->kind)
@@ -332,12 +345,11 @@ typedef struct FunTypeNode FunTypeNode;
 
 // <type>* as_<type>(Node* n)
 #define as_Stmt(n) ({ NodeAssertStmt(n); (Stmt*)(n); })
-#define as_Expr(n) ({ NodeAssertExpr(n); (Expr*)(n); })
-#define as_Type(n) ({ NodeAssertType(n); (Type*)(n); })
 #define as_BadNode(n) ({ NodeAssertBad(n); (BadNode*)(n); })
 #define as_PkgNode(n) ({ NodeAssertPkg(n); (PkgNode*)(n); })
 #define as_FileNode(n) ({ NodeAssertFile(n); (FileNode*)(n); })
 #define as_CommentNode(n) ({ NodeAssertComment(n); (CommentNode*)(n); })
+#define as_Expr(n) ({ NodeAssertExpr(n); (Expr*)(n); })
 #define as_LitExpr(n) ({ NodeAssertLitExpr(n); (LitExpr*)(n); })
 #define as_BoolLitNode(n) ({ NodeAssertBoolLit(n); (BoolLitNode*)(n); })
 #define as_IntLitNode(n) ({ NodeAssertIntLit(n); (IntLitNode*)(n); })
@@ -360,6 +372,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define as_IndexNode(n) ({ NodeAssertIndex(n); (IndexNode*)(n); })
 #define as_SliceNode(n) ({ NodeAssertSlice(n); (SliceNode*)(n); })
 #define as_IfNode(n) ({ NodeAssertIf(n); (IfNode*)(n); })
+#define as_Type(n) ({ NodeAssertType(n); (Type*)(n); })
 #define as_BasicTypeNode(n) ({ NodeAssertBasicType(n); (BasicTypeNode*)(n); })
 #define as_ArrayTypeNode(n) ({ NodeAssertArrayType(n); (ArrayTypeNode*)(n); })
 #define as_TupleTypeNode(n) ({ NodeAssertTupleType(n); (TupleTypeNode*)(n); })
@@ -380,5 +393,12 @@ union NodeUnion {
 
 // keep the size of nodes in check. Update this if needed.
 static_assert(sizeof(union NodeUnion) == 96, "AST size changed");
+
+Scope* nullable scope_new(Mem mem, const Scope* nullable parent);
+void scope_free(Scope*, Mem mem);
+const Node* nullable scope_lookup(const Scope*, Sym);
+inline static error scope_assoc(Scope* s, Sym key, const Node** valuep_inout) {
+  return SymMapSet(&s->bindings, key, (void**)valuep_inout);
+}
 
 ASSUME_NONNULL_END
