@@ -78,11 +78,12 @@ struct Scanner {
 
 // Parser holds state used during parsing
 struct Parser {
-  Scanner   s;        // parser is based on a scanner
-  BuildCtx* build;    // build context
-  Scope*    pkgscope; // package-level scope
-  Node*     expr;     // most recently parsed expression
-  u32       fnest;    // function nesting level
+  Scanner; // parser is based on a scanner
+
+  Scope* pkgscope; // package-level scope
+  Node*  expr;     // most recently parsed expression
+  u32    fnest;    // function nesting level
+  error  err;      // !0 if a fatal error occurred (e.g. memory allocation failed)
 
   // set when parsing named type e.g. "type Foo ..."
   Sym nullable typename;
@@ -115,33 +116,34 @@ struct Parser {
 };
 
 
-// scan_init initializes a scanner. Returns false if SourceOpenBody fails.
-error scan_init(Scanner*, BuildCtx*, Source*, ParseFlags);
+// ScannerInit initializes a scanner. Returns false if SourceOpenBody fails.
+error ScannerInit(Scanner*, BuildCtx*, Source*, ParseFlags) WARN_UNUSED_RESULT;
 
-// scan_dispose frees internal memory of s.
-// Caller is responsible for calling SourceCloseBody as scan_init calls SourceOpenBody.
-void scan_dispose(Scanner*);
+// ScannerDispose frees internal memory of s.
+// Caller is responsible for calling SourceCloseBody as ScannerInit calls SourceOpenBody.
+void ScannerDispose(Scanner*);
 
-// scan_next scans the next token
-Tok scan_next(Scanner*);
+// ScannerNext scans the next token
+Tok ScannerNext(Scanner*);
 
-// scan_pos returns the source position of s->tok (current token)
-Pos scan_pos(const Scanner* s);
+// ScannerPos returns the source position of s->tok (current token)
+Pos ScannerPos(const Scanner* s);
 
-// scan_tokstr returns a token's string value and length, which is a pointer
+// ScannerTokStr returns a token's string value and length, which is a pointer
 // into the source's body.
-inline static const u8* scan_tokstr(const Scanner* s, usize* len_out) {
+inline static const u8* ScannerTokStr(const Scanner* s, usize* len_out) {
   *len_out = (usize)(s->tokend - s->tokstart);
   return s->tokstart;
 }
 
-// scan_comment_pop removes and returns the least recently scanned comment.
+// ScannerCommentPop removes and returns the least recently scanned comment.
 // The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
-Comment* nullable scan_comment_pop(Scanner* s);
+Comment* nullable ScannerCommentPop(Scanner* s);
 
 // parse a translation unit and return AST or NULL on error (reported to diagh)
 // Expects p to be zero-initialized on first call. Can reuse p after return.
-Node* nullable parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope);
+error parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, Node** result)
+  WARN_UNUSED_RESULT;
 
 
 ASSUME_NONNULL_END

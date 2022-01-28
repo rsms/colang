@@ -1,7 +1,40 @@
 #include "parse.h"
 
 
-Scope* scope_new(Mem mem, const Scope* parent) {
+Node* NodeInit(Node* n, NodeKind kind) {
+  n->kind = kind;
+  switch (kind) {
+    case NPkg:
+    case NFile: {
+      auto N = as_CUnitNode(n);
+      NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      break;
+    }
+    case NBlock:
+    case NArray:
+    case NTuple: {
+      auto N = as_ListExpr(n);
+      NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      break;
+    }
+    case NTupleType: {
+      auto N = as_TupleTypeNode(n);
+      TypeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      break;
+    }
+    case NStructType: {
+      auto N = as_StructTypeNode(n);
+      NodeArrayInitStorage(&N->fields, N->fields_storage, countof(N->fields_storage));
+      break;
+    }
+    default:
+      break;
+  }
+  return n;
+}
+
+
+Scope* ScopeNew(Mem mem, const Scope* parent) {
   Scope* s = memalloct(mem, Scope);
   if (!s)
     return NULL;
@@ -10,12 +43,12 @@ Scope* scope_new(Mem mem, const Scope* parent) {
   return s;
 }
 
-void scope_free(Scope* s, Mem mem) {
+void ScopeFree(Scope* s, Mem mem) {
   SymMapDispose(&s->bindings);
   memfree(mem, s);
 }
 
-const Node* scope_lookup(const Scope* scope, Sym s) {
+const Node* ScopeLookup(const Scope* scope, Sym s) {
   const Node* n = NULL;
   while (scope && n == NULL) {
     //dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
@@ -37,13 +70,14 @@ const Node* scope_lookup(const Scope* scope, Sym s) {
 
 const char* NodeKindName(NodeKind k) {
   // kNodeNameTable[NodeKind] => const char* name
-  static const char* const kNodeNameTable[30] = {
+  static const char* const kNodeNameTable[32] = {
     "Bad", "Pkg", "File", "Comment", "BoolLit", "IntLit", "FloatLit", "StrLit",
-    "Nil", "Id", "BinOp", "UnaryOp", "Array", "Fun", "Macro", "Call",
-    "TypeCast", "Field", "Var", "Ref", "NamedVal", "Selector", "Index", "Slice",
-    "If", "BasicType", "ArrayType", "TupleType", "StructType", "FunType",
+    "Nil", "Id", "BinOp", "UnaryOp", "Tuple", "Array", "Block", "Fun", "Macro",
+    "Call", "TypeCast", "Field", "Var", "Ref", "NamedVal", "Selector", "Index",
+    "Slice", "If", "BasicType", "ArrayType", "TupleType", "StructType",
+    "FunType",
   };
-  return k < 30 ? kNodeNameTable[k] : "?";
+  return k < 32 ? kNodeNameTable[k] : "?";
 }
 
 //END GENERATED CODE

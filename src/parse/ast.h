@@ -30,18 +30,14 @@ struct Node {
 // statements
 struct Stmt { Node; } ATTR_PACKED;
 struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
-struct PkgNode { Stmt;
-  const Str       name;         // reference to str in corresponding Pkg struct
+struct CUnitNode { Stmt;
+  const Str       name;         // reference to str in corresponding Pkg or Source struct
   Scope* nullable scope;
   NodeArray       a;            // array of nodes
   Node*           a_storage[4]; // in-struct storage for the first few entries of a
 };
-struct FileNode { Stmt;
-  const Str       name;         // reference to str in corresponding Source struct
-  Scope* nullable scope;
-  NodeArray       a;            // array of nodes
-  Node*           a_storage[4]; // in-struct storage for the first few entries of a
-};
+struct PkgNode { struct CUnitNode; };
+struct FileNode { struct CUnitNode; };
 struct CommentNode { Stmt;
   u32       len;
   const u8* ptr;
@@ -72,11 +68,14 @@ struct BinOpNode { Expr;
 struct UnaryOpNode { Expr; // used for NPrefixOp, NPostfixOp, NReturn, NAssign
   Tok   op;
   Expr* expr;
-};;
-struct ArrayNode { Expr; // used for NTuple, NBlock, NArray
+};
+struct ListExpr { Expr;
   NodeArray a;            // array of nodes
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
 };
+struct TupleNode { struct ListExpr; };
+struct ArrayNode { struct ListExpr; };
+struct BlockNode { struct ListExpr; };
 struct FunNode { Expr;
   Expr* nullable params;  // input params (NTuple or NULL if none)
   Expr* nullable result;  // output results (NTuple | NExpr)
@@ -107,7 +106,7 @@ struct VarNode { Expr;
   u32            nrefs;   // reference count
   u32            index;   // argument index (used by function parameters)
   Sym            name;
-  Expr* nullable init;    // initial/default value
+  Node* nullable init;    // initial/default value (Type or Expr)
 };
 struct RefNode { Expr;
   Node* target;
@@ -153,13 +152,13 @@ struct ArrayTypeNode { Type;
   Type*          subtype;
 };
 struct TupleTypeNode { Type;
-  TypeArray a;            // Node[]
+  TypeArray a;            // Type[]
   Type*     a_storage[5]; // in-struct storage for the first few elements
 };
 struct StructTypeNode { Type;
   Sym nullable name;         // NULL for anonymous structs
-  TypeArray    a;            // NField[]
-  Type*        a_storage[4]; // in-struct storage for the first few fields
+  NodeArray    fields;            // FieldNode[]
+  Node*        fields_storage[4]; // in-struct storage for the first few fields
 };
 struct FunTypeNode { Type;
   Node* nullable params; // NTuple of NVar or null if no params
@@ -174,61 +173,133 @@ struct Scope {
 
 
 enum NodeFlags {
-  NF_Unresolved  = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
-  NF_Const       = 1 << 1, // constant; value known at compile time (comptime)
-  NF_Base        = 1 << 2, // [struct field] the field is a base of the struct
-  NF_RValue      = 1 << 3, // resolved as rvalue
-  NF_Param       = 1 << 4, // [Var] function parameter
-  NF_MacroParam  = 1 << 5, // [Var] macro parameter
-  NF_Unused      = 1 << 6, // [Var] never referenced
-  NF_Public      = 1 << 7, // [Var|Fun] public visibility (aka published, exported)
-  NF_Named       = 1 << 8, // [Tuple when used as args] has named argument
-  NF_PartialType = 1 << 9, // Type resolver should visit even if the node is typed
+  NF_Unresolved  = 1 <<  0, // contains unresolved references. MUST BE VALUE 1!
+  NF_Const       = 1 <<  1, // constant; value known at compile time (comptime)
+  NF_Base        = 1 <<  2, // [struct field] the field is a base of the struct
+  NF_RValue      = 1 <<  3, // resolved as rvalue
+  NF_Param       = 1 <<  4, // [Var] function parameter
+  NF_MacroParam  = 1 <<  5, // [Var] macro parameter
+  NF_Unused      = 1 <<  6, // [Var] never referenced
+  NF_Public      = 1 <<  7, // [Var|Fun] public visibility (aka published, exported)
+  NF_Named       = 1 <<  8, // [Tuple when used as args] has named argument
+  NF_PartialType = 1 <<  9, // Type resolver should visit even if the node is typed
+  NF_CustomInit  = 1 << 10, // struct has fields w/ non-zero initializer
   // Changing this? Remember to update NodeFlagsStr impl
 } END_TYPED_ENUM(NodeFlags)
+
+// Node{Is,Set,Clear}Unresolved controls the "unresolved" flag of a node
+inline static bool NodeIsUnresolved(const Node* n) { return (n->flags & NF_Unresolved) != 0; }
+inline static void NodeSetUnresolved(Node* n) { n->flags |= NF_Unresolved; }
+inline static void NodeClearUnresolved(Node* n) { n->flags &= ~NF_Unresolved; }
+inline static void NodeTransferUnresolved(Node* parent, Node* child) {
+  parent->flags |= child->flags & NF_Unresolved;
+}
+
+// Node{Is,Set,Clear}Const controls the "constant value" flag of a node
+inline static bool NodeIsConst(const Node* n) { return (n->flags & NF_Const) != 0; }
+inline static void NodeSetConst(Node* n) { n->flags |= NF_Const; }
+inline static void NodeClearConst(Node* n) { n->flags &= ~NF_Const; }
+inline static void NodeTransferConst(Node* parent, Node* child) {
+  // parent is mutable if n OR child is NOT const, else parent is marked const.
+  parent->flags |= child->flags & NF_Const;
+}
+inline static void NodeTransferMut(Node* parent, Node* child) {
+  // parent is const if n AND child is const, else parent is marked mutable.
+  parent->flags = (parent->flags & ~NF_Const) | (
+    (parent->flags & NF_Const) &
+    (child->flags & NF_Const)
+  );
+}
+inline static void NodeTransferMut2(Node* parent, Node* child1, Node* child2) {
+  // parent is const if n AND child1 AND child2 is const, else parent is marked mutable.
+  parent->flags = (parent->flags & ~NF_Const) | (
+    (parent->flags & NF_Const) &
+    (child1->flags & NF_Const) &
+    (child2->flags & NF_Const)
+  );
+}
+
+// Node{Is,Set,Clear}Param controls the "is function parameter" flag of a node
+inline static bool NodeIsParam(const Node* n) { return (n->flags & NF_Param) != 0; }
+inline static void NodeSetParam(Node* n) { n->flags |= NF_Param; }
+inline static void NodeClearParam(Node* n) { n->flags &= ~NF_Param; }
+
+// Node{Is,Set,Clear}MacroParam controls the "is function parameter" flag of a node
+inline static bool NodeIsMacroParam(const Node* n) { return (n->flags & NF_MacroParam) != 0; }
+inline static void NodeSetMacroParam(Node* n) { n->flags |= NF_MacroParam; }
+inline static void NodeClearMacroParam(Node* n) { n->flags &= ~NF_MacroParam; }
+
+// Node{Is,Set,Clear}Unused controls the "is unused" flag of a node
+inline static bool NodeIsUnused(const Node* n) { return (n->flags & NF_Unused) != 0; }
+inline static void NodeSetUnused(Node* n) { n->flags |= NF_Unused; }
+inline static void NodeClearUnused(Node* n) { n->flags &= ~NF_Unused; }
+
+// Node{Is,Set,Clear}Public controls the "is public" flag of a node
+inline static bool NodeIsPublic(const Node* n) { return (n->flags & NF_Public) != 0; }
+inline static void NodeSetPublic(Node* n) { n->flags |= NF_Public; }
+inline static void NodeClearPublic(Node* n) { n->flags &= ~NF_Public; }
+
+// Node{Is,Set,Clear}RValue controls the "is rvalue" flag of a node
+inline static bool NodeIsRValue(const Node* n) { return (n->flags & NF_RValue) != 0; }
+inline static void NodeSetRValue(Node* n) { n->flags |= NF_RValue; }
+inline static void NodeClearRValue(Node* n) { n->flags &= ~NF_RValue; }
+
+inline static void NodeTransferCustomInit(Node* parent, Node* child) {
+  parent->flags |= child->flags & NF_CustomInit;
+}
+inline static void NodeTransferPartialType2(Node* parent, Node* c1, Node* c2) {
+  parent->flags |= (c1->flags & NF_PartialType) |
+                   (c2->flags & NF_PartialType);
+}
 
 
 //BEGIN GENERATED CODE by ast_gen.py
 
 enum NodeKind {
-  NStmt_BEG      =  0,
-    NBad         =  0, // struct BadNode
-    NPkg         =  1, // struct PkgNode
-    NFile        =  2, // struct FileNode
-    NComment     =  3, // struct CommentNode
-  NStmt_END      =  3,
-  NExpr_BEG      =  4,
-    NLitExpr_BEG =  4,
-      NBoolLit   =  4, // struct BoolLitNode
-      NIntLit    =  5, // struct IntLitNode
-      NFloatLit  =  6, // struct FloatLitNode
-      NStrLit    =  7, // struct StrLitNode
-      NNil       =  8, // struct NilNode
-    NLitExpr_END =  8,
-    NId          =  9, // struct IdNode
-    NBinOp       = 10, // struct BinOpNode
-    NUnaryOp     = 11, // struct UnaryOpNode
-    NArray       = 12, // struct ArrayNode
-    NFun         = 13, // struct FunNode
-    NMacro       = 14, // struct MacroNode
-    NCall        = 15, // struct CallNode
-    NTypeCast    = 16, // struct TypeCastNode
-    NField       = 17, // struct FieldNode
-    NVar         = 18, // struct VarNode
-    NRef         = 19, // struct RefNode
-    NNamedVal    = 20, // struct NamedValNode
-    NSelector    = 21, // struct SelectorNode
-    NIndex       = 22, // struct IndexNode
-    NSlice       = 23, // struct SliceNode
-    NIf          = 24, // struct IfNode
-  NExpr_END      = 24,
-  NType_BEG      = 25,
-    NBasicType   = 25, // struct BasicTypeNode
-    NArrayType   = 26, // struct ArrayTypeNode
-    NTupleType   = 27, // struct TupleTypeNode
-    NStructType  = 28, // struct StructTypeNode
-    NFunType     = 29, // struct FunTypeNode
-  NType_END      = 29,
+  NStmt_BEG       =  0,
+    NBad          =  0, // struct BadNode
+    NCUnit_BEG    =  1,
+      NPkg        =  1, // struct PkgNode
+      NFile       =  2, // struct FileNode
+    NCUnit_END    =  2,
+    NComment      =  3, // struct CommentNode
+  NStmt_END       =  3,
+  NExpr_BEG       =  4,
+    NLitExpr_BEG  =  4,
+      NBoolLit    =  4, // struct BoolLitNode
+      NIntLit     =  5, // struct IntLitNode
+      NFloatLit   =  6, // struct FloatLitNode
+      NStrLit     =  7, // struct StrLitNode
+      NNil        =  8, // struct NilNode
+    NLitExpr_END  =  8,
+    NId           =  9, // struct IdNode
+    NBinOp        = 10, // struct BinOpNode
+    NUnaryOp      = 11, // struct UnaryOpNode
+    NListExpr_BEG = 12,
+      NTuple      = 12, // struct TupleNode
+      NArray      = 13, // struct ArrayNode
+      NBlock      = 14, // struct BlockNode
+    NListExpr_END = 14,
+    NFun          = 15, // struct FunNode
+    NMacro        = 16, // struct MacroNode
+    NCall         = 17, // struct CallNode
+    NTypeCast     = 18, // struct TypeCastNode
+    NField        = 19, // struct FieldNode
+    NVar          = 20, // struct VarNode
+    NRef          = 21, // struct RefNode
+    NNamedVal     = 22, // struct NamedValNode
+    NSelector     = 23, // struct SelectorNode
+    NIndex        = 24, // struct IndexNode
+    NSlice        = 25, // struct SliceNode
+    NIf           = 26, // struct IfNode
+  NExpr_END       = 26,
+  NType_BEG       = 27,
+    NBasicType    = 27, // struct BasicTypeNode
+    NArrayType    = 28, // struct ArrayTypeNode
+    NTupleType    = 29, // struct TupleTypeNode
+    NStructType   = 30, // struct StructTypeNode
+    NFunType      = 31, // struct FunTypeNode
+  NType_END       = 31,
 } END_TYPED_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -246,7 +317,9 @@ typedef struct NilNode NilNode;
 typedef struct IdNode IdNode;
 typedef struct BinOpNode BinOpNode;
 typedef struct UnaryOpNode UnaryOpNode;
+typedef struct TupleNode TupleNode;
 typedef struct ArrayNode ArrayNode;
+typedef struct BlockNode BlockNode;
 typedef struct FunNode FunNode;
 typedef struct MacroNode MacroNode;
 typedef struct CallNode CallNode;
@@ -267,126 +340,141 @@ typedef struct FunTypeNode FunTypeNode;
 
 // bool NodeKindIs<kind>(NodeKind)
 #define NodeKindIsStmt(nkind) ((int)(nkind)-NStmt_BEG <= (int)NStmt_END-NStmt_BEG)
+#define NodeKindIsCUnit(nkind) ((int)(nkind)-NCUnit_BEG <= (int)NCUnit_END-NCUnit_BEG)
 #define NodeKindIsExpr(nkind) ((int)(nkind)-NExpr_BEG <= (int)NExpr_END-NExpr_BEG)
 #define NodeKindIsLitExpr(nkind) ((int)(nkind)-NLitExpr_BEG <= (int)NLitExpr_END-NLitExpr_BEG)
+#define NodeKindIsListExpr(nkind) ((int)(nkind)-NListExpr_BEG <= (int)NListExpr_END-NListExpr_BEG)
 #define NodeKindIsType(nkind) ((int)(nkind)-NType_BEG <= (int)NType_END-NType_BEG)
 
-// bool NodeIs<kind>(const Node*)
-#define NodeIsStmt(n) NodeKindIsStmt((n)->kind)
-#define NodeIsBad(n) ((n)->kind==NBad)
-#define NodeIsPkg(n) ((n)->kind==NPkg)
-#define NodeIsFile(n) ((n)->kind==NFile)
-#define NodeIsComment(n) ((n)->kind==NComment)
-#define NodeIsExpr(n) NodeKindIsExpr((n)->kind)
-#define NodeIsLitExpr(n) NodeKindIsLitExpr((n)->kind)
-#define NodeIsBoolLit(n) ((n)->kind==NBoolLit)
-#define NodeIsIntLit(n) ((n)->kind==NIntLit)
-#define NodeIsFloatLit(n) ((n)->kind==NFloatLit)
-#define NodeIsStrLit(n) ((n)->kind==NStrLit)
-#define NodeIsNil(n) ((n)->kind==NNil)
-#define NodeIsId(n) ((n)->kind==NId)
-#define NodeIsBinOp(n) ((n)->kind==NBinOp)
-#define NodeIsUnaryOp(n) ((n)->kind==NUnaryOp)
-#define NodeIsArray(n) ((n)->kind==NArray)
-#define NodeIsFun(n) ((n)->kind==NFun)
-#define NodeIsMacro(n) ((n)->kind==NMacro)
-#define NodeIsCall(n) ((n)->kind==NCall)
-#define NodeIsTypeCast(n) ((n)->kind==NTypeCast)
-#define NodeIsField(n) ((n)->kind==NField)
-#define NodeIsVar(n) ((n)->kind==NVar)
-#define NodeIsRef(n) ((n)->kind==NRef)
-#define NodeIsNamedVal(n) ((n)->kind==NNamedVal)
-#define NodeIsSelector(n) ((n)->kind==NSelector)
-#define NodeIsIndex(n) ((n)->kind==NIndex)
-#define NodeIsSlice(n) ((n)->kind==NSlice)
-#define NodeIsIf(n) ((n)->kind==NIf)
-#define NodeIsType(n) NodeKindIsType((n)->kind)
-#define NodeIsBasicType(n) ((n)->kind==NBasicType)
-#define NodeIsArrayType(n) ((n)->kind==NArrayType)
-#define NodeIsTupleType(n) ((n)->kind==NTupleType)
-#define NodeIsStructType(n) ((n)->kind==NStructType)
-#define NodeIsFunType(n) ((n)->kind==NFunType)
+// bool is_<kind>(const Node*)
+#define is_Stmt(n) NodeKindIsStmt((n)->kind)
+#define is_BadNode(n) ((n)->kind==NBad)
+#define is_CUnitNode(n) NodeKindIsCUnit((n)->kind)
+#define is_PkgNode(n) ((n)->kind==NPkg)
+#define is_FileNode(n) ((n)->kind==NFile)
+#define is_CommentNode(n) ((n)->kind==NComment)
+#define is_Expr(n) NodeKindIsExpr((n)->kind)
+#define is_LitExpr(n) NodeKindIsLitExpr((n)->kind)
+#define is_BoolLitNode(n) ((n)->kind==NBoolLit)
+#define is_IntLitNode(n) ((n)->kind==NIntLit)
+#define is_FloatLitNode(n) ((n)->kind==NFloatLit)
+#define is_StrLitNode(n) ((n)->kind==NStrLit)
+#define is_NilNode(n) ((n)->kind==NNil)
+#define is_IdNode(n) ((n)->kind==NId)
+#define is_BinOpNode(n) ((n)->kind==NBinOp)
+#define is_UnaryOpNode(n) ((n)->kind==NUnaryOp)
+#define is_ListExpr(n) NodeKindIsListExpr((n)->kind)
+#define is_TupleNode(n) ((n)->kind==NTuple)
+#define is_ArrayNode(n) ((n)->kind==NArray)
+#define is_BlockNode(n) ((n)->kind==NBlock)
+#define is_FunNode(n) ((n)->kind==NFun)
+#define is_MacroNode(n) ((n)->kind==NMacro)
+#define is_CallNode(n) ((n)->kind==NCall)
+#define is_TypeCastNode(n) ((n)->kind==NTypeCast)
+#define is_FieldNode(n) ((n)->kind==NField)
+#define is_VarNode(n) ((n)->kind==NVar)
+#define is_RefNode(n) ((n)->kind==NRef)
+#define is_NamedValNode(n) ((n)->kind==NNamedVal)
+#define is_SelectorNode(n) ((n)->kind==NSelector)
+#define is_IndexNode(n) ((n)->kind==NIndex)
+#define is_SliceNode(n) ((n)->kind==NSlice)
+#define is_IfNode(n) ((n)->kind==NIf)
+#define is_Type(n) NodeKindIsType((n)->kind)
+#define is_BasicTypeNode(n) ((n)->kind==NBasicType)
+#define is_ArrayTypeNode(n) ((n)->kind==NArrayType)
+#define is_TupleTypeNode(n) ((n)->kind==NTupleType)
+#define is_StructTypeNode(n) ((n)->kind==NStructType)
+#define is_FunTypeNode(n) ((n)->kind==NFunType)
 
-// void NodeAssert<kind>(const Node*)
-#define NodeAssertStmt(n) assertf(NodeKindIsStmt((n)->kind),"%d",(n)->kind)
-#define NodeAssertBad(n) assertf((n)->kind==NBad,"%d",(n)->kind)
-#define NodeAssertPkg(n) assertf((n)->kind==NPkg,"%d",(n)->kind)
-#define NodeAssertFile(n) assertf((n)->kind==NFile,"%d",(n)->kind)
-#define NodeAssertComment(n) assertf((n)->kind==NComment,"%d",(n)->kind)
-#define NodeAssertExpr(n) assertf(NodeKindIsExpr((n)->kind),"%d",(n)->kind)
-#define NodeAssertLitExpr(n) assertf(NodeKindIsLitExpr((n)->kind),"%d",(n)->kind)
-#define NodeAssertBoolLit(n) assertf((n)->kind==NBoolLit,"%d",(n)->kind)
-#define NodeAssertIntLit(n) assertf((n)->kind==NIntLit,"%d",(n)->kind)
-#define NodeAssertFloatLit(n) assertf((n)->kind==NFloatLit,"%d",(n)->kind)
-#define NodeAssertStrLit(n) assertf((n)->kind==NStrLit,"%d",(n)->kind)
-#define NodeAssertNil(n) assertf((n)->kind==NNil,"%d",(n)->kind)
-#define NodeAssertId(n) assertf((n)->kind==NId,"%d",(n)->kind)
-#define NodeAssertBinOp(n) assertf((n)->kind==NBinOp,"%d",(n)->kind)
-#define NodeAssertUnaryOp(n) assertf((n)->kind==NUnaryOp,"%d",(n)->kind)
-#define NodeAssertArray(n) assertf((n)->kind==NArray,"%d",(n)->kind)
-#define NodeAssertFun(n) assertf((n)->kind==NFun,"%d",(n)->kind)
-#define NodeAssertMacro(n) assertf((n)->kind==NMacro,"%d",(n)->kind)
-#define NodeAssertCall(n) assertf((n)->kind==NCall,"%d",(n)->kind)
-#define NodeAssertTypeCast(n) assertf((n)->kind==NTypeCast,"%d",(n)->kind)
-#define NodeAssertField(n) assertf((n)->kind==NField,"%d",(n)->kind)
-#define NodeAssertVar(n) assertf((n)->kind==NVar,"%d",(n)->kind)
-#define NodeAssertRef(n) assertf((n)->kind==NRef,"%d",(n)->kind)
-#define NodeAssertNamedVal(n) assertf((n)->kind==NNamedVal,"%d",(n)->kind)
-#define NodeAssertSelector(n) assertf((n)->kind==NSelector,"%d",(n)->kind)
-#define NodeAssertIndex(n) assertf((n)->kind==NIndex,"%d",(n)->kind)
-#define NodeAssertSlice(n) assertf((n)->kind==NSlice,"%d",(n)->kind)
-#define NodeAssertIf(n) assertf((n)->kind==NIf,"%d",(n)->kind)
-#define NodeAssertType(n) assertf(NodeKindIsType((n)->kind),"%d",(n)->kind)
-#define NodeAssertBasicType(n) assertf((n)->kind==NBasicType,"%d",(n)->kind)
-#define NodeAssertArrayType(n) assertf((n)->kind==NArrayType,"%d",(n)->kind)
-#define NodeAssertTupleType(n) assertf((n)->kind==NTupleType,"%d",(n)->kind)
-#define NodeAssertStructType(n) assertf((n)->kind==NStructType,"%d",(n)->kind)
-#define NodeAssertFunType(n) assertf((n)->kind==NFunType,"%d",(n)->kind)
+// void assert_is_<kind>(const Node*)
+#define _assert_NodeKind(NAME,kind) assertf(NodeKindIs##NAME(kind),"%d",kind)
+#define assert_is_Stmt(n) _assert_NodeKind(Stmt,assertnotnull(n)->kind)
+#define assert_is_BadNode(n) asserteq(assertnotnull(n)->kind,NBad)
+#define assert_is_CUnitNode(n) _assert_NodeKind(CUnit,assertnotnull(n)->kind)
+#define assert_is_PkgNode(n) asserteq(assertnotnull(n)->kind,NPkg)
+#define assert_is_FileNode(n) asserteq(assertnotnull(n)->kind,NFile)
+#define assert_is_CommentNode(n) asserteq(assertnotnull(n)->kind,NComment)
+#define assert_is_Expr(n) _assert_NodeKind(Expr,assertnotnull(n)->kind)
+#define assert_is_LitExpr(n) _assert_NodeKind(LitExpr,assertnotnull(n)->kind)
+#define assert_is_BoolLitNode(n) asserteq(assertnotnull(n)->kind,NBoolLit)
+#define assert_is_IntLitNode(n) asserteq(assertnotnull(n)->kind,NIntLit)
+#define assert_is_FloatLitNode(n) asserteq(assertnotnull(n)->kind,NFloatLit)
+#define assert_is_StrLitNode(n) asserteq(assertnotnull(n)->kind,NStrLit)
+#define assert_is_NilNode(n) asserteq(assertnotnull(n)->kind,NNil)
+#define assert_is_IdNode(n) asserteq(assertnotnull(n)->kind,NId)
+#define assert_is_BinOpNode(n) asserteq(assertnotnull(n)->kind,NBinOp)
+#define assert_is_UnaryOpNode(n) asserteq(assertnotnull(n)->kind,NUnaryOp)
+#define assert_is_ListExpr(n) _assert_NodeKind(ListExpr,assertnotnull(n)->kind)
+#define assert_is_TupleNode(n) asserteq(assertnotnull(n)->kind,NTuple)
+#define assert_is_ArrayNode(n) asserteq(assertnotnull(n)->kind,NArray)
+#define assert_is_BlockNode(n) asserteq(assertnotnull(n)->kind,NBlock)
+#define assert_is_FunNode(n) asserteq(assertnotnull(n)->kind,NFun)
+#define assert_is_MacroNode(n) asserteq(assertnotnull(n)->kind,NMacro)
+#define assert_is_CallNode(n) asserteq(assertnotnull(n)->kind,NCall)
+#define assert_is_TypeCastNode(n) asserteq(assertnotnull(n)->kind,NTypeCast)
+#define assert_is_FieldNode(n) asserteq(assertnotnull(n)->kind,NField)
+#define assert_is_VarNode(n) asserteq(assertnotnull(n)->kind,NVar)
+#define assert_is_RefNode(n) asserteq(assertnotnull(n)->kind,NRef)
+#define assert_is_NamedValNode(n) asserteq(assertnotnull(n)->kind,NNamedVal)
+#define assert_is_SelectorNode(n) asserteq(assertnotnull(n)->kind,NSelector)
+#define assert_is_IndexNode(n) asserteq(assertnotnull(n)->kind,NIndex)
+#define assert_is_SliceNode(n) asserteq(assertnotnull(n)->kind,NSlice)
+#define assert_is_IfNode(n) asserteq(assertnotnull(n)->kind,NIf)
+#define assert_is_Type(n) _assert_NodeKind(Type,assertnotnull(n)->kind)
+#define assert_is_BasicTypeNode(n) asserteq(assertnotnull(n)->kind,NBasicType)
+#define assert_is_ArrayTypeNode(n) asserteq(assertnotnull(n)->kind,NArrayType)
+#define assert_is_TupleTypeNode(n) asserteq(assertnotnull(n)->kind,NTupleType)
+#define assert_is_StructTypeNode(n) asserteq(assertnotnull(n)->kind,NStructType)
+#define assert_is_FunTypeNode(n) asserteq(assertnotnull(n)->kind,NFunType)
 
 // <type>* as_<type>(Node* n)
-#define as_Stmt(n) ({ NodeAssertStmt(n); (Stmt*)(n); })
-#define as_BadNode(n) ({ NodeAssertBad(n); (BadNode*)(n); })
-#define as_PkgNode(n) ({ NodeAssertPkg(n); (PkgNode*)(n); })
-#define as_FileNode(n) ({ NodeAssertFile(n); (FileNode*)(n); })
-#define as_CommentNode(n) ({ NodeAssertComment(n); (CommentNode*)(n); })
-#define as_Expr(n) ({ NodeAssertExpr(n); (Expr*)(n); })
-#define as_LitExpr(n) ({ NodeAssertLitExpr(n); (LitExpr*)(n); })
-#define as_BoolLitNode(n) ({ NodeAssertBoolLit(n); (BoolLitNode*)(n); })
-#define as_IntLitNode(n) ({ NodeAssertIntLit(n); (IntLitNode*)(n); })
-#define as_FloatLitNode(n) ({ NodeAssertFloatLit(n); (FloatLitNode*)(n); })
-#define as_StrLitNode(n) ({ NodeAssertStrLit(n); (StrLitNode*)(n); })
-#define as_NilNode(n) ({ NodeAssertNil(n); (NilNode*)(n); })
-#define as_IdNode(n) ({ NodeAssertId(n); (IdNode*)(n); })
-#define as_BinOpNode(n) ({ NodeAssertBinOp(n); (BinOpNode*)(n); })
-#define as_UnaryOpNode(n) ({ NodeAssertUnaryOp(n); (UnaryOpNode*)(n); })
-#define as_ArrayNode(n) ({ NodeAssertArray(n); (ArrayNode*)(n); })
-#define as_FunNode(n) ({ NodeAssertFun(n); (FunNode*)(n); })
-#define as_MacroNode(n) ({ NodeAssertMacro(n); (MacroNode*)(n); })
-#define as_CallNode(n) ({ NodeAssertCall(n); (CallNode*)(n); })
-#define as_TypeCastNode(n) ({ NodeAssertTypeCast(n); (TypeCastNode*)(n); })
-#define as_FieldNode(n) ({ NodeAssertField(n); (FieldNode*)(n); })
-#define as_VarNode(n) ({ NodeAssertVar(n); (VarNode*)(n); })
-#define as_RefNode(n) ({ NodeAssertRef(n); (RefNode*)(n); })
-#define as_NamedValNode(n) ({ NodeAssertNamedVal(n); (NamedValNode*)(n); })
-#define as_SelectorNode(n) ({ NodeAssertSelector(n); (SelectorNode*)(n); })
-#define as_IndexNode(n) ({ NodeAssertIndex(n); (IndexNode*)(n); })
-#define as_SliceNode(n) ({ NodeAssertSlice(n); (SliceNode*)(n); })
-#define as_IfNode(n) ({ NodeAssertIf(n); (IfNode*)(n); })
-#define as_Type(n) ({ NodeAssertType(n); (Type*)(n); })
-#define as_BasicTypeNode(n) ({ NodeAssertBasicType(n); (BasicTypeNode*)(n); })
-#define as_ArrayTypeNode(n) ({ NodeAssertArrayType(n); (ArrayTypeNode*)(n); })
-#define as_TupleTypeNode(n) ({ NodeAssertTupleType(n); (TupleTypeNode*)(n); })
-#define as_StructTypeNode(n) ({ NodeAssertStructType(n); (StructTypeNode*)(n); })
-#define as_FunTypeNode(n) ({ NodeAssertFunType(n); (FunTypeNode*)(n); })
+#define as_Stmt(n) ({ assert_is_Stmt(n); (struct Stmt*)(n); })
+#define as_BadNode(n) ({ assert_is_BadNode(n); (BadNode*)(n); })
+#define as_CUnitNode(n) ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); })
+#define as_PkgNode(n) ({ assert_is_PkgNode(n); (PkgNode*)(n); })
+#define as_FileNode(n) ({ assert_is_FileNode(n); (FileNode*)(n); })
+#define as_CommentNode(n) ({ assert_is_CommentNode(n); (CommentNode*)(n); })
+#define as_Expr(n) ({ assert_is_Expr(n); (struct Expr*)(n); })
+#define as_LitExpr(n) ({ assert_is_LitExpr(n); (struct LitExpr*)(n); })
+#define as_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (BoolLitNode*)(n); })
+#define as_IntLitNode(n) ({ assert_is_IntLitNode(n); (IntLitNode*)(n); })
+#define as_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (FloatLitNode*)(n); })
+#define as_StrLitNode(n) ({ assert_is_StrLitNode(n); (StrLitNode*)(n); })
+#define as_NilNode(n) ({ assert_is_NilNode(n); (NilNode*)(n); })
+#define as_IdNode(n) ({ assert_is_IdNode(n); (IdNode*)(n); })
+#define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
+#define as_UnaryOpNode(n) ({ assert_is_UnaryOpNode(n); (UnaryOpNode*)(n); })
+#define as_ListExpr(n) ({ assert_is_ListExpr(n); (struct ListExpr*)(n); })
+#define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
+#define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
+#define as_BlockNode(n) ({ assert_is_BlockNode(n); (BlockNode*)(n); })
+#define as_FunNode(n) ({ assert_is_FunNode(n); (FunNode*)(n); })
+#define as_MacroNode(n) ({ assert_is_MacroNode(n); (MacroNode*)(n); })
+#define as_CallNode(n) ({ assert_is_CallNode(n); (CallNode*)(n); })
+#define as_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (TypeCastNode*)(n); })
+#define as_FieldNode(n) ({ assert_is_FieldNode(n); (FieldNode*)(n); })
+#define as_VarNode(n) ({ assert_is_VarNode(n); (VarNode*)(n); })
+#define as_RefNode(n) ({ assert_is_RefNode(n); (RefNode*)(n); })
+#define as_NamedValNode(n) ({ assert_is_NamedValNode(n); (NamedValNode*)(n); })
+#define as_SelectorNode(n) ({ assert_is_SelectorNode(n); (SelectorNode*)(n); })
+#define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
+#define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
+#define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
+#define as_Type(n) ({ assert_is_Type(n); (struct Type*)(n); })
+#define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
+#define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
+#define as_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (TupleTypeNode*)(n); })
+#define as_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (StructTypeNode*)(n); })
+#define as_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (FunTypeNode*)(n); })
 
 union NodeUnion {
   BadNode _0; PkgNode _1; FileNode _2; CommentNode _3; BoolLitNode _4;
   IntLitNode _5; FloatLitNode _6; StrLitNode _7; NilNode _8; IdNode _9;
-  BinOpNode _10; UnaryOpNode _11; ArrayNode _12; FunNode _13; MacroNode _14;
-  CallNode _15; TypeCastNode _16; FieldNode _17; VarNode _18; RefNode _19;
-  NamedValNode _20; SelectorNode _21; IndexNode _22; SliceNode _23; IfNode _24;
-  BasicTypeNode _25; ArrayTypeNode _26; TupleTypeNode _27; StructTypeNode _28;
-  FunTypeNode _29;
+  BinOpNode _10; UnaryOpNode _11; TupleNode _12; ArrayNode _13; BlockNode _14;
+  FunNode _15; MacroNode _16; CallNode _17; TypeCastNode _18; FieldNode _19;
+  VarNode _20; RefNode _21; NamedValNode _22; SelectorNode _23; IndexNode _24;
+  SliceNode _25; IfNode _26; BasicTypeNode _27; ArrayTypeNode _28;
+  TupleTypeNode _29; StructTypeNode _30; FunTypeNode _31;
 };
 
 //END GENERATED CODE
@@ -402,6 +490,8 @@ inline static Node* nullable NodeAlloc(Mem mem) {
   return (Node*)memalloc(mem, sizeof(union NodeUnion));
 }
 
+Node* NodeInit(Node* n, NodeKind kind);
+
 inline static Node* nullable NodeCopy(Mem mem, const Node* n) {
   Node* n2 = NodeAlloc(mem);
   if (n2) {
@@ -411,10 +501,29 @@ inline static Node* nullable NodeCopy(Mem mem, const Node* n) {
   return n2;
 }
 
-Scope* nullable scope_new(Mem mem, const Scope* nullable parent);
-void scope_free(Scope*, Mem mem);
-const Node* nullable scope_lookup(const Scope*, Sym);
-inline static error scope_assoc(Scope* s, Sym key, const Node** valuep_inout) {
+// NodeRefVar increments the reference counter of a Var node. Returns n as a convenience.
+inline static VarNode* NodeRefVar(VarNode* n) {
+  n->nrefs++;
+  return n;
+}
+// NodeUnrefVar decrements the reference counter of a Var node.
+// Returns the value of n->var.nrefs after the subtraction.
+inline static u32 NodeUnrefVar(VarNode* n) {
+  assertgt(n->nrefs, 0);
+  return --n->nrefs;
+}
+
+// --------------------------------------------------------------------------------------
+
+Scope* nullable ScopeNew(Mem mem, const Scope* nullable parent);
+void ScopeFree(Scope*, Mem mem);
+const Node* nullable ScopeLookup(const Scope*, Sym);
+
+// ScopeAssoc associates key with *valuep_inout.
+// On return, sets *valuep_inout to a replaced node or NULL if no existing node was found.
+// Returns an error if memory allocation failed during growth of the hash table.
+WARN_UNUSED_RESULT
+inline static error ScopeAssoc(Scope* s, Sym key, Node** valuep_inout) {
   return SymMapSet(&s->bindings, key, (void**)valuep_inout);
 }
 

@@ -159,32 +159,33 @@ for name, subtypes in typemap.items():
     shortname, shortname, shortname, shortname))
 outh.append('')
 
-# NodeIs*
-outh.append('// bool NodeIs<kind>(const Node*)')
+# is_*
+outh.append('// bool is_<kind>(const Node*)')
 for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
     continue # skip root type
   if len(subtypes) == 0:
-    outh.append('#define NodeIs%s(n) ((n)->kind==N%s)' % (shortname, shortname))
+    outh.append('#define is_%s(n) ((n)->kind==N%s)' % (name, shortname))
   else:
-    outh.append('#define NodeIs%s(n) NodeKindIs%s((n)->kind)' % (shortname, shortname))
+    outh.append('#define is_%s(n) NodeKindIs%s((n)->kind)' % (name, shortname))
 outh.append('')
 
-# NodeAssert*
-outh.append('// void NodeAssert<kind>(const Node*)')
+# assert_is_*
+outh.append('// void assert_is_<kind>(const Node*)')
+outh.append('#define _assert_NodeKind(NAME,kind) assertf(NodeKindIs##NAME(kind),"%d",kind)')
 for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
     continue # skip root type
   if len(subtypes) == 0:
     outh.append(
-      '#define NodeAssert%s(n) assertf((n)->kind==N%s,"%%d",(n)->kind)' % (
-      shortname, shortname))
+      '#define assert_is_%s(n) asserteq(assertnotnull(n)->kind,N%s)' % (
+      name, shortname))
   else:
     outh.append(
-      '#define NodeAssert%s(n) assertf(NodeKindIs%s((n)->kind),"%%d",(n)->kind)' % (
-      shortname, shortname))
+      '#define assert_is_%s(n) _assert_NodeKind(%s,assertnotnull(n)->kind)' % (
+      name, shortname))
 outh.append('')
 
 # as_*
@@ -193,7 +194,13 @@ for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
     continue # skip root type
-  outh.append('#define as_%s(n) ({ NodeAssert%s(n); (%s*)(n); })' % (name, shortname, name))
+  if len(subtypes) == 0:
+    # has typedef so no need for "struct"
+    outh.append('#define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (
+      name, name, name))
+  else:
+    outh.append('#define as_%s(n) ({ assert_is_%s(n); (struct %s*)(n); })' % (
+      name, name, name))
   # outh.append('')
 outh.append('')
 

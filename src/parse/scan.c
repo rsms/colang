@@ -48,7 +48,7 @@ static u8 charflags[256] = {
 };
 
 
-const char* tokname(Tok t) {
+const char* TokName(Tok t) {
   switch (t) {
     #define I_ENUM(name, str) case name: return str;
     DEF_TOKENS(I_ENUM)
@@ -71,7 +71,7 @@ const char* tokname(Tok t) {
 }
 
 
-error scan_init(Scanner* s, BuildCtx* build, Source* src, ParseFlags flags) {
+error ScannerInit(Scanner* s, BuildCtx* build, Source* src, ParseFlags flags) {
   error err = source_body_open(src);
   if (err)
     return err;
@@ -103,21 +103,21 @@ error scan_init(Scanner* s, BuildCtx* build, Source* src, ParseFlags flags) {
   return 0;
 }
 
-void scan_dispose(Scanner* s) {
+void ScannerDispose(Scanner* s) {
   if (s->indentStack.v != s->indentStack.storage) {
     memfree(s->build->mem, s->indentStack.v);
   }
 
   // free comments
   while (1) {
-    Comment* c = scan_comment_pop(s);
+    Comment* c = ScannerCommentPop(s);
     if (!c)
       break;
     memfree(s->build->mem, c);
   }
 }
 
-Pos scan_pos(const Scanner* s) {
+Pos ScannerPos(const Scanner* s) {
   // assert(s->tokend >= s->tokstart);
   u32 col = 1 + (u32)((uintptr)s->tokstart - (uintptr)s->linestart);
   u32 span = s->tokend - s->tokstart;
@@ -127,7 +127,7 @@ Pos scan_pos(const Scanner* s) {
 
 // serr is called when an error occurs. It invokes s->errh
 static void serr(Scanner* s, const char* fmt, ...) {
-  Pos pos = scan_pos(s);
+  Pos pos = ScannerPos(s);
   va_list ap;
   va_start(ap, fmt);
   buildctx_diagv(s->build, DiagError, (PosSpan){pos, pos}, fmt, ap);
@@ -140,17 +140,17 @@ static void serr(Scanner* s, const char* fmt, ...) {
     return t == TId || t == TIntLit || t == TFloatLit;
   }
   static void debug_token_production(Scanner* s) {
-    Str posstr = pos_str(&s->build->posmap, scan_pos(s), str_make(s->build->mem, 32));
+    Str posstr = pos_str(&s->build->posmap, ScannerPos(s), str_make(s->build->mem, 32));
     static usize vallen_max = 8; // global; yolo
     const int tokname_max = (int)strlen("keyword interface");
     usize vallen = 0;
     const char* valptr = NULL;
     if (tok_has_value(s->tok))
-      valptr = (const char*)scan_tokstr(s, &vallen);
+      valptr = (const char*)ScannerTokStr(s, &vallen);
 
     vallen_max = MAX(vallen_max, vallen);
     dlog(">> %-*s %.*s%*s %s",
-        tokname_max, tokname(s->tok),
+        tokname_max, TokName(s->tok),
         (int)vallen, valptr,
         (int)(vallen_max - vallen), "",
         posstr->p);
@@ -161,7 +161,7 @@ static void serr(Scanner* s, const char* fmt, ...) {
 #endif
 
 
-Comment* scan_comment_pop(Scanner* s) {
+Comment* ScannerCommentPop(Scanner* s) {
   Comment* c = s->comments_head;
   if (c) {
     s->comments_head = c->next;
@@ -352,7 +352,7 @@ static bool indent_pop(Scanner* s) {
 }
 
 
-Tok scan_next(Scanner* s) {
+Tok ScannerNext(Scanner* s) {
   s->prevtokend = s->tokend;
   scan_again: {}  // jumped to when comments are skipped
   // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (usize)(s->inp - s->src->body));

@@ -19,7 +19,8 @@ ASSUME_NONNULL_BEGIN
   X( _ ) \
 // end DEF_SYMS_PUB
 
-// precompiled constants defined in universe_data.h
+// precompiled constants, defined in universe_data.h
+extern const Sym      kSym__;
 extern Node*          kNode_bad;
 extern BasicTypeNode* kType_bool;
 extern BasicTypeNode* kType_i8;

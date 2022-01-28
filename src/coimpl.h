@@ -95,6 +95,7 @@ typedef unsigned long          uintptr;
   #define NORETURN noreturn
 #else
   #define NORETURN      _Noreturn
+  #define auto          __auto_type
   #define static_assert _Static_assert
 #endif
 
@@ -454,21 +455,89 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   ATTR_FORMAT(printf, 4, 5);
 
 // void assert(expr condition)
+#undef assert
 #if defined(DEBUG) || !defined(NDEBUG)
   #undef NDEBUG
+
   #define assert(cond) \
     if (UNLIKELY(!(cond))) panic("Assertion failed: %s", #cond)
+
   #define assertf(cond, fmt, ...) \
     if (UNLIKELY(!(cond))) panic("Assertion failed: %s; " fmt, #cond, ##__VA_ARGS__)
-#else
-  #ifndef NDEBUG
-    #define NDEBUG
-  #endif
-  #define assert(...) ((void)0)
-#endif
+
+  #define assertop(a,op,b) ({                                               \
+    __typeof__(a) A__ = a;                                                  \
+    __typeof__(a) B__ = b; /* intentionally typeof(a) and not b for lits */ \
+    if (UNLIKELY(!(A__ op B__)))                                            \
+      panic("Assertion failed: %s %s %s (%s %s %s)",                        \
+        #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
+  })
+
+  #define assertcstreq(cstr1, cstr2) ({                              \
+    __typeof__(cstr1) cstr1__ = (cstr1);                             \
+    __typeof__(cstr2) cstr2__ = (cstr2);                             \
+    if (UNLIKELY(strcmp(cstr1__, cstr2__) != 0))                     \
+      panic("Assertion failed: \"%s\" != \"%s\"", cstr1__, cstr2__); \
+  })
+
+  #define asserteq(a,b)    assertop((a),==,(b))
+  #define assertne(a,b)    assertop((a),!=,(b))
+  #define assertlt(a,b)    assertop((a),<, (b))
+  #define assertgt(a,b)    assertop((a),>, (b))
+  #define assertnull(a)    assertop((a),==,NULL)
+  #define assertnotnull(a) ({                                               \
+    __typeof__(a) val__ = (a);                                              \
+    if (UNLIKELY(val__ == NULL)) panic("Assertion failed: %s != NULL", #a); \
+    val__; })
+
+#else /* !defined(NDEBUG) */
+  #define assert(cond)            ((void)0)
+  #define assertf(cond, fmt, ...) ((void)0)
+  #define assertop(a,op,b)        ((void)0)
+  #define assertcstreq(a,b)       ((void)0)
+  #define asserteq(a,b)           ((void)0)
+  #define assertne(a,b)           ((void)0)
+  #define assertlt(a,b)           ((void)0)
+  #define assertgt(a,b)           ((void)0)
+  #define assertnull(a)           ((void)0)
+  #define assertnotnull(a)        ({ a; }) /* note: (a) causes "unused" warnings */
+#endif /* !defined(NDEBUG) */
 
 // void dlog(const char* fmt, ...)
-#if defined(DEBUG)
+#ifdef DEBUG
+  // debug_quickfmt formats a value x and returns a temporary string for use in printing.
+  // The buffer argument should be a number in the inclusive range [0-5], determining which
+  // temporary buffer to use and return a pointer to.
+  #define debug_quickfmt(buffer, x) debug_tmpsprintf(buffer, _Generic((x), \
+    unsigned long long: "%llu", \
+    unsigned long:      "%lu", \
+    unsigned int:       "%u", \
+    unsigned short:     "%u", \
+    long long:          "%lld", \
+    long:               "%ld", \
+    int:                "%d", \
+    short:              "%d", \
+    char:               "%c", \
+    unsigned char:      "%C", \
+    const char*:        "%s", \
+    char*:              "%s", \
+    bool:               "%d", \
+    float:              "%f", \
+    double:             "%f", \
+    void*:              "%p", \
+    const void*:        "%p", \
+    default:            "%p" \
+  ), x)
+  // debug_tmpsprintf is like sprintf but uses a static buffer.
+  // The buffer argument determines which buffer to use (constraint: buffer<6)
+  const char* debug_tmpsprintf(int buffer, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
+#else
+  #define debug_quickfmt(...) ""
+  #define debug_tmpsprintf(...) ""
+#endif // defined(DEBUG)
+
+// void dlog(const char* fmt, ...)
+#ifdef DEBUG
   #ifndef CO_WITH_LIBC
     #warning dlog not implemented for no-libc
     #define dlog(format, ...) ((void)0)

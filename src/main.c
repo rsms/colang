@@ -69,11 +69,11 @@ int main(int argc, const char** argv) {
   Scanner scanner = {0};
   for (Source* src = build.pkg->srclist; src != NULL; src = src->next) {
     dlog("scan %s", src->filename->p);
-    error err = scan_init(&scanner, &build, src, ParseFlagsDefault);
+    error err = ScannerInit(&scanner, &build, src, ParseFlagsDefault);
     if (err)
-      panic("scan_init: %s", error_str(err));
-    while (scan_next(&scanner) != TNone) {
-      printf(">> %s\n", tokname(scanner.tok));
+      panic("ScannerInit: %s", error_str(err));
+    while (ScannerNext(&scanner) != TNone) {
+      printf(">> %s\n", TokName(scanner.tok));
     }
   }
 

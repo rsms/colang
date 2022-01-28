@@ -107,7 +107,6 @@ enum TypeFlags {
   TF_Attr_BITOFFS = ILOG2(TF_Size_MAX) + 1,
   #define B TF_Attr_BITOFFS
   TF_Signed     = 1 << B,       // is signed (integers only)
-  TF_CustomInit = 1 << (B + 1), // struct has fields w/ non-zero initializer
   #undef B
 } END_TYPED_ENUM(TypeFlags)
 

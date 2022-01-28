@@ -58,6 +58,10 @@ inline static Str str_setlen(Str s, u32 len) {
 }
 inline static Str str_trunc(Str s) { return str_setlen(s, 0); }
 
+// str_hasprefix returns true if s begins with prefix
+static bool str_hasprefix(Str s, const char* prefix);
+static bool str_hasprefixn(Str s, const char* prefix, u32 len);
+
 
 // --- inline implementation ---
 
@@ -74,6 +78,12 @@ inline static Str str_appendstr(Str s, const Str suffix) {
 }
 inline static Str str_appendcstr(Str s, const char* cstr) {
   return str_appendn(s, cstr, strlen(cstr));
+}
+inline static bool str_hasprefixn(Str s, const char* prefix, u32 prefixlen) {
+  return s->len >= prefixlen && memcmp(s, prefix, prefixlen) == 0;
+}
+inline static bool str_hasprefix(Str s, const char* prefix) {
+  return str_hasprefixn(s, prefix, strlen(prefix));
 }
 
 ASSUME_NONNULL_END

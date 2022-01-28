@@ -108,8 +108,8 @@ enum Tok {
 static_assert(TKeywordsEnd - TKeywordsStart < 32, "too many keywords");
 
 
-// tokname returns a printable name for a token (second part in TOKENS definition)
-const char* tokname(Tok);
+// TokName returns a printable name for a token (second part in TOKENS definition)
+const char* TokName(Tok);
 
 // langtok returns the Tok representing this sym in the language syntax.
 // Either returns a keyword token or TId if sym is not a keyword.

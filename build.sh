@@ -130,6 +130,8 @@ fi
 # See https://gcc.gnu.org/onlinedocs/gcc-11.2.0/gcc/Unnamed-Fields.html
 # TODO: test with gcc; may require -fplan9-extensions
 
+#   -Wno-incompatible-pointer-types $
+
 cat << _END > build.ninja
 ninja_required_version = 1.3
 outdir = $OUTDIR
@@ -138,6 +140,7 @@ objdir = \$outdir/$BUILD_MODE
 cflags = $
   -g $
   -fcolor-diagnostics $
+  -feliminate-unused-debug-types $
   -Wall -Wextra -Wvla $
   -Wno-missing-field-initializers $
   -Wno-unused-parameter $
