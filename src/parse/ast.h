@@ -27,9 +27,10 @@ struct Node {
   NodeKind       kind;   // kind of node (e.g. NId)
 } ATTR_PACKED;
 
+struct BadNode { Node; }; // substitute "filler" for invalid syntax
+
 // statements
 struct Stmt { Node; } ATTR_PACKED;
-struct BadNode { Stmt; }; // substitute "filler" for invalid syntax
 struct CUnitNode { Stmt;
   const Str       name;         // reference to str in corresponding Pkg or Source struct
   Scope* nullable scope;
@@ -256,8 +257,8 @@ inline static void NodeTransferPartialType2(Node* parent, Node* c1, Node* c2) {
 //BEGIN GENERATED CODE by ast_gen.py
 
 enum NodeKind {
-  NStmt_BEG       =  0,
-    NBad          =  0, // struct BadNode
+  NBad            =  0, // struct BadNode
+  NStmt_BEG       =  1,
     NCUnit_BEG    =  1,
       NPkg        =  1, // struct PkgNode
       NFile       =  2, // struct FileNode
@@ -339,16 +340,16 @@ typedef struct StructTypeNode StructTypeNode;
 typedef struct FunTypeNode FunTypeNode;
 
 // bool NodeKindIs<kind>(NodeKind)
-#define NodeKindIsStmt(nkind) ((int)(nkind)-NStmt_BEG <= (int)NStmt_END-NStmt_BEG)
-#define NodeKindIsCUnit(nkind) ((int)(nkind)-NCUnit_BEG <= (int)NCUnit_END-NCUnit_BEG)
-#define NodeKindIsExpr(nkind) ((int)(nkind)-NExpr_BEG <= (int)NExpr_END-NExpr_BEG)
-#define NodeKindIsLitExpr(nkind) ((int)(nkind)-NLitExpr_BEG <= (int)NLitExpr_END-NLitExpr_BEG)
-#define NodeKindIsListExpr(nkind) ((int)(nkind)-NListExpr_BEG <= (int)NListExpr_END-NListExpr_BEG)
-#define NodeKindIsType(nkind) ((int)(nkind)-NType_BEG <= (int)NType_END-NType_BEG)
+#define NodeKindIsStmt(k) (NStmt_BEG <= (k) && (k) <= NStmt_END)
+#define NodeKindIsCUnit(k) (NCUnit_BEG <= (k) && (k) <= NCUnit_END)
+#define NodeKindIsExpr(k) (NExpr_BEG <= (k) && (k) <= NExpr_END)
+#define NodeKindIsLitExpr(k) (NLitExpr_BEG <= (k) && (k) <= NLitExpr_END)
+#define NodeKindIsListExpr(k) (NListExpr_BEG <= (k) && (k) <= NListExpr_END)
+#define NodeKindIsType(k) (NType_BEG <= (k) && (k) <= NType_END)
 
 // bool is_<kind>(const Node*)
-#define is_Stmt(n) NodeKindIsStmt((n)->kind)
 #define is_BadNode(n) ((n)->kind==NBad)
+#define is_Stmt(n) NodeKindIsStmt((n)->kind)
 #define is_CUnitNode(n) NodeKindIsCUnit((n)->kind)
 #define is_PkgNode(n) ((n)->kind==NPkg)
 #define is_FileNode(n) ((n)->kind==NFile)
@@ -387,15 +388,19 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_FunTypeNode(n) ((n)->kind==NFunType)
 
 // void assert_is_<kind>(const Node*)
-#define _assert_NodeKind(NAME,kind) assertf(NodeKindIs##NAME(kind),"%d",kind)
-#define assert_is_Stmt(n) _assert_NodeKind(Stmt,assertnotnull(n)->kind)
+#define _assert_is1(NAME,n) ({ \
+  NodeKind nk__ = assertnotnull(n)->kind; \
+  assertf(NodeKindIs##NAME(nk__), "expected N%s; got N%s #%d", \
+          #NAME, NodeKindName(nk__), nk__); \
+})
 #define assert_is_BadNode(n) asserteq(assertnotnull(n)->kind,NBad)
-#define assert_is_CUnitNode(n) _assert_NodeKind(CUnit,assertnotnull(n)->kind)
+#define assert_is_Stmt(n) _assert_is1(Stmt,(n))
+#define assert_is_CUnitNode(n) _assert_is1(CUnit,(n))
 #define assert_is_PkgNode(n) asserteq(assertnotnull(n)->kind,NPkg)
 #define assert_is_FileNode(n) asserteq(assertnotnull(n)->kind,NFile)
 #define assert_is_CommentNode(n) asserteq(assertnotnull(n)->kind,NComment)
-#define assert_is_Expr(n) _assert_NodeKind(Expr,assertnotnull(n)->kind)
-#define assert_is_LitExpr(n) _assert_NodeKind(LitExpr,assertnotnull(n)->kind)
+#define assert_is_Expr(n) _assert_is1(Expr,(n))
+#define assert_is_LitExpr(n) _assert_is1(LitExpr,(n))
 #define assert_is_BoolLitNode(n) asserteq(assertnotnull(n)->kind,NBoolLit)
 #define assert_is_IntLitNode(n) asserteq(assertnotnull(n)->kind,NIntLit)
 #define assert_is_FloatLitNode(n) asserteq(assertnotnull(n)->kind,NFloatLit)
@@ -404,7 +409,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_IdNode(n) asserteq(assertnotnull(n)->kind,NId)
 #define assert_is_BinOpNode(n) asserteq(assertnotnull(n)->kind,NBinOp)
 #define assert_is_UnaryOpNode(n) asserteq(assertnotnull(n)->kind,NUnaryOp)
-#define assert_is_ListExpr(n) _assert_NodeKind(ListExpr,assertnotnull(n)->kind)
+#define assert_is_ListExpr(n) _assert_is1(ListExpr,(n))
 #define assert_is_TupleNode(n) asserteq(assertnotnull(n)->kind,NTuple)
 #define assert_is_ArrayNode(n) asserteq(assertnotnull(n)->kind,NArray)
 #define assert_is_BlockNode(n) asserteq(assertnotnull(n)->kind,NBlock)
@@ -420,7 +425,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_IndexNode(n) asserteq(assertnotnull(n)->kind,NIndex)
 #define assert_is_SliceNode(n) asserteq(assertnotnull(n)->kind,NSlice)
 #define assert_is_IfNode(n) asserteq(assertnotnull(n)->kind,NIf)
-#define assert_is_Type(n) _assert_NodeKind(Type,assertnotnull(n)->kind)
+#define assert_is_Type(n) _assert_is1(Type,(n))
 #define assert_is_BasicTypeNode(n) asserteq(assertnotnull(n)->kind,NBasicType)
 #define assert_is_ArrayTypeNode(n) asserteq(assertnotnull(n)->kind,NArrayType)
 #define assert_is_TupleTypeNode(n) asserteq(assertnotnull(n)->kind,NTupleType)
@@ -428,14 +433,11 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_FunTypeNode(n) asserteq(assertnotnull(n)->kind,NFunType)
 
 // <type>* as_<type>(Node* n)
-#define as_Stmt(n) ({ assert_is_Stmt(n); (struct Stmt*)(n); })
+// const <type>* as_<type>(const Node* n)
 #define as_BadNode(n) ({ assert_is_BadNode(n); (BadNode*)(n); })
-#define as_CUnitNode(n) ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); })
 #define as_PkgNode(n) ({ assert_is_PkgNode(n); (PkgNode*)(n); })
 #define as_FileNode(n) ({ assert_is_FileNode(n); (FileNode*)(n); })
 #define as_CommentNode(n) ({ assert_is_CommentNode(n); (CommentNode*)(n); })
-#define as_Expr(n) ({ assert_is_Expr(n); (struct Expr*)(n); })
-#define as_LitExpr(n) ({ assert_is_LitExpr(n); (struct LitExpr*)(n); })
 #define as_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (BoolLitNode*)(n); })
 #define as_IntLitNode(n) ({ assert_is_IntLitNode(n); (IntLitNode*)(n); })
 #define as_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (FloatLitNode*)(n); })
@@ -444,7 +446,6 @@ typedef struct FunTypeNode FunTypeNode;
 #define as_IdNode(n) ({ assert_is_IdNode(n); (IdNode*)(n); })
 #define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
 #define as_UnaryOpNode(n) ({ assert_is_UnaryOpNode(n); (UnaryOpNode*)(n); })
-#define as_ListExpr(n) ({ assert_is_ListExpr(n); (struct ListExpr*)(n); })
 #define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
 #define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
 #define as_BlockNode(n) ({ assert_is_BlockNode(n); (BlockNode*)(n); })
@@ -460,12 +461,109 @@ typedef struct FunTypeNode FunTypeNode;
 #define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
 #define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
 #define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
-#define as_Type(n) ({ assert_is_Type(n); (struct Type*)(n); })
 #define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
 #define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
 #define as_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (TupleTypeNode*)(n); })
 #define as_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (StructTypeNode*)(n); })
 #define as_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (FunTypeNode*)(n); })
+#define as_Node(n) _Generic((n), const BadNode*:(const Node*)(n), BadNode*:(Node*)(n), \
+  const PkgNode*:(const Node*)(n), PkgNode*:(Node*)(n), \
+  const FileNode*:(const Node*)(n), FileNode*:(Node*)(n), \
+  const struct CUnitNode*:(const Node*)(n), struct CUnitNode*:(Node*)(n), \
+  const CommentNode*:(const Node*)(n), CommentNode*:(Node*)(n), \
+  const Stmt*:(const Node*)(n), Stmt*:(Node*)(n), const BoolLitNode*:(const Node*)(n), \
+  BoolLitNode*:(Node*)(n), const IntLitNode*:(const Node*)(n), IntLitNode*:(Node*)(n), \
+  const FloatLitNode*:(const Node*)(n), FloatLitNode*:(Node*)(n), \
+  const StrLitNode*:(const Node*)(n), StrLitNode*:(Node*)(n), \
+  const NilNode*:(const Node*)(n), NilNode*:(Node*)(n), \
+  const struct LitExpr*:(const Node*)(n), struct LitExpr*:(Node*)(n), \
+  const IdNode*:(const Node*)(n), IdNode*:(Node*)(n), const BinOpNode*:(const Node*)(n), \
+  BinOpNode*:(Node*)(n), const UnaryOpNode*:(const Node*)(n), UnaryOpNode*:(Node*)(n), \
+  const TupleNode*:(const Node*)(n), TupleNode*:(Node*)(n), \
+  const ArrayNode*:(const Node*)(n), ArrayNode*:(Node*)(n), \
+  const BlockNode*:(const Node*)(n), BlockNode*:(Node*)(n), \
+  const struct ListExpr*:(const Node*)(n), struct ListExpr*:(Node*)(n), \
+  const FunNode*:(const Node*)(n), FunNode*:(Node*)(n), \
+  const MacroNode*:(const Node*)(n), MacroNode*:(Node*)(n), \
+  const CallNode*:(const Node*)(n), CallNode*:(Node*)(n), \
+  const TypeCastNode*:(const Node*)(n), TypeCastNode*:(Node*)(n), \
+  const FieldNode*:(const Node*)(n), FieldNode*:(Node*)(n), \
+  const VarNode*:(const Node*)(n), VarNode*:(Node*)(n), const RefNode*:(const Node*)(n), \
+  RefNode*:(Node*)(n), const NamedValNode*:(const Node*)(n), NamedValNode*:(Node*)(n), \
+  const SelectorNode*:(const Node*)(n), SelectorNode*:(Node*)(n), \
+  const IndexNode*:(const Node*)(n), IndexNode*:(Node*)(n), \
+  const SliceNode*:(const Node*)(n), SliceNode*:(Node*)(n), \
+  const IfNode*:(const Node*)(n), IfNode*:(Node*)(n), const Expr*:(const Node*)(n), \
+  Expr*:(Node*)(n), const BasicTypeNode*:(const Node*)(n), BasicTypeNode*:(Node*)(n), \
+  const ArrayTypeNode*:(const Node*)(n), ArrayTypeNode*:(Node*)(n), \
+  const TupleTypeNode*:(const Node*)(n), TupleTypeNode*:(Node*)(n), \
+  const StructTypeNode*:(const Node*)(n), StructTypeNode*:(Node*)(n), \
+  const FunTypeNode*:(const Node*)(n), FunTypeNode*:(Node*)(n), \
+  const Type*:(const Node*)(n), Type*:(Node*)(n), const Node*:(const Node*)(n), \
+  Node*:(Node*)(n))
+
+#define as_Stmt(n) _Generic((n), const PkgNode*:(const Stmt*)(n), PkgNode*:(Stmt*)(n), \
+  const FileNode*:(const Stmt*)(n), FileNode*:(Stmt*)(n), \
+  const struct CUnitNode*:(const Stmt*)(n), struct CUnitNode*:(Stmt*)(n), \
+  const CommentNode*:(const Stmt*)(n), CommentNode*:(Stmt*)(n), \
+  const Stmt*:(const Stmt*)(n), Stmt*:(Stmt*)(n), \
+  default: ({ assert_is_Stmt(n); (Stmt*)(n); }))
+
+#define as_CUnitNode(n) _Generic((n), const PkgNode*:(const struct CUnitNode*)(n), \
+  PkgNode*:(struct CUnitNode*)(n), const FileNode*:(const struct CUnitNode*)(n), \
+  FileNode*:(struct CUnitNode*)(n), \
+  const struct CUnitNode*:(const struct CUnitNode*)(n), \
+  struct CUnitNode*:(struct CUnitNode*)(n), \
+  default: ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); }))
+
+#define as_Expr(n) _Generic((n), const BoolLitNode*:(const Expr*)(n), \
+  BoolLitNode*:(Expr*)(n), const IntLitNode*:(const Expr*)(n), IntLitNode*:(Expr*)(n), \
+  const FloatLitNode*:(const Expr*)(n), FloatLitNode*:(Expr*)(n), \
+  const StrLitNode*:(const Expr*)(n), StrLitNode*:(Expr*)(n), \
+  const NilNode*:(const Expr*)(n), NilNode*:(Expr*)(n), \
+  const struct LitExpr*:(const Expr*)(n), struct LitExpr*:(Expr*)(n), \
+  const IdNode*:(const Expr*)(n), IdNode*:(Expr*)(n), const BinOpNode*:(const Expr*)(n), \
+  BinOpNode*:(Expr*)(n), const UnaryOpNode*:(const Expr*)(n), UnaryOpNode*:(Expr*)(n), \
+  const TupleNode*:(const Expr*)(n), TupleNode*:(Expr*)(n), \
+  const ArrayNode*:(const Expr*)(n), ArrayNode*:(Expr*)(n), \
+  const BlockNode*:(const Expr*)(n), BlockNode*:(Expr*)(n), \
+  const struct ListExpr*:(const Expr*)(n), struct ListExpr*:(Expr*)(n), \
+  const FunNode*:(const Expr*)(n), FunNode*:(Expr*)(n), \
+  const MacroNode*:(const Expr*)(n), MacroNode*:(Expr*)(n), \
+  const CallNode*:(const Expr*)(n), CallNode*:(Expr*)(n), \
+  const TypeCastNode*:(const Expr*)(n), TypeCastNode*:(Expr*)(n), \
+  const FieldNode*:(const Expr*)(n), FieldNode*:(Expr*)(n), \
+  const VarNode*:(const Expr*)(n), VarNode*:(Expr*)(n), const RefNode*:(const Expr*)(n), \
+  RefNode*:(Expr*)(n), const NamedValNode*:(const Expr*)(n), NamedValNode*:(Expr*)(n), \
+  const SelectorNode*:(const Expr*)(n), SelectorNode*:(Expr*)(n), \
+  const IndexNode*:(const Expr*)(n), IndexNode*:(Expr*)(n), \
+  const SliceNode*:(const Expr*)(n), SliceNode*:(Expr*)(n), \
+  const IfNode*:(const Expr*)(n), IfNode*:(Expr*)(n), const Expr*:(const Expr*)(n), \
+  Expr*:(Expr*)(n), default: ({ assert_is_Expr(n); (Expr*)(n); }))
+
+#define as_LitExpr(n) _Generic((n), const BoolLitNode*:(const struct LitExpr*)(n), \
+  BoolLitNode*:(struct LitExpr*)(n), const IntLitNode*:(const struct LitExpr*)(n), \
+  IntLitNode*:(struct LitExpr*)(n), const FloatLitNode*:(const struct LitExpr*)(n), \
+  FloatLitNode*:(struct LitExpr*)(n), const StrLitNode*:(const struct LitExpr*)(n), \
+  StrLitNode*:(struct LitExpr*)(n), const NilNode*:(const struct LitExpr*)(n), \
+  NilNode*:(struct LitExpr*)(n), const struct LitExpr*:(const struct LitExpr*)(n), \
+  struct LitExpr*:(struct LitExpr*)(n), \
+  default: ({ assert_is_LitExpr(n); (struct LitExpr*)(n); }))
+
+#define as_ListExpr(n) _Generic((n), const TupleNode*:(const struct ListExpr*)(n), \
+  TupleNode*:(struct ListExpr*)(n), const ArrayNode*:(const struct ListExpr*)(n), \
+  ArrayNode*:(struct ListExpr*)(n), const BlockNode*:(const struct ListExpr*)(n), \
+  BlockNode*:(struct ListExpr*)(n), const struct ListExpr*:(const struct ListExpr*)(n), \
+  struct ListExpr*:(struct ListExpr*)(n), \
+  default: ({ assert_is_ListExpr(n); (struct ListExpr*)(n); }))
+
+#define as_Type(n) _Generic((n), const BasicTypeNode*:(const Type*)(n), \
+  BasicTypeNode*:(Type*)(n), const ArrayTypeNode*:(const Type*)(n), \
+  ArrayTypeNode*:(Type*)(n), const TupleTypeNode*:(const Type*)(n), \
+  TupleTypeNode*:(Type*)(n), const StructTypeNode*:(const Type*)(n), \
+  StructTypeNode*:(Type*)(n), const FunTypeNode*:(const Type*)(n), \
+  FunTypeNode*:(Type*)(n), const Type*:(const Type*)(n), Type*:(Type*)(n), \
+  default: ({ assert_is_Type(n); (Type*)(n); }))
 
 union NodeUnion {
   BadNode _0; PkgNode _1; FileNode _2; CommentNode _3; BoolLitNode _4;
@@ -481,6 +579,9 @@ union NodeUnion {
 
 // keep the size of nodes in check. Update this if needed.
 static_assert(sizeof(union NodeUnion) == 96, "AST size changed");
+
+// NodeKindName returns a printable name. E.g. NBad => "Bad"
+const char* NodeKindName(NodeKind);
 
 inline static bool NodeIsPrimitiveConst(const Node* n) {
   return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;

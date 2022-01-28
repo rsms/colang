@@ -21,4 +21,9 @@ const char* path_cwdrel(const char* path);
 // path_isabs returns true if path is an absolute path
 bool path_isabs(const char* path);
 
+// path_base returns a pointer to the last path element. E.g. "foo/bar/baz.x" => "baz.x"
+// If the path is empty, returns "".
+// If the path consists entirely of slashes, returns "/".
+const char* path_base(const char* path);
+
 ASSUME_NONNULL_END

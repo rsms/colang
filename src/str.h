@@ -62,6 +62,13 @@ inline static Str str_trunc(Str s) { return str_setlen(s, 0); }
 static bool str_hasprefix(Str s, const char* prefix);
 static bool str_hasprefixn(Str s, const char* prefix, u32 len);
 
+// strrevn reverses s in place. Returns s.
+char* strrevn(char* s, usize len);
+
+// strfmtu64 writes a u64 value to buf, returning the length
+// (does NOT add a null terminator)
+u32 strfmtu64(char buf[64], u64 v, u32 base);
+
 
 // --- inline implementation ---
 

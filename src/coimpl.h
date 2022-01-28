@@ -244,7 +244,7 @@ typedef unsigned long          uintptr;
   // turns into CMP + CSEL on arm64
 
 // UNLIKELY(integralexpr)->integralexpr
-#ifdef __builtin_expect
+#if __has_builtin(__builtin_expect)
   #define UNLIKELY(x) __builtin_expect((x), 0)
   #define LIKELY(x)   __builtin_expect((x), 1)
 #else
@@ -459,25 +459,30 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #if defined(DEBUG) || !defined(NDEBUG)
   #undef NDEBUG
 
-  #define assert(cond) \
-    if (UNLIKELY(!(cond))) panic("Assertion failed: %s", #cond)
+  #define _assertfail(fmt, args...) \
+    _panic(__FILE__, __LINE__, __FUNCTION__, "Assertion failed: " fmt, args)
+  // Note: we can't use ", ##args" above in either clang nor gcc for some reason,
+  // or else certain applications of this macro are not expanded.
 
   #define assertf(cond, fmt, ...) \
-    if (UNLIKELY(!(cond))) panic("Assertion failed: %s; " fmt, #cond, ##__VA_ARGS__)
+    if (UNLIKELY(!(cond))) _assertfail("%s; " fmt, #cond, ##__VA_ARGS__)
+
+  #define assert(cond) \
+    if (UNLIKELY(!(cond))) _assertfail("%s", #cond)
 
   #define assertop(a,op,b) ({                                               \
     __typeof__(a) A__ = a;                                                  \
     __typeof__(a) B__ = b; /* intentionally typeof(a) and not b for lits */ \
     if (UNLIKELY(!(A__ op B__)))                                            \
-      panic("Assertion failed: %s %s %s (%s %s %s)",                        \
+      _assertfail("%s %s %s (%s %s %s)",                                    \
         #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
   })
 
-  #define assertcstreq(cstr1, cstr2) ({                              \
-    __typeof__(cstr1) cstr1__ = (cstr1);                             \
-    __typeof__(cstr2) cstr2__ = (cstr2);                             \
-    if (UNLIKELY(strcmp(cstr1__, cstr2__) != 0))                     \
-      panic("Assertion failed: \"%s\" != \"%s\"", cstr1__, cstr2__); \
+  #define assertcstreq(cstr1, cstr2) ({                  \
+    const char* cstr1__ = (cstr1);                       \
+    const char* cstr2__ = (cstr2);                       \
+    if (UNLIKELY(strcmp(cstr1__, cstr2__) != 0))         \
+      _assertfail("\"%s\" != \"%s\"", cstr1__, cstr2__); \
   })
 
   #define asserteq(a,b)    assertop((a),==,(b))
@@ -485,9 +490,11 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   #define assertlt(a,b)    assertop((a),<, (b))
   #define assertgt(a,b)    assertop((a),>, (b))
   #define assertnull(a)    assertop((a),==,NULL)
-  #define assertnotnull(a) ({                                               \
-    __typeof__(a) val__ = (a);                                              \
-    if (UNLIKELY(val__ == NULL)) panic("Assertion failed: %s != NULL", #a); \
+
+  #define assertnotnull(a) ({        \
+    __typeof__(a) val__ = (a);       \
+    if (UNLIKELY(val__ == NULL))     \
+      _assertfail("%s != NULL", #a); \
     val__; })
 
 #else /* !defined(NDEBUG) */

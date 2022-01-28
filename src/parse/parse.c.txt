@@ -258,9 +258,8 @@ static Node* infixExpr(Parser* p, int precedence, PFlag fl, Node* left);
 // exprOrTuple = Expr | Tuple
 static Node* exprOrTuple(Parser* p, int precedence, PFlag fl);
 
-
 static const char* var_kind_name(VarNode* n) {
-  if (NodeIsParam(n))
+  if (NodeIsParam(as_Node(n)))
     return "function parameter";
 
   // if (n->var.init && NodeIsType(n->var.init))

@@ -5,6 +5,8 @@
 // #include <lua.h>
 // #include <luajit.h>
 
+#include "coimpl.h"
+#include "test.h"
 #include "parse/parse.h"
 #include "sys.h"
 
@@ -25,6 +27,7 @@ void print_src_checksum(Mem mem, const Source* src) {
 }
 
 int main(int argc, const char** argv) {
+  if (co_test_main(argc, argv)) return 1;
   universe_init();
 
   dlog("Total: %3lu B", sizeof(union NodeUnion));

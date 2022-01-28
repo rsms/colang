@@ -107,15 +107,25 @@ def gen_NodeKind_enum(out, depth, i, subtypes):
   return i
 
 
-def output_compact(output, input, maxcol, indent):
+def output_compact(output, input, maxcol, indent, lineend=''):
   buf = indent
   for w in input:
     if len(buf) + len(w) > maxcol and len(buf) > 0:
-      output.append(buf[:len(buf)-1])
+      output.append(buf[:len(buf)-1] + lineend)
       buf = indent
     buf += w + ' '
   if len(buf) > 0:
     output.append(buf[:len(buf)-1])
+
+
+
+def structname(nodename, subtypes):
+  if len(subtypes) == 0 or nodename in ('Node', 'Stmt', 'Expr', 'Type'):
+    return nodename
+  return 'struct '+nodename
+
+
+# ---------------------------------------------------------------------------------------
 
 outh = [] # ast.h
 outc = [] # ast.c
@@ -155,8 +165,8 @@ for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
     continue # skip root type
-  outh.append('#define NodeKindIs%s(nkind) ((int)(nkind)-N%s_BEG <= (int)N%s_END-N%s_BEG)' % (
-    shortname, shortname, shortname, shortname))
+  outh.append('#define NodeKindIs%s(k) (N%s_BEG <= (k) && (k) <= N%s_END)' % (
+    shortname, shortname, shortname))
 outh.append('')
 
 # is_*
@@ -173,7 +183,11 @@ outh.append('')
 
 # assert_is_*
 outh.append('// void assert_is_<kind>(const Node*)')
-outh.append('#define _assert_NodeKind(NAME,kind) assertf(NodeKindIs##NAME(kind),"%d",kind)')
+outh.append('#define _assert_is1(NAME,n) ({ \\')
+outh.append('  NodeKind nk__ = assertnotnull(n)->kind; \\')
+outh.append('  assertf(NodeKindIs##NAME(nk__), "expected N%s; got N%s #%d", \\')
+outh.append('          #NAME, NodeKindName(nk__), nk__); \\')
+outh.append('})')
 for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
@@ -184,12 +198,13 @@ for name, subtypes in typemap.items():
       name, shortname))
   else:
     outh.append(
-      '#define assert_is_%s(n) _assert_NodeKind(%s,assertnotnull(n)->kind)' % (
+      '#define assert_is_%s(n) _assert_is1(%s,(n))' % (
       name, shortname))
 outh.append('')
 
 # as_*
 outh.append('// <type>* as_<type>(Node* n)')
+outh.append('// const <type>* as_<type>(const Node* n)')
 for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':
@@ -198,11 +213,45 @@ for name, subtypes in typemap.items():
     # has typedef so no need for "struct"
     outh.append('#define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (
       name, name, name))
-  else:
-    outh.append('#define as_%s(n) ({ assert_is_%s(n); (struct %s*)(n); })' % (
-      name, name, name))
+  # else:
+  #   outh.append('#define as_%s(n) ({ assert_is_%s(n); (struct %s*)(n); })' % (
+  #     name, name, name))
   # outh.append('')
-outh.append('')
+
+def gen_as_TYPE(out, name, subtypes):
+  stname = structname(name, subtypes)
+
+  def visit(out, name, subtypes):
+    for name2, subtypes2 in subtypes.items():
+      visit(out, name2, subtypes2)
+    out.append('const %s*:(const %s*)(n),' % (structname(name, subtypes), stname))
+    out.append('%s*:(%s*)(n),' % (structname(name, subtypes), stname))
+
+  tmp = []
+  tmp.append('#define as_%s(n) _Generic((n),' % (name))
+  visit(tmp, name, subtypes)
+
+  if strip_node_suffix(name) != '':
+    # tmp.append('default: as_%s(n))' % name)
+    tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+
+  tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
+
+  line1idx = len(out)
+  output_compact(out, tmp, 88, '  ', ' \\')
+  out[line1idx] = out[line1idx].strip()
+  out.append('')
+
+def gen_as_TYPE_all(out, subtypes):
+  for name, subtypes2 in subtypes.items():
+    if subtypes2:
+      gen_as_TYPE(out, name, subtypes2)
+      gen_as_TYPE_all(out, subtypes2)
+
+# as_Node
+gen_as_TYPE(outh, 'Node', Node)
+gen_as_TYPE_all(outh, Node)
+
 
 # union NodeUnion
 outh.append('union NodeUnion {')

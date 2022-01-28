@@ -244,6 +244,29 @@ Str str_appendhex_lc(Str s, const u8* data, u32 len) {
   return _str_appendhex(s, data, len, "0123456789abcdef");
 }
 
+char* strrevn(char* s, usize len) {
+  for (usize i = 0, j = len - 1; i < j; i++, j--) {
+    char tmp = s[i];
+    s[i] = s[j];
+    s[j] = tmp;
+  }
+  return s;
+}
+
+u32 strfmtu64(char buf[64], u64 v, u32 base) {
+  static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  base = MIN(base, 62);
+  char* p = buf;
+  do {
+    *p++ = chars[v % base];
+    v /= base;
+  } while (v);
+  u32 len = (u32)(uintptr)(p - buf);
+  p--;
+  strrevn(buf, len);
+  return len;
+}
+
 Str str_appendu64(Str s, u64 v, u32 base) {
   char buf[64];
   static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";

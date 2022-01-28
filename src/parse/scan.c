@@ -1,5 +1,6 @@
-#include "parse.h"
+#include "../coimpl.h"
 #include "../unicode.h"
+#include "parse.h"
 
 // Enable to dlog ">> TOKEN VALUE at SOURCELOC" on each call to SNext
 //#define SCANNER_DEBUG_TOKEN_PRODUCTION

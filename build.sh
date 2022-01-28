@@ -8,14 +8,15 @@ BUILD_MODE=safe  # debug | safe | fast
 WATCH=
 RUN=
 NINJA_ARGS=()
+TESTING_ENABLED=
 
 while [[ $# -gt 0 ]]; do case "$1" in
   -w)      WATCH=1; shift ;;
   -v)      NINJA_ARGS+=(-v); shift ;;
   -run=*)  RUN=${1:5}; shift ;;
-  -debug)  BUILD_MODE=debug; shift ;;
-  -safe)   BUILD_MODE=safe; shift ;;
-  -fast)   BUILD_MODE=fast; shift ;;
+  -debug)  BUILD_MODE=debug; TESTING_ENABLED=1; shift ;;
+  -safe)   BUILD_MODE=safe; TESTING_ENABLED=; shift ;;
+  -fast)   BUILD_MODE=fast; TESTING_ENABLED=; shift ;;
   -h|-help|--help) cat << _END
 usage: $0 [options] [<target> ...]
 options:
@@ -111,7 +112,9 @@ if [ "$BUILD_MODE" != "debug" ]; then
   # LDFLAGS+=( -dead_strip )
 else
   CFLAGS+=( -DDEBUG -ferror-limit=10 )
+  [ -n "$TESTING_ENABLED" ] && CFLAGS+=( -DCO_TESTING_ENABLED )
 fi
+
 
 # enable llvm address and UD sanitizer in debug builds
 if [ -n "$CC_IS_CLANG" -a "$BUILD_MODE" = "debug" ]; then
@@ -159,16 +162,16 @@ cflags_cxx = $
 ldflags = -g ${LDFLAGS[@]}
 
 rule link
-  command = c++ \$ldflags -o \$out \$in
+  command = $CC \$ldflags -o \$out \$in
   description = link \$out
 
 rule cc
-  command = cc -MD -MF \$out.d \$cflags \$cflags_c -c \$in -o \$out
+  command = $CC -MMD -MF \$out.d \$cflags \$cflags_c -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
 rule cxx
-  command = c++ -MD -MF \$out.d \$cflags \$cflags_cxx -c \$in -o \$out
+  command = $CXX -MMD -MF \$out.d \$cflags \$cflags_cxx -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
@@ -202,7 +205,13 @@ _gen_obj_build_rules() {
   done
 }
 
-CO_OBJECTS=( $(_gen_obj_build_rules "" "" $(find src -name '*.c')) )
+if [ -n "$TESTING_ENABLED" ]; then
+  CO_SOURCES=( $(find src -name '*.c') )
+else
+  CO_SOURCES=( $(find src -name '*.c' -not -name '*_test.c') )
+fi
+
+CO_OBJECTS=( $(_gen_obj_build_rules "" "" "${CO_SOURCES[@]}") )
 echo >> build.ninja
 
 echo "build co: phony \$outdir/co" >> build.ninja
