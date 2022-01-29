@@ -15,6 +15,7 @@
 
 #define ALLOC_MIN sizeof(usize) /* smallest new string */
 
+
 Str str_make(Mem mem, u32 cap) {
   cap = MAX( ALIGN2(cap + 1, sizeof(usize)), ALLOC_MIN );
 
@@ -269,25 +270,44 @@ u32 strfmtu64(char buf[64], u64 v, u32 base) {
 
 Str str_appendu64(Str s, u64 v, u32 base) {
   char buf[64];
-  static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  base = MIN(base, 62);
-  char* p = buf;
-  do {
-    *p++ = chars[v % base];
-    v /= base;
-  } while (v);
-
-  u32 len = (u32)(uintptr)(p - buf);
-
-  p--;
-
-  s = str_makeroom(s, len);
-  char* dst = &s->p[s->len];
-  while (buf <= p) {
-    *dst++ = *p--;
-  }
-
-  s->len += len;
+  u32 n = strfmtu64(buf, v, base);
+  memcpy(&s->p[s->len], buf, n);
+  s->len += n;
   s->p[s->len] = 0;
   return s;
+}
+
+
+Str* str_tmp() {
+  // _tmpstr holds per-thread temporary string buffers for use by fmtnode and fmtast.
+  static thread_local struct {
+    u32 index; // next buffer index (effective index = index % STR_TMP_MAX)
+    Str bufs[STR_TMP_MAX];
+
+    #ifndef CO_WITH_LIBC
+      Mem mem;
+      MemBufAllocator ma;
+      char mbuf[4096*8];
+    #endif
+  } _tmpstr = {0};
+
+  #ifndef CO_WITH_LIBC
+    if (_tmpstr.mem == NULL)
+      _tmpstr.mem = mem_buf_allocator_init(&_tmpstr.ma, _tmpstr.mbuf, sizeof(_tmpstr.mbuf));
+  #endif
+
+  u32 bufindex = _tmpstr.index % STR_TMP_MAX;
+  _tmpstr.index++;
+  Str s = _tmpstr.bufs[bufindex];
+  if (s) {
+    str_trunc(s);
+  } else {
+    #ifdef CO_WITH_LIBC
+      Mem mem = mem_libc_allocator();
+    #else
+      Mem mem = _tmpstr.mem;
+    #endif
+    _tmpstr.bufs[bufindex] = str_make(mem, 64);
+  }
+  return &_tmpstr.bufs[bufindex];
 }

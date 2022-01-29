@@ -20,28 +20,28 @@ ASSUME_NONNULL_BEGIN
 // end DEF_SYMS_PUB
 
 // precompiled constants, defined in universe_data.h
-extern const Sym      kSym__;
-extern Node*          kNode_bad;
-extern BasicTypeNode* kType_bool;
-extern BasicTypeNode* kType_i8;
-extern BasicTypeNode* kType_u8;
-extern BasicTypeNode* kType_i16;
-extern BasicTypeNode* kType_u16;
-extern BasicTypeNode* kType_i32;
-extern BasicTypeNode* kType_u32;
-extern BasicTypeNode* kType_i64;
-extern BasicTypeNode* kType_u64;
-extern BasicTypeNode* kType_f32;
-extern BasicTypeNode* kType_f64;
-extern BasicTypeNode* kType_int;
-extern BasicTypeNode* kType_uint;
-extern BasicTypeNode* kType_nil;
-extern BasicTypeNode* kType_ideal;
-extern BasicTypeNode* kType_str;
-extern BasicTypeNode* kType_auto;
-extern NilNode*       kExpr_nil;
-extern BoolLitNode*   kExpr_true;
-extern BoolLitNode*   kExpr_false;
+extern const Sym kSym__;
+extern Node* kNode_bad;
+extern Type* kType_bool;
+extern Type* kType_i8;
+extern Type* kType_u8;
+extern Type* kType_i16;
+extern Type* kType_u16;
+extern Type* kType_i32;
+extern Type* kType_u32;
+extern Type* kType_i64;
+extern Type* kType_u64;
+extern Type* kType_f32;
+extern Type* kType_f64;
+extern Type* kType_int;
+extern Type* kType_uint;
+extern Type* kType_nil;
+extern Type* kType_ideal;
+extern Type* kType_str;
+extern Type* kType_auto;
+extern Expr* kExpr_nil;
+extern Expr* kExpr_true;
+extern Expr* kExpr_false;
 
 void universe_init();
 const Scope* universe_scope();

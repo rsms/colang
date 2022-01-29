@@ -232,8 +232,9 @@ def gen_as_TYPE(out, name, subtypes):
   visit(tmp, name, subtypes)
 
   if strip_node_suffix(name) != '':
-    # tmp.append('default: as_%s(n))' % name)
-    tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
+    tmp.append('Node*: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
 
   tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
 
@@ -251,6 +252,20 @@ def gen_as_TYPE_all(out, subtypes):
 # as_Node
 gen_as_TYPE(outh, 'Node', Node)
 gen_as_TYPE_all(outh, Node)
+
+
+# maybe_*
+outh.append('// <type>* nullable maybe_<type>(Node* n)')
+outh.append('// const <type>* nullable maybe_<type>(const Node* n)')
+for name, subtypes in typemap.items():
+  shortname = strip_node_suffix(name)
+  if shortname == '':
+    continue # skip root type
+  if len(subtypes) == 0:
+    outh.append('#define maybe_%s(n) (is_%s(n)?(%s*)(n):NULL)' % (name, name, name))
+  else:
+    outh.append('#define maybe_%s(n) (is_%s(n)?as_%s(n):NULL)' % (name, name, name))
+outh.append('')
 
 
 # union NodeUnion

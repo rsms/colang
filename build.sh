@@ -111,7 +111,7 @@ if [ "$BUILD_MODE" != "debug" ]; then
   LDFLAGS+=( -flto )
   # LDFLAGS+=( -dead_strip )
 else
-  CFLAGS+=( -DDEBUG -ferror-limit=10 )
+  CFLAGS+=( -DDEBUG -ferror-limit=6 )
   [ -n "$TESTING_ENABLED" ] && CFLAGS+=( -DCO_TESTING_ENABLED )
 fi
 

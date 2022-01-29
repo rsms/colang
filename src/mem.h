@@ -79,9 +79,9 @@ typedef struct MemBufAllocator {
 
 Mem mem_buf_allocator_init(MemBufAllocator* a, void* buf, usize size);
 
-#define DEF_MEM_STACK_BUF_ALLOCATOR(name, buf)                       \
+#define DEF_MEM_STACK_BUF_ALLOCATOR(NAME, buf)                       \
   MemBufAllocator _memstk_a = {0};                                   \
-  Mem name = mem_buf_allocator_init(&_memstk_a, (buf), sizeof(buf));
+  Mem NAME = mem_buf_allocator_init(&_memstk_a, (buf), sizeof(buf));
 
 
 // invalid allocator (panic on allocation)

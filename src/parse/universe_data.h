@@ -147,23 +147,23 @@ static const BasicTypeNode _kType_ideal = _(ideal, kSym_$2A, TF_KindVoid);
 static const BasicTypeNode _kType_str = _(str, kSym_s, TF_KindPointer);
 static const BasicTypeNode _kType_auto = _(auto, kSym_a, TF_KindVoid);
 #undef _
-BasicTypeNode* kType_bool = (BasicTypeNode*)&_kType_bool;
-BasicTypeNode* kType_i8 = (BasicTypeNode*)&_kType_i8;
-BasicTypeNode* kType_u8 = (BasicTypeNode*)&_kType_u8;
-BasicTypeNode* kType_i16 = (BasicTypeNode*)&_kType_i16;
-BasicTypeNode* kType_u16 = (BasicTypeNode*)&_kType_u16;
-BasicTypeNode* kType_i32 = (BasicTypeNode*)&_kType_i32;
-BasicTypeNode* kType_u32 = (BasicTypeNode*)&_kType_u32;
-BasicTypeNode* kType_i64 = (BasicTypeNode*)&_kType_i64;
-BasicTypeNode* kType_u64 = (BasicTypeNode*)&_kType_u64;
-BasicTypeNode* kType_f32 = (BasicTypeNode*)&_kType_f32;
-BasicTypeNode* kType_f64 = (BasicTypeNode*)&_kType_f64;
-BasicTypeNode* kType_int = (BasicTypeNode*)&_kType_int;
-BasicTypeNode* kType_uint = (BasicTypeNode*)&_kType_uint;
-BasicTypeNode* kType_nil = (BasicTypeNode*)&_kType_nil;
-BasicTypeNode* kType_ideal = (BasicTypeNode*)&_kType_ideal;
-BasicTypeNode* kType_str = (BasicTypeNode*)&_kType_str;
-BasicTypeNode* kType_auto = (BasicTypeNode*)&_kType_auto;
+Type* kType_bool = (Type*)&_kType_bool;
+Type* kType_i8 = (Type*)&_kType_i8;
+Type* kType_u8 = (Type*)&_kType_u8;
+Type* kType_i16 = (Type*)&_kType_i16;
+Type* kType_u16 = (Type*)&_kType_u16;
+Type* kType_i32 = (Type*)&_kType_i32;
+Type* kType_u32 = (Type*)&_kType_u32;
+Type* kType_i64 = (Type*)&_kType_i64;
+Type* kType_u64 = (Type*)&_kType_u64;
+Type* kType_f32 = (Type*)&_kType_f32;
+Type* kType_f64 = (Type*)&_kType_f64;
+Type* kType_int = (Type*)&_kType_int;
+Type* kType_uint = (Type*)&_kType_uint;
+Type* kType_nil = (Type*)&_kType_nil;
+Type* kType_ideal = (Type*)&_kType_ideal;
+Type* kType_str = (Type*)&_kType_str;
+Type* kType_auto = (Type*)&_kType_auto;
 
 static const NilNode _kExpr_nil =
  {.kind=NNil,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_nil};
@@ -171,9 +171,9 @@ static const BoolLitNode _kExpr_true =
  {.kind=NBoolLit,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_bool,.ival=1};
 static const BoolLitNode _kExpr_false =
  {.kind=NBoolLit,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_bool,.ival=0};
-NilNode* kExpr_nil = (NilNode*)&_kExpr_nil;
-BoolLitNode* kExpr_true = (BoolLitNode*)&_kExpr_true;
-BoolLitNode* kExpr_false = (BoolLitNode*)&_kExpr_false;
+Expr* kExpr_nil = (Expr*)&_kExpr_nil;
+Expr* kExpr_true = (Expr*)&_kExpr_true;
+Expr* kExpr_false = (Expr*)&_kExpr_false;
 
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
@@ -470,7 +470,7 @@ static void gen_constants() {
   printf("#undef _\n");
   #undef _
   #define _(name, ...) \
-    printf("BasicTypeNode* kType_%s = (BasicTypeNode*)&_kType_%s;\n", #name, #name);
+    printf("Type* kType_%s = (Type*)&_kType_%s;\n", #name, #name);
   DEF_TYPE_CODES_BASIC_PUB(_)
   DEF_TYPE_CODES_BASIC(_)
   DEF_TYPE_CODES_PUB(_)
@@ -487,7 +487,7 @@ static void gen_constants() {
   DEF_CONST_NODES_PUB(_)
   #undef _
   #define _(name, AST_TYPE, ...) printf( \
-    "%sNode* kExpr_%s = (%sNode*)&_kExpr_%s;\n", #AST_TYPE, #name, #AST_TYPE, #name);
+    "Expr* kExpr_%s = (Expr*)&_kExpr_%s;\n", #name, #name);
   DEF_CONST_NODES_PUB(_)
   #undef _
 

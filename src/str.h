@@ -3,6 +3,14 @@
 #include "mem.h"
 ASSUME_NONNULL_BEGIN
 
+// STR_TMP_MAX is the limit of concurrent valid buffers returned by str_tmp.
+// For example, if STR_TMP_MAX==2 then:
+//   Str* a = str_tmp();
+//   Str* b = str_tmp();
+//   Str* c = str_tmp(); // same as a
+//
+#define STR_TMP_MAX 8
+
 typedef struct Str* Str;
 
 struct Str {
@@ -68,6 +76,32 @@ char* strrevn(char* s, usize len);
 // strfmtu64 writes a u64 value to buf, returning the length
 // (does NOT add a null terminator)
 u32 strfmtu64(char buf[64], u64 v, u32 base);
+
+// str_tmp allocates the next temporary string buffer.
+// It is thread safe.
+//
+// Strs returned by this function are managed in a circular-buffer fashion; calling str_tmp
+// many times will eventually return the same Str, limited by STR_TMP_MAX.
+//
+// If you return a temporary string to a caller, make sure to annotate its type as
+// "const Str" (or "cons char*" if you return s.p) to communicate that the user must
+// not modify it.
+//
+// Example 1:
+//   const Str fmtnode(const Node* n) {
+//     Str* sp = str_tmp();   // allocate
+//     *sp = NodeStr(*sp, n); // use and update pointer
+//     return *sp;            // return immutable Str to user
+//   }
+//
+// Example 2:
+//   const char* fmtnode(const Node* n) {
+//     Str* sp = str_tmp();   // allocate
+//     *sp = NodeStr(*sp, n); // use and update pointer
+//     return (*sp)->p;       // return c-string pointer to user
+//   }
+//
+Str* str_tmp();
 
 
 // --- inline implementation ---

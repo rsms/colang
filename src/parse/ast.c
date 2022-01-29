@@ -35,6 +35,45 @@ Node* NodeInit(Node* n, NodeKind kind) {
 }
 
 
+PosSpan _NodePosSpan(const Node* n) {
+  assertnotnull(n);
+  PosSpan span = { n->pos, n->endpos };
+  // dlog("-- NodePosSpan %s %u:%u",
+  //   NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
+  if (!pos_isknown(span.end))
+    span.end = span.start;
+
+  switch (n->kind) {
+    case NBinOp: {
+      auto op = (BinOpNode*)n;
+      span.start = op->left->pos;
+      span.end = op->right->pos;
+      break;
+    }
+    case NCall: {
+      auto call = (CallNode*)n;
+      span.start = NodePosSpan(call->receiver).start;
+      if (call->args)
+        span.end = NodePosSpan(call->args).end;
+      break;
+    }
+    case NTuple: {
+      span.start = pos_with_adjusted_start(span.start, -1);
+      break;
+    }
+    case NNamedVal: {
+      auto namedval = (NamedValNode*)n;
+      span.end = NodePosSpan(namedval->value).end;
+      break;
+    }
+    default:
+      break;
+  }
+
+  return span;
+}
+
+
 Scope* ScopeNew(Mem mem, const Scope* parent) {
   Scope* s = memalloct(mem, Scope);
   if (!s)
@@ -71,14 +110,14 @@ const Node* ScopeLookup(const Scope* scope, Sym s) {
 
 const char* NodeKindName(NodeKind k) {
   // kNodeNameTable[NodeKind] => const char* name
-  static const char* const kNodeNameTable[32] = {
+  static const char* const kNodeNameTable[35] = {
     "Bad", "Pkg", "File", "Comment", "BoolLit", "IntLit", "FloatLit", "StrLit",
-    "Nil", "Id", "BinOp", "UnaryOp", "Tuple", "Array", "Block", "Fun", "Macro",
-    "Call", "TypeCast", "Field", "Var", "Ref", "NamedVal", "Selector", "Index",
-    "Slice", "If", "BasicType", "ArrayType", "TupleType", "StructType",
-    "FunType",
+    "Nil", "Id", "BinOp", "PrefixOp", "PostfixOp", "Assign", "Tuple", "Array",
+    "Block", "Fun", "Macro", "Call", "TypeCast", "Field", "Var", "Ref",
+    "NamedVal", "Selector", "Index", "Slice", "If", "RefType", "BasicType",
+    "ArrayType", "TupleType", "StructType", "FunType",
   };
-  return k < 32 ? kNodeNameTable[k] : "?";
+  return k < 35 ? kNodeNameTable[k] : "?";
 }
 
 //END GENERATED CODE
