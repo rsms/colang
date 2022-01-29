@@ -30,7 +30,7 @@ struct Node {
 struct BadNode { Node; }; // substitute "filler" for invalid syntax
 
 // statements
-struct Stmt { Node; } ATTR_PACKED;
+struct Stmt { Node; };
 struct CUnitNode { Stmt;
   const Str       name;         // reference to str in corresponding Pkg or Source struct
   Scope* nullable scope;
@@ -47,10 +47,10 @@ struct CommentNode { Stmt;
 // expressions
 struct Expr { Node;
   Type* nullable type; // value type. NULL if unknown.
-} ATTR_PACKED;
+};
 
 // literal constant expressions
-struct LitExpr { Expr; } ATTR_PACKED;
+struct LitExpr { Expr; };
 struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
 struct IntLitNode   { LitExpr; u64 ival; }; // integer literal
 struct FloatLitNode { LitExpr; f64 fval; }; // floating-point literal
@@ -149,7 +149,7 @@ struct IfNode { Expr;
 struct Type { Node ;
   TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
-} ATTR_PACKED;
+};
 struct RefTypeNode { Type;
   Type* elem; // e.g. for RefType "&int", elem is "int" (a BasicType)
 };
@@ -721,7 +721,8 @@ union NodeUnion {
 //END GENERATED CODE
 
 // keep the size of nodes in check. Update this if needed.
-static_assert(sizeof(union NodeUnion) == 96, "AST size changed");
+static_assert(sizeof(union NodeUnion) >= 104, "AST size shrunk");
+static_assert(sizeof(union NodeUnion) <= 104, "AST size grew");
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
 const char* NodeKindName(NodeKind);
