@@ -1,6 +1,7 @@
 #include "../coimpl.h"
 #include "../test.h"
 #include "ast.h"
+#include "universe.h"
 
 
 DEF_TEST(ast_typecast) {
@@ -15,9 +16,9 @@ DEF_TEST(ast_typecast) {
   asserteq(false, NodeKindIsExpr(NBasicType));
 
   // as_TYPE
-  Node nst = {0};
-  Node* n = &nst;
-  const Node* cn = &nst;
+  Expr nst = {0};
+  Node* n = (Node*)&nst;
+  const Node* cn = (const Node*)&nst;
 
   {
     UNUSED Node* a = as_Node(n);
@@ -40,5 +41,23 @@ DEF_TEST(ast_typecast) {
     UNUSED Expr* b = as_Expr(n); // BinOp is an expression (based on Expr struct)
     UNUSED BinOpNode* c = as_BinOpNode(n);
     UNUSED const BinOpNode* d = as_BinOpNode(cn);
+  }
+
+  // TypeOfNode
+  {
+    BinOpNode* op = (BinOpNode*)n;
+    const BinOpNode* cop = (const BinOpNode*)cn;
+    UNUSED Type* t = TypeOfNode(op);
+    UNUSED const Type* ct = TypeOfNode(cop);
+    // this should cause warning -Wincompatible-pointer-types-discards-qualifiers:
+    //UNUSED Type* ct2 = TypeOfNode(cop);
+
+    // Type* => kType_type
+    t = TypeOfNode(t);
+    asserteq(t, kType_type);
+
+    // kType_type => kType_type
+    t = TypeOfNode(kType_type);
+    asserteq(t, kType_type);
   }
 }

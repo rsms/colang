@@ -16,6 +16,9 @@ typedef struct Scope   Scope;     // lexical namespace (may be chained)
 typedef u8             NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16            NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
+// forward decl of things defined in universe but referenced by ast.h
+extern Type* kType_type;
+
 DEF_TYPED_ARRAY(NodeArray, Node*)
 DEF_TYPED_ARRAY(TypeArray, Type*)
 
@@ -150,12 +153,10 @@ struct Type { Node ;
   TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
 };
+struct TypeTypeNode { Type; }; // typeof(int) => type
 struct RefTypeNode { Type;
   Type* elem; // e.g. for RefType "&int", elem is "int" (a BasicType)
 };
-// struct TypeTypeNode { Type;
-//   Type* type;
-// };
 struct BasicTypeNode { Type;
   TypeCode typeCode;
   Sym      name;
@@ -352,13 +353,14 @@ enum NodeKind {
     NIf           = 28, // struct IfNode
   NExpr_END       = 28,
   NType_BEG       = 29,
-    NRefType      = 29, // struct RefTypeNode
-    NBasicType    = 30, // struct BasicTypeNode
-    NArrayType    = 31, // struct ArrayTypeNode
-    NTupleType    = 32, // struct TupleTypeNode
-    NStructType   = 33, // struct StructTypeNode
-    NFunType      = 34, // struct FunTypeNode
-  NType_END       = 34,
+    NTypeType     = 29, // struct TypeTypeNode
+    NRefType      = 30, // struct RefTypeNode
+    NBasicType    = 31, // struct BasicTypeNode
+    NArrayType    = 32, // struct ArrayTypeNode
+    NTupleType    = 33, // struct TupleTypeNode
+    NStructType   = 34, // struct StructTypeNode
+    NFunType      = 35, // struct FunTypeNode
+  NType_END       = 35,
 } END_TYPED_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -393,6 +395,7 @@ typedef struct SelectorNode SelectorNode;
 typedef struct IndexNode IndexNode;
 typedef struct SliceNode SliceNode;
 typedef struct IfNode IfNode;
+typedef struct TypeTypeNode TypeTypeNode;
 typedef struct RefTypeNode RefTypeNode;
 typedef struct BasicTypeNode BasicTypeNode;
 typedef struct ArrayTypeNode ArrayTypeNode;
@@ -446,6 +449,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_SliceNode(n) ((n)->kind==NSlice)
 #define is_IfNode(n) ((n)->kind==NIf)
 #define is_Type(n) NodeKindIsType((n)->kind)
+#define is_TypeTypeNode(n) ((n)->kind==NTypeType)
 #define is_RefTypeNode(n) ((n)->kind==NRefType)
 #define is_BasicTypeNode(n) ((n)->kind==NBasicType)
 #define is_ArrayTypeNode(n) ((n)->kind==NArrayType)
@@ -495,6 +499,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_SliceNode(n) asserteq(assertnotnull(n)->kind,NSlice)
 #define assert_is_IfNode(n) asserteq(assertnotnull(n)->kind,NIf)
 #define assert_is_Type(n) _assert_is1(Type,(n))
+#define assert_is_TypeTypeNode(n) asserteq(assertnotnull(n)->kind,NTypeType)
 #define assert_is_RefTypeNode(n) asserteq(assertnotnull(n)->kind,NRefType)
 #define assert_is_BasicTypeNode(n) asserteq(assertnotnull(n)->kind,NBasicType)
 #define assert_is_ArrayTypeNode(n) asserteq(assertnotnull(n)->kind,NArrayType)
@@ -533,6 +538,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
 #define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
 #define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
+#define as_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (TypeTypeNode*)(n); })
 #define as_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (RefTypeNode*)(n); })
 #define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
 #define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
@@ -570,7 +576,8 @@ typedef struct FunTypeNode FunTypeNode;
   const IndexNode*:(const Node*)(n), IndexNode*:(Node*)(n), \
   const SliceNode*:(const Node*)(n), SliceNode*:(Node*)(n), \
   const IfNode*:(const Node*)(n), IfNode*:(Node*)(n), const Expr*:(const Node*)(n), \
-  Expr*:(Node*)(n), const RefTypeNode*:(const Node*)(n), RefTypeNode*:(Node*)(n), \
+  Expr*:(Node*)(n), const TypeTypeNode*:(const Node*)(n), TypeTypeNode*:(Node*)(n), \
+  const RefTypeNode*:(const Node*)(n), RefTypeNode*:(Node*)(n), \
   const BasicTypeNode*:(const Node*)(n), BasicTypeNode*:(Node*)(n), \
   const ArrayTypeNode*:(const Node*)(n), ArrayTypeNode*:(Node*)(n), \
   const TupleTypeNode*:(const Node*)(n), TupleTypeNode*:(Node*)(n), \
@@ -652,7 +659,8 @@ typedef struct FunTypeNode FunTypeNode;
   const Node*: ({ assert_is_ListExpr(n); (const struct ListExpr*)(n); }), \
   Node*: ({ assert_is_ListExpr(n); (struct ListExpr*)(n); }))
 
-#define as_Type(n) _Generic((n), const RefTypeNode*:(const Type*)(n), \
+#define as_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
+  TypeTypeNode*:(Type*)(n), const RefTypeNode*:(const Type*)(n), \
   RefTypeNode*:(Type*)(n), const BasicTypeNode*:(const Type*)(n), \
   BasicTypeNode*:(Type*)(n), const ArrayTypeNode*:(const Type*)(n), \
   ArrayTypeNode*:(Type*)(n), const TupleTypeNode*:(const Type*)(n), \
@@ -700,12 +708,61 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_SliceNode(n) (is_SliceNode(n)?(SliceNode*)(n):NULL)
 #define maybe_IfNode(n) (is_IfNode(n)?(IfNode*)(n):NULL)
 #define maybe_Type(n) (is_Type(n)?as_Type(n):NULL)
+#define maybe_TypeTypeNode(n) (is_TypeTypeNode(n)?(TypeTypeNode*)(n):NULL)
 #define maybe_RefTypeNode(n) (is_RefTypeNode(n)?(RefTypeNode*)(n):NULL)
 #define maybe_BasicTypeNode(n) (is_BasicTypeNode(n)?(BasicTypeNode*)(n):NULL)
 #define maybe_ArrayTypeNode(n) (is_ArrayTypeNode(n)?(ArrayTypeNode*)(n):NULL)
 #define maybe_TupleTypeNode(n) (is_TupleTypeNode(n)?(TupleTypeNode*)(n):NULL)
 #define maybe_StructTypeNode(n) (is_StructTypeNode(n)?(StructTypeNode*)(n):NULL)
 #define maybe_FunTypeNode(n) (is_FunTypeNode(n)?(FunTypeNode*)(n):NULL)
+
+// Type* nullable TypeOfNode(Node* n)
+// Type* TypeOfNode(Type* n)
+#define TypeOfNode(n) _Generic((n), const TypeTypeNode*:(const Type*)kType_type, \
+  TypeTypeNode*:kType_type, const RefTypeNode*:(const Type*)kType_type, \
+  RefTypeNode*:kType_type, const BasicTypeNode*:(const Type*)kType_type, \
+  BasicTypeNode*:kType_type, const ArrayTypeNode*:(const Type*)kType_type, \
+  ArrayTypeNode*:kType_type, const TupleTypeNode*:(const Type*)kType_type, \
+  TupleTypeNode*:kType_type, const StructTypeNode*:(const Type*)kType_type, \
+  StructTypeNode*:kType_type, const FunTypeNode*:(const Type*)kType_type, \
+  FunTypeNode*:kType_type, const Type*:(const Type*)kType_type, Type*:kType_type, \
+  const BoolLitNode*:(const Type*)((Expr*)(n))->type, BoolLitNode*:((Expr*)(n))->type, \
+  const IntLitNode*:(const Type*)((Expr*)(n))->type, IntLitNode*:((Expr*)(n))->type, \
+  const FloatLitNode*:(const Type*)((Expr*)(n))->type, FloatLitNode*:((Expr*)(n))->type, \
+  const StrLitNode*:(const Type*)((Expr*)(n))->type, StrLitNode*:((Expr*)(n))->type, \
+  const NilNode*:(const Type*)((Expr*)(n))->type, NilNode*:((Expr*)(n))->type, \
+  const struct LitExpr*:(const Type*)((Expr*)(n))->type, \
+  struct LitExpr*:((Expr*)(n))->type, const IdNode*:(const Type*)((Expr*)(n))->type, \
+  IdNode*:((Expr*)(n))->type, const BinOpNode*:(const Type*)((Expr*)(n))->type, \
+  BinOpNode*:((Expr*)(n))->type, const PrefixOpNode*:(const Type*)((Expr*)(n))->type, \
+  PrefixOpNode*:((Expr*)(n))->type, \
+  const PostfixOpNode*:(const Type*)((Expr*)(n))->type, \
+  PostfixOpNode*:((Expr*)(n))->type, \
+  const struct UnaryOpNode*:(const Type*)((Expr*)(n))->type, \
+  struct UnaryOpNode*:((Expr*)(n))->type, \
+  const AssignNode*:(const Type*)((Expr*)(n))->type, AssignNode*:((Expr*)(n))->type, \
+  const TupleNode*:(const Type*)((Expr*)(n))->type, TupleNode*:((Expr*)(n))->type, \
+  const ArrayNode*:(const Type*)((Expr*)(n))->type, ArrayNode*:((Expr*)(n))->type, \
+  const BlockNode*:(const Type*)((Expr*)(n))->type, BlockNode*:((Expr*)(n))->type, \
+  const struct ListExpr*:(const Type*)((Expr*)(n))->type, \
+  struct ListExpr*:((Expr*)(n))->type, const FunNode*:(const Type*)((Expr*)(n))->type, \
+  FunNode*:((Expr*)(n))->type, const MacroNode*:(const Type*)((Expr*)(n))->type, \
+  MacroNode*:((Expr*)(n))->type, const CallNode*:(const Type*)((Expr*)(n))->type, \
+  CallNode*:((Expr*)(n))->type, const TypeCastNode*:(const Type*)((Expr*)(n))->type, \
+  TypeCastNode*:((Expr*)(n))->type, const FieldNode*:(const Type*)((Expr*)(n))->type, \
+  FieldNode*:((Expr*)(n))->type, const VarNode*:(const Type*)((Expr*)(n))->type, \
+  VarNode*:((Expr*)(n))->type, const RefNode*:(const Type*)((Expr*)(n))->type, \
+  RefNode*:((Expr*)(n))->type, const NamedValNode*:(const Type*)((Expr*)(n))->type, \
+  NamedValNode*:((Expr*)(n))->type, const SelectorNode*:(const Type*)((Expr*)(n))->type, \
+  SelectorNode*:((Expr*)(n))->type, const IndexNode*:(const Type*)((Expr*)(n))->type, \
+  IndexNode*:((Expr*)(n))->type, const SliceNode*:(const Type*)((Expr*)(n))->type, \
+  SliceNode*:((Expr*)(n))->type, const IfNode*:(const Type*)((Expr*)(n))->type, \
+  IfNode*:((Expr*)(n))->type, const Expr*:(const Type*)((Expr*)(n))->type, \
+  Expr*:((Expr*)(n))->type, BadNode*:NULL, Stmt*:NULL, struct CUnitNode*:NULL, \
+  PkgNode*:NULL, FileNode*:NULL, CommentNode*:NULL, \
+  const Node*: ( is_Type(n) ? (const Type*)kType_type : \
+   is_Expr(n) ? (const Type*)((Expr*)(n))->type : NULL ), \
+  Node*:( is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))
 
 union NodeUnion {
   BadNode _0; PkgNode _1; FileNode _2; CommentNode _3; BoolLitNode _4;
@@ -714,8 +771,8 @@ union NodeUnion {
   TupleNode _14; ArrayNode _15; BlockNode _16; FunNode _17; MacroNode _18;
   CallNode _19; TypeCastNode _20; FieldNode _21; VarNode _22; RefNode _23;
   NamedValNode _24; SelectorNode _25; IndexNode _26; SliceNode _27; IfNode _28;
-  RefTypeNode _29; BasicTypeNode _30; ArrayTypeNode _31; TupleTypeNode _32;
-  StructTypeNode _33; FunTypeNode _34;
+  TypeTypeNode _29; RefTypeNode _30; BasicTypeNode _31; ArrayTypeNode _32;
+  TupleTypeNode _33; StructTypeNode _34; FunTypeNode _35;
 };
 
 //END GENERATED CODE
@@ -728,6 +785,7 @@ static_assert(sizeof(union NodeUnion) <= 104, "AST size grew");
 const char* NodeKindName(NodeKind);
 
 inline static bool NodeIsPrimitiveConst(const Node* n) {
+  // used by resolve_id
   return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;
 }
 

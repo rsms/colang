@@ -145,6 +145,7 @@ cflags = $
   -fcolor-diagnostics $
   -feliminate-unused-debug-types $
   -Wall -Wextra -Wvla $
+  -Wimplicit-fallthrough $
   -Wno-missing-field-initializers $
   -Wno-unused-parameter $
   -Werror=implicit-function-declaration $

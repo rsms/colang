@@ -22,6 +22,7 @@ ASSUME_NONNULL_BEGIN
 // precompiled constants, defined in universe_data.h
 extern const Sym kSym__;
 extern Node* kNode_bad;
+extern Type* kType_type;
 extern Type* kType_bool;
 extern Type* kType_i8;
 extern Type* kType_u8;

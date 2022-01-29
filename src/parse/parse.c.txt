@@ -34,7 +34,7 @@
 // enable debug messages for defsym()
 //#define DEBUG_DEFSYM
 //
-// enable debug messages for resolve_id()
+// enable debug messages for presolve_id()
 //#define DEBUG_LOOKUPSYM
 //
 
@@ -521,81 +521,27 @@ static bool name_is_pub(Sym name) {
 }
 
 
-static Node* simplify_id(Parser* p, IdNode* id, PFlag fl) {
-  assertnotnull(id->target);
-  assertnotnull(id->name);
-
-  Node* target = id->target;
-
-  // unwind var targeting a type
-  Node* tn = target;
-  while (tn->kind == NVar && NodeIsConst(tn) && !NodeIsParam(tn) && ((VarNode*)tn)->init) {
-    tn = ((VarNode*)tn)->init;
-    // Note: no NodeUnrefVar here
-  }
-
-  if (fl & PFlagRValue) {
-    target = tn;
-    NodeSetRValue(id);
-  }
-
-  if (NodeIsPrimitiveConst(target)) // NNil, NBasicType, NBoolLit
-    return target;
-
-  return (Node*)id;
-}
-
-
-// resolve_id resolves an identifier.
-// Its target is assumed to be NULL.
-// Returns id or its target
-static Node* resolve_id(Parser* p, IdNode* id, PFlag fl) {
+// presolve_id resolves an identifier, returning the effective node which may be
+// either id or a simplification, like kExpr_true instead of (Id "true" -> kExpr_true)
+static Node* presolve_id(Parser* p, IdNode* id, PFlag fl) {
   assertnull(id->target);
   assertnotnull(id->name);
 
-  id->target = lookupsym(p, id->name);
+  Node* target = lookupsym(p, id->name);
 
   #ifdef DEBUG_LOOKUPSYM
-    if (id->target == NULL) {
-      dlog("lookup %s => (not found; unresolved)", id->name);
+    if (target) {
+      dlog("lookup %s => %s %s", id->name, nodename(target), fmtnode(target));
     } else {
-      Node* n = id->target;
-      dlog("lookup %s => %s %s", id->name, nodename(n), fmtnode(n));
+      dlog("lookup %s => (not found; unresolved)", id->name);
     }
   #endif
 
-  if (UNLIKELY(id->target == NULL)) {
-    // not found
-    NodeSetUnresolved(id);
-    NodeSetRValue(id);
-    return (Node*)id;
-  }
-
-  id->type = is_Type(id->target) ? (Type*)id->target : as_Expr(id->target)->type;
-  if (is_VarNode(id->target))
-    NodeRefVar((VarNode*)id->target);
-
-  switch (id->target->kind) {
-    case NMacro:
-    case NFun:
-      // Note: Don't transfer "unresolved" attribute of functions
-      break;
-    // case NVar:
-    //   if (NodeIsConst(id->target))
-    //     NodeSetHasConstVar(id);
-    //   FALLTHROUGH;
-    default:
-      NodeTransferUnresolved(id, id->target);
-  }
-
-  // set id const == target const
-  id->flags = (id->flags & ~NF_Const) | (id->target->flags & NF_Const);
-
-  MUSTTAIL return simplify_id(p, id, fl);
+  return resolve_id(id, target);
 }
 
 
-// useAsRValue is used to lazily resolve identifiers which are used in rvalue position
+// use_as_rvalue is used to lazily resolve identifiers which are used in rvalue position
 // that is unknown ahead of time. Returns expr or its effective value.
 // For example:
 //   fun foo(x, y int) int {
@@ -608,18 +554,20 @@ static Node* resolve_id(Parser* p, IdNode* id, PFlag fl) {
 // Scenario 2:
 //   fun foo(x, y int) int {
 //     x + y
-//     ~~~~~  Used as an rvalue in an op; call useAsRValue(x)
+//     ~~~~~  Used as an rvalue in an op; call use_as_rvalue(x)
 //
-static Node* useAsRValue(Parser* p, Node* n) {
+#define use_as_rvalue(p, n) _Generic((n), \
+  IdNode*: _use_as_rvalue_id,              \
+  default: _use_as_rvalue_any              \
+)(p, (n))
+static IdNode* _use_as_rvalue_id(Parser* p, IdNode* id) {
+  NodeSetRValue(id);
+  return resolve_id(id, id->target ? NULL : lookupsym(p, id->name));
+}
+static Node* _use_as_rvalue_any(Parser* p, Node* n) {
   switch (n->kind) {
-    case NId:
-      if (((IdNode*)n)->target)
-        return simplify_id(p, (IdNode*)n, PFlagRValue);
-      return resolve_id(p, (IdNode*)n, PFlagRValue);
-
-    case NBasicType:
-      return n; // immutable memory, allocated by universe
-
+    case NId:        return use_as_rvalue_id(p, as_IdNode(n));
+    case NBasicType: return n; // immutable memory, allocated by universe
     default:
       NodeSetRValue(n);
       return n;
@@ -684,14 +632,14 @@ static Type* PAuto(Parser* p, PFlag fl) {
 static Node* PId(Parser* p, PFlag fl) {
   auto n = pId(p);
   if ((fl & PFlagRValue) || p->tok == TSemi)
-    return resolve_id(p, n, fl | PFlagRValue);
+    return presolve_id(p, n, fl | PFlagRValue);
   return as_Node(n);
 }
 
 
 static void set_var_init(Parser* p, VarNode* n, Node* init) {
   assert(is_Expr(init) || is_Type(init));
-  init = useAsRValue(p, init);
+  init = use_as_rvalue(p, init);
   NodeTransferUnresolved(n, init);
   n->init = init;
 
@@ -854,7 +802,7 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
   IdNode* dst = as_IdNode(dstn);
   Node* target = dst->target;
   if (!target) {
-    target = resolve_id(p, dst, PFlagNone);
+    target = presolve_id(p, dst, PFlagNone);
     if (target == as_Node(dst))
       target = dst->target;
   }
@@ -912,7 +860,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   IdNode* id1 = as_IdNode(left);
-  Node* target2 = resolve_id(p, id2, fl | PFlagType);
+  Node* target2 = presolve_id(p, id2, fl | PFlagType);
   Type* typ = as_Type(target2);
   Node* init = NULL;
 
@@ -981,7 +929,7 @@ static Node* pAssignToTuple(Parser* p, const Parselet* e, PFlag fl, Node* dstn) 
     auto dst = as_IdNode(lnodes->v[i]); // TODO: non-Id dst, e.g. "foo.bar = 3"
     auto src = rnodes->v[i];
 
-    Node* target = resolve_id(p, dst, PFlagNone);
+    Node* target = presolve_id(p, dst, PFlagNone);
     if (target == as_Node(dst))
       target = assertnotnull(dst->target);
 
@@ -1142,9 +1090,9 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   nexttok(p); // consume "["
-  n->index.index = 0xffffffff; // not a compile-time constant (for now)
-  n->index.operand = useAsRValue(p, left);
-  NodeTransferUnresolved(n, n->index.operand);
+  n->index = 0xffffffff; // not a compile-time constant (for now)
+  n->operand = use_as_rvalue(p, left);
+  NodeTransferUnresolved(n, n->operand);
 
   if (p->tok == TRBrack) { // "[]"
     syntaxerr(p, "missing index");
@@ -1153,14 +1101,14 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   if (p->tok != TColon) {
-    n->index.indexexpr = expr(p, PREC_LOWEST, fl | PFlagRValue);
-    NodeTransferUnresolved(n, n->index.indexexpr);
+    n->indexexpr = expr(p, PREC_LOWEST, fl | PFlagRValue);
+    NodeTransferUnresolved(n, n->indexexpr);
   }
 
   if (p->tok == TColon) {
     // "[:" -- slice
-    Node* operand = n->index.operand;
-    Node* start = n->index.indexexpr;
+    Node* operand = n->operand;
+    Node* start = n->indexexpr;
     n->kind = NSlice;
     n->slice.operand = operand;
     n->slice.start = start;
@@ -1288,7 +1236,7 @@ static Node* pArgs(Parser* p, PFlag fl) { // => NTuple
         arg->namedval.value = expr(p, PREC_LOWEST, fl);
         tuple->flags |= NF_Named; // "has named argument"
       } else {
-        id = resolve_id(p, id, fl);
+        id = presolve_id(p, id, fl);
         arg = infixExpr(p, PREC_LOWEST, fl, id);
         if (tuple->flags & NF_Named)
           goto err_pos_after_named;
@@ -1335,7 +1283,7 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   Type* ctxtype = p->ctxtype; // save ctxtype
 
   // receiver
-  n->call.receiver = useAsRValue(p, receiver);
+  n->call.receiver = use_as_rvalue(p, receiver);
   NodeTransferUnresolved(n, n->call.receiver);
 
   // args
@@ -1378,7 +1326,7 @@ static Node* pField(Parser* p) {
     // e.g. "type" (implicit name)
     auto typename = mknode(p, Id);
     typename->id.name = n->field.name;
-    n->type = resolve_id(p, typename, PFlagType);
+    n->type = presolve_id(p, typename, PFlagType);
     n->flags |= NF_Base;
   } else {
     // e.g. "name type"
@@ -1560,7 +1508,7 @@ static Node* pBlock(Parser* p, PFlag fl) {
     // if last expression is a local, increment its refcount
     NodeRefAny(cn);
 
-    n->array.a.v[n->array.a.len - 1] = useAsRValue(p, cn);
+    n->array.a.v[n->array.a.len - 1] = use_as_rvalue(p, cn);
     // if (fl & PFlagRValue) {
     //   // block is used as an rvalue e.g. "x = { ... }"
     //   if (cn && cn->kind == NVar) {
@@ -1616,7 +1564,7 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, BinOp);
   n->op.op = p->tok;
   nexttok(p);
-  n->op.left = useAsRValue(p, left);
+  n->op.left = use_as_rvalue(p, left);
   Type* ctxtype = set_ctxtype(p, n->op.left->type);
   n->op.right = expr(p, e->prec, fl | PFlagRValue);
   p->ctxtype = ctxtype; // restore ctxtype
@@ -1629,7 +1577,7 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
   auto n = mknode(p, PostfixOp);
   n->op.op = p->tok;
-  n->op.left = useAsRValue(p, operand);
+  n->op.left = use_as_rvalue(p, operand);
   nexttok(p); // consume "+"
   NodeTransferUnresolved(n, n->op.left);
   return n;
@@ -1640,7 +1588,7 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
 static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto n = mknode(p, Selector);
   nexttok(p); // consume "."
-  n->sel.operand = useAsRValue(p, left);
+  n->sel.operand = use_as_rvalue(p, left);
   TARRAY_INIT(&n->sel.indices);
 
   // member is a name
@@ -1824,7 +1772,7 @@ finish:
         t->id.name = cn->var.name;
         cn->var.name = kSym__;
         cn->var.index = index++;
-        cn->type = useAsRValue(p, t);
+        cn->type = use_as_rvalue(p, t);
       }
       NodeTransferUnresolved(cn, cn->type);
       NodeTransferUnresolved(n, cn->type);

@@ -6,8 +6,9 @@
 // Define to run the generator during program initialization:
 #define RUN_GENERATOR 0
 
-// static const Node _kType_type = {.kind=NTypeType};
-// Node* kType_type = (Node*)&_kType_type;
+static const Type _kType_type = {.kind=NTypeType};
+Type* kType_type = (Type*)&_kType_type;
+
 static const Node _kNode_bad = {.kind=NBad};
 Node* kNode_bad = (Node*)&_kNode_bad;
 

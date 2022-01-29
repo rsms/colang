@@ -202,6 +202,11 @@ for name, subtypes in typemap.items():
       name, shortname))
 outh.append('')
 
+def output_compact_macro(output, input):
+  line1idx = len(output)
+  output_compact(output, input, 88, '  ', ' \\')
+  output[line1idx] = output[line1idx].strip()
+
 # as_*
 outh.append('// <type>* as_<type>(Node* n)')
 outh.append('// const <type>* as_<type>(const Node* n)')
@@ -213,10 +218,6 @@ for name, subtypes in typemap.items():
     # has typedef so no need for "struct"
     outh.append('#define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (
       name, name, name))
-  # else:
-  #   outh.append('#define as_%s(n) ({ assert_is_%s(n); (struct %s*)(n); })' % (
-  #     name, name, name))
-  # outh.append('')
 
 def gen_as_TYPE(out, name, subtypes):
   stname = structname(name, subtypes)
@@ -237,10 +238,7 @@ def gen_as_TYPE(out, name, subtypes):
     tmp.append('Node*: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
 
   tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
-
-  line1idx = len(out)
-  output_compact(out, tmp, 88, '  ', ' \\')
-  out[line1idx] = out[line1idx].strip()
+  output_compact_macro(out, tmp)
   out.append('')
 
 def gen_as_TYPE_all(out, subtypes):
@@ -265,6 +263,41 @@ for name, subtypes in typemap.items():
     outh.append('#define maybe_%s(n) (is_%s(n)?(%s*)(n):NULL)' % (name, name, name))
   else:
     outh.append('#define maybe_%s(n) (is_%s(n)?as_%s(n):NULL)' % (name, name, name))
+outh.append('')
+
+
+# TypeOfNode
+visit_typeof_seen = set()
+def visit_typeof(out, name, subtypes, action, constaction):
+  for name2, subtypes2 in subtypes.items():
+    visit_typeof(out, name2, subtypes2, action, constaction)
+  out.append('const %s*:%s,' % (structname(name, subtypes), constaction))
+  out.append('%s*:%s,' % (structname(name, subtypes), action))
+  visit_typeof_seen.add(name)
+
+outh.append('// Type* nullable TypeOfNode(Node* n)')
+outh.append('// Type* TypeOfNode(Type* n)')
+tmp = []
+tmp.append('#define TypeOfNode(n) _Generic((n),')
+visit_typeof(tmp, 'Type', typemap['Type'], 'kType_type', '(const Type*)kType_type')
+visit_typeof(tmp, 'Expr', typemap['Expr'],
+  '((Expr*)(n))->type', '(const Type*)((Expr*)(n))->type')
+
+# remaining node kinds have no type
+for name, subtypes in typemap.items():
+  if name != 'Node' and name not in visit_typeof_seen:
+    tmp.append('%s*:NULL,' % structname(name, subtypes))
+
+# Node: inspect at runtime
+tmp += [
+  'const Node*: ( is_Type(n) ? (const Type*)kType_type :',
+  ' is_Expr(n) ? (const Type*)((Expr*)(n))->type : NULL ),',
+  'Node*:( is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))',
+]
+
+# tmp.append('Node*:(is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))')
+
+output_compact_macro(outh, tmp)
 outh.append('')
 
 
