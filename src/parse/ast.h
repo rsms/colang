@@ -170,13 +170,13 @@ struct RefTypeNode { Type;
   Type* elem; // e.g. for RefType "&int", elem is "int" (a BasicType)
 };
 struct BasicTypeNode { Type;
-  TypeCode typeCode;
+  TypeCode typecode;
   Sym      name;
 };
 struct ArrayTypeNode { Type;
   u32            size;     // used for array. 0 until sizeexpr is resolved
   Expr* nullable sizeexpr; // NULL for inferred types
-  Type*          subtype;
+  Type*          elem;
 };
 struct TupleTypeNode { Type;
   TypeArray a;            // Type[]

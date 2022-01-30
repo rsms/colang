@@ -22,7 +22,7 @@ const char* error_str(error e) {
   case err_access:        return "permission denied";
   case err_nomem:         return "cannot allocate memory";
   case err_mfault:        return "bad memory address";
-  case err_overflow:      return "value too large for defined data type";
+  case err_overflow:      return "value too large";
   }
   return "(unknown error)";
 }

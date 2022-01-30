@@ -1,11 +1,13 @@
 #include "../coimpl.h"
 #include "buildctx.h"
+#include "universe.h"
+#include "typeid.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdio.h> // vsnprintf
 #endif
 
-void buildctx_init(
+void BuildCtxInit(
   BuildCtx*             ctx,
   Mem                   mem,
   SymPool*              syms,
@@ -29,7 +31,7 @@ void buildctx_init(
   posmap_init(&ctx->posmap, mem);
 }
 
-void buildctx_dispose(BuildCtx* ctx) {
+void BuildCtxDispose(BuildCtx* ctx) {
   DiagnosticArrayFree(&ctx->diagarray, ctx->mem);
   SymMapDispose(&ctx->types);
   posmap_dispose(&ctx->posmap);
@@ -38,33 +40,33 @@ void buildctx_dispose(BuildCtx* ctx) {
   #endif
 }
 
-Diagnostic* buildctx_mkdiag(BuildCtx* ctx) {
+Diagnostic* b_mkdiag(BuildCtx* ctx) {
   Diagnostic* d = memalloct(ctx->mem, Diagnostic);
   d->build = ctx;
   DiagnosticArrayPush(&ctx->diagarray, d, ctx->mem);
   return d;
 }
 
-void buildctx_diag(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* message) {
+void b_diag(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* message) {
   if (level <= DiagError)
     ctx->errcount++;
   if (level > ctx->diaglevel || ctx->diagh == NULL)
     return;
-  Diagnostic* d = buildctx_mkdiag(ctx);
+  Diagnostic* d = b_mkdiag(ctx);
   d->level = level;
   d->pos = pos;
   d->message = mem_strdup(ctx->mem, message);
   ctx->diagh(d, ctx->userdata);
 }
 
-void buildctx_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {
+void b_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {
   if (level > ctx->diaglevel || ctx->diagh == NULL) {
     if (level <= DiagError)
       ctx->errcount++;
     return;
   }
   #ifndef CO_WITH_LIBC
-    #warning TODO implement buildctx_diagv for non-libc (need vsnprintf)
+    #warning TODO implement b_diagv for non-libc (need vsnprintf)
     // Note: maybe we can implement str_appendfmtv for non-libc and use that?
   #else
     char buf[256];
@@ -72,47 +74,92 @@ void buildctx_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt
     va_copy(ap1, ap);
     isize n = vsnprintf(buf, sizeof(buf), fmt, ap1);
     if (n < (isize)sizeof(buf))
-      return buildctx_diag(ctx, level, pos, buf);
+      return b_diag(ctx, level, pos, buf);
     // buf too small; heap allocate
     char* buf2 = (char*)memalloc(ctx->mem, n + 1);
     n = vsnprintf(buf2, n + 1, fmt, ap);
-    buildctx_diag(ctx, level, pos, buf2);
+    b_diag(ctx, level, pos, buf2);
     memfree(ctx->mem, buf2);
   #endif
 }
 
-void buildctx_diagf(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, ...) {
+void b_diagf(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  buildctx_diagv(ctx, level, pos, fmt, ap);
+  b_diagv(ctx, level, pos, fmt, ap);
   va_end(ap);
 }
 
-void buildctx_errf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_errf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  buildctx_diagv(ctx, DiagError, pos, fmt, ap);
+  b_diagv(ctx, DiagError, pos, fmt, ap);
   va_end(ap);
 }
 
-void buildctx_warnf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_warnf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  buildctx_diagv(ctx, DiagWarn, pos, fmt, ap);
+  b_diagv(ctx, DiagWarn, pos, fmt, ap);
   va_end(ap);
 }
 
-void buildctx_notef(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_notef(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  buildctx_diagv(ctx, DiagNote, pos, fmt, ap);
+  b_diagv(ctx, DiagNote, pos, fmt, ap);
   va_end(ap);
 }
 
+Sym b_typeid_assign(BuildCtx* b, Type* t) {
+  // Note: built-in types have predefined type ids (defined in universe)
+  char buf[128];
+  u32 len = typeid_make(buf, sizeof(buf), t);
+  if (LIKELY( len < sizeof(buf) ))
+    return t->tid = symget(b->syms, buf, len);
+  // didn't fit in stack buffer; resort to heap allocation
+  len++;
+  char* s = memalloc(b->mem, len);
+  if (!s) {
+    b_errf(b, (PosSpan){0}, "out of memory");
+    return kSym__;
+  }
+  len = typeid_make(s, len, t);
+  t->tid = symget(b->syms, s, len);
+  memfree(b->mem, s);
+  return t->tid;
+}
+
+bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
+  // invariant: x != y
+  assertnotnull(x);
+  assertnotnull(y);
+  if (x->kind != y->kind)
+    return false;
+  if (is_BasicTypeNode(x)) // all BasicTypeNodes have precomputed type id
+    return x->tid == y->tid;
+  return b_typeid(b, x) == b_typeid(b, y);
+}
+
+#if 0
+// TODO Type* InternASTType(Build* b, Type* t) {
+  if (t->kind == NBasicType)
+    return t;
+  auto tid = GetTypeID(b, t);
+  auto t2 = SymMapGet(&b->types, tid);
+  if (t2)
+    return t2;
+  SymMapSet(&b->types, tid, t);
+  return t;
+}
+#endif
+
+
+// --- functions to aid unit tests
 
 #if defined(CO_TEST) && defined(CO_WITH_LIBC)
 
-BuildCtx* test_buildctx_new() {
+BuildCtx* b_testctx_new() {
   Mem mem = mem_libc_allocator();
 
   SymPool* syms = memalloct(mem, SymPool);
@@ -121,18 +168,18 @@ BuildCtx* test_buildctx_new() {
   Pkg* pkg = memalloct(mem, Pkg);
   pkg->dir = ".";
 
-  BuildCtx* ctx = memalloct(mem, BuildCtx);
-  buildctx_init(ctx, mem, syms, pkg, NULL, NULL);
+  BuildCtx* b = memalloct(mem, BuildCtx);
+  b_init(b, mem, syms, pkg, NULL, NULL);
 
   return b;
 }
 
-void test_buildctx_free(BuildCtx* ctx) {
-  auto mem = ctx->mem;
-  sympool_dispose(ctx->syms);
-  memfree(mem, ctx->pkg);
-  memfree(mem, ctx->syms);
-  buildctx_dispose(ctx);
+void b_testctx_free(BuildCtx* b) {
+  auto mem = b->mem;
+  sympool_dispose(b->syms);
+  memfree(mem, b->pkg);
+  memfree(mem, b->syms);
+  b_dispose(b);
   // MemLinearFree(mem);
 }
 

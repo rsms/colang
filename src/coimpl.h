@@ -443,7 +443,7 @@ enum error {
   err_access        = -11, // permission denied
   err_nomem         = -12, // cannot allocate memory
   err_mfault        = -13, // bad memory address
-  err_overflow      = -14, // value too large for defined data type
+  err_overflow      = -14, // value too large
 };
 
 error error_from_errno(int errno);

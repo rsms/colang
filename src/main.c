@@ -66,7 +66,7 @@ int main(int argc, const char** argv) {
 
   // create a build context
   BuildCtx build = {0};
-  buildctx_init(&build, mem, &syms, &pkg, on_scan_diag, NULL);
+  BuildCtxInit(&build, mem, &syms, &pkg, on_scan_diag, NULL);
 
   // scan all sources of the package
   Scanner scanner = {0};

@@ -73,9 +73,9 @@ static bool str_hasprefixn(Str s, const char* prefix, u32 len);
 // strrevn reverses s in place. Returns s.
 char* strrevn(char* s, usize len);
 
-// strfmtu64 writes a u64 value to buf, returning the length
-// (does NOT add a null terminator)
+// strfmtu64 writes a u64 value to buf, returning the length (does NOT append '\0')
 u32 strfmtu64(char buf[64], u64 v, u32 base);
+static u32 strfmtu32(char buf[32], u32 v, u32 base);
 
 // str_tmp allocates the next temporary string buffer.
 // It is thread safe.
@@ -125,6 +125,9 @@ inline static bool str_hasprefixn(Str s, const char* prefix, u32 prefixlen) {
 }
 inline static bool str_hasprefix(Str s, const char* prefix) {
   return str_hasprefixn(s, prefix, strlen(prefix));
+}
+inline static u32 strfmtu32(char buf[32], u32 v, u32 base) {
+  return strfmtu64(buf, (u64)v, base);
 }
 
 ASSUME_NONNULL_END

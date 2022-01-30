@@ -18,14 +18,14 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 // basic: housed in NBasicType, named & exported in the global scope
 #define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                    */\
   _( bool      , 'b' , TF_KindBool )                                                       \
-  _( i8        , '1' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
-  _( u8        , '2' , TF_KindInt | TF_Size1 )                                             \
-  _( i16       , '3' , TF_KindInt | TF_Size2 | TF_Signed )                                 \
-  _( u16       , '4' , TF_KindInt | TF_Size2 )                                             \
-  _( i32       , '5' , TF_KindInt | TF_Size4 | TF_Signed )                                 \
-  _( u32       , '6' , TF_KindInt | TF_Size4 )                                             \
-  _( i64       , '7' , TF_KindInt | TF_Size8 | TF_Signed )                                 \
-  _( u64       , '8' , TF_KindInt | TF_Size8 )                                             \
+  _( i8        , 'c' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
+  _( u8        , 'B' , TF_KindInt | TF_Size1 )                                             \
+  _( i16       , 's' , TF_KindInt | TF_Size2 | TF_Signed )                                 \
+  _( u16       , 'S' , TF_KindInt | TF_Size2 )                                             \
+  _( i32       , 'w' , TF_KindInt | TF_Size4 | TF_Signed )                                 \
+  _( u32       , 'W' , TF_KindInt | TF_Size4 )                                             \
+  _( i64       , 'd' , TF_KindInt | TF_Size8 | TF_Signed )                                 \
+  _( u64       , 'D' , TF_KindInt | TF_Size8 )                                             \
   _( f32       , 'f' , TF_KindF32 | TF_Size4 | TF_Signed )                                 \
   _( f64       , 'F' , TF_KindF64 | TF_Size8 | TF_Signed )                                 \
   _( int       , 'i' , TF_KindInt            | TF_Signed )                                 \
@@ -36,7 +36,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
   _( ideal     , '*' , TF_KindVoid )/* type of const literal                             */\
 // end DEF_TYPE_CODES_BASIC
 #define DEF_TYPE_CODES_PUB(_)                                                              \
-  _( str       , 's' , TF_KindPointer )                                                    \
+  _( str       , '"' , TF_KindPointer )                                                    \
   _( auto      , 'a' , TF_KindVoid    ) /* inferred                                      */\
 // end DEF_TYPE_CODES_PUB
 #define DEF_TYPE_CODES_ETC(_)                                                              \
@@ -55,8 +55,9 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 // TypeCode identifies all basic types
 enum TypeCode {
   #define _(name, _encoding, _flags) TC_##name,
-  // IMPORTANT: order of macro invocations must match _TypeCodeEncodingMap impl
+  // IMPORTANT: this must match _TypeCodeEncodingMap impl
   DEF_TYPE_CODES_BASIC_PUB(_)
+  TC_NUM_END,
   DEF_TYPE_CODES_BASIC(_)
   TC_BASIC_END,
   DEF_TYPE_CODES_PUB(_)
@@ -107,7 +108,7 @@ enum TypeFlags {
   // attributes
   TF_Attr_BITOFFS = ILOG2(TF_Size_MAX) + 1,
   #define B TF_Attr_BITOFFS
-  TF_Signed     = 1 << B,       // is signed (integers only)
+  TF_Signed = 1 << B,       // is signed (integers only)
   #undef B
 } END_TYPED_ENUM(TypeFlags)
 
@@ -126,5 +127,6 @@ inline static bool TF_IsSigned(TypeFlags tf) { return (tf & TF_Signed) != 0; }
 // Lookup table TypeCode => string encoding char
 extern const char _TypeCodeEncodingMap[TC_END];
 ALWAYS_INLINE static char TypeCodeEncoding(TypeCode t) { return _TypeCodeEncodingMap[t]; }
+
 
 ASSUME_NONNULL_END

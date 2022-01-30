@@ -131,7 +131,7 @@ static void serr(Scanner* s, const char* fmt, ...) {
   Pos pos = ScannerPos(s);
   va_list ap;
   va_start(ap, fmt);
-  buildctx_diagv(s->build, DiagError, (PosSpan){pos, pos}, fmt, ap);
+  b_diagv(s->build, DiagError, (PosSpan){pos, pos}, fmt, ap);
   va_end(ap);
 }
 
@@ -270,16 +270,18 @@ static void sname(Scanner* s) {
 }
 
 
+#define isdigit(c) (((u32)(c) - '0') < 10)
+
+
 // scan a number
 static void snumber(Scanner* s) {
   while (s->inp < s->inend) {
     u8 c = *s->inp;
-    if (c > '9' || c < '0') {
+    if (!isdigit(c))
       break;
-    }
     s->inp++;
   }
-  s->tokend = s->inp; // XXX
+  s->tokend = s->inp;
   s->tok = TIntLit;
 }
 

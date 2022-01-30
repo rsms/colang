@@ -4,6 +4,7 @@
 #include "parse.h"
 #include "eval.h"
 #include "resolve_id.h"
+#include "convlit.h"
 
 // Pratt-style recursive descent parser.
 //
@@ -1034,33 +1035,33 @@ static Node* PGroup(Parser* p, PFlag fl) {
 // size      = Expr?
 static Node* pArrayType(Parser* p, PFlag fl) {
   fl |= PFlagType;
-  auto n = mktype(p, ArrayType, TF_KindArray);
+  auto arrayt = mktype(p, ArrayType, TF_KindArray);
   nexttok(p); // consume "["
 
   // Type
-  n->subtype = pType(p, fl | PFlagRValue);
-  NodeTransferUnresolved(n, n->subtype);
+  arrayt->elem = pType(p, fl | PFlagRValue);
+  NodeTransferUnresolved(arrayt, arrayt->elem);
 
   // size?
   if (p->tok != TRBrack) {
-    n->sizeexpr = pExpr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
-    IntLitNode* zn = NodeEvalUint(p->build, n->sizeexpr);
+    arrayt->sizeexpr = pExpr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
+    IntLitNode* zn = NodeEvalUint(p->build, arrayt->sizeexpr);
     if (zn) {
-      if (UNLIKELY(zn->ival > 0xFFFFFFFF))
-        syntaxerrp(p, n->sizeexpr->pos, "array size too large");
-      n->size = (u32)zn->ival;
+      if (UNLIKELY(zarrayt->ival > 0xFFFFFFFF))
+        syntaxerrp(p, arrayt->sizeexpr->pos, "array size too large");
+      arrayt->size = (u32)zarrayt->ival;
     } else {
       // likely referencing a global constant yet to be parsed.
       // the type resolver will resolve its size when sizeexpr is known.
-      NodeTransferUnresolved(n, n->sizeexpr);
-      n->flags |= NF_PartialType;
+      NodeTransferUnresolved(arrayt, arrayt->sizeexpr);
+      arrayt->flags |= NF_PartialType;
     }
   }
 
-  n->endpos = currpos(p);
+  arrayt->endpos = currpos(p);
   want(p, TRBrack);
-  // return InternASTType(p->build, n);
-  return as_Node(n);
+  // return InternASTType(p->build, arrayt);
+  return as_Node(arrayt);
 }
 
 
@@ -1075,7 +1076,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   Type* ctxtype = set_ctxtype(p, NULL); // save & set
   bool set_type = false;
   if (ctxtype && is_ArrayTypeNode(ctxtype)) {
-    set_ctxtype(p, as_ArrayTypeNode(ctxtype)->subtype);
+    set_ctxtype(p, as_ArrayTypeNode(ctxtype)->elem);
     set_type = true;
   }
 
@@ -1083,7 +1084,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   while (p->tok != TRBrack) {
     Expr* v = as_Expr(parse_next(p, PREC_LOWEST, fl));
     ExprArrayPush(&n->a, v, p->build->mem);
-    if (set_type && (!v->type || !TypeEquals(p->build, p->ctxtype, v->type)))
+    if (set_type && (!v->type || !typeeq(p->build, p->ctxtype, v->type)))
       set_type = false;
     switch (p->tok) {
       case TComma:
@@ -1105,7 +1106,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   if (set_type) {
     // all elements are typed and of equal type (common case, e.g. "[1,2,3]")
     auto t = mktype(p, ArrayType, TF_KindArray);
-    t->subtype = p->ctxtype;
+    t->elem = p->ctxtype;
     t->size = n->a.len;
     n->type = as_Type(t);
   }
@@ -1243,7 +1244,7 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
   if (p->ctxtype) {
     if (UNLIKELY(
       !is_RefTypeNode(p->ctxtype) ||
-      !TypeEquals(p->build, ((RefTypeNode*)p->ctxtype)->elem, elemtype)) )
+      !typeeq(p->build, ((RefTypeNode*)p->ctxtype)->elem, elemtype)) )
     {
       // not a ref type or a ref type of incompatible element type
       syntaxerrp(p, ref->pos,
@@ -1700,18 +1701,22 @@ static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 // IntLit = [0-9]+
 //!PrefixParselet TIntLit
 static Node* PIntLit(Parser* p, PFlag fl) {
-  auto n = mknode(p, IntLit);
+  auto lit = mknode(p, IntLit);
   usize len = p->tokend - p->tokstart;
-  if (!parseint_u64((const char*)p->tokstart, len, /*base*/10, &n->val.i)) {
-    n->val.i = 0;
-    syntaxerrp(p, n->pos, "invalid integer literal");
+  error err = parseint_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
+  if (err) {
+    lit->ival = 0;
+    if (err == err_overflow) {
+      syntaxerrp(p, lit->pos, "integer literal too large");
+    } else {
+      syntaxerrp(p, lit->pos, "invalid integer literal");
+    }
   }
   nexttok(p);
-  n->val.ct = CType_int;
-  n->type = kType_ideal;
+  lit->type = kType_ideal;
   if (p->ctxtype)
-    return convlit(p->build, n, p->ctxtype, ConvlitImplicit | ConvlitRelaxedType);
-  return n;
+    return as_Node(ctypecast_implicit(p->build, lit, p->ctxtype));
+  return as_Node(lit);
 }
 
 // If = "if" Expr Expr

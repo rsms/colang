@@ -59,8 +59,8 @@ struct BuildCtx {
   u32                   errcount;  // total number of errors since last call to build_init
 };
 
-// buildctx_init initializes a BuildCtx structure
-void buildctx_init(BuildCtx*,
+// BuildCtxInit initializes a BuildCtx structure
+void BuildCtxInit(BuildCtx*,
   Mem                   mem,
   SymPool*              syms,
   Pkg*                  pkg,
@@ -68,26 +68,40 @@ void buildctx_init(BuildCtx*,
   void* nullable        userdata // passed along to diagh
 );
 
-// buildctx_dispose frees up internal resources. BuildCtx can be reused with buildctx_init after this call.
-void buildctx_dispose(BuildCtx*);
+// BuildCtxDispose frees up internal resources.
+// BuildCtx can be reused with BuildCtxInit after this call.
+void BuildCtxDispose(BuildCtx*);
 
-// buildctx_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
-void buildctx_diag(BuildCtx*, DiagLevel, PosSpan, const char* message);
+// b_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
+void b_diag(BuildCtx*, DiagLevel, PosSpan, const char* message);
 
-// buildctx_diagv formats a diagnostic message and invokes ctx->diagh
-void buildctx_diagv(BuildCtx*, DiagLevel, PosSpan, const char* format, va_list);
+// b_diagv formats a diagnostic message and invokes ctx->diagh
+void b_diagv(BuildCtx*, DiagLevel, PosSpan, const char* format, va_list);
 
-// buildctx_diagf formats a diagnostic message invokes b->diagh
-void buildctx_diagf(BuildCtx*, DiagLevel, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 4, 5);
+// b_diagf formats a diagnostic message invokes b->diagh
+void b_diagf(BuildCtx*, DiagLevel, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 4, 5);
 
-// buildctx_errf calls buildctx_diagf with DiagError
-void buildctx_errf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
+// b_errf calls b_diagf with DiagError
+void b_errf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-// buildctx_warnf calls buildctx_diagf with DiagWarn
-void buildctx_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
+// b_warnf calls b_diagf with DiagWarn
+void b_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
-// buildctx_warnf calls buildctx_diagf with DiagNote
-void buildctx_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
+// b_warnf calls b_diagf with DiagNote
+void b_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
+
+// b_typeid_assign computes the type id of t, adds it to b->syms and assigns it to t->tid
+Sym b_typeid_assign(BuildCtx* b, Type* t);
+
+// b_typeid returns the type symbol identifying the type t.
+// Mutates t and b->syms if t->tid is NULL.
+inline static Sym b_typeid(BuildCtx* b, Type* t) {
+  return t->tid ? t->tid : b_typeid_assign(b, t); }
+
+// bctx_typeeq returns true if x & y are equivalent types
+bool _b_typeeq(BuildCtx*, Type* x, Type* y);
+inline static bool b_typeeq(BuildCtx* b, Type* x, Type* y) {
+  return x == y || _b_typeeq(b, x, y); }
 
 // ----
 
@@ -103,13 +117,5 @@ void diag_free(Diagnostic*);
 // DiagLevelName returns a printable string like "error"
 const char* DiagLevelName(DiagLevel);
 
-// ----
-// TODO: better names for these:
-
-static bool TypeEquals(BuildCtx* ctx, Type* x, Type* y); // true if x is same type as y
-bool _TypeEquals(BuildCtx* ctx, Type* x, Type* y); // impl parse_type.c
-inline static bool TypeEquals(BuildCtx* ctx, Type* x, Type* y) {
-  return x == y || _TypeEquals(ctx, x, y);
-}
 
 ASSUME_NONNULL_END
