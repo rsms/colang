@@ -67,8 +67,8 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
 
   // unwind var targeting a type
   Node* tn = id->target;
-  while (tn->kind == NVar && NodeIsConst(tn) && !NodeIsParam(tn) && ((VarNode*)tn)->init) {
-    tn = ((VarNode*)tn)->init;
+  while (is_VarNode(tn) && NodeIsConst(tn) && !NodeIsParam(tn) && ((VarNode*)tn)->init) {
+    tn = as_Node(((VarNode*)tn)->init);
     // Note: no NodeUnrefVar here
   }
 

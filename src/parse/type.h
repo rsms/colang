@@ -85,6 +85,7 @@ enum TypeKind {
   TF_KindArray,   // Arrays
   TF_KindPointer, // Pointers
   TF_KindVector,  // Fixed width SIMD vector type
+  TF_KindType,    // Types
   TF_Kind_MAX = TF_KindVector,
   TF_Kind_NBIT = ILOG2(TF_Kind_MAX) + 1,
 } END_TYPED_ENUM(TypeKind)

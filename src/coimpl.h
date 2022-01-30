@@ -209,6 +209,15 @@ typedef unsigned long          uintptr;
   #define UNREACHABLE TRAP()
 #endif
 
+// UNLIKELY(integralexpr)->integralexpr
+#if __has_builtin(__builtin_expect)
+  #define UNLIKELY(x) __builtin_expect((x), 0)
+  #define LIKELY(x)   __builtin_expect((x), 1)
+#else
+  #define UNLIKELY(x) (x)
+  #define LIKELY(x)   (x)
+#endif
+
 #ifndef offsetof
   #if __has_builtin(__builtin_offsetof)
     #define offsetof __builtin_offsetof
@@ -243,14 +252,9 @@ typedef unsigned long          uintptr;
   // turns into CMP + CMOV{L,G} on x86_64
   // turns into CMP + CSEL on arm64
 
-// UNLIKELY(integralexpr)->integralexpr
-#if __has_builtin(__builtin_expect)
-  #define UNLIKELY(x) __builtin_expect((x), 0)
-  #define LIKELY(x)   __builtin_expect((x), 1)
-#else
-  #define UNLIKELY(x) (x)
-  #define LIKELY(x)   (x)
-#endif
+// SET_FLAG(int flags, int flag, bool on)
+// equivalent to: if (on) flags |= flag; else flags &= ~flag
+#define SET_FLAG(flags, flag, on) (flags ^= (-(!!(on)) ^ (flags)) & (flag))
 
 // T ALIGN2<T>(T x, anyuint a)       rounds up x to nearest a (a must be a power of two)
 // T ALIGN2_FLOOR<T>(T x, anyuint a) rounds down x to nearest a

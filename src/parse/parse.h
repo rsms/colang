@@ -114,6 +114,10 @@ struct Parser {
   } scopestack;
 };
 
+// Scanner must be the head of the Parser struct to support parser scan state save & restore
+static_assert(offsetof(Parser,build) == offsetof(Scanner,build),
+  "Scanner is not the head of the Parser struct");
+
 
 // ScannerInit initializes a scanner. Returns false if SourceOpenBody fails.
 error ScannerInit(Scanner*, BuildCtx*, Source*, ParseFlags) WARN_UNUSED_RESULT;
