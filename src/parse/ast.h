@@ -207,8 +207,11 @@ struct FunTypeNode { Type;
 
 struct Scope {
   const Scope* parent;
-  SymMap       bindings; // must be last member
+  // bindings must be the last member as composing structs places initial storage after it
+  SymMap bindings;
 };
+static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(SymMap),
+  "bindings is not last member of Scope");
 
 
 enum NodeFlags {

@@ -127,11 +127,15 @@ inline static u32 HM(Len)(const HASHMAP_NAME* h) {
 
 
 void HM(Init)(HASHMAP_NAME* m, void* initbucketsv, u32 initbucketsc, Mem mem) {
+  // initbucketsv must come immediately after m; hashmap_grow uses this to decide if it should
+  // free the bucket memory or not when it is being replaced.
+  assertnotnull(initbucketsv);
   assert(initbucketsv == (void*)m + sizeof(HASHMAP_NAME));
   m->cap = initbucketsc;
   m->len = 0;
   m->mem = mem;
   m->buckets = initbucketsv;
+  memset(m->buckets, 0, initbucketsc * sizeof(HM_BUCKET));
 }
 
 HASHMAP_NAME* nullable HM(New)(Mem mem, u32 initbuckets) {
@@ -142,7 +146,7 @@ HASHMAP_NAME* nullable HM(New)(Mem mem, u32 initbuckets) {
   if (check_add_overflow(z, sizeof(HASHMAP_NAME), &z))
     return NULL;
   HASHMAP_NAME* m = memalloc(mem, z);
-  if (m)
+  if (LIKELY(m != NULL))
     HM(Init)(m, (void*)m + sizeof(HASHMAP_NAME), initbuckets, mem);
   return m;
 }
@@ -177,7 +181,7 @@ rehash:
   }
 
   for (u32 bi = 0; bi < m->cap; bi++) {
-    HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[bi];
+    HM_BUCKET* b = &m->buckets[bi];
     for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
       HM_BUCKET_ENTRY* e = &b->entries[i];
       if (e->key == NULL) {
@@ -220,8 +224,7 @@ error HM(Set)(HASHMAP_NAME* m, HASHMAP_KEY key, HASHMAP_VALUE* valuep_inout) {
   assert(*valuep_inout != NULL);
   while (1) { // grow loop
     usize index = ((usize)HASHMAP_KEY_HASH(key)) % m->cap;
-    HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[index];
-    // dlog("bucket(key=\"%s\") #%u  b=%p e=%p", key, index, b, &b->entries[0]);
+    HM_BUCKET* b = &m->buckets[index];
     for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
       HM_BUCKET_ENTRY* e = &b->entries[i];
       if (e->value == NULL) {
@@ -242,8 +245,7 @@ error HM(Set)(HASHMAP_NAME* m, HASHMAP_KEY key, HASHMAP_VALUE* valuep_inout) {
       // dlog("collision key=\"%s\" <> e->key=\"%s\"", key, e->key);
     }
     // overloaded -- grow buckets
-    // dlog("grow & rehash");
-    if (!hashmap_grow(m)) {
+    if (UNLIKELY( !hashmap_grow(m) )) {
       *valuep_inout = NULL;
       return err_nomem;
     }
@@ -252,7 +254,7 @@ error HM(Set)(HASHMAP_NAME* m, HASHMAP_KEY key, HASHMAP_VALUE* valuep_inout) {
 
 HASHMAP_VALUE HM(Del)(HASHMAP_NAME* m, HASHMAP_KEY key) {
   u32 index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
-  HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[index];
+  HM_BUCKET* b = &m->buckets[index];
   for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
     HM_BUCKET_ENTRY* e = &b->entries[i];
     if (e->key == key) {
@@ -272,7 +274,7 @@ HASHMAP_VALUE HM(Del)(HASHMAP_NAME* m, HASHMAP_KEY key) {
 
 HASHMAP_VALUE HM(Get)(const HASHMAP_NAME* m, HASHMAP_KEY key) {
   u32 index = ((u32)HASHMAP_KEY_HASH(key)) % m->cap;
-  HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[index];
+  HM_BUCKET* b = &m->buckets[index];
   for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
     HM_BUCKET_ENTRY* e = &b->entries[i];
     if (e->key == key) {
@@ -295,7 +297,7 @@ void HM(Clear)(HASHMAP_NAME* m) {
 void HM(Iter)(const HASHMAP_NAME* m, HM(Iterator) it, void* nullable userdata) {
   bool stop = false;
   for (u32 bi = 0; bi < m->cap; bi++) {
-    HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[bi];
+    HM_BUCKET* b = &m->buckets[bi];
     for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
       HM_BUCKET_ENTRY* e = &b->entries[i];
       if (e->key == NULL) {
@@ -315,7 +317,7 @@ void HM(Iter)(const HASHMAP_NAME* m, HM(Iterator) it, void* nullable userdata) {
 //   u32 valindex = 0;
 //   u32* vals = (u32*)memalloc(m->mem, m->cap * sizeof(u32));
 //   for (u32 bi = 0; bi < m->cap; bi++) {
-//     HM_BUCKET* b = &((HM_BUCKET*)m->buckets)[bi];
+//     HM_BUCKET* b = &m->buckets[bi];
 //     u32 depth = 0;
 //     for (u32 i = 0; i < HASHMAP_BUCKET_ENTRIES; i++) {
 //       HM_BUCKET_ENTRY* e = &b->entries[i];

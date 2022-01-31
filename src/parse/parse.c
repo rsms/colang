@@ -2242,14 +2242,14 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
 #endif
 
 
-error parse(
+error parse_tu(
   Parser* p, BuildCtx* b, Source* src, ParseFlags fl, Scope* pkgscope, FileNode** result)
 {
   // clear result now so that we don't have to in error branches
   *result = NULL;
 
   // initialize scanner state
-  if ((p->err = ScannerInit((Scanner*)&p, b, src, fl)))
+  if ((p->err = ScannerInit((Scanner*)p, b, src, fl)))
     return p->err;
 
   // initialize parser state

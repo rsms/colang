@@ -80,11 +80,14 @@ PosSpan _NodePosSpan(const Node* n) {
 
 
 Scope* ScopeNew(Mem mem, const Scope* parent) {
-  Scope* s = memalloct(mem, Scope);
+  usize nbuckets = 8;
+  usize z = sizeof(Scope) + (sizeof(SymMapBucket) * nbuckets);
+  Scope* s = (Scope*)memalloc(mem, z);
   if (!s)
     return NULL;
+  //assertf(IS_ALIGN2((uintptr)s, sizeof(void*)), "%p not a pointer aligned address", s);
   s->parent = parent;
-  // SymMapInit(&s->bindings, mem, 8); // TODO FIXME new SymMapInit w storage
+  SymMapInit(&s->bindings, (void*)s + sizeof(Scope), nbuckets, mem);
   return s;
 }
 

@@ -69,12 +69,22 @@ int main(int argc, const char** argv) {
   Scanner scanner = {0};
   for (Source* src = build.srclist; src != NULL; src = src->next) {
     dlog("scan %s", src->filename->p);
-    error err = ScannerInit(&scanner, &build, src, ParseFlagsDefault);
+    error err = ScannerInit(&scanner, &build, src, 0);
     if (err)
       panic("ScannerInit: %s", error_str(err));
     while (ScannerNext(&scanner) != TNone) {
       printf(">> %s\n", TokName(scanner.tok));
     }
+  }
+
+  // parse
+  Parser p = {0};
+  auto pkgscope = ScopeNew(mem, universe_scope());
+  for (Source* src = build.srclist; src != NULL; src = src->next) {
+    FileNode* result;
+    err = parse_tu(&p, &build, src, 0, pkgscope, &result);
+    if (err)
+      panic("parse_tu: %s", error_str(err));
   }
 
   // -- lua example --

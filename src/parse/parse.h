@@ -21,9 +21,8 @@ typedef struct Indent  Indent;     // source indentation
 
 
 enum ParseFlags {
-  ParseFlagsDefault = 0,
-  ParseComments     = 1 << 1, // parse comments, populating S.comments_{head,tail}
-  ParseOpt          = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
+  ParseComments = 1 << 1, // parse comments, populating S.comments_{head,tail}
+  ParseOpt      = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
 } END_TYPED_ENUM(ParseFlags)
 
 
@@ -143,9 +142,9 @@ inline static const u8* ScannerTokStr(const Scanner* s, usize* len_out) {
 // The caller takes ownership of the comment and should free it using memfree(s->mem,comment).
 Comment* nullable ScannerCommentPop(Scanner* s);
 
-// parse a translation unit and return AST or NULL on error (reported to diagh)
+// parse_cunit parses a translation unit, producing AST at *result.
 // Expects p to be zero-initialized on first call. Can reuse p after return.
-error parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, FileNode** result)
+error parse_tu(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, FileNode** result)
   WARN_UNUSED_RESULT;
 
 
