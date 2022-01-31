@@ -30,7 +30,7 @@ Node* NodeInit(Node* n, NodeKind kind) {
     }
     case NStructType: {
       auto N = as_StructTypeNode(n);
-      NodeArrayInitStorage(&N->fields, N->fields_storage, countof(N->fields_storage));
+      FieldArrayInitStorage(&N->fields, N->fields_storage, countof(N->fields_storage));
       break;
     }
     default:
@@ -116,7 +116,7 @@ const Node* ScopeLookup(const Scope* scope, Sym s) {
 const char* NodeKindName(NodeKind k) {
   // kNodeNameTable[NodeKind] => const char* name
   static const char* const kNodeNameTable[38] = {
-    "Bad", "Pkg", "File", "Comment", "Field", "BoolLit", "IntLit", "FloatLit",
+    "Bad", "Field", "Pkg", "File", "Comment", "BoolLit", "IntLit", "FloatLit",
     "StrLit", "Nil", "Id", "BinOp", "PrefixOp", "PostfixOp", "Assign", "Tuple",
     "Array", "Block", "Fun", "Macro", "Call", "TypeCast", "Var", "Ref",
     "NamedVal", "Selector", "Index", "Slice", "If", "TypeType", "NamedType",

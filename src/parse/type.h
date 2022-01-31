@@ -43,6 +43,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
   _( ref       , '&' , TF_KindPointer ) /* pointer memory address                        */\
   _( fun       , '^' , TF_KindFunc )                                                       \
   _( array     , '[' , TF_KindArray )                                                      \
+  _( arrayEnd  , ']' , TF_KindVoid )                                                       \
   _( struct    , '{' , TF_KindStruct )                                                     \
   _( structEnd , '}' , TF_KindVoid )                                                       \
   _( tuple     , '(' , TF_KindArray )                                                      \

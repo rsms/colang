@@ -46,39 +46,45 @@ static void typeid_append(SBuf* s, const Type* t) {
     return sbuf_appendc(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
 
   if (!t->tid) switch (t->kind) {
+    case NAliasType:
+      MUSTTAIL return typeid_append(s, as_AliasTypeNode(t)->type);
 
     case NRefType:
       sbuf_appendc(s, TypeCodeEncoding(TC_ref));
-      MUSTTAIL return typeid_append(s, as_RefTypeNode(t)->elem);
+      MUSTTAIL return typeid_append(s, assertnotnull(as_RefTypeNode(t)->elem));
 
     case NArrayType:
       sbuf_appendc(s, TypeCodeEncoding(TC_array));
       sbuf_appendu32(s, as_ArrayTypeNode(t)->size, 10);
-      sbuf_appendc(s, ']');
-      MUSTTAIL return typeid_append(s, as_ArrayTypeNode(t)->elem);
+      sbuf_appendc(s, TypeCodeEncoding(TC_arrayEnd));
+      MUSTTAIL return typeid_append(s, assertnotnull(as_ArrayTypeNode(t)->elem));
 
-    // case NTupleType:
-    //   s = str_appendc(s, TypeCodeEncoding(TC_tuple));
-    //   for (u32 i = 0; i < t->t.tuple.a.len; i++)
-    //     s = mktypestr(s, (Type*)t->t.tuple.a.v[i]);
-    //   return str_appendc(s, TypeCodeEncoding(TC_tupleEnd));
+    case NTupleType:
+      sbuf_appendc(s, TypeCodeEncoding(TC_tuple));
+      for (u32 i = 0; i < as_TupleTypeNode(t)->a.len; i++)
+        typeid_append(s, as_TupleTypeNode(t)->a.v[i]);
+      return sbuf_appendc(s, TypeCodeEncoding(TC_tupleEnd));
 
-    // case NStructType:
-    //   s = str_appendc(s, TypeCodeEncoding(TC_struct));
-    //   for (u32 i = 0; i < t->t.struc.a.len; i++)
-    //     s = mktypestr(s, ((Type*)t->t.struc.a.v[i])->type);
-    //   return str_appendc(s, TypeCodeEncoding(TC_structEnd));
+    case NStructType:
+      sbuf_appendc(s, TypeCodeEncoding(TC_struct));
+      for (u32 i = 0; i < as_StructTypeNode(t)->fields.len; i++) {
+        Field* field = as_StructTypeNode(t)->fields.v[i];
+        typeid_append(s, assertnotnull(field->type));
+      }
+      return sbuf_appendc(s, TypeCodeEncoding(TC_structEnd));
 
-    // case NFunType:
-    //   s = str_appendc(s, TypeCodeEncoding(TC_fun));
-    //   if (t->t.fun.params) {
-    //     s = mktypestr(s, t->t.fun.params->type);
-    //   } else {
-    //     s = str_appendc(s, TypeCodeEncoding(TC_nil));
-    //   }
-    //   if (t->t.fun.result)
-    //     return mktypestr(s, t->t.fun.result);
-    //   return str_appendc(s, TypeCodeEncoding(TC_nil));
+    case NFunType: {
+      auto ft = as_FunTypeNode(t);
+      sbuf_appendc(s, TypeCodeEncoding(TC_fun));
+      if (ft->params) {
+        typeid_append(s, assertnotnull(ft->params->type));
+      } else {
+        sbuf_appendc(s, TypeCodeEncoding(TC_nil));
+      }
+      if (!ft->result)
+        return sbuf_appendc(s, TypeCodeEncoding(TC_nil));
+      MUSTTAIL return typeid_append(s, ft->result);
+    }
 
     default:
       panic("TODO %s", nodename(t));
@@ -110,12 +116,41 @@ DEF_TEST(typeid_make) {
     asserteq(buf[0], 0);
   }
   {
-    ArrayTypeNode arrayt = { .kind = NArrayType, .size = 1337, .elem = kType_i32 };
-    u32 n = typeid_make(buf, sizeof(buf), &arrayt);
-    asserteq(n, 7);
-    assert(memcmp(buf, "[1337]", 6) == 0);
+    ArrayTypeNode t = { .kind = NArrayType, .size = 1337, .elem = kType_i32 };
+    u32 n = typeid_make(buf, sizeof(buf), &t);
+    asserteq(buf[0], TypeCodeEncoding(TC_array));
+    assert(memcmp(&buf[1], "1337", 4) == 0);
+    asserteq(buf[5], TypeCodeEncoding(TC_arrayEnd));
     asserteq(buf[6], TypeCodeEncoding(TC_i32));
-    asserteq(buf[n], 0);
+    asserteq(buf[7], 0);
+    asserteq(n, 7);
   }
-
+  {
+    TupleTypeNode t = { .kind = NTupleType };
+    TypeArrayInitStorage(&t.a, t.a_storage, countof(t.a_storage));
+    t.a.v[t.a.len++] = kType_i32;
+    t.a.v[t.a.len++] = kType_u32;
+    u32 n = typeid_make(buf, sizeof(buf), &t);
+    asserteq(buf[0], TypeCodeEncoding(TC_tuple));
+    asserteq(buf[1], TypeCodeEncoding(TC_i32));
+    asserteq(buf[2], TypeCodeEncoding(TC_u32));
+    asserteq(buf[3], TypeCodeEncoding(TC_tupleEnd));
+    asserteq(buf[4], 0);
+    asserteq(n, 4);
+  }
+  {
+    StructTypeNode t = { .kind = NStructType };
+    FieldArrayInitStorage(&t.fields, t.fields_storage, countof(t.fields_storage));
+    Field f1 = { .type = kType_i32 };
+    Field f2 = { .type = kType_u32 };
+    t.fields.v[t.fields.len++] = &f1;
+    t.fields.v[t.fields.len++] = &f2;
+    u32 n = typeid_make(buf, sizeof(buf), &t);
+    asserteq(buf[0], TypeCodeEncoding(TC_struct));
+    asserteq(buf[1], TypeCodeEncoding(TC_i32));
+    asserteq(buf[2], TypeCodeEncoding(TC_u32));
+    asserteq(buf[3], TypeCodeEncoding(TC_structEnd));
+    asserteq(buf[4], 0);
+    asserteq(n, 4);
+  }
 }
