@@ -106,7 +106,7 @@ if [ -n "$WITH_LUAJIT" ]; then
 fi
 
 if [ "$BUILD_MODE" != "debug" ]; then
-  CFLAGS+=( -O3 -march=native )
+  CFLAGS+=( -O3 -mtune=native )
   [ "$BUILD_MODE" = "fast" ] && CFLAGS+=( -DNDEBUG )
   LDFLAGS+=( -flto )
   # LDFLAGS+=( -dead_strip )
