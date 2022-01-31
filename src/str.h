@@ -44,6 +44,7 @@ Str nullable str_appendfill(Str dst, u32 n, char c);
 Str nullable str_appendhex(Str dst, const u8* data, u32 len);
 Str nullable str_appendhex_lc(Str dst, const u8* data, u32 len); // lower-case
 Str nullable str_appendu64(Str dst, u64 v, u32 base);
+Str nullable str_appendf64(Str dst, f64 v, int ndec);
 
 // str_appendrepr appends a human-readable representation of data to dst as C-format ASCII
 // string literals, with "special" bytes escaped (e.g. \n, \xFE, etc.)
@@ -109,7 +110,7 @@ Str* str_tmp();
 inline static Str str_make_cstr(Mem mem, const char* src_cstr) {
   return str_make_copy(mem, src_cstr, strlen(src_cstr));
 }
-inline static Str str_makeroom(Str s, u32 addlen) {
+inline static Str nullable str_makeroom(Str s, u32 addlen) {
   if (s->cap - s->len < addlen)
     return str_grow(s, addlen);
   return s;

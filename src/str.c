@@ -1,5 +1,6 @@
 #include "coimpl.h"
 #include "str.h"
+#include "sbuf.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdio.h>
@@ -31,7 +32,7 @@ Str str_make(Mem mem, u32 cap) {
   return s;
 }
 
-Str str_grow(Str s, u32 addlen) {
+Str nullable str_grow(Str s, u32 addlen) {
   #ifdef DEBUG_STR_TRACE_MEM
     usize oldz = STRUCT_SIZE( ((struct Str*)0), p, s->cap + 1 );
   #endif
@@ -269,11 +270,33 @@ u32 strfmtu64(char buf[64], u64 v, u32 base) {
 }
 
 Str str_appendu64(Str s, u64 v, u32 base) {
-  char buf[64];
-  u32 n = strfmtu64(buf, v, base);
-  memcpy(&s->p[s->len], buf, n);
+  s = str_makeroom(s, 64);
+  if (UNLIKELY( !s ))
+    return s;
+  u32 n = strfmtu64(&s->p[s->len], v, base);
   s->len += n;
   s->p[s->len] = 0;
+  return s;
+}
+
+
+Str nullable str_appendf64(Str s, f64 v, int ndec) {
+  u32 z = MAX(ndec*4, 32);
+  while (z < 4096) {
+    s = str_makeroom(s, z);
+    if (UNLIKELY( !s ))
+      return s;
+    SBuf buf = SBUF_INITIALIZER(&s->p[s->len], z);
+    sbuf_appendf64(&buf, v, ndec);
+    if (LIKELY( buf.len <= (usize)z) ) {
+      s->len += buf.len;
+      s->p[s->len] = 0;
+      return s;
+    }
+    if (UNLIKELY( buf.len > 0xFFFFFFFF ))
+      break;
+    z = (u32)buf.len;
+  }
   return s;
 }
 
