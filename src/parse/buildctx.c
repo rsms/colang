@@ -1,4 +1,5 @@
 #include "../coimpl.h"
+#include "../sys.h"
 #include "buildctx.h"
 #include "universe.h"
 #include "typeid.h"
@@ -11,16 +12,17 @@ void BuildCtxInit(
   BuildCtx*             ctx,
   Mem                   mem,
   SymPool*              syms,
-  Pkg*                  pkg,
+  const char*           pkgid,
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
   assert(mem != NULL);
+  assert(strlen(pkgid) > 0);
   memset(ctx, 0, sizeof(BuildCtx));
   ctx->mem       = mem;
   ctx->safe      = true;
   ctx->syms      = syms;
-  ctx->pkg       = pkg;
+  ctx->pkgid     = symget(syms, pkgid, strlen(pkgid));
   ctx->diagh     = diagh;
   ctx->userdata  = userdata;
   ctx->diaglevel = DiagMAX;
@@ -110,6 +112,72 @@ void b_notef(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
   b_diagv(ctx, DiagNote, pos, fmt, ap);
   va_end(ap);
 }
+
+
+void b_add_source(BuildCtx* b, Source* src) {
+  if (b->srclist)
+    src->next = b->srclist;
+  b->srclist = src;
+}
+
+error b_add_file(BuildCtx* b, const char* filename) {
+  Source* src = memalloct(b->mem, Source);
+  error err = source_open_file(src, b->mem, filename);
+  if (err) {
+    memfree(b->mem, src);
+    return err;
+  }
+  b_add_source(b, src);
+  return 0;
+}
+
+error b_add_dir(BuildCtx* b, const char* filename) {
+  FSDir d;
+  error err = sys_dir_open(filename, &d);
+  if (err)
+    return err;
+
+  FSDirEnt e;
+  error err1;
+  while ((err = sys_dir_read(d, &e)) > 0) {
+    switch (e.type) {
+      case FSDirEnt_REG:
+      case FSDirEnt_LNK:
+      case FSDirEnt_UNKNOWN:
+        if (e.namlen < 4 || e.name[0] == '.' || strcmp(&e.name[e.namlen-2], ".co") != 0)
+          break; // skip file
+        if ((err = b_add_file(b, e.name)))
+          goto end;
+        break;
+      default:
+        break;
+    }
+  }
+end:
+  err1 = sys_dir_close(d);
+  return err < 0 ? err : err1;
+}
+
+
+Node* nullable b_mknodex(BuildCtx* b, NodeKind kind) {
+  Node* n = NodeAlloc(b->mem);
+  if (LIKELY(n != NULL)) {
+    memset(n, 0, sizeof(union NodeUnion));
+    NodeInit(n, kind);
+  }
+  return n;
+}
+
+
+PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
+  auto pkg = b_mknode(b, Pkg);
+  if (LIKELY(pkg != NULL)) {
+    pkg->name = b->pkgid;
+    pkg->scope = pkgscope;
+  }
+  return pkg;
+}
+
 
 Sym b_typeid_assign(BuildCtx* b, Type* t) {
   // Note: built-in types have predefined type ids (defined in universe)

@@ -100,6 +100,7 @@ enum Tok {
   TKeywordsStart = 0x100,
   DEF_TOKENS_KEYWORD(I_ENUM)
   TKeywordsEnd,
+  Tok_MAX = TKeywordsEnd,
 
   #undef I_ENUM
 } END_TYPED_ENUM(Tok)

@@ -42,15 +42,14 @@ struct BuildCtx {
   SymPool*        syms;      // symbol pool
   DiagnosticArray diagarray; // all diagnostic messages produced. Stored in mem.
   PosMap          posmap;    // maps Source <-> Pos
+  Sym             pkgid;     // e.g. "bar/cat"
+  Source*         srclist;   // list of sources (linked via Source.next)
 
   // interned types
   struct {
     SymMap       types;
     SymMapBucket types_st[8];
   };
-
-  // build state
-  Pkg* pkg; // top-level package for which we are building
 
   // diagnostics
   DiagHandler* nullable diagh;     // diagnostics handler
@@ -63,7 +62,7 @@ struct BuildCtx {
 void BuildCtxInit(BuildCtx*,
   Mem                   mem,
   SymPool*              syms,
-  Pkg*                  pkg,
+  const char*           pkgid,
   DiagHandler* nullable diagh,
   void* nullable        userdata // passed along to diagh
 );
@@ -89,6 +88,25 @@ void b_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3,
 
 // b_warnf calls b_diagf with DiagNote
 void b_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
+
+
+// b_add_source adds src to b->srclist
+void b_add_source(BuildCtx*, Source* src);
+error b_add_source_file(BuildCtx*, const char* filename);
+error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files in dir
+
+
+// b_mknode allocates and initializes a AST node, e.g. b_mknode(b,Id) => IdNode*
+#define b_mknode(b, KIND) ((KIND##Node* nullable)b_mknodex((b),N##KIND))
+
+// b_mknodex is like b_mknode but not typed
+Node* nullable b_mknodex(BuildCtx* b, NodeKind kind);
+
+// b_mkpkgnode creates a package node for b, setting
+// pkg->name = b->pkgid
+// pkg->scope = pkgscope
+PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope);
+
 
 // b_typeid_assign computes the type id of t, adds it to b->syms and assigns it to t->tid
 Sym b_typeid_assign(BuildCtx* b, Type* t);

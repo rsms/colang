@@ -49,8 +49,9 @@ int main(int argc, const char** argv) {
   SymPool syms = {0};
   sympool_init(&syms, universe_syms(), mem, NULL);
 
-  // define what package we are parsing
-  Pkg pkg = { .id = str_make_cstr(mem, "foo") };
+  // create a build context
+  BuildCtx build = {0};
+  BuildCtxInit(&build, mem, &syms, "foo", on_scan_diag, NULL);
 
   // add a source file to the package
   Source src1 = {0};
@@ -58,19 +59,15 @@ int main(int argc, const char** argv) {
   error err = source_open_data(&src1, mem, "input", src_text, strlen(src_text));
   if (err)
     panic("source_open_data: %s", error_str(err));
-  pkg_add_source(&pkg, &src1);
+  b_add_source(&build, &src1);
 
   // compute and print source checksum
   source_checksum(&src1);
   print_src_checksum(mem, &src1);
 
-  // create a build context
-  BuildCtx build = {0};
-  BuildCtxInit(&build, mem, &syms, &pkg, on_scan_diag, NULL);
-
   // scan all sources of the package
   Scanner scanner = {0};
-  for (Source* src = build.pkg->srclist; src != NULL; src = src->next) {
+  for (Source* src = build.srclist; src != NULL; src = src->next) {
     dlog("scan %s", src->filename->p);
     error err = ScannerInit(&scanner, &build, src, ParseFlagsDefault);
     if (err)

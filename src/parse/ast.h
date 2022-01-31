@@ -7,15 +7,17 @@
 #include "pos.h"
 ASSUME_NONNULL_BEGIN
 
-typedef struct Node    Node;      // AST node, basis for Stmt, Expr and Type
-typedef struct Stmt    Stmt;      // AST statement
-typedef struct Expr    Expr;      // AST expression
-typedef struct LitExpr LitExpr;   // AST constant literal expression
-typedef struct Type    Type;      // AST type
-typedef struct Field   Field;     // AST struct field
-typedef struct Scope   Scope;     // lexical namespace (may be chained)
-typedef u8             NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
-typedef u16            NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
+typedef struct Node      Node;      // AST node, basis for Stmt, Expr and Type
+typedef struct Stmt      Stmt;      // AST statement
+typedef struct Expr      Expr;      // AST expression
+typedef struct LitExpr   LitExpr;   // AST constant literal expression
+typedef struct Type      Type;      // AST type
+typedef struct Field     Field;     // AST struct field
+typedef struct Scope     Scope;     // lexical namespace (may be chained)
+typedef struct TupleNode TupleNode;
+
+typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
+typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
 // forward decl of things defined in universe but referenced by ast.h
 extern Type* kType_type;
@@ -24,6 +26,11 @@ DEF_TYPED_ARRAY(NodeArray, Node*)
 DEF_TYPED_ARRAY(ExprArray, Expr*)
 DEF_TYPED_ARRAY(TypeArray, Type*)
 DEF_TYPED_ARRAY(FieldArray, Field*)
+#define as_NodeArray(n) _Generic((n), \
+  ExprArray*:(NodeArray*)(n), \
+  TypeArray*:(NodeArray*)(n), \
+  FieldArray*:(NodeArray*)(n), \
+  NodeArray*:(n) )
 
 struct Node {
   void* nullable irval;  // used by IR builders for temporary storage
@@ -46,7 +53,7 @@ struct Field { Node;
 // statements
 struct Stmt { Node; };
 struct CUnitNode { Stmt;
-  const Str       name;         // reference to str in corresponding Pkg or Source struct
+  const char*     name;         // reference to str in corresponding BuildCtx
   Scope* nullable scope;
   NodeArray       a;            // array of nodes
   Node*           a_storage[4]; // in-struct storage for the first few entries of a
@@ -86,7 +93,9 @@ struct UnaryOpNode { Expr;
 };
 struct PrefixOpNode { struct UnaryOpNode; };
 struct PostfixOpNode { struct UnaryOpNode; };
-struct ReturnNode { Expr* expr; };
+struct ReturnNode { Expr;
+  Expr* expr;
+};
 struct AssignNode { Expr;
   Expr* dst; // assignment target (Var | Tuple | Index)
   Expr* val; // value
@@ -102,19 +111,19 @@ struct BlockNode { Expr;
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
 };
 struct FunNode { Expr;
-  Expr* nullable params;  // input params (NTuple or NULL if none)
-  Expr* nullable result;  // output results (NTuple | NExpr)
-  Sym   nullable name;    // NULL for lambda
-  Expr* nullable body;    // NULL for fun-declaration
+  TupleNode* nullable params; // input params (NULL if none)
+  Type* nullable      result; // output results (TupleType for multiple results)
+  Sym   nullable      name;   // NULL for lambda
+  Expr* nullable      body;   // NULL for fun-declaration
 };
 struct MacroNode { Expr;
-  struct TupleNode* nullable params;  // input params (array of VarNode)
-  Sym nullable name;
-  Node*        template;
+  Sym nullable        name;
+  TupleNode* nullable params;  // input params (VarNodes)
+  Node*               template;
 };
 struct CallNode { Expr;
-  Node* receiver;                  // Type | Fun | Id
-  struct TupleNode* nullable args; // NULL if there are no args, else a NTuple
+  Node*               receiver; // Type | Fun | Id
+  TupleNode* nullable args;     // NULL if there are no args
 };
 struct TypeCastNode { Expr;
   Expr* expr;
@@ -191,8 +200,8 @@ struct StructTypeNode { Type;
   Field*       fields_storage[4]; // in-struct storage for the first few fields
 };
 struct FunTypeNode { Type;
-  struct TupleNode* nullable params; // NTuple (of NVar) or null if no params
-  Type* nullable result; // NTupleType of types or single type
+  TupleNode* nullable params; // NTuple (of NVar) or null if no params
+  Type* nullable      result; // NTupleType of types or single type
 };
 
 
@@ -351,35 +360,36 @@ enum NodeKind {
       NPrefixOp   = 12, // struct PrefixOpNode
       NPostfixOp  = 13, // struct PostfixOpNode
     NUnaryOp_END  = 13,
-    NAssign       = 14, // struct AssignNode
-    NListExpr_BEG = 15,
-      NTuple      = 15, // struct TupleNode
-      NArray      = 16, // struct ArrayNode
-    NListExpr_END = 16,
-    NBlock        = 17, // struct BlockNode
-    NFun          = 18, // struct FunNode
-    NMacro        = 19, // struct MacroNode
-    NCall         = 20, // struct CallNode
-    NTypeCast     = 21, // struct TypeCastNode
-    NVar          = 22, // struct VarNode
-    NRef          = 23, // struct RefNode
-    NNamedVal     = 24, // struct NamedValNode
-    NSelector     = 25, // struct SelectorNode
-    NIndex        = 26, // struct IndexNode
-    NSlice        = 27, // struct SliceNode
-    NIf           = 28, // struct IfNode
-  NExpr_END       = 28,
-  NType_BEG       = 29,
-    NTypeType     = 29, // struct TypeTypeNode
-    NNamedType    = 30, // struct NamedTypeNode
-    NAliasType    = 31, // struct AliasTypeNode
-    NRefType      = 32, // struct RefTypeNode
-    NBasicType    = 33, // struct BasicTypeNode
-    NArrayType    = 34, // struct ArrayTypeNode
-    NTupleType    = 35, // struct TupleTypeNode
-    NStructType   = 36, // struct StructTypeNode
-    NFunType      = 37, // struct FunTypeNode
-  NType_END       = 37,
+    NReturn       = 14, // struct ReturnNode
+    NAssign       = 15, // struct AssignNode
+    NListExpr_BEG = 16,
+      NTuple      = 16, // struct TupleNode
+      NArray      = 17, // struct ArrayNode
+    NListExpr_END = 17,
+    NBlock        = 18, // struct BlockNode
+    NFun          = 19, // struct FunNode
+    NMacro        = 20, // struct MacroNode
+    NCall         = 21, // struct CallNode
+    NTypeCast     = 22, // struct TypeCastNode
+    NVar          = 23, // struct VarNode
+    NRef          = 24, // struct RefNode
+    NNamedVal     = 25, // struct NamedValNode
+    NSelector     = 26, // struct SelectorNode
+    NIndex        = 27, // struct IndexNode
+    NSlice        = 28, // struct SliceNode
+    NIf           = 29, // struct IfNode
+  NExpr_END       = 29,
+  NType_BEG       = 30,
+    NTypeType     = 30, // struct TypeTypeNode
+    NNamedType    = 31, // struct NamedTypeNode
+    NAliasType    = 32, // struct AliasTypeNode
+    NRefType      = 33, // struct RefTypeNode
+    NBasicType    = 34, // struct BasicTypeNode
+    NArrayType    = 35, // struct ArrayTypeNode
+    NTupleType    = 36, // struct TupleTypeNode
+    NStructType   = 37, // struct StructTypeNode
+    NFunType      = 38, // struct FunTypeNode
+  NType_END       = 38,
 } END_TYPED_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -399,6 +409,7 @@ typedef struct IdNode IdNode;
 typedef struct BinOpNode BinOpNode;
 typedef struct PrefixOpNode PrefixOpNode;
 typedef struct PostfixOpNode PostfixOpNode;
+typedef struct ReturnNode ReturnNode;
 typedef struct AssignNode AssignNode;
 typedef struct TupleNode TupleNode;
 typedef struct ArrayNode ArrayNode;
@@ -453,6 +464,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_UnaryOpNode(n) NodeKindIsUnaryOp((n)->kind)
 #define is_PrefixOpNode(n) ((n)->kind==NPrefixOp)
 #define is_PostfixOpNode(n) ((n)->kind==NPostfixOp)
+#define is_ReturnNode(n) ((n)->kind==NReturn)
 #define is_AssignNode(n) ((n)->kind==NAssign)
 #define is_ListExpr(n) NodeKindIsListExpr((n)->kind)
 #define is_TupleNode(n) ((n)->kind==NTuple)
@@ -505,6 +517,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_UnaryOpNode(n) _assert_is1(UnaryOp,(n))
 #define assert_is_PrefixOpNode(n) asserteq(assertnotnull(n)->kind,NPrefixOp)
 #define assert_is_PostfixOpNode(n) asserteq(assertnotnull(n)->kind,NPostfixOp)
+#define assert_is_ReturnNode(n) asserteq(assertnotnull(n)->kind,NReturn)
 #define assert_is_AssignNode(n) asserteq(assertnotnull(n)->kind,NAssign)
 #define assert_is_ListExpr(n) _assert_is1(ListExpr,(n))
 #define assert_is_TupleNode(n) asserteq(assertnotnull(n)->kind,NTuple)
@@ -548,6 +561,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
 #define as_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (PrefixOpNode*)(n); })
 #define as_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (PostfixOpNode*)(n); })
+#define as_ReturnNode(n) ({ assert_is_ReturnNode(n); (ReturnNode*)(n); })
 #define as_AssignNode(n) ({ assert_is_AssignNode(n); (AssignNode*)(n); })
 #define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
 #define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
@@ -587,6 +601,7 @@ typedef struct FunTypeNode FunTypeNode;
   BinOpNode*:(Node*)(n), const PrefixOpNode*:(const Node*)(n), PrefixOpNode*:(Node*)(n), \
   const PostfixOpNode*:(const Node*)(n), PostfixOpNode*:(Node*)(n), \
   const struct UnaryOpNode*:(const Node*)(n), struct UnaryOpNode*:(Node*)(n), \
+  const ReturnNode*:(const Node*)(n), ReturnNode*:(Node*)(n), \
   const AssignNode*:(const Node*)(n), AssignNode*:(Node*)(n), \
   const TupleNode*:(const Node*)(n), TupleNode*:(Node*)(n), \
   const ArrayNode*:(const Node*)(n), ArrayNode*:(Node*)(n), \
@@ -640,6 +655,7 @@ typedef struct FunTypeNode FunTypeNode;
   BinOpNode*:(Expr*)(n), const PrefixOpNode*:(const Expr*)(n), PrefixOpNode*:(Expr*)(n), \
   const PostfixOpNode*:(const Expr*)(n), PostfixOpNode*:(Expr*)(n), \
   const struct UnaryOpNode*:(const Expr*)(n), struct UnaryOpNode*:(Expr*)(n), \
+  const ReturnNode*:(const Expr*)(n), ReturnNode*:(Expr*)(n), \
   const AssignNode*:(const Expr*)(n), AssignNode*:(Expr*)(n), \
   const TupleNode*:(const Expr*)(n), TupleNode*:(Expr*)(n), \
   const ArrayNode*:(const Expr*)(n), ArrayNode*:(Expr*)(n), \
@@ -719,6 +735,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_UnaryOpNode(n) (is_UnaryOpNode(n)?as_UnaryOpNode(n):NULL)
 #define maybe_PrefixOpNode(n) (is_PrefixOpNode(n)?(PrefixOpNode*)(n):NULL)
 #define maybe_PostfixOpNode(n) (is_PostfixOpNode(n)?(PostfixOpNode*)(n):NULL)
+#define maybe_ReturnNode(n) (is_ReturnNode(n)?(ReturnNode*)(n):NULL)
 #define maybe_AssignNode(n) (is_AssignNode(n)?(AssignNode*)(n):NULL)
 #define maybe_ListExpr(n) (is_ListExpr(n)?as_ListExpr(n):NULL)
 #define maybe_TupleNode(n) (is_TupleNode(n)?(TupleNode*)(n):NULL)
@@ -772,6 +789,7 @@ typedef struct FunTypeNode FunTypeNode;
   PostfixOpNode*:((Expr*)(n))->type, \
   const struct UnaryOpNode*:(const Type*)((Expr*)(n))->type, \
   struct UnaryOpNode*:((Expr*)(n))->type, \
+  const ReturnNode*:(const Type*)((Expr*)(n))->type, ReturnNode*:((Expr*)(n))->type, \
   const AssignNode*:(const Type*)((Expr*)(n))->type, AssignNode*:((Expr*)(n))->type, \
   const TupleNode*:(const Type*)((Expr*)(n))->type, TupleNode*:((Expr*)(n))->type, \
   const ArrayNode*:(const Type*)((Expr*)(n))->type, ArrayNode*:((Expr*)(n))->type, \
@@ -798,12 +816,13 @@ typedef struct FunTypeNode FunTypeNode;
 union NodeUnion {
   BadNode _0; Field _1; PkgNode _2; FileNode _3; CommentNode _4; BoolLitNode _5;
   IntLitNode _6; FloatLitNode _7; StrLitNode _8; NilNode _9; IdNode _10;
-  BinOpNode _11; PrefixOpNode _12; PostfixOpNode _13; AssignNode _14;
-  TupleNode _15; ArrayNode _16; BlockNode _17; FunNode _18; MacroNode _19;
-  CallNode _20; TypeCastNode _21; VarNode _22; RefNode _23; NamedValNode _24;
-  SelectorNode _25; IndexNode _26; SliceNode _27; IfNode _28; TypeTypeNode _29;
-  NamedTypeNode _30; AliasTypeNode _31; RefTypeNode _32; BasicTypeNode _33;
-  ArrayTypeNode _34; TupleTypeNode _35; StructTypeNode _36; FunTypeNode _37;
+  BinOpNode _11; PrefixOpNode _12; PostfixOpNode _13; ReturnNode _14;
+  AssignNode _15; TupleNode _16; ArrayNode _17; BlockNode _18; FunNode _19;
+  MacroNode _20; CallNode _21; TypeCastNode _22; VarNode _23; RefNode _24;
+  NamedValNode _25; SelectorNode _26; IndexNode _27; SliceNode _28; IfNode _29;
+  TypeTypeNode _30; NamedTypeNode _31; AliasTypeNode _32; RefTypeNode _33;
+  BasicTypeNode _34; ArrayTypeNode _35; TupleTypeNode _36; StructTypeNode _37;
+  FunTypeNode _38;
 };
 
 //END GENERATED CODE

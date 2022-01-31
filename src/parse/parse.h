@@ -145,7 +145,7 @@ Comment* nullable ScannerCommentPop(Scanner* s);
 
 // parse a translation unit and return AST or NULL on error (reported to diagh)
 // Expects p to be zero-initialized on first call. Can reuse p after return.
-error parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, Node** result)
+error parse(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, FileNode** result)
   WARN_UNUSED_RESULT;
 
 

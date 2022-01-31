@@ -1,6 +1,8 @@
 // eval -- AST evaluation
 #pragma once
 #include "ast.h"
+#include "buildctx.h"
+#include "universe.h"
 ASSUME_NONNULL_BEGIN
 
 typedef enum {
@@ -10,9 +12,10 @@ typedef enum {
 
 // NodeEval attempts to evaluate expr.
 // Returns NULL on failure, or the resulting value on success.
-// If targetType is provided, the result is implicitly converted to that type.
-// In that case it is an error if the result can't be converted to targetType.
-Expr* nullable NodeEval(BuildCtx*, Expr* expr, Type* nullable targetType, NodeEvalFlags fl);
+// If targettype is provided, the result is implicitly converted to that type.
+// In that case it is an error if the result can't be converted to targettype.
+Expr* nullable _NodeEval(BuildCtx*, Expr* expr, Type* nullable targettype, NodeEvalFlags fl);
+#define NodeEval(b, expr, tt, fl) _NodeEval((b),as_Expr(expr),((tt)?as_Type(tt):NULL),(fl))
 
 // NodeEvalUint calls NodeEval with Type_uint.
 // result u64 in returnvalue->ival

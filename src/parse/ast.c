@@ -115,15 +115,15 @@ const Node* ScopeLookup(const Scope* scope, Sym s) {
 
 const char* NodeKindName(NodeKind k) {
   // kNodeNameTable[NodeKind] => const char* name
-  static const char* const kNodeNameTable[38] = {
+  static const char* const kNodeNameTable[39] = {
     "Bad", "Field", "Pkg", "File", "Comment", "BoolLit", "IntLit", "FloatLit",
-    "StrLit", "Nil", "Id", "BinOp", "PrefixOp", "PostfixOp", "Assign", "Tuple",
-    "Array", "Block", "Fun", "Macro", "Call", "TypeCast", "Var", "Ref",
+    "StrLit", "Nil", "Id", "BinOp", "PrefixOp", "PostfixOp", "Return", "Assign",
+    "Tuple", "Array", "Block", "Fun", "Macro", "Call", "TypeCast", "Var", "Ref",
     "NamedVal", "Selector", "Index", "Slice", "If", "TypeType", "NamedType",
     "AliasType", "RefType", "BasicType", "ArrayType", "TupleType", "StructType",
     "FunType",
   };
-  return k < 38 ? kNodeNameTable[k] : "?";
+  return k < 39 ? kNodeNameTable[k] : "?";
 }
 
 //END GENERATED CODE
