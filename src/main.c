@@ -15,9 +15,10 @@ void cli_usage(const char* prog) {
   fprintf(stdout, "usage: %s <lua-file>\n", prog);
 }
 
-void on_scan_diag(Diagnostic* d, void* userdata) {
-  assert(d->level == DiagError); // scanner only produces error diagnostics
-  errlog("scan error: %s", d->message);
+void on_diag(Diagnostic* d, void* userdata) {
+  Str* sp = str_tmp();
+  *sp = diag_fmt(d, *sp);
+  fwrite((*sp)->p, (*sp)->len, 1, stderr);
 }
 
 void print_src_checksum(Mem mem, const Source* src) {
@@ -51,7 +52,7 @@ int main(int argc, const char** argv) {
 
   // create a build context
   BuildCtx build = {0};
-  BuildCtxInit(&build, mem, &syms, "foo", on_scan_diag, NULL);
+  BuildCtxInit(&build, mem, &syms, "foo", on_diag, NULL);
 
   // add a source file to the package
   Source src1 = {0};
@@ -85,6 +86,7 @@ int main(int argc, const char** argv) {
     err = parse_tu(&p, &build, src, 0, pkgscope, &result);
     if (err)
       panic("parse_tu: %s", error_str(err));
+    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", fmtast(result));
   }
 
   // -- lua example --

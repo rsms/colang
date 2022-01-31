@@ -11,7 +11,11 @@ Node* NodeInit(Node* n, NodeKind kind) {
       NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
       break;
     }
-    case NBlock:
+    case NBlock: {
+      auto N = (BlockNode*)n;
+      NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      break;
+    }
     case NArray:
     case NTuple: {
       auto N = as_ListExpr(n);
@@ -19,17 +23,17 @@ Node* NodeInit(Node* n, NodeKind kind) {
       break;
     }
     case NSelector: {
-      auto N = as_SelectorNode(n);
+      auto N = (SelectorNode*)n;
       U32ArrayInitStorage(&N->indices, N->indices_storage, countof(N->indices_storage));
       break;
     }
     case NTupleType: {
-      auto N = as_TupleTypeNode(n);
+      auto N = (TupleTypeNode*)n;
       TypeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
       break;
     }
     case NStructType: {
-      auto N = as_StructTypeNode(n);
+      auto N = (StructTypeNode*)n;
       FieldArrayInitStorage(&N->fields, N->fields_storage, countof(N->fields_storage));
       break;
     }

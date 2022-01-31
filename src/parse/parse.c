@@ -625,7 +625,11 @@ static Type* nullable set_ctxtype(Parser* p, Type* nullable ctxtype) {
 static Type* expectType(Parser* p, Node* nullable n) {
   if (LIKELY(n == NULL || is_Type(n)))
     return (Type*)n;
-  syntaxerrp(p, n->pos, "expected a type; got %s", node_type_name(n));
+  #ifdef DEBUG
+    syntaxerrp(p, n->pos, "expected a type; got %s (N%s)", fmtnode(n), nodename(n));
+  #else
+    syntaxerrp(p, n->pos, "expected a type; got %s", fmtnode(n));
+  #endif
   return (Type*)(n ? n : bad(p));
 }
 
@@ -686,12 +690,23 @@ static Node* PAuto(Parser* p, PFlag fl) {
 //
 //!PrefixParselet TId
 static Node* PId(Parser* p, PFlag fl) {
-  auto n = pId(p);
-  if ((fl & PFlagRValue) || p->tok == TSemi) {
-    NodeSetRValue(n);
-    return presolve_id(p, n);
+  auto id = pId(p);
+  if (fl & PFlagType) {
+    auto name = id->name;
+    auto tname = (NamedTypeNode*)id;
+    tname->kind = NNamedType;
+    tname->name = name;
+    if ((fl & PFlagRValue) || p->tok == TSemi) {
+      NodeSetRValue(tname);
+      return as_Node(presolve_type(p, tname));
+    }
+    return as_Node(tname);
   }
-  return as_Node(n);
+  if ((fl & PFlagRValue) || p->tok == TSemi) {
+    NodeSetRValue(id);
+    return presolve_id(p, id);
+  }
+  return as_Node(id);
 }
 
 
