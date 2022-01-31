@@ -183,11 +183,15 @@ outh.append('')
 
 # assert_is_*
 outh.append('// void assert_is_<kind>(const Node*)')
+outh.append('#ifdef DEBUG')
 outh.append('#define _assert_is1(NAME,n) ({ \\')
 outh.append('  NodeKind nk__ = assertnotnull(n)->kind; \\')
 outh.append('  assertf(NodeKindIs##NAME(nk__), "expected N%s; got N%s #%d", \\')
 outh.append('          #NAME, NodeKindName(nk__), nk__); \\')
 outh.append('})')
+outh.append('#else')
+outh.append('#define _assert_is1(NAME,n) ((void)0)')
+outh.append('#endif')
 for name, subtypes in typemap.items():
   shortname = strip_node_suffix(name)
   if shortname == '':

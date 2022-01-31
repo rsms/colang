@@ -493,11 +493,15 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_FunTypeNode(n) ((n)->kind==NFunType)
 
 // void assert_is_<kind>(const Node*)
+#ifdef DEBUG
 #define _assert_is1(NAME,n) ({ \
   NodeKind nk__ = assertnotnull(n)->kind; \
   assertf(NodeKindIs##NAME(nk__), "expected N%s; got N%s #%d", \
           #NAME, NodeKindName(nk__), nk__); \
 })
+#else
+#define _assert_is1(NAME,n) ((void)0)
+#endif
 #define assert_is_BadNode(n) asserteq(assertnotnull(n)->kind,NBad)
 #define assert_is_Field(n) asserteq(assertnotnull(n)->kind,NField)
 #define assert_is_Stmt(n) _assert_is1(Stmt,(n))
