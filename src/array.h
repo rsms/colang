@@ -5,9 +5,19 @@ ASSUME_NONNULL_BEGIN
 
 #define TYPED_ARRAY_CAP_MAX 0x7fffffff
 
+// #if __has_builtin(__is_convertible)
+
+// DEF_TYPED_ARRAY defines an array type named A with T elements
 #define DEF_TYPED_ARRAY(A, T) \
   DEF_TYPED_ARRAY_TYPES(A, T) \
   DEF_TYPED_ARRAY_FUNCS(A, T)
+
+// DEF_TYPED_ARRAY defines an array type named A with PTRT elements.
+// PTRT must be a pointer type.
+// This produces less code than DEF_TYPED_ARRAY(A,T*) as it uses PtrArray.
+#define DEF_TYPED_PTR_ARRAY(A, PTRT) \
+  DEF_TYPED_ARRAY_TYPES(A, PTRT)     \
+  DEF_TYPED_PTR_ARRAY_FUNCS(A, PTRT)
 
 #define DEF_TYPED_ARRAY_TYPES(A, T)           \
   typedef struct {                            \
@@ -17,6 +27,8 @@ ASSUME_NONNULL_BEGIN
     u32 ext : 1;  /* true if v is external  */\
   } A; \
   typedef int (*A##SortFun)(void* nullable ctx, const T* elemp1, const T* elemp2);
+
+
 
 /* DEF_TYPED_ARRAY_FUNCS defines the following inline functions:
 
@@ -122,6 +134,31 @@ inline static void A##Sort(A* a, A##SortFun comparator, void* nullable ctx) { \
 } \
 // end DEF_TYPED_ARRAY_API
 
+#define DEF_TYPED_PTR_ARRAY_FUNCS(A, PT)                                             \
+  ALWAYS_INLINE static void A##Init(A* a) { PtrArrayInit((PtrArray*)a); }            \
+  ALWAYS_INLINE static void A##InitStorage(A* a, PT* storage, u32 storagecap) {      \
+    PtrArrayInitStorage((PtrArray*)a, (void**)storage, storagecap); }                \
+  ALWAYS_INLINE static void A##Free(A* a, Mem m) { PtrArrayFree((PtrArray*)a, m); }  \
+  ALWAYS_INLINE static void A##Clear(A* a) { PtrArrayClear((PtrArray*)a); }          \
+  ALWAYS_INLINE static bool A##Push(A* a, PT v, Mem m) {                             \
+    return PtrArrayPush((PtrArray*)a, v, m); }                                       \
+  ALWAYS_INLINE static PT A##Pop(A* a) { return PtrArrayPop((PtrArray*)a); }         \
+  ALWAYS_INLINE static void A##Remove(A* a, u32 startindex, u32 count) {             \
+    PtrArrayRemove((PtrArray*)a, startindex, count); }                               \
+  ALWAYS_INLINE static i32 A##IndexOf(const A* a, const PT entry) {                  \
+    return PtrArrayIndexOf((PtrArray*)a, entry); }                                   \
+  ALWAYS_INLINE static i32 A##LastIndexOf(const A* a, const PT entry) {              \
+    return PtrArrayLastIndexOf((PtrArray*)a, entry); }                               \
+  ALWAYS_INLINE static error A##Copy(                                                \
+    A* dst, u32 startindex, const PT* src, u32 srclen, Mem m) {                      \
+    return PtrArrayCopy((PtrArray*)dst, startindex, (const void**)src, srclen, m); } \
+  ALWAYS_INLINE static error A##MakeRoom(A* a, u32 addl_count, Mem m) {              \
+    return PtrArrayMakeRoom((PtrArray*)a, addl_count, m); }                          \
+  ALWAYS_INLINE static void A##Sort(A* a, A##SortFun cmpf, void* nullable ctx) {     \
+    PtrArraySort((PtrArray*)a, (PtrArraySortFun)cmpf, ctx); }                        \
+// end DEF_TYPED_PTR_ARRAY_FUNCS
+
+// PtrArray
 DEF_TYPED_ARRAY_TYPES(PtrArray, void*)
 error array_grow(PtrArray*, usize elemsize, usize count, Mem);
 i32 array_indexof(const PtrArray*, usize elemsize, const void* elemp);

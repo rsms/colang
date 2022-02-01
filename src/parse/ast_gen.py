@@ -104,11 +104,13 @@ def gen_NodeKind_enum(out, depth, i, subtypes):
     i = gen_NodeKind_enum(out, depth + 1, i, subtypes2)
     if not is_leaf:
       out.append(ind+'%-*s = %2d,' % (namelen, 'N'+shortname+'_END', i - 1))
+  if depth == 1:
+    out.append(ind+'%-*s = %2d,' % (namelen, 'NodeKind_MAX', i - 1))
   return i
 
 
 def output_compact(output, input, maxcol, indent, lineend=''):
-  buf = indent
+  buf = ""
   for w in input:
     if len(buf) + len(w) > maxcol and len(buf) > 0:
       output.append(buf[:len(buf)-1] + lineend)
@@ -117,6 +119,11 @@ def output_compact(output, input, maxcol, indent, lineend=''):
   if len(buf) > 0:
     output.append(buf[:len(buf)-1])
 
+
+def output_compact_macro(output, input, indent=1):
+  line1idx = len(output)
+  output_compact(output, input, 88, '  ' * indent, ' \\')
+  output[line1idx] = ('  ' * (indent - 1)) + output[line1idx].strip()
 
 
 def structname(nodename, subtypes):
@@ -132,9 +139,7 @@ outc = [] # ast.c
 
 # enum NodeKind
 outh.append('enum NodeKind {')
-gen_NodeKind_enum(outh, 1, 0, Node)
-# outh.append('  %-*s = %d,' %
-#   (((maxdepth-1) * len(IND) + maxnamelen +1), 'NodeKind_MAX', i - 1))
+nodekind_max = gen_NodeKind_enum(outh, 1, 0, Node) - 1
 outh.append('} END_TYPED_ENUM(NodeKind)')
 outh.append('')
 
@@ -145,11 +150,12 @@ outh.append('const char* NodeKindName(NodeKind);')
 outh.append('')
 outc.append('const char* NodeKindName(NodeKind k) {')
 outc.append('  // kNodeNameTable[NodeKind] => const char* name')
-outc.append('  static const char* const kNodeNameTable[%d] = {' % len(leafnames))
+outc.append('  static const char* const kNodeNameTable[NodeKind_MAX+2] = {')
 outtmp = ['"%s",' % strip_node_suffix(name) for name in leafnames]
+outtmp.append('"?"')
 output_compact(outc, outtmp, 80, '    ')
 outc.append('  };')
-outc.append('  return k < %d ? kNodeNameTable[k] : "?";' % len(leafnames))
+outc.append('  return kNodeNameTable[MIN(NodeKind_MAX+2,k)];')
 outc.append('}')
 outc.append('')
 
@@ -205,11 +211,6 @@ for name, subtypes in typemap.items():
       '#define assert_is_%s(n) _assert_is1(%s,(n))' % (
       name, shortname))
 outh.append('')
-
-def output_compact_macro(output, input):
-  line1idx = len(output)
-  output_compact(output, input, 88, '  ', ' \\')
-  output[line1idx] = output[line1idx].strip()
 
 # as_*
 outh.append('// <type>* as_<type>(Node* n)')
@@ -291,16 +292,12 @@ visit_typeof(tmp, 'Expr', typemap['Expr'],
 for name, subtypes in typemap.items():
   if name != 'Node' and name not in visit_typeof_seen:
     tmp.append('%s*:NULL,' % structname(name, subtypes))
-
-# Node: inspect at runtime
+# inspect "Node*" at runtime
 tmp += [
   'const Node*: ( is_Type(n) ? (const Type*)kType_type :',
   ' is_Expr(n) ? (const Type*)((Expr*)(n))->type : NULL ),',
   'Node*:( is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))',
 ]
-
-# tmp.append('Node*:(is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))')
-
 output_compact_macro(outh, tmp)
 outh.append('')
 
@@ -311,6 +308,131 @@ outtmp = ['%s _%d;' % (leafnames[i], i) for i in range(0, len(leafnames))]
 output_compact(outh, outtmp, 80, '  ')
 outh.append('};')
 outh.append('')
+
+# ASTVisitorFuns
+ftable_size = len(leafnames) + 2
+outh.append("""
+typedef struct ASTVisitor     ASTVisitor;
+typedef struct ASTVisitorFuns ASTVisitorFuns;
+typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
+struct ASTVisitor {
+  ASTVisitorFun  ftable[%d];
+  void* nullable data;
+};
+void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
+""".strip() % ftable_size)
+
+outh.append('// error ASTVisit(ASTVisitor* v, const NODE_TYPE* n)')
+tmp = []
+tmp.append('#define ASTVisit(v, n) _Generic((n),')
+for name in leafnames:
+  shortname = strip_node_suffix(name)
+  tmp.append('const %s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
+for name, subtypes in typemap.items():
+  if len(subtypes) > 0:
+    stname = structname(name, subtypes)
+    tmp.append('const %s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
+# tmp.append('default: v->ftable[MIN(%d,(n)->kind)]((v),(const Node*)(n)),' % (
+#   ftable_size - 1))
+tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
+output_compact_macro(outh, tmp)
+outh.append('')
+
+outh.append('struct ASTVisitorFuns {')
+for name in leafnames:
+  shortname = strip_node_suffix(name)
+  outh.append('  error(*nullable %s)(ASTVisitor*, const %s*);' % (shortname, name))
+
+outh.append('')
+outh.append("  // class-level visitors called for nodes without specific visitors")
+for name, subtypes in typemap.items():
+  if len(subtypes) == 0: continue
+  shortname = strip_node_suffix(name)
+  if shortname == '': continue
+  stname = structname(name, subtypes)
+  outh.append('  error(*nullable %s)(ASTVisitor*, const %s*);' % (shortname, stname))
+outh.append('')
+outh.append("  // catch-all fallback visitor")
+outh.append('  error(*nullable Node)(ASTVisitor*, const Node*);')
+outh.append('};')
+outh.append('')
+
+outc.append('static error ASTVisitorNoop(ASTVisitor* v, const Node* n) { return 0; }')
+outc.append('')
+outc.append('void ASTVisitorInit(ASTVisitor* v, const ASTVisitorFuns* f) {')
+outc.append('  ASTVisitorFun dft = (f->Node ? f->Node : &ASTVisitorNoop), dft1 = dft;')
+outc.append('  // populate v->ftable')
+
+def visit(out, name, subtypes, islast=False):
+  shortname = strip_node_suffix(name)
+  if shortname != '':
+    if len(subtypes) > 0:
+      out.append('  // begin %s' % shortname)
+      out.append('  if (f->%s) { dft1 = dft; dft = ((ASTVisitorFun)f->%s); }' % (
+        shortname, shortname))
+    else:
+      outc.append('  v->ftable[N%s] = f->%s ? ((ASTVisitorFun)f->%s) : dft;' % (
+        shortname, shortname, shortname))
+
+  i = 0
+  lasti = len(subtypes) - 1
+  for name2, subtypes2 in subtypes.items():
+    visit(out, name2, subtypes2, islast=(shortname=='' and i == lasti))
+    i += 1
+
+  if len(subtypes) > 0 and shortname != '':
+    if islast:
+      out.append('  // end %s' % shortname)
+    else:
+      out.append('  dft = dft1; // end %s' % shortname)
+
+visit(outc, 'Node', Node)
+outc.append('}')
+outc.append('')
+
+# static error ASTConstVisitorInit(ASTConstVisitor* v, const ASTConstVisitorFuns* f) {
+#   v->ftable[NBad]        = f->Bad        ? ((ASTConstVisitorFun)f->Bad)        : noop;
+#   v->ftable[NField]      = f->Field      ? ((ASTConstVisitorFun)f->Field)      : noop;
+#   v->ftable[NPkg]        = f->Pkg        ? ((ASTConstVisitorFun)f->Pkg)        : noop;
+#   v->ftable[NFile]       = f->File       ? ((ASTConstVisitorFun)f->File)       : noop;
+#   v->ftable[NComment]    = f->Comment    ? ((ASTConstVisitorFun)f->Comment)    : noop;
+#   v->ftable[NNil]        = f->Nil        ? ((ASTConstVisitorFun)f->Nil)        : noop;
+#   v->ftable[NBoolLit]    = f->BoolLit    ? ((ASTConstVisitorFun)f->BoolLit)    : noop;
+#   v->ftable[NIntLit]     = f->IntLit     ? ((ASTConstVisitorFun)f->IntLit)     : noop;
+#   v->ftable[NFloatLit]   = f->FloatLit   ? ((ASTConstVisitorFun)f->FloatLit)   : noop;
+#   v->ftable[NStrLit]     = f->StrLit     ? ((ASTConstVisitorFun)f->StrLit)     : noop;
+#   v->ftable[NId]         = f->Id         ? ((ASTConstVisitorFun)f->Id)         : noop;
+#   v->ftable[NBinOp]      = f->BinOp      ? ((ASTConstVisitorFun)f->BinOp)      : noop;
+#   v->ftable[NPrefixOp]   = f->PrefixOp   ? ((ASTConstVisitorFun)f->PrefixOp)   : noop;
+#   v->ftable[NPostfixOp]  = f->PostfixOp  ? ((ASTConstVisitorFun)f->PostfixOp)  : noop;
+#   v->ftable[NReturn]     = f->Return     ? ((ASTConstVisitorFun)f->Return)     : noop;
+#   v->ftable[NAssign]     = f->Assign     ? ((ASTConstVisitorFun)f->Assign)     : noop;
+#   v->ftable[NTuple]      = f->Tuple      ? ((ASTConstVisitorFun)f->Tuple)      : noop;
+#   v->ftable[NArray]      = f->Array      ? ((ASTConstVisitorFun)f->Array)      : noop;
+#   v->ftable[NBlock]      = f->Block      ? ((ASTConstVisitorFun)f->Block)      : noop;
+#   v->ftable[NFun]        = f->Fun        ? ((ASTConstVisitorFun)f->Fun)        : noop;
+#   v->ftable[NMacro]      = f->Macro      ? ((ASTConstVisitorFun)f->Macro)      : noop;
+#   v->ftable[NCall]       = f->Call       ? ((ASTConstVisitorFun)f->Call)       : noop;
+#   v->ftable[NTypeCast]   = f->TypeCast   ? ((ASTConstVisitorFun)f->TypeCast)   : noop;
+#   v->ftable[NVar]        = f->Var        ? ((ASTConstVisitorFun)f->Var)        : noop;
+#   v->ftable[NRef]        = f->Ref        ? ((ASTConstVisitorFun)f->Ref)        : noop;
+#   v->ftable[NNamedArg]   = f->NamedArg   ? ((ASTConstVisitorFun)f->NamedArg)   : noop;
+#   v->ftable[NSelector]   = f->Selector   ? ((ASTConstVisitorFun)f->Selector)   : noop;
+#   v->ftable[NIndex]      = f->Index      ? ((ASTConstVisitorFun)f->Index)      : noop;
+#   v->ftable[NSlice]      = f->Slice      ? ((ASTConstVisitorFun)f->Slice)      : noop;
+#   v->ftable[NIf]         = f->If         ? ((ASTConstVisitorFun)f->If)         : noop;
+#   v->ftable[NTypeType]   = f->TypeType   ? ((ASTConstVisitorFun)f->TypeType)   : noop;
+#   v->ftable[NNamedType]  = f->NamedType  ? ((ASTConstVisitorFun)f->NamedType)  : noop;
+#   v->ftable[NAliasType]  = f->AliasType  ? ((ASTConstVisitorFun)f->AliasType)  : noop;
+#   v->ftable[NRefType]    = f->RefType    ? ((ASTConstVisitorFun)f->RefType)    : noop;
+#   v->ftable[NBasicType]  = f->BasicType  ? ((ASTConstVisitorFun)f->BasicType)  : noop;
+#   v->ftable[NArrayType]  = f->ArrayType  ? ((ASTConstVisitorFun)f->ArrayType)  : noop;
+#   v->ftable[NTupleType]  = f->TupleType  ? ((ASTConstVisitorFun)f->TupleType)  : noop;
+#   v->ftable[NStructType] = f->StructType ? ((ASTConstVisitorFun)f->StructType) : noop;
+#   v->ftable[NFunType]    = f->FunType    ? ((ASTConstVisitorFun)f->FunType)    : noop;
+#   v->ftable[NodeKind_MAX+1] = noop;
+#   return 0;
+# }
 
 
 # print("——— ast.h ———")
@@ -345,6 +467,8 @@ def patch_source_file(filename, source, generated_code):
     print("write", filename)
     with open(filename, "w") as f:
       f.write(source2)
+  else:
+    print("skip", filename)
 
 
 patch_source_file(hfilename, hsource, "\n".join(outh).strip())

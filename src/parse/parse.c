@@ -487,7 +487,7 @@ static Node* nullable lookupsymShallow(Parser* p, Sym key) {
 #define defsym(p, s, n) _defsym((p), (s), as_Node(assertnotnull(n)))
 
 static void _defsym(Parser* p, Sym s, Node* n) {
-  assert(is_Type(n) || is_VarNode(n) || is_Field(n) || is_FunNode(n));
+  assert(is_Type(n) || is_VarNode(n) || is_FieldNode(n) || is_FunNode(n));
 
   #ifdef DEBUG_DEFSYM
   Node* existing = lookupsymShallow(p, s);
@@ -1326,15 +1326,15 @@ parse_arg:
     if (got(p, TAssign)) {
       // named argument (e.g. "name = expr")
 
-      // convert Id to NamedVal
+      // convert Id to NamedArg
       Sym name = id->name; // tmp
-      NamedValNode* namedval = (NamedValNode*)id;
-      namedval->kind = NNamedVal;
-      namedval->name = name;
-      namedval->value = pExpr(p, PREC_LOWEST, fl);
+      NamedArgNode* namedarg = (NamedArgNode*)id;
+      namedarg->kind = NNamedArg;
+      namedarg->name = name;
+      namedarg->value = pExpr(p, PREC_LOWEST, fl);
       tuple->flags |= NF_Named; // "has named argument"
 
-      arg = as_Expr(namedval);
+      arg = as_Expr(namedarg);
     } else {
       // plain identifier
       // resolve id (and simplify since rvalue, so may get non-id result)
@@ -1422,9 +1422,9 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
 
 
 // Field = ( Id Type | NamedType ) ( "=" Expr )?
-static Field* pField(Parser* p) {
+static FieldNode* pField(Parser* p) {
   asserteq(p->tok, TId);
-  auto field = (Field* nullable)mknode1(p, NField);
+  auto field = mknode(p, Field);
   field->name = p->name;
   nexttok(p); // consume name
 

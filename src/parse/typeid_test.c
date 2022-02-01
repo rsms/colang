@@ -42,8 +42,8 @@ DEF_TEST(typeid_make) {
   {
     StructTypeNode t = { .kind = NStructType };
     FieldArrayInitStorage(&t.fields, t.fields_storage, countof(t.fields_storage));
-    Field f1 = { .type = kType_i32 };
-    Field f2 = { .type = kType_u32 };
+    FieldNode f1 = { .type = kType_i32 };
+    FieldNode f2 = { .type = kType_u32 };
     t.fields.v[t.fields.len++] = &f1;
     t.fields.v[t.fields.len++] = &f2;
     u32 n = typeid_make(buf, sizeof(buf), &t);

@@ -65,7 +65,7 @@ static void typeid_append(SBuf* s, const Type* t) {
     case NStructType:
       sbuf_appendc(s, TypeCodeEncoding(TC_struct));
       for (u32 i = 0; i < as_StructTypeNode(t)->fields.len; i++) {
-        Field* field = as_StructTypeNode(t)->fields.v[i];
+        FieldNode* field = as_StructTypeNode(t)->fields.v[i];
         typeid_append(s, assertnotnull(field->type));
       }
       return sbuf_appendc(s, TypeCodeEncoding(TC_structEnd));
