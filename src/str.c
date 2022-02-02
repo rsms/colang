@@ -1,6 +1,8 @@
 #include "coimpl.h"
 #include "str.h"
 #include "sbuf.h"
+#include "test.h"
+#include "unicode.h"
 
 #ifdef CO_WITH_LIBC
   #include <stdio.h>
@@ -144,26 +146,11 @@ Str str_appendfill(Str s, u32 n, char c) {
   return s;
 }
 
-static inline bool ishexdigit(char c) {
-  return (
-    ('0' <= c && c <= '9') ||
-    ('A' <= c && c <= 'F') ||
-    ('a' <= c && c <= 'f')
-  );
-}
-
-static inline int isprint(int c) {
-  return ((u32)(c)-0x20) < 0x5f;
-}
-
-static inline int isspace(int c) {
-  return c == ' ' || (u32)c-'\t' < 5;
-}
-
 
 // str_appendrepr appends a human-readable representation of data to dst as C-format ASCII
 // string literals, with "special" bytes escaped (e.g. \n, \xFE, etc.)
 Str str_appendrepr(Str s, const char* data, u32 len) {
+  // TODO: replace this with sbuf_appendrepr
   assert((u64)len <= ((u64)UINT32_MAX) * 8);
   u32 morelen = len * 4;
   char* dst;
@@ -183,10 +170,10 @@ Str str_appendrepr(Str s, const char* data, u32 len) {
           goto retry;
       }
       char c = data[srci];
-      if (c == ' ' || (c != '"' && !isspace(c) && isprint(c))) {
+      if (c == ' ' || (c != '"' && !ascii_isspace(c) && ascii_isprint(c))) {
         // In case we just wrote a hex escape sequence, make sure we don't write a
         // third hex digit. This confuses compilers when the result is used as a C literal.
-        if (!prevesc || !ishexdigit(c)) {
+        if (!prevesc || !ascii_ishexdigit(c)) {
           *dst++ = c;
           prevesc = false;
           continue;

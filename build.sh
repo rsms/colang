@@ -37,6 +37,9 @@ esac; done
 if [ -n "$WATCH" ]; then
   command -v fswatch >/dev/null || _err "fswatch not found in PATH"
   RUN_PID=
+  # case "$RUN" in
+  #   *" "*) RUN="$SHELL -c '$RUN'" ;;
+  # esac
   _exit() {
     kill $RUN_PID 2>/dev/null || true
     exit

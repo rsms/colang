@@ -842,58 +842,105 @@ typedef struct ASTVisitorFuns ASTVisitorFuns;
 typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
 struct ASTVisitor {
   ASTVisitorFun  ftable[41];
-  void* nullable data;
+  void* nullable ctx;
 };
 void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
 // error ASTVisit(ASTVisitor* v, const NODE_TYPE* n)
 #define ASTVisit(v, n) _Generic((n), \
   const BadNode*: (v)->ftable[NBad]((v),(const Node*)(n)), \
+  BadNode*: (v)->ftable[NBad]((v),(const Node*)(n)), \
   const FieldNode*: (v)->ftable[NField]((v),(const Node*)(n)), \
+  FieldNode*: (v)->ftable[NField]((v),(const Node*)(n)), \
   const PkgNode*: (v)->ftable[NPkg]((v),(const Node*)(n)), \
+  PkgNode*: (v)->ftable[NPkg]((v),(const Node*)(n)), \
   const FileNode*: (v)->ftable[NFile]((v),(const Node*)(n)), \
+  FileNode*: (v)->ftable[NFile]((v),(const Node*)(n)), \
   const CommentNode*: (v)->ftable[NComment]((v),(const Node*)(n)), \
+  CommentNode*: (v)->ftable[NComment]((v),(const Node*)(n)), \
   const NilNode*: (v)->ftable[NNil]((v),(const Node*)(n)), \
+  NilNode*: (v)->ftable[NNil]((v),(const Node*)(n)), \
   const BoolLitNode*: (v)->ftable[NBoolLit]((v),(const Node*)(n)), \
+  BoolLitNode*: (v)->ftable[NBoolLit]((v),(const Node*)(n)), \
   const IntLitNode*: (v)->ftable[NIntLit]((v),(const Node*)(n)), \
+  IntLitNode*: (v)->ftable[NIntLit]((v),(const Node*)(n)), \
   const FloatLitNode*: (v)->ftable[NFloatLit]((v),(const Node*)(n)), \
+  FloatLitNode*: (v)->ftable[NFloatLit]((v),(const Node*)(n)), \
   const StrLitNode*: (v)->ftable[NStrLit]((v),(const Node*)(n)), \
+  StrLitNode*: (v)->ftable[NStrLit]((v),(const Node*)(n)), \
   const IdNode*: (v)->ftable[NId]((v),(const Node*)(n)), \
+  IdNode*: (v)->ftable[NId]((v),(const Node*)(n)), \
   const BinOpNode*: (v)->ftable[NBinOp]((v),(const Node*)(n)), \
+  BinOpNode*: (v)->ftable[NBinOp]((v),(const Node*)(n)), \
   const PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(const Node*)(n)), \
+  PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(const Node*)(n)), \
   const PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(const Node*)(n)), \
+  PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(const Node*)(n)), \
   const ReturnNode*: (v)->ftable[NReturn]((v),(const Node*)(n)), \
+  ReturnNode*: (v)->ftable[NReturn]((v),(const Node*)(n)), \
   const AssignNode*: (v)->ftable[NAssign]((v),(const Node*)(n)), \
+  AssignNode*: (v)->ftable[NAssign]((v),(const Node*)(n)), \
   const TupleNode*: (v)->ftable[NTuple]((v),(const Node*)(n)), \
+  TupleNode*: (v)->ftable[NTuple]((v),(const Node*)(n)), \
   const ArrayNode*: (v)->ftable[NArray]((v),(const Node*)(n)), \
+  ArrayNode*: (v)->ftable[NArray]((v),(const Node*)(n)), \
   const BlockNode*: (v)->ftable[NBlock]((v),(const Node*)(n)), \
+  BlockNode*: (v)->ftable[NBlock]((v),(const Node*)(n)), \
   const FunNode*: (v)->ftable[NFun]((v),(const Node*)(n)), \
+  FunNode*: (v)->ftable[NFun]((v),(const Node*)(n)), \
   const MacroNode*: (v)->ftable[NMacro]((v),(const Node*)(n)), \
+  MacroNode*: (v)->ftable[NMacro]((v),(const Node*)(n)), \
   const CallNode*: (v)->ftable[NCall]((v),(const Node*)(n)), \
+  CallNode*: (v)->ftable[NCall]((v),(const Node*)(n)), \
   const TypeCastNode*: (v)->ftable[NTypeCast]((v),(const Node*)(n)), \
+  TypeCastNode*: (v)->ftable[NTypeCast]((v),(const Node*)(n)), \
   const VarNode*: (v)->ftable[NVar]((v),(const Node*)(n)), \
+  VarNode*: (v)->ftable[NVar]((v),(const Node*)(n)), \
   const RefNode*: (v)->ftable[NRef]((v),(const Node*)(n)), \
+  RefNode*: (v)->ftable[NRef]((v),(const Node*)(n)), \
   const NamedArgNode*: (v)->ftable[NNamedArg]((v),(const Node*)(n)), \
+  NamedArgNode*: (v)->ftable[NNamedArg]((v),(const Node*)(n)), \
   const SelectorNode*: (v)->ftable[NSelector]((v),(const Node*)(n)), \
+  SelectorNode*: (v)->ftable[NSelector]((v),(const Node*)(n)), \
   const IndexNode*: (v)->ftable[NIndex]((v),(const Node*)(n)), \
+  IndexNode*: (v)->ftable[NIndex]((v),(const Node*)(n)), \
   const SliceNode*: (v)->ftable[NSlice]((v),(const Node*)(n)), \
+  SliceNode*: (v)->ftable[NSlice]((v),(const Node*)(n)), \
   const IfNode*: (v)->ftable[NIf]((v),(const Node*)(n)), \
+  IfNode*: (v)->ftable[NIf]((v),(const Node*)(n)), \
   const TypeTypeNode*: (v)->ftable[NTypeType]((v),(const Node*)(n)), \
+  TypeTypeNode*: (v)->ftable[NTypeType]((v),(const Node*)(n)), \
   const NamedTypeNode*: (v)->ftable[NNamedType]((v),(const Node*)(n)), \
+  NamedTypeNode*: (v)->ftable[NNamedType]((v),(const Node*)(n)), \
   const AliasTypeNode*: (v)->ftable[NAliasType]((v),(const Node*)(n)), \
+  AliasTypeNode*: (v)->ftable[NAliasType]((v),(const Node*)(n)), \
   const RefTypeNode*: (v)->ftable[NRefType]((v),(const Node*)(n)), \
+  RefTypeNode*: (v)->ftable[NRefType]((v),(const Node*)(n)), \
   const BasicTypeNode*: (v)->ftable[NBasicType]((v),(const Node*)(n)), \
+  BasicTypeNode*: (v)->ftable[NBasicType]((v),(const Node*)(n)), \
   const ArrayTypeNode*: (v)->ftable[NArrayType]((v),(const Node*)(n)), \
+  ArrayTypeNode*: (v)->ftable[NArrayType]((v),(const Node*)(n)), \
   const TupleTypeNode*: (v)->ftable[NTupleType]((v),(const Node*)(n)), \
+  TupleTypeNode*: (v)->ftable[NTupleType]((v),(const Node*)(n)), \
   const StructTypeNode*: (v)->ftable[NStructType]((v),(const Node*)(n)), \
+  StructTypeNode*: (v)->ftable[NStructType]((v),(const Node*)(n)), \
   const FunTypeNode*: (v)->ftable[NFunType]((v),(const Node*)(n)), \
+  FunTypeNode*: (v)->ftable[NFunType]((v),(const Node*)(n)), \
   const Node*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  Node*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const Stmt*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  Stmt*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct CUnitNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  struct CUnitNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const Expr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  Expr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct LitExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  struct LitExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct ListExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)))
+  struct ListExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  const Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)))
 
 struct ASTVisitorFuns {
   error(*nullable Bad)(ASTVisitor*, const BadNode*);

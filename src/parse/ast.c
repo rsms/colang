@@ -118,6 +118,16 @@ const Node* ScopeLookup(const Scope* scope, Sym s) {
 }
 
 
+static error visit_BinOp(ASTVisitor* v, const BinOpNode* n) {
+  ASTVisit(v, n->left);
+  return ASTVisit(v, n->right);
+}
+
+static error visit_PrefixOp(ASTVisitor* v, const PrefixOpNode* n) {
+  return ASTVisit(v, n->expr);
+}
+
+
 //BEGIN GENERATED CODE by ast_gen.py
 
 const char* NodeKindName(NodeKind k) {

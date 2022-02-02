@@ -317,7 +317,7 @@ typedef struct ASTVisitorFuns ASTVisitorFuns;
 typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
 struct ASTVisitor {
   ASTVisitorFun  ftable[%d];
-  void* nullable data;
+  void* nullable ctx;
 };
 void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
 """.strip() % ftable_size)
@@ -328,10 +328,12 @@ tmp.append('#define ASTVisit(v, n) _Generic((n),')
 for name in leafnames:
   shortname = strip_node_suffix(name)
   tmp.append('const %s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
+  tmp.append('%s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
 for name, subtypes in typemap.items():
   if len(subtypes) > 0:
     stname = structname(name, subtypes)
     tmp.append('const %s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
+    tmp.append('%s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
 # tmp.append('default: v->ftable[MIN(%d,(n)->kind)]((v),(const Node*)(n)),' % (
 #   ftable_size - 1))
 tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'

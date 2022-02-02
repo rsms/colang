@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "test.h"
 #include "unicode.h"
 
 Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
@@ -28,4 +29,28 @@ Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
   }
   *width_out = 1;
   return RuneErr;
+}
+
+
+DEF_TEST(unicode_ascii_is) {
+  for (char c = 0; c < '0'; c++) {
+    assert(!ascii_isdigit(c));
+    assert(!ascii_ishexdigit(c));
+  }
+  for (char c = '0'; c < '9'+1; c++) {
+    assert(ascii_isdigit(c));
+    assert(ascii_ishexdigit(c));
+  }
+  for (char c = 'A'; c < 'F'+1; c++) {
+    assert(!ascii_isdigit(c));
+    assert(ascii_ishexdigit(c));
+  }
+  for (char c = 'a'; c < 'f'+1; c++) {
+    assert(!ascii_isdigit(c));
+    assert(ascii_ishexdigit(c));
+  }
+  for (char c = 'f'+1; c < 'z'+1; c++) {
+    assert(!ascii_isdigit(c));
+    assert(!ascii_ishexdigit(c));
+  }
 }

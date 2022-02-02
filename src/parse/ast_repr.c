@@ -2,6 +2,7 @@
 #include "../tstyle.h"
 #include "../array.h"
 #include "../str.h"
+#include "../sbuf.h"
 #include "ast.h"
 
 // DEBUG_INCLUDE_POINTERS: define to include node memory addresses in output
@@ -29,21 +30,10 @@ static Str NodeStrArray(Str s, const NodeArray* na) {
   return s;
 }
 
-static int visit_file(ASTVisitor* v, const FileNode* file) {
-  dlog("visit_file %s", file->name);
-  return 0;
-}
-
-
 // appends a short representation of an AST node to s, suitable for use in error messages.
 Str _NodeStr(Str s, const Node* nullable n) {
   // Note: Do not include type information.
   // Instead, in use sites, call fmtnode individually for n->type when needed.
-
-  static const ASTVisitorFuns vfn = { .File = visit_file };
-  ASTVisitor visitor;
-  ASTVisitorInit(&visitor, &vfn);
-  ASTVisit(&visitor, n);
 
   #define NODE(s,n)      _NodeStr(s, (Node*)n)
   #define NODEARRAY(s,a) NodeStrArray(s, as_NodeArray(a))
@@ -221,6 +211,57 @@ Str _NodeStr(Str s, const Node* nullable n) {
 
 // ---------------------
 
+typedef struct { ASTVisitor; SBuf buf; } ReprVisitor;
+
+static void _visit(ASTVisitor* v, const Node* nullable n) {
+  SBuf* buf = &((ReprVisitor*)v)->buf;
+  sbuf_appendc(buf, '(');
+  if (n == NULL) {
+    sbuf_appendstr(buf, "NULL)");
+    return;
+  }
+  sbuf_appendstr(buf, NodeKindName(n->kind));
+  sbuf_appendc(buf, ' ');
+  char* p = buf->p;
+  ASTVisit(v, n);
+  if (buf->p == p) {
+    // nothing printed after '(name', so replace ' ' with ')'
+    *(p-1) = ')';
+  } else {
+    sbuf_appendc(buf, ')');
+  }
+}
+
+static int visit_file(ASTVisitor* v, const FileNode* file) {
+  SBuf* buf = &((ReprVisitor*)v)->buf;
+  sbuf_appendc(buf, '"');
+  sbuf_appendrepr(buf, file->name, strlen(file->name));
+  sbuf_appendc(buf, '"');
+  return 0;
+}
+
+
+Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
+  Str s2 = str_makeroom(s, 512);
+  if (s2)
+    s = s2;
+
+  static const ASTVisitorFuns vfn = { .File = visit_file };
+  ReprVisitor v = {0};
+  sbuf_init(&v.buf, s->p, s->cap);
+  ASTVisitorInit((ASTVisitor*)&v, &vfn);
+  _visit((ASTVisitor*)&v, n);
+
+  sbuf_terminate(&v.buf);
+  s->len = MIN(s->cap, v.buf.len);
+
+  // TODO: if s is too small, grow it and retry
+
+  return s;
+}
+
+// ---------------------
+
 
 const char* _fmtnode(const Node* n) {
   Str* sp = str_tmp();
@@ -230,13 +271,9 @@ const char* _fmtnode(const Node* n) {
 
 const char* _fmtast(const Node* n) {
   Str* sp = str_tmp();
-  // *sp = _NodeRepr(n, *sp, 0); // TODO
-  *sp = _NodeStr(*sp, n); // XXX TMP
+  *sp = _NodeRepr(*sp, n, 0);
   return (*sp)->p;
 }
 
 
-Str _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
-  s = str_append(s, "[TODO _NodeRepr]");
-  return s;
-}
+

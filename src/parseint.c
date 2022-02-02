@@ -1,18 +1,13 @@
 #include "coimpl.h"
 #include "parseint.h"
+#include "unicode.h"
 #include "test.h"
-
-
-#define isdigit(c) (((u32)(c) - '0') < 10)
-#define isalpha_uc(c) (((u32)(c) - 'A') < ('Z'-'A'))
-#define isalpha_lc(c) (((u32)(c) - 'a') < ('z'-'a'))
-// #define ishexdigit(c) (isdigit(c) || ((u32)c|32)-'a' < 6)
 
 
 error _parseint_u64_base10(const char* src, usize srclen, u64* result) {
   u64 n = 0;
   const char* end = src + srclen;
-  while (src != end && isdigit(*src))
+  while (src != end && ascii_isdigit(*src))
     n = 10*n + (*src++ - '0');
   *result = n;
   return src == end ? 0 : err_invalid;
@@ -28,11 +23,11 @@ error _parseint_u64(const char* src, usize z, int base, u64* result, u64 cutoff)
   cutoff /= base;
   int any = 0;
   for (char c = *s; s != end; c = *++s) {
-    if (isdigit(c)) {
+    if (ascii_isdigit(c)) {
       c -= '0';
-    } else if (isalpha_uc(c)) {
+    } else if (ascii_isupper(c)) {
       c -= 'A' - 10;
-    } else if (isalpha_lc(c)) {
+    } else if (ascii_islower(c)) {
       c -= 'a' - 10;
     } else {
       return err_invalid;
@@ -123,13 +118,6 @@ static void test_u32(const char* cstr, int base, u32 expectnum) {
 }
 
 DEF_TEST(parseint) {
-  for (int i = 0; i < 'Z'-'A'; i++) {
-    assertf(isalpha_uc('A'+i), "'%c'", 'A'+i);
-    assertf(isalpha_lc('a'+i), "'%c'", 'a'+i);
-  }
-  assert(!isalpha_uc('Z'+1));
-  assert(!isalpha_lc('z'+1));
-
   u32 res_u32;
   assert(parseint_u32("100000000", strlen("100000000"), 16, &res_u32) == err_overflow);
   assert(parseint_u32("10000k000", strlen("10000k000"), 16, &res_u32) == err_invalid);
