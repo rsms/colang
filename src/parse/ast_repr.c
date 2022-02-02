@@ -4,6 +4,7 @@
 #include "../str.h"
 #include "../sbuf.h"
 #include "ast.h"
+#include "universe.h"
 
 // DEBUG_INCLUDE_POINTERS: define to include node memory addresses in output
 //#define DEBUG_INCLUDE_POINTERS
@@ -211,49 +212,102 @@ Str _NodeStr(Str s, const Node* nullable n) {
 
 // ---------------------
 
-typedef struct { ASTVisitor; SBuf buf; } ReprVisitor;
+typedef struct {
+  ASTVisitor;
+  SBuf buf;
+  int  depth;
+} Repr;
 
-static void _visit(ASTVisitor* v, const Node* nullable n) {
-  SBuf* buf = &((ReprVisitor*)v)->buf;
+// -- repr output writers
+
+#define write_node(r,n) _write_node((r),as_Node(n))
+static void _write_node(Repr* r, const Node* nullable n) {
+  SBuf* buf = &r->buf;
+  if (buf->len && *(buf->p-1) != '(') // compact "(("
+    sbuf_appendc(buf, ' ');
   sbuf_appendc(buf, '(');
-  if (n == NULL) {
-    sbuf_appendstr(buf, "NULL)");
-    return;
+  if (n != NULL) {
+    sbuf_appendstr(buf, NodeKindName(n->kind));
+    ASTVisit((ASTVisitor*)r, n);
   }
-  sbuf_appendstr(buf, NodeKindName(n->kind));
-  sbuf_appendc(buf, ' ');
-  char* p = buf->p;
-  ASTVisit(v, n);
-  if (buf->p == p) {
-    // nothing printed after '(name', so replace ' ' with ')'
-    *(p-1) = ')';
-  } else {
-    sbuf_appendc(buf, ')');
-  }
+  sbuf_appendc(buf, ')');
 }
 
-static int visit_file(ASTVisitor* v, const FileNode* file) {
-  SBuf* buf = &((ReprVisitor*)v)->buf;
-  sbuf_appendc(buf, '"');
-  sbuf_appendrepr(buf, file->name, strlen(file->name));
-  sbuf_appendc(buf, '"');
-  return 0;
+static void write_array(Repr* r, const NodeArray* a) {
+  SBuf* buf = &r->buf;
+  sbuf_appendstr(buf, " (");
+  r->depth++;
+  for (u32 i = 0; i < a->len; i++)
+    write_node(r, a->v[i]);
+  r->depth--;
+  sbuf_appendc(buf, ')');
 }
 
+static void write_str(Repr* r, const char* s) {
+  sbuf_appendc(&r->buf, ' ');
+  sbuf_appendstr(&r->buf, s);
+}
+
+static void write_qstr(Repr* r, const char* s, usize len) {
+  SBuf* buf = &r->buf;
+  sbuf_appendstr(buf, " \"");
+  sbuf_appendrepr(buf, s, len);
+  sbuf_appendc(buf, '"');
+}
+
+static void write_qsym(Repr* r, Sym s) {
+  write_qstr(r, s, symlen(s));
+}
+
+// -- visitor functions
+
+static void visit_File(Repr* r, const FileNode* file) {
+  write_qstr(r, file->name, strlen(file->name));
+  if (file->a.len > 0)
+    write_array(r, as_NodeArray(&file->a));
+}
+
+static void visit_Fun(Repr* r, const FunNode* n) {
+  write_qsym(r, n->name ? n->name : kSym__);
+  write_node(r, n->params);
+  write_node(r, n->result);
+  write_node(r, n->body);
+}
+
+static void visit_NamedType(Repr* r, const NamedTypeNode* n) {
+  write_qsym(r, n->name);
+}
+
+static void visit_BinOp(Repr* r, const BinOpNode* n) {
+  write_str(r, TokName(n->op));
+  write_node(r, n->left);
+  write_node(r, n->right);
+}
+
+
+// -- NodeRepr entry
 
 Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
   Str s2 = str_makeroom(s, 512);
   if (s2)
     s = s2;
 
-  static const ASTVisitorFuns vfn = { .File = visit_file };
-  ReprVisitor v = {0};
-  sbuf_init(&v.buf, s->p, s->cap);
-  ASTVisitorInit((ASTVisitor*)&v, &vfn);
-  _visit((ASTVisitor*)&v, n);
+  _Pragma("GCC diagnostic push")
+  _Pragma("GCC diagnostic ignored \"-Wincompatible-function-pointer-types\"")
+  static const ASTVisitorFuns vfn = {
+    .File = visit_File,
+    .Fun = visit_Fun,
+    .BinOp = visit_BinOp,
+    .NamedType = visit_NamedType,
+  };
+  _Pragma("GCC diagnostic pop")
+  Repr r = {0};
+  sbuf_init(&r.buf, s->p, s->cap);
+  ASTVisitorInit((ASTVisitor*)&r, &vfn);
+  write_node(&r, n);
 
-  sbuf_terminate(&v.buf);
-  s->len = MIN(s->cap, v.buf.len);
+  sbuf_terminate(&r.buf);
+  s->len = MIN(s->cap, r.buf.len);
 
   // TODO: if s is too small, grow it and retry
 

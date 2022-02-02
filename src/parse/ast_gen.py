@@ -316,8 +316,7 @@ typedef struct ASTVisitor     ASTVisitor;
 typedef struct ASTVisitorFuns ASTVisitorFuns;
 typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
 struct ASTVisitor {
-  ASTVisitorFun  ftable[%d];
-  void* nullable ctx;
+  ASTVisitorFun ftable[%d];
 };
 void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
 """.strip() % ftable_size)

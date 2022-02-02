@@ -27,10 +27,10 @@ DEF_TYPED_PTR_ARRAY(ExprArray, Expr*)
 DEF_TYPED_PTR_ARRAY(TypeArray, Type*)
 DEF_TYPED_PTR_ARRAY(FieldArray, FieldNode*)
 #define as_NodeArray(n) _Generic((n), \
-  ExprArray*:(NodeArray*)(n), \
-  TypeArray*:(NodeArray*)(n), \
-  FieldArray*:(NodeArray*)(n), \
-  NodeArray*:(n) )
+  const ExprArray*:(const NodeArray*)(n), ExprArray*:(NodeArray*)(n), \
+  const TypeArray*:(const NodeArray*)(n), TypeArray*:(NodeArray*)(n), \
+  const FieldArray*:(const NodeArray*)(n), FieldArray*:(NodeArray*)(n), \
+  const NodeArray*:(n), NodeArray*:(n) )
 
 struct Node {
   void* nullable irval;  // used by IR builders for temporary storage
@@ -841,8 +841,7 @@ typedef struct ASTVisitor     ASTVisitor;
 typedef struct ASTVisitorFuns ASTVisitorFuns;
 typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
 struct ASTVisitor {
-  ASTVisitorFun  ftable[41];
-  void* nullable ctx;
+  ASTVisitorFun ftable[41];
 };
 void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
 // error ASTVisit(ASTVisitor* v, const NODE_TYPE* n)

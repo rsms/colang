@@ -191,11 +191,10 @@ Str str_appendrepr(Str s, const char* data, u32 len) {
         default: // \xHH
           if (dst + 3 > dstend)
             goto retry;
-          #ifndef CO_WITH_LIBC
-            #warning TODO implement for non-libc
-          #else
-            sprintf(dst, "x%02X", c);
-          #endif
+          dst[0] = 'x';
+          static const char* hexchars = "0123456789abcdef";
+          dst[1] = hexchars[c >> 4];
+          dst[2] = hexchars[c & 0xf];
           dst += 3;
           prevesc = true;
           break;

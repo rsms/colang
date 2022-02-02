@@ -152,6 +152,7 @@ cflags = $
   -Wno-missing-field-initializers $
   -Wno-unused-parameter $
   -Werror=implicit-function-declaration $
+  -Werror=incompatible-pointer-types $
   -Wcovered-switch-default ${CFLAGS[@]}
 
 cflags_c = $
