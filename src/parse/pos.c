@@ -153,13 +153,13 @@ static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* sr
 
 
 Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap) {
-  TStyleTable style = TStyle16;
+  TStyles style = TStylesForStderr();
 
   // "file:line:col: message ..." <LF>
-  s = str_append(s, style[TStyle_bold]);
+  s = str_append(s, TStyleStr(style, TS_BOLD));
   s = pos_str(pm, span.start, s);
   s = str_append(s, ": ");
-  s = str_append(s, style[TStyle_none]);
+  s = str_append(s, TStyleStr(style, TS_RESET));
   s = str_appendfmtv(s, fmt, ap);
 
   // include line contents

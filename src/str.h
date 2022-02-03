@@ -71,13 +71,6 @@ inline static Str str_trunc(Str s) { return str_setlen(s, 0); }
 static bool str_hasprefix(Str s, const char* prefix);
 static bool str_hasprefixn(Str s, const char* prefix, u32 len);
 
-// strrevn reverses s in place. Returns s.
-char* strrevn(char* s, usize len);
-
-// strfmtu64 writes a u64 value to buf, returning the length (does NOT append '\0')
-u32 strfmtu64(char buf[64], u64 v, u32 base);
-static u32 strfmtu32(char buf[32], u32 v, u32 base);
-
 // str_tmp allocates the next temporary string buffer.
 // It is thread safe.
 //
@@ -104,8 +97,36 @@ static u32 strfmtu32(char buf[32], u32 v, u32 base);
 //
 Str* str_tmp();
 
+// --- end of Str functions
+// --- what follows are string-related functionality not operating on Str
 
-// --- inline implementation ---
+// strrevn reverses s in place. Returns s.
+char* strrevn(char* s, usize len);
+
+// strfmt_TYPE formats a value of TYPE, returning the number of bytes written.
+// These functions does not append a terminating '\0'.
+usize strfmt_u64(char buf[64], u64 v, u32 base);
+static usize strfmt_u32(char buf[32], u32 v, u32 base);
+static usize strfmt_u8(char buf[8], u8 v, u32 base);
+
+// strparse_TYPE parses a string as TYPE.
+// These functions return err_invalid if the input is not valid, or err_overflow.
+static error strparse_u64(const char* src, usize len, int base, u64* result);
+error strparse_u32(const char* src, usize len, int base, u32* result);
+error strparse_i64(const char* src, usize len, int base, i64* result);
+
+// strrepr appends a printable representation of src to dst, escaping characters which
+// are non-printable (e.g. line feed), '"' and '\'.
+// strrepr writes at most dstcap-1 of the characters to the output dst (the dstcap'th
+// character then gets the terminating '\0'). If the return value is greater than or
+// equal to the dstcap argument, dst was too short and some of the characters were
+// discarded. The output is always null-terminated, unless size is 0.
+// Returns the number of characters that would have been printed if dstcap was unlimited
+// (not including the final `\0').
+usize strrepr(char* dst, usize dstcap, const char* src, usize srclen);
+
+
+// --- inline implementations ---
 
 inline static Str str_make_cstr(Mem mem, const char* src_cstr) {
   return str_make_copy(mem, src_cstr, strlen(src_cstr));
@@ -127,8 +148,19 @@ inline static bool str_hasprefixn(Str s, const char* prefix, u32 prefixlen) {
 inline static bool str_hasprefix(Str s, const char* prefix) {
   return str_hasprefixn(s, prefix, strlen(prefix));
 }
-inline static u32 strfmtu32(char buf[32], u32 v, u32 base) {
-  return strfmtu64(buf, (u64)v, base);
+inline static usize strfmt_u32(char buf[32], u32 v, u32 base) {
+  return strfmt_u64(buf, (u64)v, base);
+}
+inline static usize strfmt_u8(char buf[8], u8 v, u32 base) {
+  return strfmt_u64(buf, (u64)v, base);
+}
+
+error _strparse_u64(const char* src, usize len, int base, u64* result, u64 cutoff);
+error _strparse_u64_base10(const char* src, usize len, u64* result);
+inline static error strparse_u64(const char* src, usize len, int base, u64* result) {
+  if (base == 10)
+    return _strparse_u64_base10(src, len, result);
+  return _strparse_u64(src, len, base, result, 0xFFFFFFFFFFFFFFFF);
 }
 
 ASSUME_NONNULL_END

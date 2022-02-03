@@ -130,12 +130,12 @@ u32 fmtduration(char buf[25], u64 duration_ns) {
     d /= 1000;
     unit = "us\0";
   }
-  u32 i = strfmtu64(buf, d, 10);
+  u32 i = strfmt_u64(buf, d, 10);
   if (unit[0] != 'u' && unit[0] != 'n') {
     // one decimal for units larger than microseconds
     buf[i++] = '.';
     char buf2[20];
-    UNUSED u32 n = strfmtu64(buf2, f, 10);
+    UNUSED u32 n = strfmt_u64(buf2, f, 10);
     assert(n > 0);
     buf[i++] = buf2[0]; // TODO: round instead of effectively ceil
   }

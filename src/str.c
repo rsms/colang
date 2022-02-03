@@ -1,7 +1,6 @@
 #include "coimpl.h"
 #include "str.h"
 #include "sbuf.h"
-#include "test.h"
 #include "unicode.h"
 
 #ifdef CO_WITH_LIBC
@@ -232,34 +231,11 @@ Str str_appendhex_lc(Str s, const u8* data, u32 len) {
   return _str_appendhex(s, data, len, "0123456789abcdef");
 }
 
-char* strrevn(char* s, usize len) {
-  for (usize i = 0, j = len - 1; i < j; i++, j--) {
-    char tmp = s[i];
-    s[i] = s[j];
-    s[j] = tmp;
-  }
-  return s;
-}
-
-u32 strfmtu64(char buf[64], u64 v, u32 base) {
-  static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  base = MIN(base, 62);
-  char* p = buf;
-  do {
-    *p++ = chars[v % base];
-    v /= base;
-  } while (v);
-  u32 len = (u32)(uintptr)(p - buf);
-  p--;
-  strrevn(buf, len);
-  return len;
-}
-
 Str str_appendu64(Str s, u64 v, u32 base) {
   s = str_makeroom(s, 64);
   if (UNLIKELY( !s ))
     return s;
-  u32 n = strfmtu64(&s->p[s->len], v, base);
+  u32 n = strfmt_u64(&s->p[s->len], v, base);
   s->len += n;
   s->p[s->len] = 0;
   return s;
@@ -272,7 +248,7 @@ Str nullable str_appendf64(Str s, f64 v, int ndec) {
     s = str_makeroom(s, z);
     if (UNLIKELY( !s ))
       return s;
-    SBuf buf = SBUF_INITIALIZER(&s->p[s->len], z);
+    SBuf buf = sbuf_make(&s->p[s->len], z);
     sbuf_appendf64(&buf, v, ndec);
     if (LIKELY( buf.len <= (usize)z) ) {
       s->len += buf.len;
@@ -319,4 +295,117 @@ Str* str_tmp() {
     _tmpstr.bufs[bufindex] = str_make(mem, 64);
   }
   return &_tmpstr.bufs[bufindex];
+}
+
+
+// -- end of Str functions
+
+
+char* strrevn(char* s, usize len) {
+  for (usize i = 0, j = len - 1; i < j; i++, j--) {
+    char tmp = s[i];
+    s[i] = s[j];
+    s[j] = tmp;
+  }
+  return s;
+}
+
+usize strfmt_u64(char buf[64], u64 v, u32 base) {
+  static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  base = MIN(base, 62);
+  char* p = buf;
+  do {
+    *p++ = chars[v % base];
+    v /= base;
+  } while (v);
+  usize len = (usize)(uintptr)(p - buf);
+  p--;
+  strrevn(buf, len);
+  return len;
+}
+
+
+usize strrepr(char* dst, usize dstcap, const char* src, usize srclen) {
+  SBuf buf = sbuf_make(dst, dstcap);
+  sbuf_appendrepr(&buf, src, srclen);
+  return sbuf_terminate(&buf);
+}
+
+
+error _strparse_u64_base10(const char* src, usize srclen, u64* result) {
+  u64 n = 0;
+  const char* end = src + srclen;
+  while (src != end && ascii_isdigit(*src))
+    n = 10*n + (*src++ - '0');
+  *result = n;
+  return src == end ? 0 : err_invalid;
+}
+
+
+error strparse_u32(const char* src, usize srclen, int base, u32* result) {
+  u64 r;
+  error err;
+  if (base == 10) {
+    err = _strparse_u64_base10(src, srclen, &r);
+    if (err == 0 && r > 0xFFFFFFFF)
+      err = err_overflow;
+  } else {
+    err = _strparse_u64(src, srclen, base, &r, 0xFFFFFFFF);
+  }
+  *result = (u32)r;
+  return err;
+}
+
+
+error _strparse_u64(const char* src, usize z, int base, u64* result, u64 cutoff) {
+  assert(base >= 2 && base <= 36);
+  const char* s = src;
+  const char* end = src + z;
+  u64 acc = 0;
+  u64 cutlim = cutoff % base;
+  cutoff /= base;
+  int any = 0;
+  for (char c = *s; s != end; c = *++s) {
+    if (ascii_isdigit(c)) {
+      c -= '0';
+    } else if (ascii_isupper(c)) {
+      c -= 'A' - 10;
+    } else if (ascii_islower(c)) {
+      c -= 'a' - 10;
+    } else {
+      return err_invalid;
+    }
+    if (c >= base)
+      return err_invalid;
+    if (any < 0 || acc > cutoff || (acc == cutoff && (u64)c > cutlim)) {
+      any = -1;
+    } else {
+      any = 1;
+      acc *= base;
+      acc += c;
+    }
+  }
+  if (any < 0 || // more digits than what fits in acc
+      any == 0)
+  {
+    return err_overflow;
+  }
+  *result = acc;
+  return 0;
+}
+
+
+error strparse_i64(const char* src, usize z, int base, i64* result) {
+  while (z > 0 && *src == '-') {
+    src++;
+    z--;
+  }
+  i64 r;
+  error err = strparse_u64(src, z, base, (u64*)&r);
+  if (err)
+    return err;
+  if (*src == '-')
+    r = -r;
+  *result = r;
+  return 0;
 }

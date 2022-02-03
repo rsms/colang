@@ -93,7 +93,7 @@ static void typeid_append(SBuf* s, const Type* t) {
 
 
 u32 _typeid_make(char* buf, u32 bufsize, const Type* t) {
-  SBuf s = SBUF_INITIALIZER(buf, bufsize);
+  SBuf s = sbuf_make(buf, bufsize);
   typeid_append(&s, t);
   return sbuf_terminate(&s);
 }

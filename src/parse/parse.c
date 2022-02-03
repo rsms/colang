@@ -1,6 +1,5 @@
 // co source code parser
 #include "../coimpl.h"
-#include "../parseint.h"
 #include "parse.h"
 #include "eval.h"
 #include "resolve_id.h"
@@ -1713,7 +1712,7 @@ static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 static Node* PIntLit(Parser* p, PFlag fl) {
   auto lit = mknode(p, IntLit);
   usize len = p->tokend - p->tokstart;
-  error err = parseint_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
+  error err = strparse_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
   if (err) {
     lit->ival = 0;
     if (err == err_overflow) {

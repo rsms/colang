@@ -8,10 +8,6 @@
 #endif
 
 
-// SBUF_AVAIL: available space at s->p, not including null terminator
-#define SBUF_AVAIL(s) ((usize)(uintptr)((s)->lastp - (s)->p))
-
-
 void sbuf_append(SBuf* s, const char* p, usize len) {
   usize z = MIN(len, SBUF_AVAIL(s));
   memcpy(s->p, p, z);
@@ -23,7 +19,7 @@ void sbuf_append(SBuf* s, const char* p, usize len) {
 
 void sbuf_appendu32(SBuf* s, u32 v, u32 base) {
   char buf[32];
-  u32 n = strfmtu32(buf, v, base);
+  u32 n = strfmt_u32(buf, v, base);
   return sbuf_append(s, buf, n);
 }
 
@@ -119,4 +115,6 @@ void sbuf_appendf64(SBuf* s, f64 v, int ndec) {
 }
 
 
-
+bool sbuf_endswith(const SBuf* s, const char* str, usize len) {
+  return s->len >= len && memcmp(s->p - len, str, len) == 0;
+}

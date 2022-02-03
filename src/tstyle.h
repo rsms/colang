@@ -1,71 +1,63 @@
-// TStyle -- TTY terminal ANSI styling
+// TStyle -- terminal ANSI styling
 #pragma once
-#include "mem.h"
-#include "array.h"
-#include "str.h"
 ASSUME_NONNULL_BEGIN
 
-#define TSTYLE_STYLES(_) \
-  /* Name               16       RGB */ \
-  _(none,        "0",     "0") \
-  _(nocolor,     "39",    "39") \
-  _(defaultfg,   "39",    "39") \
-  _(defaultbg,   "49",    "49") \
-  _(bold,        "1",     "1") \
-  _(dim,         "2",     "2") \
-  _(nodim,       "22",    "22") \
-  _(italic,      "3",     "3") \
-  _(underline,   "4",     "4") \
-  _(inverse,     "7",     "7") \
-  _(white,       "37",    "38;2;255;255;255") \
-  _(grey,        "90",    "38;5;244") \
-  _(black,       "30",    "38;5;16") \
-  _(blue,        "94",    "38;5;75") \
-  _(lightblue,   "94",    "38;5;117") \
-  _(cyan,        "96",    "38;5;87") \
-  _(green,       "92",    "38;5;84") \
-  _(lightgreen,  "92",    "38;5;157") \
-  _(magenta,     "95",    "38;5;213") \
-  _(purple,      "35",    "38;5;141") \
-  _(lightpurple, "35",    "38;5;183") \
-  _(pink,        "35",    "38;5;211") \
-  _(red,         "91",    "38;2;255;110;80") \
-  _(yellow,      "33",    "38;5;227") \
-  _(lightyellow, "93",    "38;5;229") \
-  _(orange,      "33",    "38;5;215") \
-/*END DEF_NODE_KINDS*/
+#define DEF_TSTYLE_MODS(_) \
+  _(RESET,     "0") \
+  _(BOLD,      "1") \
+  _(DIM,       "2") \
+  _(ITALIC,    "3") \
+  _(UNDERLINE, "4") \
+// end DEF_TSTYLE_MODS
+#define DEF_TSTYLE_COLORS(_) \
+  /* Name         8    256       24-bit */ \
+  _(BLACK,       "0",  "0") \
+  _(RED,         "1",  "8;5;203") \
+  _(GREEN,       "2",  "8;5;84") \
+  _(LIGHTGREEN,  "2",  "8;5;115") \
+  _(YELLOW,      "3",  "8;5;227") \
+  _(LIGHTYELLOW, "3",  "8;5;229") \
+  _(ORANGE,      "3",  "8;5;208") \
+  _(LIGHTORANGE, "3",  "8;5;215") \
+  _(BLUE,        "4",  "8;5;39") \
+  _(LIGHTBLUE,   "4",  "8;5;117") \
+  _(MAGENTA,     "5",  "8;5;170") \
+  _(PINK,        "5",  "8;5;211") \
+  _(PURPLE,      "5",  "8;5;141") \
+  _(CYAN,        "6",  "8;5;51") \
+  _(WHITE,       "7",  "7") \
+// end DEF_TSTYLE_COLORS
 
-// TStyle_red, TStyle_bold, etc.
-typedef enum {
-  #define I_ENUM(name, c16, cRGB) TStyle_##name,
-  TSTYLE_STYLES(I_ENUM)
-  #undef I_ENUM
-  _TStyle_MAX,
-} TStyle;
+typedef u8 TStyle;
+typedef const struct TStyles* TStyles;
 
-extern const char* nonull TStyle16[_TStyle_MAX];
-extern const char* nonull TStyleRGB[_TStyle_MAX];
-extern const char* nonull TStyleNone[_TStyle_MAX];
+enum TStyle {
+  #define _(NAME, ...) TS_##NAME,
+  DEF_TSTYLE_MODS(_)
+  DEF_TSTYLE_COLORS(_)
+  #undef _
+  #define _(NAME, ...) TS_##NAME##_BG,
+  DEF_TSTYLE_COLORS(_)
+  #undef _
+  _TS_MAX
+} END_TYPED_ENUM(TStyle)
 
-typedef const char** TStyleTable;
+struct TStyles {
+  u16  offs[_TS_MAX]; // index style constant => strs offset
+  char strs[];
+};
 
-bool TSTyleStdoutIsTTY();
-bool TSTyleStderrIsTTY();
-TStyleTable TSTyleForTerm();   // best for the current terminal
-TStyleTable TSTyleForStdout(); // best for the current terminal on stdout
-TStyleTable TSTyleForStderr(); // best for the current terminal on stderr
+TStyles TStylesForTerm();   // best for the current terminal
+TStyles TStylesForStdout(); // best for the current terminal on stdout
+TStyles TStylesForStderr(); // best for the current terminal on stderr
+TStyles TStyles8();         // 4-bit 16-color table
+TStyles TStyles256();       // 8-bit 256-color table
+TStyles TStylesNone();      // no styles or colors
 
-typedef struct TStyleStack {
-  Mem         mem;
-  TStyleTable styles;
-  CStrArray   stack;
-  const char* stack_storage[4];
-  u32         nbyteswritten;
-} TStyleStack;
+// TStyleStr returns the ANSI escape sequence for s as a null-terminated string
+inline static const char* TStyleStr(TStyles t, TStyle s) {
+  return &t->strs[t->offs[MIN(s, _TS_MAX-1)]];
+}
 
-void TStyleStackInit(TStyleStack* sstack, Mem mem, TStyleTable styles);
-void TStyleStackDispose(TStyleStack* sstack);
-Str TStyleStackPush(TStyleStack* sstack, Str s, TStyle style);
-Str TStyleStackPop(TStyleStack* sstack, Str s);
 
 ASSUME_NONNULL_END
