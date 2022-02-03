@@ -215,28 +215,6 @@ Str _NodeStr(Str s, const Node* nullable n) {
 // ---------------------
 
 typedef struct Repr Repr;
-typedef struct TStyleDescr TStyleDescr;
-typedef struct TStyleStack      TStyleStack;
-typedef struct TStyleStackEntry TStyleStackEntry;
-typedef u8 TStyleColor;
-
-
-struct TStyleAttrs1 {
-  u8 fg[4];
-  u8 bg[4];
-  bool bold, italic, underline, inverse;
-};
-
-struct TStyleStackEntry {
-  struct TStyleAttrs1 attr; // previous attributes
-};
-
-struct TStyleStack {
-  TStyleStackEntry entryv[64];
-  u32   depth;  // number of entries; Note: len(entryv)=MIN(countof(entryv)-1,depth)
-  usize writelen;
-  struct TStyleAttrs1 attr; // current attributes
-};
 
 struct Repr {
   ASTVisitor;
@@ -251,214 +229,59 @@ struct Repr {
   TStyleStack stylestack;
   const char* lparen;
   const char* rparen;
-  const char* style_str;
-  const char* style_op;
 };
+
+#define STYLE_STR  TS_LIGHTGREEN
+#define STYLE_OP   TS_LIGHTORANGE
 
 // -- repr output writers
 
-
-// static usize parse_ansi_seq(u8* dst, usize dstcap, const char* style, usize len) {
-//   if (len < 2 || style[0] != '\e' || style[1] != '[')
-//     return 0;
-//   return parse_u8_list(dst, dstcap, style+2, len-2);
-// }
-
-
-// parse_u8_list returns count of values appended to dst
-static usize parse_u8_list(u8* dst, usize dstcap, const char* src, usize srclen) {
-  usize i = 0, start = i, dsti = 0; // start = start of current run of digits
-  for (; i < srclen && dsti < dstcap; i++) {
-    char c = src[i];
-    if (ascii_isdigit(c))
-      continue;
-    if (start < i) {
-      u8 v = 0;
-      do { v = 10*v + (src[start++] - '0'); } while (start < i);
-      dst[dsti++] = v;
-    }
-    start = i + 1;
-  }
-  // handle trailing value
-  if (start < i && ascii_isdigit(src[i-1])) {
-    u8 v = 0;
-    do { v = 10*v + (src[start++] - '0'); } while (start < i);
-    dst[dsti++] = v;
-  }
-  return dsti;
-}
-
-
-static void TStyleStackInit(TStyleStack* stack) {
-  memset(stack, 0, sizeof(*stack));
-}
-
-
-
-static TStyleStackEntry* TStyleStackPush(TStyleStack* stack, const char* style, usize len) {
-  if (check_add_overflow(stack->writelen, len, &stack->writelen))
-    stack->writelen = USIZE_MAX;
-
-  TStyleStackEntry* entry = &stack->entryv[MIN(stack->depth, countof(stack->entryv)-1)];
-  assert(stack->depth < U32_MAX);
-  stack->depth++; // overflow doesn't matter
-  entry->attr = stack->attr; // save current state
-
-  // parse sequence
-  if (len > 2 && style[0] == '\e' && style[1] == '[') {
-    style += 2;
-    len -= 2;
-  }
-  u8 v[5];
-  static_assert(sizeof(v) - 1 >= sizeof(stack->attr.fg), "");
-  static_assert(sizeof(v) - 1 >= sizeof(stack->attr.bg), "");
-  parse_u8_list(v, sizeof(v), style, len);
-  dlog("parse [%u %u %u %u]", v[0], v[1], v[2], v[3]);
-
-  // interpret sequence, adding to current attrs
-  switch (v[0]) {
-    case 30 ... 38: // foreground color
-      memcpy(stack->attr.fg, v + 1, countof(v) - 1);
-      break;
-    case 1: // bold
-      // APPEND_2DIGITS(21);
-      break;
-  }
-
-  return entry;
-}
-
-
-static usize TStyleStackPop(TStyleStack* stack, char* dst, usize dstcap) {
-  assertf(stack->depth > 0, "extra TStyleStackPop without matching TStyleStackPush");
-  stack->depth--;
-  TStyleStackEntry* prevent = &stack->entryv[MIN(stack->depth, countof(stack->entryv)-1)];
-
-  char style[64] = "\e[";
-  usize stylei = 2;
-
-  if (stack->depth > 0)
-    dlog("TODO: stack->depth > 0");
-  // else reverse prevent
-
-  #define APPEND_2DIGITS(digits) ({ *((u16*)&style[stylei]) = *(u16*)#digits; stylei += 2; })
-
-  auto attr = prevent->attr;
-  if (stack->attr.fg != attr.fg) {
-    // foreground color changed
-    if (stack->attr.fg == 0) {
-      APPEND_2DIGITS(39); // reset foreground color to default
-    } else {
-      stylei += strfmt_u8(style + stylei, stack->attr.fg, 10);
-    }
-  }
-
-  // u8* v = prevent->codes;
-  // switch (v[0]) {
-  //   case 38: // foreground color
-  //     // TODO: compute foreground color at this point
-
-  //     if (v[1] == 5 && v[2]) { // 5;n -- 256-color
-  //       // stylei += strfmt_u8(style + stylei, v[2] & 0xff, 10);
-  //       APPEND_2DIGITS(39);
-  //     } else if (v[1] == 2) { // 2;r;g;b -- RGB
-  //       // u8 r = v[2], g = v[3], b = v[4];
-  //       APPEND_2DIGITS(39);
-  //     }
-  //     break;
-  //   case 1: // bold
-  //     APPEND_2DIGITS(21);
-  //     break;
-  // }
-
-  #undef APPEND_2DIGITS
-
-  stack->attr = prevent->attr; // restore
-
-  style[stylei++] = 'm';
-
-  char tmp[32];
-  strrepr(tmp, sizeof(tmp), style, stylei);
-  dlog("pop: \"%s\"", tmp);
-
-  // avoid writing partial ANSI sequences
-  if (UNLIKELY( dstcap < stylei ))
-    return 0;
-
-  memcpy(dst, style, stylei);
-  if (check_add_overflow(stack->writelen, stylei, &stack->writelen))
-    stack->writelen = USIZE_MAX;
-  return stylei;
-}
-
-
-// DEF_TEST(tstyle_stack) {
-//   char tmp[256] = {0};
-//   // SBuf s = sbuf_make(tmp, sizeof(tmp));
-//   TStyleStack stylestack;
-//   TStyleStackInit(&stylestack);
-
-//   TStyleStackPush(&stylestack, "1", 1); // bold
-
-//   usize n = TStyleStackPop(&stylestack, tmp, sizeof(tmp)-1); // bold
-//   tmp[n] = 0;
-
-//   { char tmp1[32];
-//     strrepr(tmp1, sizeof(tmp1), tmp, sizeof(tmp));
-//     dlog("tmp: \"%s\"", tmp1); }
-
-//   assertcstreq("\e[21m", tmp);
-// }
-
-
-static void write_push_style(Repr* r, const char* s) {
-  u32 len = strlen(s);
-  if (len == 0)
+static void write_push_style(Repr* r, TStyle style) {
+  if (TStylesIsNone(r->styles))
     return;
-
-  char tmp[32];
-  strrepr(tmp, sizeof(tmp), s, len);
-  dlog("\"%s\" %sMMM\e[0m", tmp, s);
-
-  TStyleStackPush(&r->stylestack, s, len);
+  const char* s = tstyle_str(r->styles, tstyle_push(&r->stylestack, style));
+  usize len = strlen(s);
+  r->stylelen += len;
   sbuf_append(&r->buf, s, len);
 }
 
 static void write_pop_style(Repr* r) {
-  usize n = TStyleStackPop(&r->stylestack, r->buf.p, SBUF_AVAIL(&r->buf));
-  r->buf.p += n;
-  r->buf.len += n;
+  if (TStylesIsNone(r->styles))
+    return;
+  const char* s = tstyle_str(r->styles, tstyle_pop(&r->stylestack));
+  usize len = strlen(s);
+  r->stylelen += len;
+  sbuf_append(&r->buf, s, len);
 }
 
 static void write_paren_start(Repr* r) {
   sbuf_appendstr(&r->buf, r->lparen);
-  r->stylestack.writelen += strlen(r->lparen) - 1;
+  if (r->lparen[1])
+    r->stylelen += strlen(r->lparen) - 1;
 }
 
 static void write_paren_end(Repr* r) {
   sbuf_appendstr(&r->buf, r->rparen);
-  r->stylestack.writelen += strlen(r->rparen) - 1;
+  if (r->rparen[1])
+    r->stylelen += strlen(r->rparen) - 1;
 }
 
 static usize printable_len(Repr* r) {
   // nbytes written to buf excluding ANSI codes
-  return r->buf.len - r->stylestack.writelen;
+  return r->buf.len - r->stylelen;
 }
 
 #define write_node(r,n) _write_node((r),as_Node(n))
 static void _write_node(Repr* r, const Node* nullable n) {
   SBuf* buf = &r->buf;
-
   if (buf->len && !sbuf_endswith(buf, r->lparen, strlen(r->lparen))) // "((" vs "( ("
     sbuf_appendc(buf, ' ');
-
   write_paren_start(r);
   if (n != NULL) {
     sbuf_appendstr(buf, NodeKindName(n->kind));
     ASTVisit((ASTVisitor*)r, n);
   }
   write_paren_end(r);
-
   if (printable_len(r) - r->lnstart > r->wrapcol) {
     sbuf_appendc(buf, '\n');
     r->lnstart = printable_len(r);
@@ -481,7 +304,7 @@ static void write_str(Repr* r, const char* s) {
 
 static void write_qstr(Repr* r, const char* s, usize len) {
   SBuf* buf = &r->buf;
-  write_push_style(r, r->style_str);
+  write_push_style(r, STYLE_STR);
   sbuf_appendstr(buf, " \"");
   sbuf_appendrepr(buf, s, len);
   sbuf_appendc(buf, '"');
@@ -512,7 +335,7 @@ static void visit_StrLit(Repr* r, const StrLitNode* n) {}
 static void visit_Id(Repr* r, const IdNode* n) {}
 
 static void visit_BinOp(Repr* r, const BinOpNode* n) {
-  write_push_style(r, r->style_op);
+  write_push_style(r, STYLE_OP);
   write_str(r, TokName(n->op));
   write_pop_style(r);
   write_node(r, n->left);
@@ -570,16 +393,13 @@ Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
     .wrapcol = 30,
   };
   sbuf_init(&r.buf, s->p, s->cap);
-  TStyleStackInit(&r.stylestack);
   r.styles = TStylesForStderr();
-  r.style_str = TStyleStr(r.styles, TS_LIGHTGREEN);
-  r.style_op = TStyleStr(r.styles, TS_LIGHTORANGE);
-  if (r.styles == TStylesNone()) {
+  if (TStylesIsNone(r.styles)) {
     r.lparen = "(";
     r.rparen = ")";
   } else {
-    r.lparen = "\x1b[2m(\x1b[0m";
-    r.rparen = "\x1b[2m)\x1b[0m";
+    r.lparen = "\x1b[2m(\x1b[22m";
+    r.rparen = "\x1b[2m)\x1b[22m";
   }
 
   static const ASTVisitorFuns vfn = {

@@ -156,10 +156,10 @@ Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap)
   TStyles style = TStylesForStderr();
 
   // "file:line:col: message ..." <LF>
-  s = str_append(s, TStyleStr(style, TS_BOLD));
+  s = str_append(s, tstyle_str(style, TS_BOLD));
   s = pos_str(pm, span.start, s);
   s = str_append(s, ": ");
-  s = str_append(s, TStyleStr(style, TS_RESET));
+  s = str_append(s, tstyle_str(style, TS_RESET));
   s = str_appendfmtv(s, fmt, ap);
 
   // include line contents
