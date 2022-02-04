@@ -264,21 +264,20 @@ static void write_paren_end(Repr* r) {
 }
 
 static void write_newline(Repr* r) {
-  sbuf_appendc(&r->buf, '\n');
-  r->lnstart = printable_len(r);
-}
-
-static void write_push_indent(Repr* r) {
   SBuf* buf = &r->buf;
 
-  r->indent += INDENT_DEPTH;
+  sbuf_appendc(buf, '\n');
+  r->lnstart = printable_len(r);
 
-  write_newline(r);
   buf->len += r->indent;
-
   usize indent = MIN(r->indent, SBUF_AVAIL(buf));
   memset(buf->p, ' ', indent);
   buf->p += indent;
+}
+
+static void write_push_indent(Repr* r) {
+  r->indent += INDENT_DEPTH;
+  write_newline(r);
 }
 
 static void write_pop_indent(Repr* r) {
@@ -324,6 +323,10 @@ static void _write_node(Repr* r, const Node* nullable n) {
     write_pop_style(r);
 
     write_node_fields(r, n);
+  } else {
+    write_push_style(r, STYLE_LIT);
+    sbuf_appendstr(buf, "nil");
+    write_pop_style(r);
   }
 
   write_paren_end(r);
@@ -452,8 +455,12 @@ static void write_node_fields(Repr* r, const Node* np) {
     sbuf_appendf64(buf, n->fval, 10);
     write_pop_style(r);
 
-  _(StrLit) write_qstr(r, n->sp, n->len);
-  _(Id)     write_name(r, n->name);
+  _(StrLit)
+    write_qstr(r, n->sp, n->len);
+
+  _(Id)
+    write_name(r, n->name);
+    write_node(r, n->target);
 
   _(BinOp)
     write_push_style(r, STYLE_OP);
@@ -470,7 +477,9 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(Tuple) write_array(r, as_NodeArray(&n->a));
   _(Array) write_array(r, as_NodeArray(&n->a));
 
-  _(Block) write_TODO(r);
+  _(Block)
+    if (n->a.len > 0)
+      write_array(r, as_NodeArray(&n->a));
 
   _(Fun)
     write_name(r, n->name ? n->name : kSym__);
@@ -531,6 +540,8 @@ Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
   } else {
     r.lparen = "\x1b[2m(\x1b[22m";
     r.rparen = "\x1b[2m)\x1b[22m";
+    r.lparen = "\0";
+    r.rparen = "\0";
   }
 
   Str s2 = str_makeroom(s, 4096);

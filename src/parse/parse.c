@@ -563,21 +563,21 @@ static Node* presolve_id(Parser* p, IdNode* id) {
 
 
 // presolve_type resolves a named type
-static Type* presolve_type(Parser* p, NamedTypeNode* namedtype) {
-  assertnotnull(namedtype->name);
-  Node* target = lookupsym(p, namedtype->name);
+static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
+  assertnotnull(tname->name);
+  Node* target = lookupsym(p, tname->name);
 
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
-      dlog("lookup type \"%s\" => %s %s", id->name, nodename(target), fmtnode(target));
+      dlog("lookup type \"%s\" => %s %s", tname->name, nodename(target), fmtnode(target));
     } else {
-      dlog("lookup type \"%s\" => (not found; unresolved)", id->name);
+      dlog("lookup type \"%s\" => (not found; unresolved)", tname->name);
     }
   #endif
 
   if (!target) {
-    NodeSetUnresolved(namedtype);
-    return as_Type(namedtype);
+    NodeSetUnresolved(tname);
+    return as_Type(tname);
   }
 
   return as_Type(target);
