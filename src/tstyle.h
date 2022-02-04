@@ -33,6 +33,7 @@ typedef struct TStyleStack    TStyleStack; // support for undo and easy range st
   _(TS_LIGHTORANGE, "3",  "8;5;215") \
   _(TS_BLUE,        "4",  "8;5;39") \
   _(TS_LIGHTBLUE,   "4",  "8;5;117") \
+  _(TS_DARKBLUE,    "4",  "8;5;18") \
   _(TS_MAGENTA,     "5",  "8;5;170") \
   _(TS_PINK,        "5",  "8;5;211") \
   _(TS_PURPLE,      "5",  "8;5;141") \

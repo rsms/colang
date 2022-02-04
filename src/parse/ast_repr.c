@@ -14,15 +14,6 @@
 // INDENT_DEPTH is the number of spaces used for indentation
 #define INDENT_DEPTH 2
 
-// static TStyle id_color      = TStyle_lightyellow;
-// static TStyle type_color    = TStyle_blue;
-// static TStyle typeval_color = TStyle_lightblue; // type used as a value
-// static TStyle field_color   = TStyle_pink;
-// static TStyle ref_color     = TStyle_red;
-// static TStyle attr_color    = TStyle_orange;
-// static TStyle lit_color     = TStyle_lightpurple;
-// static TStyle op_color      = TStyle_lightgreen;
-
 
 static Str NodeStrArray(Str s, const NodeArray* na) {
   for (u32 i = 0; i < na->len; i++) {
@@ -217,10 +208,8 @@ Str _NodeStr(Str s, const Node* nullable n) {
 typedef struct Repr Repr;
 
 struct Repr {
-  ASTVisitor;
-
   SBuf  buf;
-  int   indent;
+  usize indent;
   usize lnstart; // relative to buf.len
   usize wrapcol;
   usize stylelen; // buf.len-stylelen = nbytes written to buf excluding ANSI codes
@@ -231,10 +220,18 @@ struct Repr {
   const char* rparen;
 };
 
-#define STYLE_STR  TS_LIGHTGREEN
-#define STYLE_OP   TS_LIGHTORANGE
+#define STYLE_LIT   TS_LIGHTGREEN
+#define STYLE_NAME  TS_LIGHTBLUE     // symbolic names like Id, NamedType, etc.
+#define STYLE_OP    TS_LIGHTORANGE
+#define STYLE_TYPE  TS_DARKGREY_BG
+#define STYLE_META  TS_PINK
 
 // -- repr output writers
+
+static usize printable_len(Repr* r) {
+  // nbytes written to buf excluding ANSI codes
+  return r->buf.len - r->stylelen;
+}
 
 static void write_push_style(Repr* r, TStyle style) {
   if (TStylesIsNone(r->styles))
@@ -266,25 +263,74 @@ static void write_paren_end(Repr* r) {
     r->stylelen += strlen(r->rparen) - 1;
 }
 
-static usize printable_len(Repr* r) {
-  // nbytes written to buf excluding ANSI codes
-  return r->buf.len - r->stylelen;
+static void write_newline(Repr* r) {
+  sbuf_appendc(&r->buf, '\n');
+  r->lnstart = printable_len(r);
 }
+
+static void write_push_indent(Repr* r) {
+  SBuf* buf = &r->buf;
+
+  r->indent += INDENT_DEPTH;
+
+  write_newline(r);
+  buf->len += r->indent;
+
+  usize indent = MIN(r->indent, SBUF_AVAIL(buf));
+  memset(buf->p, ' ', indent);
+  buf->p += indent;
+}
+
+static void write_pop_indent(Repr* r) {
+  assertf(r->indent > 1, "write_pop_indent without matching write_push_indent");
+  r->indent -= 2;
+}
+
+static void write_node_fields(Repr* r, const Node* n);
 
 #define write_node(r,n) _write_node((r),as_Node(n))
 static void _write_node(Repr* r, const Node* nullable n) {
   SBuf* buf = &r->buf;
-  if (buf->len && !sbuf_endswith(buf, r->lparen, strlen(r->lparen))) // "((" vs "( ("
-    sbuf_appendc(buf, ' ');
-  write_paren_start(r);
-  if (n != NULL) {
-    sbuf_appendstr(buf, NodeKindName(n->kind));
-    ASTVisit((ASTVisitor*)r, n);
+
+  // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
+  char lastch = *(buf->p - MIN(buf->len, 1));
+  bool indent = buf->len > 0 && lastch != '<';
+  if (n) {
+    if (indent)     write_push_indent(r);
+    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
+  } else if (indent) {
+    sbuf_appendc(&r->buf, ' ');
   }
+
+  write_paren_start(r);
+
+  if (n != NULL) {
+    if (is_Expr(n)) { // include type of expressions
+      auto typ = ((Expr*)n)->type;
+      write_push_style(r, STYLE_TYPE);
+      sbuf_appendc(&r->buf, '<');
+      if (typ == NULL) {
+        sbuf_appendstr(&r->buf, "?");
+      } else {
+        write_node(r, typ);
+      }
+      sbuf_appendc(&r->buf, '>');
+      write_pop_style(r);
+      sbuf_appendc(&r->buf, ' ');
+    }
+
+    write_push_style(r, is_Type(n) ? STYLE_TYPE : TS_BOLD);
+    sbuf_appendstr(buf, NodeKindName(n->kind));
+    write_pop_style(r);
+
+    write_node_fields(r, n);
+  }
+
   write_paren_end(r);
-  if (printable_len(r) - r->lnstart > r->wrapcol) {
-    sbuf_appendc(buf, '\n');
-    r->lnstart = printable_len(r);
+
+  if (n) {
+    if (is_Type(n)) write_pop_style(r);
+    if (indent)     write_pop_indent(r);
   }
 }
 
@@ -304,7 +350,7 @@ static void write_str(Repr* r, const char* s) {
 
 static void write_qstr(Repr* r, const char* s, usize len) {
   SBuf* buf = &r->buf;
-  write_push_style(r, STYLE_STR);
+  write_push_style(r, STYLE_LIT);
   sbuf_appendstr(buf, " \"");
   sbuf_appendrepr(buf, s, len);
   sbuf_appendc(buf, '"');
@@ -315,84 +361,169 @@ static void write_qsym(Repr* r, Sym s) {
   write_qstr(r, s, symlen(s));
 }
 
+static void write_name(Repr* r, Sym s) {
+  sbuf_appendc(&r->buf, ' ');
+  write_push_style(r, STYLE_NAME);
+  sbuf_append(&r->buf, s, symlen(s));
+  write_pop_style(r);
+}
+
+#define write_TODO(r) _write_TODO(r, __FILE__, __LINE__)
+static void _write_TODO(Repr* r, const char* file, u32 line) {
+  sbuf_appendc(&r->buf, ' ');
+  write_push_style(r, TS_RED);
+  sbuf_appendstr(&r->buf, "[TODO ");
+  sbuf_appendstr(&r->buf, file);
+  sbuf_appendc(&r->buf, ':');
+  sbuf_appendu32(&r->buf, line, 10);
+  sbuf_appendc(&r->buf, ']');
+  write_pop_style(r);
+}
+
+static void write_meta(Repr* r, const char* name) {
+  SBuf* buf = &r->buf;
+  sbuf_appendc(buf, ' ');
+  write_push_style(r, STYLE_META);
+  sbuf_appendstr(buf, name);
+  sbuf_appendc(&r->buf, ']');
+  write_pop_style(r);
+}
+
+static void write_push_meta(Repr* r, const char* name) {
+  SBuf* buf = &r->buf;
+  sbuf_appendc(buf, ' ');
+  write_push_style(r, STYLE_META);
+  sbuf_appendc(buf, '[');
+  usize len = strlen(name);
+  if (len > 0) {
+    sbuf_append(buf, name, len);
+    sbuf_appendc(buf, ' ');
+  }
+}
+
+static void write_pop_meta(Repr* r) {
+  sbuf_appendc(&r->buf, ']');
+  write_pop_style(r);
+}
+
 // -- visitor functions
 
-static void visit_Field(Repr* r, const FieldNode* n) {}
-static void visit_Pkg(Repr* r, const PkgNode* n) {}
+static void write_node_fields(Repr* r, const Node* np) {
+  SBuf* buf = &r->buf;
+  #define _(NAME) return; } case N##NAME: { UNUSED auto n = (const NAME##Node*)np;
+  switch (np->kind) {
+  case NBad: {
+  _(Field) write_TODO(r);
 
-static void visit_File(Repr* r, const FileNode* file) {
-  write_qstr(r, file->name, strlen(file->name));
-  if (file->a.len > 0)
-    write_array(r, as_NodeArray(&file->a));
+  _(Pkg)
+    write_qstr(r, n->name, strlen(n->name));
+    if (n->a.len > 0)
+      write_array(r, as_NodeArray(&n->a));
+
+  _(File)
+    write_qstr(r, n->name, strlen(n->name));
+    if (n->a.len > 0)
+      write_array(r, as_NodeArray(&n->a));
+
+  _(Comment) write_TODO(r);
+
+  // expressions
+  _(Nil)
+    sbuf_appendc(buf, ' ');
+    write_push_style(r, STYLE_LIT);
+    sbuf_appendstr(buf, "nil");
+    write_pop_style(r);
+
+  _(BoolLit)
+    sbuf_appendc(buf, ' ');
+    write_push_style(r, STYLE_LIT);
+    sbuf_appendstr(buf, n->ival ? "true" : "false");
+    write_pop_style(r);
+
+  _(IntLit)
+    sbuf_appendc(buf, ' ');
+    write_push_style(r, STYLE_LIT);
+    sbuf_appendu64(buf, n->ival, 10);
+    write_pop_style(r);
+
+  _(FloatLit)
+    sbuf_appendc(buf, ' ');
+    write_push_style(r, STYLE_LIT);
+    sbuf_appendf64(buf, n->fval, 10);
+    write_pop_style(r);
+
+  _(StrLit) write_qstr(r, n->sp, n->len);
+  _(Id)     write_name(r, n->name);
+
+  _(BinOp)
+    write_push_style(r, STYLE_OP);
+    write_str(r, TokName(n->op));
+    write_pop_style(r);
+    write_node(r, n->left);
+    write_node(r, n->right);
+
+  _(PrefixOp) write_TODO(r);
+  _(PostfixOp) write_TODO(r);
+  _(Return) write_TODO(r);
+  _(Assign) write_TODO(r);
+
+  _(Tuple) write_array(r, as_NodeArray(&n->a));
+  _(Array) write_array(r, as_NodeArray(&n->a));
+
+  _(Block) write_TODO(r);
+
+  _(Fun)
+    write_name(r, n->name ? n->name : kSym__);
+    write_node(r, n->params);
+    write_node(r, n->result);
+    write_node(r, n->body);
+
+  _(Var)
+    write_name(r, n->name);
+    write_node(r, n->init);
+    if (n->isconst)
+      write_meta(r, "const");
+    if (NodeIsParam(n)) {
+      write_push_meta(r, "param");
+      sbuf_appendu32(buf, n->index, 10);
+      write_pop_meta(r);
+    }
+
+  _(Macro)    write_TODO(r);
+  _(Call)     write_TODO(r);
+  _(TypeCast) write_TODO(r);
+  _(Ref)      write_TODO(r);
+  _(NamedArg) write_TODO(r);
+  _(Selector) write_TODO(r);
+  _(Index)    write_TODO(r);
+  _(Slice)    write_TODO(r);
+  _(If)       write_TODO(r);
+
+  // types
+  _(TypeType)  write_TODO(r);
+  _(NamedType) write_name(r, n->name);
+  _(RefType)   write_node(r, n->elem);
+  _(BasicType) write_name(r, n->name);
+
+  _(AliasType)
+    write_name(r, n->name);
+    write_node(r, n->type);
+
+  _(ArrayType)  write_TODO(r);
+  _(TupleType)  write_TODO(r);
+  _(StructType) write_TODO(r);
+  _(FunType)    write_TODO(r);
+  }}
+  #undef _
 }
-
-static void visit_Comment(Repr* r, const CommentNode* n) {}
-static void visit_Nil(Repr* r, const NilNode* n) {}
-static void visit_BoolLit(Repr* r, const BoolLitNode* n) {}
-static void visit_IntLit(Repr* r, const IntLitNode* n) {}
-static void visit_FloatLit(Repr* r, const FloatLitNode* n) {}
-static void visit_StrLit(Repr* r, const StrLitNode* n) {}
-static void visit_Id(Repr* r, const IdNode* n) {}
-
-static void visit_BinOp(Repr* r, const BinOpNode* n) {
-  write_push_style(r, STYLE_OP);
-  write_str(r, TokName(n->op));
-  write_pop_style(r);
-  write_node(r, n->left);
-  write_node(r, n->right);
-}
-
-static void visit_PrefixOp(Repr* r, const PrefixOpNode* n) {}
-static void visit_PostfixOp(Repr* r, const PostfixOpNode* n) {}
-static void visit_Return(Repr* r, const ReturnNode* n) {}
-static void visit_Assign(Repr* r, const AssignNode* n) {}
-static void visit_Tuple(Repr* r, const TupleNode* n) {}
-static void visit_Array(Repr* r, const ArrayNode* n) {}
-static void visit_Block(Repr* r, const BlockNode* n) {}
-
-static void visit_Fun(Repr* r, const FunNode* n) {
-  write_qsym(r, n->name ? n->name : kSym__);
-  write_node(r, n->params);
-  write_node(r, n->result);
-  write_node(r, n->body);
-}
-
-static void visit_Macro(Repr* r, const MacroNode* n) {}
-static void visit_Call(Repr* r, const CallNode* n) {}
-static void visit_TypeCast(Repr* r, const TypeCastNode* n) {}
-static void visit_Var(Repr* r, const VarNode* n) {}
-static void visit_Ref(Repr* r, const RefNode* n) {}
-static void visit_NamedArg(Repr* r, const NamedArgNode* n) {}
-static void visit_Selector(Repr* r, const SelectorNode* n) {}
-static void visit_Index(Repr* r, const IndexNode* n) {}
-static void visit_Slice(Repr* r, const SliceNode* n) {}
-static void visit_If(Repr* r, const IfNode* n) {}
-static void visit_TypeType(Repr* r, const TypeTypeNode* n) {}
-
-static void visit_NamedType(Repr* r, const NamedTypeNode* n) {
-  write_qsym(r, n->name);
-}
-
-static void visit_AliasType(Repr* r, const AliasTypeNode* n) {}
-static void visit_RefType(Repr* r, const RefTypeNode* n) {}
-static void visit_BasicType(Repr* r, const BasicTypeNode* n) {}
-static void visit_ArrayType(Repr* r, const ArrayTypeNode* n) {}
-static void visit_TupleType(Repr* r, const TupleTypeNode* n) {}
-static void visit_StructType(Repr* r, const StructTypeNode* n) {}
-static void visit_FunType(Repr* r, const FunTypeNode* n) {}
 
 
 // -- NodeRepr entry
 
 Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
-  Str s2 = str_makeroom(s, 512);
-  if (s2)
-    s = s2;
-
   Repr r = {
     .wrapcol = 30,
   };
-  sbuf_init(&r.buf, s->p, s->cap);
   r.styles = TStylesForStderr();
   if (TStylesIsNone(r.styles)) {
     r.lparen = "(";
@@ -402,55 +533,22 @@ Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
     r.rparen = "\x1b[2m)\x1b[22m";
   }
 
-  static const ASTVisitorFuns vfn = {
-    .Field = (error(*nullable)(ASTVisitor*,const FieldNode*))visit_Field,
-    .Pkg = (error(*nullable)(ASTVisitor*,const PkgNode*))visit_Pkg,
-    .File = (error(*nullable)(ASTVisitor*,const FileNode*))visit_File,
-    .Comment = (error(*nullable)(ASTVisitor*,const CommentNode*))visit_Comment,
-    .Nil = (error(*nullable)(ASTVisitor*,const NilNode*))visit_Nil,
-    .BoolLit = (error(*nullable)(ASTVisitor*,const BoolLitNode*))visit_BoolLit,
-    .IntLit = (error(*nullable)(ASTVisitor*,const IntLitNode*))visit_IntLit,
-    .FloatLit = (error(*nullable)(ASTVisitor*,const FloatLitNode*))visit_FloatLit,
-    .StrLit = (error(*nullable)(ASTVisitor*,const StrLitNode*))visit_StrLit,
-    .Id = (error(*nullable)(ASTVisitor*,const IdNode*))visit_Id,
-    .BinOp = (error(*nullable)(ASTVisitor*,const BinOpNode*))visit_BinOp,
-    .PrefixOp = (error(*nullable)(ASTVisitor*,const PrefixOpNode*))visit_PrefixOp,
-    .PostfixOp = (error(*nullable)(ASTVisitor*,const PostfixOpNode*))visit_PostfixOp,
-    .Return = (error(*nullable)(ASTVisitor*,const ReturnNode*))visit_Return,
-    .Assign = (error(*nullable)(ASTVisitor*,const AssignNode*))visit_Assign,
-    .Tuple = (error(*nullable)(ASTVisitor*,const TupleNode*))visit_Tuple,
-    .Array = (error(*nullable)(ASTVisitor*,const ArrayNode*))visit_Array,
-    .Block = (error(*nullable)(ASTVisitor*,const BlockNode*))visit_Block,
-    .Fun = (error(*nullable)(ASTVisitor*,const FunNode*))visit_Fun,
-    .Macro = (error(*nullable)(ASTVisitor*,const MacroNode*))visit_Macro,
-    .Call = (error(*nullable)(ASTVisitor*,const CallNode*))visit_Call,
-    .TypeCast = (error(*nullable)(ASTVisitor*,const TypeCastNode*))visit_TypeCast,
-    .Var = (error(*nullable)(ASTVisitor*,const VarNode*))visit_Var,
-    .Ref = (error(*nullable)(ASTVisitor*,const RefNode*))visit_Ref,
-    .NamedArg = (error(*nullable)(ASTVisitor*,const NamedArgNode*))visit_NamedArg,
-    .Selector = (error(*nullable)(ASTVisitor*,const SelectorNode*))visit_Selector,
-    .Index = (error(*nullable)(ASTVisitor*,const IndexNode*))visit_Index,
-    .Slice = (error(*nullable)(ASTVisitor*,const SliceNode*))visit_Slice,
-    .If = (error(*nullable)(ASTVisitor*,const IfNode*))visit_If,
-    .TypeType = (error(*nullable)(ASTVisitor*,const TypeTypeNode*))visit_TypeType,
-    .NamedType = (error(*nullable)(ASTVisitor*,const NamedTypeNode*))visit_NamedType,
-    .AliasType = (error(*nullable)(ASTVisitor*,const AliasTypeNode*))visit_AliasType,
-    .RefType = (error(*nullable)(ASTVisitor*,const RefTypeNode*))visit_RefType,
-    .BasicType = (error(*nullable)(ASTVisitor*,const BasicTypeNode*))visit_BasicType,
-    .ArrayType = (error(*nullable)(ASTVisitor*,const ArrayTypeNode*))visit_ArrayType,
-    .TupleType = (error(*nullable)(ASTVisitor*,const TupleTypeNode*))visit_TupleType,
-    .StructType = (error(*nullable)(ASTVisitor*,const StructTypeNode*))visit_StructType,
-    .FunType = (error(*nullable)(ASTVisitor*,const FunTypeNode*))visit_FunType,
-  };
-  ASTVisitorInit((ASTVisitor*)&r, &vfn);
-  write_node(&r, n);
+  Str s2 = str_makeroom(s, 4096);
+  if (s2)
+    s = s2;
 
-  sbuf_terminate(&r.buf);
-  s->len = MIN(s->cap, r.buf.len);
-
-  // TODO: if s is too small, grow it and retry
-
-  return s;
+  while (1) {
+    sbuf_init(&r.buf, &s->p[s->len], str_avail(s));
+    write_node(&r, n);
+    sbuf_terminate(&r.buf);
+    if (r.buf.len < str_avail(s)) {
+      s->len += r.buf.len;
+      return s;
+    }
+    if (!(s2 = str_makeroom(s, r.buf.len)))
+      return s; // memalloc failure
+    s = s2;
+  }
 }
 
 // ---------------------

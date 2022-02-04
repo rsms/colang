@@ -38,6 +38,7 @@ static SBuf* sbuf_init(SBuf* s, char* buf, usize bufsize); // bufsize must be >0
 static usize sbuf_terminate(SBuf* s);
 static void sbuf_appendc(SBuf* s, char c);
 void sbuf_append(SBuf* s, const char* p, usize len);
+void sbuf_appendu64(SBuf* s, u64 v, u32 base);
 void sbuf_appendu32(SBuf* s, u32 v, u32 base);
 void sbuf_appendf64(SBuf* s, f64 v, int ndec);
 static void sbuf_appendstr(SBuf* s, const char* cstr);

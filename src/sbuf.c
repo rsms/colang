@@ -19,7 +19,14 @@ void sbuf_append(SBuf* s, const char* p, usize len) {
 
 void sbuf_appendu32(SBuf* s, u32 v, u32 base) {
   char buf[32];
-  u32 n = strfmt_u32(buf, v, base);
+  usize n = strfmt_u32(buf, v, base);
+  return sbuf_append(s, buf, n);
+}
+
+
+void sbuf_appendu64(SBuf* s, u64 v, u32 base) {
+  char buf[64];
+  usize n = strfmt_u64(buf, v, base);
   return sbuf_append(s, buf, n);
 }
 

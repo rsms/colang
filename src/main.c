@@ -56,7 +56,12 @@ int main(int argc, const char** argv) {
 
   // add a source file to the package
   Source src1 = {0};
-  const char* src_text = "fun hello() int\n  4 + 3\n";
+  const char* src_text =
+    "fun hello(x, y int) int\n"
+    "  x + 3\n"
+    "fun foo() int\n"
+    "  z * 3\n"
+    ;
   error err = source_open_data(&src1, mem, "input", src_text, strlen(src_text));
   if (err)
     panic("source_open_data: %s", error_str(err));

@@ -31,8 +31,13 @@ Str nullable str_make_hex_lc(Mem, const u8* data, u32 len);
 void str_free(Str);
 
 inline static u32 str_avail(const Str s) { return s->cap - s->len; }
-static Str nullable str_makeroom(Str s, u32 addlen); // ensures that str_avail()>=addlen
-Str nullable str_grow(Str s, u32 addlen); // grow s->cap by at least addlen
+
+// str_makeroom ensures that str_avail(s) >= addlen. Calls str_grow if needed.
+static Str nullable str_makeroom(Str s, u32 addlen);
+
+// str_grow grows the capacity of s so that str_avail(s) >= addlen.
+// Returns NULL if memory allocation failed in which case the input s is still valid.
+Str nullable str_grow(Str s, u32 addlen);
 
 Str nullable str_appendn(Str dst, const char* src, u32 srclen);
 Str nullable str_appendc(Str dst, char c);
