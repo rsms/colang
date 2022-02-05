@@ -546,9 +546,7 @@ static bool name_is_pub(Sym name) {
 // either id or a simplification, like kExpr_true instead of (Id "true" -> kExpr_true)
 static Node* presolve_id(Parser* p, IdNode* id) {
   assertnull(id->target);
-  assertnotnull(id->name);
-
-  Node* target = lookupsym(p, id->name);
+  Node* target = lookupsym(p, assertnotnull(id->name));
 
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
@@ -564,8 +562,7 @@ static Node* presolve_id(Parser* p, IdNode* id) {
 
 // presolve_type resolves a named type
 static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
-  assertnotnull(tname->name);
-  Node* target = lookupsym(p, tname->name);
+  Node* target = lookupsym(p, assertnotnull(tname->name));
 
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
@@ -575,12 +572,10 @@ static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
     }
   #endif
 
-  if (!target) {
-    NodeSetUnresolved(tname);
-    return as_Type(tname);
-  }
-
-  return as_Type(target);
+  if (target)
+    return as_Type(target);
+  NodeSetUnresolved(tname);
+  return as_Type(tname);
 }
 
 

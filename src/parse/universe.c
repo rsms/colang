@@ -1,7 +1,9 @@
 #include "../coimpl.h"
 #include "universe.h"
-
 #include "universe_data.h"
+
+// DEBUG_UNIVERSE_DUMP_SCOPE -- define to log universe_scope state
+//#define DEBUG_UNIVERSE_DUMP_SCOPE
 
 static struct {
   Scope        s;
@@ -11,6 +13,14 @@ static struct {
 static SymPool g_universe_syms = {0};
 
 
+#ifdef DEBUG_UNIVERSE_DUMP_SCOPE
+  static void symmap_iter(Sym key, void* valp, bool* stop, void* nullable ctx) {
+    auto n = (const Node*)valp;
+    log("  %.*s\t%p\t=> N%s\t%p", (int)symlen(key), key, key, nodename(n), n);
+  }
+#endif
+
+
 static void universe_init_scope() {
   SymMapInit(
     &g_scope.s.bindings,
@@ -18,15 +28,23 @@ static void universe_init_scope() {
     countof(g_scope.bindings_storage),
     mem_nil_allocator());
 
-  #ifndef RUN_GENERATOR
-  #define _(name, ...) SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kType_##name);
-  DEF_TYPE_CODES_BASIC_PUB(_)
-  DEF_TYPE_CODES_BASIC(_)
-  DEF_TYPE_CODES_PUB(_)
-  #undef _
-  #define _(name, ...) SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kExpr_##name);
-  DEF_CONST_NODES_PUB(_)
-  #undef _
+  #if !RUN_GENERATOR
+    #define _(name, ...) \
+      assert(SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kType_##name) == 0);
+    DEF_TYPE_CODES_BASIC_PUB(_)
+    DEF_TYPE_CODES_BASIC(_)
+    DEF_TYPE_CODES_PUB(_)
+    #undef _
+    #define _(name, ...) \
+      assert(SymMapSet(&g_scope.s.bindings, kSym_##name, (void**)&kExpr_##name) == 0);
+    DEF_CONST_NODES_PUB(_)
+    #undef _
+  #endif
+
+  #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
+    log("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() %p, %u bindings:",
+      universe_scope(), SymMapLen(&g_scope.s.bindings));
+    SymMapIter(&g_scope.s.bindings, &symmap_iter, NULL);
   #endif
 }
 

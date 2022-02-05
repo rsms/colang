@@ -1,7 +1,3 @@
-//
-// sym is a string type that is interned and can be efficiently compared
-// for equality by pointer value. It's used for identifiers.
-//
 #include "coimpl.h"
 #include "sym.h"
 

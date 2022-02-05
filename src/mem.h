@@ -7,11 +7,19 @@ typedef const MemAllocator* nonull Mem;
 
 // memalloc allocates memory of size bytes
 static void* nullable memalloc(Mem m, usize size)
-ATTR_MALLOC ATTR_ALLOC_SIZE(2) WARN_UNUSED_RESULT;
+  ATTR_MALLOC ATTR_ALLOC_SIZE(2) WARN_UNUSED_RESULT;
+
+// memallocz allocates zero-initialized memory of size bytes
+static void* nullable memallocz(Mem m, usize size)
+  ATTR_MALLOC ATTR_ALLOC_SIZE(2) WARN_UNUSED_RESULT;
 
 // T* nullable memalloct(Mem mem, type T)
 // memalloct allocates memory the size of TYPE, returning a pointer of TYPE*
 #define memalloct(mem, TYPE) ((TYPE*)memalloc((mem),sizeof(TYPE)))
+
+// T* nullable memalloczt(Mem mem, type T)
+// Like memalloct but returns zeroed memory.
+#define memalloczt(mem, TYPE) ((TYPE*)memallocz((mem),sizeof(TYPE)))
 
 // void* nullable memallocv(Mem mem, uint ELEMSIZE, uint COUNT)
 // memallocv behaves similar to libc calloc, checking ELEMSIZE*COUNT for overflow.
@@ -19,6 +27,13 @@ ATTR_MALLOC ATTR_ALLOC_SIZE(2) WARN_UNUSED_RESULT;
 #define memallocv(mem, ELEMSIZE, COUNT) ({    \
   usize z = array_size((ELEMSIZE), (COUNT));  \
   z == USIZE_MAX ? NULL : memalloc((mem), z); \
+})
+
+// void* nullable memalloczv(Mem mem, uint ELEMSIZE, uint COUNT)
+// Like memallocv but returns zeroed memory.
+#define memalloczv(mem, ELEMSIZE, COUNT) ({    \
+  usize z = array_size((ELEMSIZE), (COUNT));   \
+  z == USIZE_MAX ? NULL : memallocz((mem), z); \
 })
 
 // T* nullable memalloctv(Mem mem, type T, name VFIELD_NAME, uint VCOUNT)
@@ -30,6 +45,13 @@ ATTR_MALLOC ATTR_ALLOC_SIZE(2) WARN_UNUSED_RESULT;
 #define memalloctv(mem, TYPE, VFIELD_NAME, VCOUNT) ({         \
   usize z = STRUCT_SIZE( ((TYPE*)0), VFIELD_NAME, (VCOUNT) ); \
   z == USIZE_MAX ? NULL : (TYPE*)memalloc((mem), z);          \
+})
+
+// T* nullable memallocztv(Mem mem, type T, name VFIELD_NAME, uint VCOUNT)
+// Like memalloctv but returns zeroed memory.
+#define memallocztv(mem, TYPE, VFIELD_NAME, VCOUNT) ({        \
+  usize z = STRUCT_SIZE( ((TYPE*)0), VFIELD_NAME, (VCOUNT) ); \
+  z == USIZE_MAX ? NULL : (TYPE*)memallocz((mem), z);         \
 })
 
 // memrealloc resizes memory at ptr. If ptr is null, the behavior matches memalloc.
@@ -55,6 +77,9 @@ typedef struct MemAllocator {
   // alloc should allocate at least size contiguous memory and return the address.
   // If it's unable to do so it should return NULL.
   void* nullable (* nonull alloc)(Mem m, usize size);
+
+  // allocz is like alloc but must return zeroed memory
+  void* nullable (* nonull allocz)(Mem m, usize size);
 
   // realloc is called with the address of a previous allocation of the same allocator m.
   // It should either extend the contiguous memory segment at ptr to be at least newsize
@@ -96,6 +121,7 @@ static void* nullable _mem_nil_realloc(Mem m, void* nullable ptr, usize newsize)
 static void _mem_nil_free(Mem _, void* nonull ptr) {}
 static const MemAllocator _mem_nil = {
   .alloc   = _mem_nil_alloc,
+  .allocz  = _mem_nil_alloc,
   .realloc = _mem_nil_realloc,
   .free    = _mem_nil_free,
 };
@@ -148,6 +174,9 @@ Example code generation:
 static void* nullable _mem_libc_alloc(Mem _, usize size) {
   return malloc(size);
 }
+static void* nullable _mem_libc_allocz(Mem _, usize size) {
+  return calloc(1, size);
+}
 static void* nullable _mem_libc_realloc(Mem _, void* nullable ptr, usize newsize) {
   return realloc(ptr, newsize);
 }
@@ -156,6 +185,7 @@ static void _mem_libc_free(Mem _, void* nonull ptr) {
 }
 static const MemAllocator _mem_libc = {
   .alloc   = _mem_libc_alloc,
+  .allocz  = _mem_libc_allocz,
   .realloc = _mem_libc_realloc,
   .free    = _mem_libc_free,
 };
@@ -166,16 +196,23 @@ inline static Mem mem_libc_allocator() {
 #endif // defined(CO_WITH_LIBC)
 
 inline static void* nullable memalloc(Mem m, usize size) {
-  assert(m != NULL);
-  void* p = m->alloc(m, size);
+  void* p = m->alloc(assertnotnull(m), size);
   #ifdef CO_MEM_DEBUG_ALLOCATIONS
   dlog("[co memalloc] %p-%p (%zu)", p, p + size, size);
   #endif
   return p;
 }
 
+inline static void* nullable memallocz(Mem m, usize size) {
+  void* p = m->allocz(assertnotnull(m), size);
+  #ifdef CO_MEM_DEBUG_ALLOCATIONS
+  dlog("[co memallocz] %p-%p (%zu)", p, p + size, size);
+  #endif
+  return p;
+}
+
 inline static void* nullable memrealloc(Mem m, void* nullable ptr, usize newsize) {
-  assert(m != NULL);
+  assertnotnull(m);
   void* p = ptr ? m->realloc(m, ptr, newsize) : m->alloc(m, newsize);
   #ifdef CO_MEM_DEBUG_ALLOCATIONS
   dlog("[co realloc] %p -> %p-%p (%zu)", ptr, p, p + newsize, newsize);
@@ -185,12 +222,11 @@ inline static void* nullable memrealloc(Mem m, void* nullable ptr, usize newsize
 
 // memfree frees memory allocated with memalloc
 inline static void memfree(Mem m, void* nonull ptr) {
-  assert(m != NULL);
-  assert(ptr != NULL);
   #ifdef CO_MEM_DEBUG_ALLOCATIONS
   dlog("[co memfree] %p", ptr);
   #endif
-  m->free(m, ptr);
+  assertnotnull(m);
+  m->free(m, assertnotnull(ptr));
 }
 
 ASSUME_NONNULL_END

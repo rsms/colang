@@ -453,10 +453,26 @@ const char* error_str(error);
 // panic & assert
 
 // panic prints msg to stderr and calls TRAP()
-#define panic(fmt, ...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##__VA_ARGS__)
+#define panic(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
 
 NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...)
   ATTR_FORMAT(printf, 4, 5);
+
+// void log(const char* fmt, ...)
+#ifdef CO_WITH_LIBC
+  ASSUME_NONNULL_END
+  #include <stdio.h>
+  ASSUME_NONNULL_BEGIN
+  #define log(format, args...) fprintf(stderr, format "\n", ##args)
+#else
+  #warning log not implemented for no-libc
+  #define log(format, ...) ((void)0)
+#endif
+
+// void errlog(const char* fmt, ...)
+#define errlog(format, args...) ({                              \
+  log("error: " format " (%s:%d)", ##args, __FILE__, __LINE__); \
+  fflush(stderr); })
 
 // void assert(expr condition)
 #undef assert
@@ -468,8 +484,8 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   // Note: we can't use ", ##args" above in either clang nor gcc for some reason,
   // or else certain applications of this macro are not expanded.
 
-  #define assertf(cond, fmt, ...) \
-    if (UNLIKELY(!(cond))) _assertfail("%s; " fmt, #cond, ##__VA_ARGS__)
+  #define assertf(cond, fmt, args...) \
+    if (UNLIKELY(!(cond))) _assertfail("%s; " fmt, #cond, ##args)
 
   #define assert(cond) \
     if (UNLIKELY(!(cond))) _assertfail("%s", #cond)
@@ -542,13 +558,6 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   // debug_tmpsprintf is like sprintf but uses a static buffer.
   // The buffer argument determines which buffer to use (constraint: buffer<6)
   const char* debug_tmpsprintf(int buffer, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
-#else
-  #define debug_quickfmt(...) ""
-  #define debug_tmpsprintf(...) ""
-#endif // defined(DEBUG)
-
-// void dlog(const char* fmt, ...)
-#ifdef DEBUG
   #ifndef CO_WITH_LIBC
     #warning dlog not implemented for no-libc
     #define dlog(format, ...) ((void)0)
@@ -556,29 +565,12 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
     ASSUME_NONNULL_END
     #include <stdio.h>
     ASSUME_NONNULL_BEGIN
-    #define dlog(format, ...) ({ \
-      fprintf(stderr, "\e[1;34m[D]\e[0m " format " \e[2m(%s %d)\e[0m\n", \
-        ##__VA_ARGS__, __FUNCTION__, __LINE__); \
-      fflush(stderr); \
-    })
+    #define dlog(format, args...) ({                                                        \
+      log("\e[1;34m[D]\e[0m " format " \e[2m(%s %d)\e[0m", ##args, __FUNCTION__, __LINE__); \
+      fflush(stderr); })
   #endif
 #else
   #define dlog(format, ...) ((void)0)
-#endif
-
-// void errlog(const char* fmt, ...)
-#ifdef CO_WITH_LIBC
-  ASSUME_NONNULL_END
-  #include <stdio.h>
-  ASSUME_NONNULL_BEGIN
-  #define errlog(format, ...) (({ \
-    fprintf(stderr, "error: " format " (%s:%d)\n", \
-      ##__VA_ARGS__, __FILE__, __LINE__); \
-    fflush(stderr); \
-  }))
-#else
-  #warning errlog not implemented for no-libc
-  #define errlog(format, ...) ((void)0)
 #endif
 
 

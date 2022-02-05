@@ -16,7 +16,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 // Additionally, entries in DEF_TYPE_CODES_*_PUB are included in universe_syms()
 //
 // basic: housed in NBasicType, named & exported in the global scope
-#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                    */\
+#define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                   */\
   _( bool      , 'b' , TF_KindBool )                                                       \
   _( i8        , 'c' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
   _( u8        , 'B' , TF_KindInt | TF_Size1 )                                             \

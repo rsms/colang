@@ -103,7 +103,7 @@ void ScopeFree(Scope* s, Mem mem) {
 const Node* ScopeLookup(const Scope* scope, Sym s) {
   const Node* n = NULL;
   while (scope && n == NULL) {
-    //dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
+    dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
     n = SymMapGet(&scope->bindings, s);
     scope = scope->parent;
   }

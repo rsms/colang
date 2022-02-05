@@ -52,9 +52,10 @@ int main(int argc, const char** argv) {
 
   // create a build context
   BuildCtx build = {0};
-  BuildCtxInit(&build, mem, &syms, "foo", on_diag, NULL);
+  const char* pkgid = "foo";
+  BuildCtxInit(&build, mem, &syms, pkgid, on_diag, NULL);
 
-  // add a source file to the package
+  // add a source file to the logical package
   Source src1 = {0};
   const char* src_text =
     "fun hello(x, y int) int\n"
@@ -72,6 +73,7 @@ int main(int argc, const char** argv) {
   print_src_checksum(mem, &src1);
 
   // scan all sources of the package
+  #if 0
   Scanner scanner = {0};
   for (Source* src = build.srclist; src != NULL; src = src->next) {
     dlog("scan %s", src->filename->p);
@@ -82,6 +84,7 @@ int main(int argc, const char** argv) {
       printf(">> %s\n", TokName(scanner.tok));
     }
   }
+  #endif
 
   // parse
   Parser p = {0};

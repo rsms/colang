@@ -3,7 +3,9 @@
 #include "mem.h"
 ASSUME_NONNULL_BEGIN
 
-// Sym is an immutable kind of string with a precomputed hash, interned in a SymPool.
+// Sym is a string type that is interned and can be efficiently compared
+// for equality by pointer value. It's used for identifiers.
+// Sym is immutable with an embedded precomputed hash, interned in a SymPool.
 // Sym is a valid null-terminated C-string.
 // Sym can be compared for equality simply by comparing pointer address.
 // Sym functions are tuned toward lookup rather than insertion or deletion.
@@ -132,7 +134,7 @@ inline static u8 symflags(Sym s) {
 inline static void sym_dangerously_set_flags(Sym s, u8 flags) {
   assert(flags <= SYM_FLAGS_MAX);
   SymHeader* h = (SymHeader*)_SYM_HEADER(s);
-  h->len = ( ((u32)flags << (32 - _SYM_FLAG_BITS)) & _sym_flag_mask ) | (h->len & _sym_len_mask);
+  h->len = SYM_MAKELEN(h->len, flags);
 }
 
 // sym_dangerously_set_len mutates a Sym by setting its length.

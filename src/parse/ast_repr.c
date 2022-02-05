@@ -360,10 +360,6 @@ static void write_qstr(Repr* r, const char* s, usize len) {
   write_pop_style(r);
 }
 
-static void write_qsym(Repr* r, Sym s) {
-  write_qstr(r, s, symlen(s));
-}
-
 static void write_name(Repr* r, Sym s) {
   sbuf_appendc(&r->buf, ' ');
   write_push_style(r, STYLE_NAME);

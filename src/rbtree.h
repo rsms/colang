@@ -5,7 +5,7 @@
 // This file is intended not to be compiled directly, but to be included by
 // another C file. All functions are "static" and thus has hidden visibility.
 //
-// The following lists marcos and fucntions which are expected to be defined and
+// The following lists macros and functions which are expected to be defined and
 // implemented by the file that includes this file:
 
 #ifndef RBKEY
