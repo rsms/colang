@@ -1,3 +1,78 @@
+/* This file implements a hash table with support for arbitrary key and value types.
+
+-----------------------------------------------------------------------------------------
+The implementation is based on the Go map; this source file is licensed as follows:
+
+Copyright (c) 2009 The Go Authors. All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification, are
+permitted provided that the following conditions are met:
+
+   * Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+     copyright notice, this list of conditions and the following disclaimer
+     in the documentation and/or other materials provided with the
+     distribution.
+   * Neither the name of Google Inc. nor the names of its
+     contributors may be used to endorse or promote products derived from
+     this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO
+ EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+ INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+ LIABILITY, OR TORT(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+-----------------------------------------------------------------------------------------
+
+A map is just a hash table. The data is arranged into an array of buckets. Each bucket
+contains up to 8 key/elem pairs. The low-order bits of the hash are used to select a
+bucket. Each bucket contains a few high-order bits of each hash to distinguish the
+entries within a single bucket.
+
+If more than 8 keys hash to a bucket, we chain on extra buckets.
+
+When the hashtable grows, we allocate a new array of buckets twice as big. Buckets are
+incrementally copied from the old bucket array to the new bucket array.
+
+Map iterators walk through the array of buckets and return the keys in walk order
+(bucket #, then overflow chain order, then bucket index).  To maintain iteration
+semantics, we never move keys within their bucket (if we did, keys might be returned 0 or
+2 times).  When growing the table, iterators remain iterating through the old table and
+must check the new table if the bucket they are iterating through has been moved
+("evacuated") to the new table.
+
+-----------------------------------------------------------------------------------------
+
+Picking loadFactor: too large and we have lots of overflow buckets, too small and we
+waste a lot of space. I wrote a simple program to check some stats for different loads:
+
+(64-bit, 8 byte keys and elems)
+ loadFactor    %overflow  bytes/entry     hitprobe    missprobe
+       4.00         2.13        20.77         3.00         4.00
+       4.50         4.05        17.30         3.25         4.50
+       5.00         6.85        14.77         3.50         5.00
+       5.50        10.55        12.94         3.75         5.50
+       6.00        15.27        11.67         4.00         6.00
+       6.50        20.90        10.79         4.25         6.50
+       7.00        27.14        10.15         4.50         7.00
+       7.50        34.03         9.73         4.75         7.50
+       8.00        41.10         9.40         5.00         8.00
+
+%overflow   = percentage of buckets which have an overflow bucket
+bytes/entry = overhead bytes used per key/elem pair
+hitprobe    = # of entries to check when looking up a present key
+missprobe   = # of entries to check when looking up an absent key
+
+Keep in mind this data is for maximally loaded tables, i.e. just before the table grows.
+Typical tables will be somewhat less loaded.
+*/
+
 #include "coimpl.h"
 #include "mem.h"
 #include "test.h"
@@ -44,7 +119,14 @@ typedef struct maptype  maptype;  // describes the type stored in a map
 typedef struct rtype    rtype;
 
 // keyhasher is a function for hashing keys (ptr to key, seed) -> hash
-typedef uintptr(*keyhasher)(const void*, uintptr);
+typedef uintptr(*keyhasher)(const void* keyp, uintptr seed);
+
+// freefun is a function for freeing removed keys and entries.
+// pv is an array of count pointers to free.
+typedef void(*freefun)(Mem, void** pv, usize count);
+
+// equalfun is used by rtype
+typedef bool(*equalfun)(const void*, const void*);
 
 // tflag is used by an rtype to signal what extra type information is
 // available in the memory directly following the rtype value.
@@ -79,27 +161,33 @@ enum tflag {
 
 
 // Possible tophash values. We reserve a few possibilities for special marks.
-// Each bucket (including its overflow buckets, if any) will have either all or none of its
-// entries in the evacuated* states (except during the evacuate() method, which only happens
-// during map writes and thus no one else can observe the map during that time).
+// Each bucket (including its overflow buckets, if any) will have either all or none
+// of its entries in the evacuated* states (except during the evacuate() method,
+// which only happens during map writes and thus no one else can observe the map during
+// that time).
 enum tophash_flag {
   emptyRest,
     // this cell is empty, and there are no more non-empty cells at higher indexes
     // or overflows
-  emptyOne,       // this cell is empty
-  evacuatedX,     // key/elem is valid. Entry has been evacuated to first half of larger tbl
-  evacuatedY,     // same as above, but evacuated to second half of larger table
-  evacuatedEmpty, // cell is empty, bucket is evacuated
-  minTopHash,     // minimum tophash for a normal filled cell
+  emptyOne,
+    // this cell is empty
+  evacuatedX,
+    // key/elem is valid. Entry has been evacuated to first half of larger tbl
+  evacuatedY,
+    // same as above, but evacuated to second half of larger table
+  evacuatedEmpty,
+    // cell is empty, bucket is evacuated
+  minTopHash,
+    // minimum tophash for a normal filled cell
 };
 
 typedef u8 hflag;
 enum hflag {
-  iterator     = 1 << 0, // there may be an iterator using buckets
-  oldIterator  = 1 << 1, // there may be an iterator using oldbuckets
-  hashWriting  = 1 << 2, // a goroutine is writing to the map
-  sameSizeGrow = 1 << 3, // the current map growth is to a new map of the same size
-  memManaged   = 1 << 4, // memory for hmap should be freed by mapfree
+  H_iterator     = 1 << 0, // there may be an iterator using buckets
+  H_oldIterator  = 1 << 1, // there may be an iterator using oldbuckets
+  H_hashWriting  = 1 << 2, // a goroutine is writing to the map
+  H_sameSizeGrow = 1 << 3, // the current map growth is to a new map of the same size
+  H_memManaged   = 1 << 4, // memory for hmap should be freed by mapfree
 } END_TYPED_ENUM(hflag);
 
 typedef u8 tkind;
@@ -139,26 +227,21 @@ struct hmap {
   u8    B;         // log_2 of # of buckets (can hold up to loadFactor * 2^B items)
   u16   noverflow; // approximate number of overflow buckets; see incrnoverflow for details
   u32   hash0;     // hash seed
-
-  bmap*          buckets; // array of 2^B Buckets. may be nil if count==0.
+  bmap* buckets;   // array of 2^B Buckets. may be nil if count==0.
   bmap* nullable oldbuckets;
     // previous bucket array of half the size, non-nil only when growing
-  uintptr        nevacuate;
+  uintptr nevacuate;
     // progress counter for evacuation (buckets less than this have been evacuated)
-
   mapextra* nullable extra; // optional fields
 };
 
 struct rtype { // aka _type
-  usize   size;
-  // uintptr ptrdata; // size of memory prefix holding all pointers (GC)
-  // u32     hash;
-  tflag   tflag;
-  u8      align;
-  //u8      fieldAlign;
-  tkind   kind;
-  // function for comparing objects of this type
-  bool(*equal)(const void*, const void*);
+  usize    size;
+  tflag    tflag;
+  u8       align;
+  tkind    kind;
+  equalfun equal; // comparing objects of this type
+  freefun  free;  // free a value of this type
 };
 
 // mapextra holds fields that are not present on all maps.
@@ -237,7 +320,7 @@ static bool rtype_needKeyUpdate(const rtype* t) {
       return true;
     case tkind_struct:
       // really, the answer is MAX([rtype_needKeyUpdate(f) for f in t->fields])
-      return false;
+      return true;
     case tkind_invalid:
       break;
   }
@@ -289,7 +372,7 @@ static u8 tophash(uintptr hash) {
   return top;
 }
 
-bool evacuated(bmap* b) {
+static bool is_evacuated(bmap* b) {
   u8 h = b->tophash[0];
   return h > emptyOne && h < minTopHash;
 }
@@ -336,10 +419,11 @@ bool hmap_isgrowing(hmap* h) {
 
 // hmap_sameSizeGrow reports whether the current growth is to a map of the same size
 static bool hmap_sameSizeGrow(hmap* h) {
-  return (h->flags & sameSizeGrow) != 0;
+  return (h->flags & H_sameSizeGrow) != 0;
 }
 
 // hmap_oldbucketcount calculates the number of buckets prior to the current map growth
+// aka noldbuckets
 static usize hmap_oldbucketcount(hmap* h) {
   u8 B = h->B;
   if (!hmap_sameSizeGrow(h))
@@ -383,7 +467,8 @@ static bool hmap_createoverflow(Mem mem, hmap* h, u32 lenhint) {
   h->extra = memallocztv(mem, mapextra, overflow_storage, lenhint);
   if (UNLIKELY( !h->extra ))
     return false;
-  PtrArrayInitStorage(&h->extra->overflow, h->extra->overflow_storage, lenhint);
+  if (lenhint > 0)
+    PtrArrayInitStorage(&h->extra->overflow, h->extra->overflow_storage, lenhint);
   return true;
 }
 
@@ -418,18 +503,6 @@ static bmap* hmap_newoverflow(Mem mem, hmap* h, maptype* t, bmap* b) {
   return ovf;
 }
 
-
-static void growWork(maptype* t, hmap* h, usize bucket) {
-  dlog("TODO");
-  // // make sure we evacuate the oldbucket corresponding
-  // // to the bucket we're about to use
-  // evacuate(t, h, bucket & hmap_oldbucketmask(h));
-
-  // // evacuate one more oldbucket to make progress on growing
-  // if (hmap_isgrowing(h))
-  //   evacuate(t, h, h.nevacuate);
-}
-
 static void typed_memmove(const rtype* typ, void* dst, void* src) {
   if (dst != src)
     memmove(dst, src, typ->size);
@@ -461,6 +534,36 @@ static rtype make_bucket_type(const rtype* ktyp, const rtype* etyp) {
   };
 }
 
+static maptype mkmaptype(
+  const rtype* ktyp, const rtype* vtyp, keyhasher nullable hasher)
+{
+  maptype mt = {
+    .bucket = make_bucket_type(ktyp, vtyp),
+    .key = *ktyp,
+    .elem = *vtyp,
+    .hasher = hasher ? hasher : rtype_hasher(ktyp),
+  };
+  assertnotnull(ktyp->equal);
+  if (ktyp->size > maxKeySize) {
+    mt.keysize = PTRSIZE;
+    mt.flags |= maptypeIndirectKey;
+  } else {
+    mt.keysize = (u8)ktyp->size;
+  }
+  if (vtyp->size > maxElemSize) {
+    mt.elemsize = PTRSIZE;
+    mt.flags |= maptypeIndirectElem;
+  } else {
+    mt.elemsize = (u8)vtyp->size;
+  }
+  mt.bucketsize = (u16)mt.bucket.size;
+  if (rtype_isReflexive(ktyp))
+    mt.flags |= maptypeReflexiveKey;
+  if (rtype_needKeyUpdate(ktyp))
+    mt.flags |= maptypeNeedKeyUpdate;
+  return mt;
+}
+
 // make_bucket_array initializes a backing array for map buckets.
 // 1<<B is the minimum number of buckets to allocate.
 // dirtyalloc should either be nil or a bucket array previously
@@ -489,13 +592,13 @@ bmap* nullable make_bucket_array(
     *nextOverflow = NULL;
     return NULL;
   }
-  dlog("memalloc bmap[%zu] [%p-%p) (%zu * %zu = %zu B)",
-    nbuckets, buckets, buckets + t->bucket.size*nbuckets,
-    nbuckets, t->bucket.size, t->bucket.size * nbuckets);
-  assertf(dirtyalloc==NULL, "TODO has dirtyalloc");
+  // dlog("memalloc bmap[%zu] [%p-%p) (%zu * %zu = %zu B)",
+  //   nbuckets, buckets, buckets + t->bucket.size*nbuckets,
+  //   nbuckets, t->bucket.size, t->bucket.size * nbuckets);
+  assertf(dirtyalloc == NULL, "TODO has dirtyalloc");
     // if dirtyalloc != NULL:
-    //   dirtyalloc was previously generated by the above newarray(t.bucket, int(nbuckets))
-    //   but may not be empty.
+    //   dirtyalloc was previously generated by the above
+    //   newarray(t.bucket, int(nbuckets)) but may not be empty.
 
   if (base != nbuckets) {
     // We preallocated some overflow buckets.
@@ -514,27 +617,250 @@ bmap* nullable make_bucket_array(
 }
 
 
-void hash_grow(Mem mem, maptype* t, hmap* h) {
-  panic("TODO");
+// is_bucket_evacuated aka bucketEvacuated
+static bool is_bucket_evacuated(maptype* t, hmap* h, usize bucket) {
+  bmap* b = (void*)h->oldbuckets + bucket*t->bucketsize;
+  return is_evacuated(b);
+}
+
+
+static void advanceEvacuationMark(Mem mem, maptype* t, hmap* h, usize newbit) {
+  h->nevacuate++;
+  // Experiments suggest that 1024 is overkill by at least an order of magnitude.
+  // Put it in there as a safeguard anyway, to ensure O(1) behavior.
+  usize stop = h->nevacuate + 1024;
+  if (stop > newbit)
+    stop = newbit;
+  while (h->nevacuate != stop && is_bucket_evacuated(t, h, h->nevacuate))
+    h->nevacuate++;
+  if (h->nevacuate != newbit)
+    return;
+  // newbit == # of oldbuckets
+  // Growing is all done. Free old main bucket array.
+  memfree(mem, h->oldbuckets);
+  h->oldbuckets = NULL;
+  // Can discard old overflow buckets as well.
+  // If they are still referenced by an iterator,
+  // then the iterator holds a pointers to the slice.
+  if (h->extra != NULL) {
+    PtrArrayFree(&h->extra->oldoverflow, mem);
+    PtrArrayInit(&h->extra->oldoverflow);
+  }
+  h->flags &= ~H_sameSizeGrow;
+}
+
+
+// evacDst is an evacuation destination.
+typedef struct {
+  bmap* b; // current destination bucket
+  u32   i; // key/elem index into b
+  void* k; // pointer to current key storage
+  void* e; // pointer to current elem storage
+} evacDst;
+
+
+static void evacuate(Mem mem, maptype* t, hmap* h, usize oldbucket) {
+  assertnotnull(h->oldbuckets);
+  bmap* b = (void*)h->oldbuckets + oldbucket*t->bucketsize;
+  usize newbit = hmap_oldbucketcount(h);
+
+  if (is_evacuated(b))
+    goto end;
+
+  // TODO: reuse overflow buckets instead of using new ones, if there
+  // is no iterator using the old buckets.  (If !H_oldIterator.)
+
+  // xy contains the x and y (low and high) evacuation destinations.
+  evacDst xy[2] = {0};
+  evacDst* x = &xy[0];
+  x->b = (void*)h->buckets + oldbucket*t->bucketsize;
+  x->k = (void*)x->b + dataOffset;
+  x->e = x->k + bucketCnt*t->keysize;
+
+  if (!hmap_sameSizeGrow(h)) {
+    // Only calculate y pointers if we're growing bigger.
+    // Otherwise GC can see bad pointers.
+    evacDst* y = &xy[1];
+    y->b = (void*)h->buckets + (oldbucket + newbit)*t->bucketsize;
+    y->k = (void*)y->b + dataOffset;
+    y->e = y->k + bucketCnt*t->keysize;
+  }
+
+  for (; b != NULL; b = bmap_overflow(b, t)) {
+    void* k = (void*)b + dataOffset;
+    void* e = k + bucketCnt*t->keysize;
+
+    for (
+      usize i = 0;
+      i < bucketCnt;
+      ({
+        i++;
+        k += t->keysize;
+        e += t->elemsize;
+      }) )
+    {
+      u8 top = b->tophash[i];
+      if (isEmpty(top)) {
+        b->tophash[i] = evacuatedEmpty;
+        continue;
+      }
+      assertf(top >= minTopHash, "bad map state");
+      void* k2 = k;
+      if (maptype_indirectkey(t))
+        k2 = *(void**)k2;
+      u8 useY = 0;
+      if (!hmap_sameSizeGrow(h)) {
+        // Compute hash to make our evacuation decision (whether we need
+        // to send this key/elem to bucket x or bucket y).
+        uintptr hash = t->hasher(k2, (uintptr)h->hash0);
+        if ((h->flags & H_iterator) &&
+            !maptype_reflexivekey(t) &&
+            !t->key.equal(k2, k2))
+        {
+          // If key != key (NaNs), then the hash could be (and probably
+          // will be) entirely different from the old hash. Moreover,
+          // it isn't reproducible. Reproducibility is required in the
+          // presence of iterators, as our evacuation decision must
+          // match whatever decision the iterator made.
+          // Fortunately, we have the freedom to send these keys either
+          // way. Also, tophash is meaningless for these kinds of keys.
+          // We let the low bit of tophash drive the evacuation decision.
+          // We recompute a new random tophash for the next level so
+          // these keys will get evenly distributed across all buckets
+          // after multiple grows.
+          useY = top & 1;
+          top = tophash(hash);
+        } else {
+          if (hash & newbit)
+            useY = 1;
+        }
+      }
+
+      assert(evacuatedX+1 == evacuatedY && (evacuatedX^1) == evacuatedY);
+
+      b->tophash[i] = evacuatedX + useY; // evacuatedX + 1 == evacuatedY
+      evacDst* dst = &xy[useY];          // evacuation destination
+
+      if (dst->i == bucketCnt) {
+        dst->b = hmap_newoverflow(mem, h, t, dst->b);
+        dst->i = 0;
+        dst->k = (void*)dst->b + dataOffset;
+        dst->e = dst->k + bucketCnt*t->keysize;
+      }
+
+      // Note: mask dst->i as an optimization, to avoid a bounds check
+      dst->b->tophash[dst->i & (bucketCnt-1)] = top;
+
+      if (maptype_indirectkey(t)) {
+        *(void**)dst->k = k2; // copy pointer
+      } else {
+        typed_memmove(&t->key, dst->k, k); // copy elem
+      }
+      if (maptype_indirectelem(t)) {
+        *(void**)dst->e = *(void**)e;
+      } else {
+        typed_memmove(&t->elem, dst->e, e);
+      }
+
+      dst->i++;
+
+      // These updates might push these pointers past the end of the
+      // key or elem arrays.  That's ok, as we have the overflow pointer
+      // at the end of the bucket to protect against pointing past the
+      // end of the bucket.
+      dst->k += t->keysize;
+      dst->e += t->elemsize;
+    } // end for(i)
+  } // end for(b)
+
+  // TODO: Revisit the following logic to better understand its effects.
+  // Should we be freeing memory?
+  // (Note that bucket.ptrdata is not used in this implementation b/c no GC.)
+  //
+  // // Unlink the overflow buckets & clear key/elem to help GC.
+  // if ((h->flags & H_oldIterator) == 0 && t->bucket.ptrdata != 0) {
+  //   void* b = h->oldbuckets + oldbucket*t->bucketsize;
+  //   // Preserve b.tophash because the evacuation state is maintained there.
+  //   void* ptr = b + dataOffset;
+  //   usize n = t->bucketsize - dataOffset;
+  //   memset(ptr, 0, n);
+  // }
+
+end:
+  if (oldbucket == h->nevacuate)
+    advanceEvacuationMark(mem, t, h, newbit);
+}
+
+
+static void growWork(Mem mem, maptype* t, hmap* h, usize bucket) {
+  // make sure we evacuate the oldbucket corresponding
+  // to the bucket we're about to use
+  evacuate(mem, t, h, bucket & hmap_oldbucketmask(h));
+
+  // evacuate one more oldbucket to make progress on growing
+  if (hmap_isgrowing(h))
+    evacuate(mem, t, h, h->nevacuate);
+}
+
+
+static void hash_grow(Mem mem, maptype* t, hmap* h) {
+  // If we've hit the load factor, get bigger.
+  // Otherwise, there are too many overflow buckets,
+  // so keep the same number of buckets and "grow" laterally.
+  u8 bigger = 1;
+  if (!is_over_loadFactor(h->count+1, h->B)) {
+    bigger = 0;
+    h->flags |= H_sameSizeGrow;
+  }
+  bmap* oldbuckets = h->buckets;
+  bmap* nextOverflow = NULL;
+  bmap* newbuckets = make_bucket_array(mem, t, h->B + bigger, NULL, &nextOverflow);
+
+  hflag flags = h->flags & ~(H_iterator | H_oldIterator);
+  if (h->flags & H_iterator)
+    flags |= H_oldIterator;
+
+  if (h->oldbuckets != NULL)
+    panic("TODO free h->oldbuckets");
+
+  // commit the grow
+  h->B += bigger;
+  h->flags = flags;
+  h->oldbuckets = oldbuckets;
+  h->buckets = newbuckets;
+  h->nevacuate = 0;
+  h->noverflow = 0;
+
+  if (h->extra != NULL && h->extra->overflow.len != 0) {
+    // Promote current overflow buckets to the old generation
+    asserteq(h->extra->oldoverflow.len, 0);
+    // swap PtrArrays:
+    h->extra->oldoverflow = h->extra->overflow;
+    memset(&h->extra->overflow, 0, sizeof(h->extra->overflow));
+  }
+  if (nextOverflow != NULL) {
+    hmap_createoverflow(mem, h, 0);
+    h->extra->nextOverflow = nextOverflow;
+  }
+  // the actual copying of the hash table data is done incrementally
+  // by growWork() and evacuate().
 }
 
 
 // Like mapaccess, but allocates a slot for the key if it is not present in the map.
 // Returns pointer to value storage.
 void* nullable mapassign(Mem mem, maptype* t, hmap* h, void* key) {
-  if (h->flags & hashWriting)
-    panic("concurrent map writes");
+  assertf((h->flags & H_hashWriting) == 0, "concurrent map writes");
 
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
-  dlog("hash(key) => %lx", hash);
 
-  h->flags ^= hashWriting;
+  h->flags ^= H_hashWriting;
 
   if (h->buckets == NULL) {
     if (!(h->buckets = memallocz(mem, t->bucket.size)))
       return NULL;
-    dlog("memalloc bmap[1] [%p-%p) (%zu B)",
-      h->buckets, h->buckets + t->bucket.size, t->bucket.size);
+    // dlog("memalloc bmap[1] [%p-%p) (%zu B)",
+    //   h->buckets, h->buckets + t->bucket.size, t->bucket.size);
   }
 
   usize bucket;
@@ -542,7 +868,7 @@ void* nullable mapassign(Mem mem, maptype* t, hmap* h, void* key) {
 again:
   bucket = hash & bucketMask(h->B);
   if (hmap_isgrowing(h))
-    growWork(t, h, bucket);
+    growWork(mem, t, h, bucket);
 
   bmap* b = (bmap*)((void*)h->buckets + bucket*t->bucketsize);
   u8 top = tophash(hash);
@@ -570,7 +896,8 @@ again:
         continue; // for1
       }
       // already have a mapping for key. Update it.
-      dlog("update mapping (TODO free/deref existing value via callback)");
+      //if (t->key.free != NULL)
+      //  t->key.free(mem, &k, 1);
       if (maptype_needkeyupdate(t))
         typed_memmove(&t->key, k, key);
       elem = (void*)b + dataOffset + bucketCnt*t->keysize + i*t->elemsize;
@@ -618,10 +945,8 @@ end_bucketloop:
   h->count++;
 
 done:
-  dlog("done");
-  if ((h->flags & hashWriting) == 0)
-    panic("concurrent map writes");
-  h->flags &= ~hashWriting;
+  assertf(h->flags & H_hashWriting, "concurrent map writes");
+  h->flags &= ~H_hashWriting;
   if (maptype_indirectelem(t))
     elem = *(void**)elem;
   return elem;
@@ -632,8 +957,8 @@ done:
 static void* nullable mapaccess(maptype* t, hmap* nullable h, void* key) {
   if (h == NULL || h->count == 0)
     return NULL;
-  if (h->flags & hashWriting)
-    panic("concurrent map read and map write");
+
+  assertf((h->flags & H_hashWriting) == 0, "concurrent map read and map write");
 
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
   usize m = bucketMask(h->B);
@@ -645,7 +970,7 @@ static void* nullable mapaccess(maptype* t, hmap* nullable h, void* key) {
       m >>= 1;
     }
     bmap* oldb = (bmap*)((void*)c + (hash & m)*t->bucketsize);
-    if (!evacuated(oldb))
+    if (!is_evacuated(oldb))
       b = oldb;
   }
   u8 top = tophash(hash);
@@ -689,7 +1014,7 @@ static hmap* makemap(hmap* nullable h, Mem mem, maptype* t, usize hint) {
     if ((h = memalloczt(mem, hmap)) == NULL)
       return NULL;
     dlog("memalloc hmap [%p-%p) (%zu B)", h, h+sizeof(*h), sizeof(*h));
-    h->flags |= memManaged;
+    h->flags |= H_memManaged;
   }
 
   h->hash0 = fastrand(); // seed
@@ -707,7 +1032,7 @@ static hmap* makemap(hmap* nullable h, Mem mem, maptype* t, usize hint) {
     // If hint is large zeroing this memory could take a while.
     bmap* nextOverflow = NULL;
     if (!(h->buckets = make_bucket_array(mem, t, B, NULL, &nextOverflow))) {
-      if (h->flags & memManaged)
+      if (h->flags & H_memManaged)
         memfree(mem, h);
       return NULL;
     }
@@ -722,7 +1047,7 @@ static hmap* makemap(hmap* nullable h, Mem mem, maptype* t, usize hint) {
 }
 
 static void mapfree(Mem mem, hmap* h, maptype* t) {
-  if (h->flags & memManaged)
+  if (h->flags & H_memManaged)
     memfree(mem, h);
 }
 
@@ -730,114 +1055,21 @@ static void mapfree(Mem mem, hmap* h, maptype* t) {
 // ————————————————————————————————————————————————————————————————————————————————————
 
 
-static maptype mkmaptype(const rtype* ktyp, const rtype* vtyp, keyhasher nullable hasher) {
-  maptype mt = {
-    .bucket = make_bucket_type(ktyp, vtyp),
-    .key = *ktyp,
-    .elem = *vtyp,
-    .hasher = hasher ? hasher : rtype_hasher(ktyp),
-  };
-  assertnotnull(ktyp->equal);
-  if (ktyp->size > maxKeySize) {
-    mt.keysize = PTRSIZE;
-    mt.flags |= maptypeIndirectKey;
-  } else {
-    mt.keysize = (u8)ktyp->size;
-  }
-  if (vtyp->size > maxElemSize) {
-    mt.elemsize = PTRSIZE;
-    mt.flags |= maptypeIndirectElem;
-  } else {
-    mt.elemsize = (u8)vtyp->size;
-  }
-  mt.bucketsize = (u16)mt.bucket.size;
-  if (rtype_isReflexive(ktyp))
-    mt.flags |= maptypeReflexiveKey;
-  if (rtype_needKeyUpdate(ktyp))
-    mt.flags |= maptypeNeedKeyUpdate;
-  return mt;
-}
-
-
-static bool i32_equal(const void* p1, const void* p2) {
-  return *((i32*)p1) == *((i32*)p2);
-}
+// static void noop_free(Mem mem, void** pv, usize count) { dlog("free %p", pv[0]); }
+static bool i32_equal(const i32* a, const i32* b) { return *a == *b; }
 
 static const rtype kRType_i32 = {
   .size = sizeof(i32),
   .align = sizeof(i32),
   .kind = tkind_sint,
-  .equal = &i32_equal,
+  .equal = (equalfun)&i32_equal,
+  // .free = &noop_free,
 };
-
-static maptype gMaptype_i32_i32 = {0};
-
-typedef struct MapI32 MapI32; // i32 => i32
-struct MapI32 {
-  Mem      mem;
-  maptype* t;
-  hmap     h;
-};
-
-static MapI32* MapI32Make(MapI32* nullable m, Mem mem, usize hint) {
-  if (gMaptype_i32_i32.hasher == NULL)
-    gMaptype_i32_i32 = mkmaptype(&kRType_i32, &kRType_i32, NULL);
-  if (m == NULL) {
-    if ((m = memalloczt(mem, MapI32)) == NULL)
-      return NULL;
-    m->h.flags |= memManaged;
-  }
-  m->mem = mem;
-  m->t = &gMaptype_i32_i32;
-  hmap* hp = makemap(&m->h, mem, m->t, hint);
-  if (!hp) {
-    if (m->h.flags & memManaged)
-      memfree(m->mem, &m->h);
-    return NULL;
-  }
-  asserteq(hp, &m->h);
-  return m;
-}
-
-static void MapI32Free(MapI32* m) {
-  if (m->h.flags & memManaged) {
-    m->h.flags &= ~memManaged; // clear so that mapfree doesn't do the same
-    mapfree(m->mem, &m->h, m->t);
-    memfree(m->mem, m);
-  }
-}
-
-static bool MapI32Set(MapI32* m, i32 key, i32 val) {
-  i32* valp = (i32*)mapassign(m->mem, m->t, &m->h, &key);
-  if (valp == NULL)
-    return false;
-  *valp = val;
-  return true;
-}
-
-static i32* MapI32Lookup(MapI32* m, i32 key) {
-  return mapaccess(m->t, &m->h, &key);
-}
-
-static i32 MapI32Get(MapI32* m, i32 key, i32 defaultval) {
-  i32* valp = MapI32Lookup(m, key);
-  if (!valp)
-    return defaultval;
-  return *valp;
-}
 
 
 DEF_TEST(map) {
-  dlog("bucketCnt  %zu", bucketCnt);
-  dlog("dataOffset %zu", dataOffset);
   Mem mem = mem_libc_allocator();
   fastrand_seed(1234);
-
-  MapI32* m = MapI32Make(NULL, mem, 0);
-  assertnotnull(m);
-  dlog("MapI32Make(0) => %p", m);
-  assertf(MapI32Set(m, 123, 456), "out of memory");
-  asserteq(MapI32Get(m, 123, -1), 456);
 
   maptype mt = mkmaptype(&kRType_i32, &kRType_i32, NULL);
 
@@ -845,16 +1077,32 @@ DEF_TEST(map) {
   assertf(h != NULL, "makemap failed");
   dlog("makemap({i32,i32},0) => %p", h);
 
-  i32 key = 1;
-  i32* valp = (i32*)mapassign(mem, &mt, h, &key);
-  assertf(valp != NULL, "out of memory");
-  *valp = 345;
-  dlog("mapassign(%d) => %p", key, valp);
+  i32 insert_count = 20;
 
-  valp = mapaccess(&mt, h, &key);
-  dlog("mapaccess(%d) => found=%d %d", key, !!valp, (!valp ? 0 : *valp));
-  assertnotnull(valp);
-  asserteq(345, *valp);
+  // insert
+  for (i32 key = 0; key < insert_count; key++) {
+    i32* valp = mapassign(mem, &mt, h, &key);
+    // dlog("mapassign(%d) => %p", key, valp);
+    assertf(valp != NULL, "out of memory");
+    *valp = key;
+  }
+
+  // lookup
+  for (i32 key = 0; key < insert_count; key++) {
+    i32* valp = mapaccess(&mt, h, &key);
+    // dlog("mapaccess(%d) => found=%d %d", key, !!valp, (!valp ? 0 : *valp));
+    assertnotnull(valp);
+    asserteq(key, *valp);
+  }
+
+  // replace
+  for (i32 key = insert_count/2; key < insert_count; key++) {
+    i32* valp = mapassign(mem, &mt, h, &key);
+    assertf(valp != NULL, "out of memory");
+    // NOTE: it is the caller's (here) responsibility to free an existing *valp
+    // if it is a pointer to heap memory.
+    *valp = key;
+  }
 
   mapfree(mem, h, &mt);
 

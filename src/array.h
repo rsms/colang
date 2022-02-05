@@ -95,6 +95,7 @@ typedef int (*{A}SortFun)(void* nullable ctx, const {T}* p1, const {T}* p2);
 inline static void A##Init(A* a) { *a = (A){0}; } \
 inline static void A##InitStorage(A* a, T* storage, u32 storagecap) { \
   assert(storagecap <= TYPED_ARRAY_CAP_MAX); \
+  assert(storagecap > 0); \
   *a = (A){ .v=storage, .cap=storagecap, .ext=true }; \
 } \
 inline static void A##Free(A* a, Mem m) { \
