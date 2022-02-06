@@ -583,10 +583,12 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #define floor  __builtin_floor
 #define ceil   __builtin_ceil
 
-#define memset __builtin_memset
-#define memcpy __builtin_memcpy
-#define memcmp __builtin_memcmp
-#define memchr __builtin_memchr
+#define memset  __builtin_memset
+#define memcpy  __builtin_memcpy
+#define memcmp  __builtin_memcmp
+#define memchr  __builtin_memchr
+#define memmove __builtin_memmove
+
 #define strlen __builtin_strlen
 #define strcmp __builtin_strcmp
 

@@ -1,6 +1,12 @@
 #include "coimpl.h"
 #include "hash.h"
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#define XXH_INLINE_ALL
+#include "xxhash.h"
+#pragma GCC diagnostic pop
+
 static u64 fastrand_state = 0;
 
 void fastrand_seed(u64 seed) {
@@ -32,5 +38,13 @@ u32 fastrand() {
     ((u32*)&fastrand_state)[0] = s0;
     ((u32*)&fastrand_state)[1] = s1;
     return s0 + s1;
+  #endif
+}
+
+usize hash_i32(const i32* v, usize seed) {
+  #if USIZE_MAX >= 0xFFFFFFFFFFFFFFFFu
+    return (usize)XXH64(v, sizeof(i32), seed);
+  #else
+    return (usize)XXH32(v, sizeof(i32), seed);
   #endif
 }
