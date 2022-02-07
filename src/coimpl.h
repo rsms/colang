@@ -6,24 +6,25 @@
   #define true  ((bool)1)
   #define false ((bool)0)
 #endif
-typedef signed char            i8;
-typedef unsigned char          u8;
-typedef signed short int       i16;
-typedef unsigned short int     u16;
-typedef signed int             i32;
-typedef unsigned int           u32;
-typedef signed long long int   i64;
-typedef unsigned long long int u64;
-typedef float                  f32;
-typedef double                 f64;
-typedef unsigned int           uint;
-typedef signed long            isize;
-typedef unsigned long          usize;
-typedef signed long            intptr;
-typedef unsigned long          uintptr;
-
-#ifndef NULL
-  #define NULL ((void*)0)
+typedef signed char         i8;
+typedef unsigned char       u8;
+typedef signed short        i16;
+typedef unsigned short      u16;
+typedef signed int          i32;
+typedef unsigned int        u32;
+typedef signed long long    i64;
+typedef unsigned long long  u64;
+typedef float               f32;
+typedef double              f64;
+typedef unsigned int        uint;
+typedef signed long         isize;
+typedef unsigned long       usize;
+#ifdef __INTPTR_TYPE__
+  typedef __INTPTR_TYPE__   intptr;
+  typedef __UINTPTR_TYPE__  uintptr;
+#else
+  typedef signed long       intptr;
+  typedef unsigned long     uintptr;
 #endif
 
 #define I8_MAX    0x7f
@@ -43,6 +44,20 @@ typedef unsigned long          uintptr;
 #define U32_MAX   0xffffffff
 #define U64_MAX   0xffffffffffffffff
 #define USIZE_MAX (__LONG_MAX__ *2UL+1UL)
+
+#ifdef __INTPTR_MAX__
+  #define INTPTR_MIN  (-__INTPTR_MAX__-1L)
+  #define INTPTR_MAX  __INTPTR_MAX__
+  #define UINTPTR_MAX __UINTPTR_MAX__
+#else
+  #define INTPTR_MIN  ISIZE_MIN
+  #define INTPTR_MAX  ISIZE_MAX
+  #define UINTPTR_MAX USIZE_MAX
+#endif
+
+#ifndef NULL
+  #define NULL ((void*)0)
+#endif
 
 // compiler feature test macros
 #ifndef __has_attribute
@@ -276,9 +291,10 @@ typedef unsigned long          uintptr;
 //   // 'sizeof(enum foo) <= sizeof(unsigned char)' "too many foo values"
 //
 #if __has_attribute(__packed__)
-  #define END_TYPED_ENUM(NAME)   \
-    __attribute__((__packed__)); \
-    static_assert(sizeof(enum NAME) <= sizeof(NAME), "too many " #NAME " values");
+  #define END_ENUM(NAME, MAXSIZE) \
+    __attribute__((__packed__));  \
+    static_assert(sizeof(enum NAME) <= MAXSIZE, "too many " #NAME " values");
+  #define END_TYPED_ENUM(NAME) END_ENUM(NAME, sizeof(NAME))
 #else
   #define END_TYPED_ENUM(NAME) ;
 #endif

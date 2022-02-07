@@ -1,44 +1,79 @@
 // map -- hash table with support for arbitrary key and value types
 #pragma once
 #include "mem.h"
+#include "hash.h"
 ASSUME_NONNULL_BEGIN
 
-typedef struct hmap    hmap;
-typedef struct maptype maptype;
+typedef struct HMap     HMap;     // hash map
+typedef struct HMapType HMapType; // describes types of keys and values of a map
 
-extern const maptype kMapType_i32_i32; // i32 => i32
+struct HMap {
+  usize count;     // # live cells == size of map
+  u8    flags;     // (hflags)
+  u8    B;         // log_2 of # of buckets (can hold up to loadFactor * 2^B items)
+  u16   noverflow; // approximate number of overflow buckets; see incrnoverflow
+  u32   hash0;     // hash seed
+  void* buckets;   // (bmap*) array of 2^B Buckets. may be nil if count==0.
+  void* nullable oldbuckets; // (bmap*)
+    // previous bucket array of half the size, non-nil only when growing
+  uintptr nevacuate;
+    // progress counter for evacuation (buckets less than this have been evacuated)
+  struct HMapExtra* nullable extra; // optional fields
+};
+static_assert(offsetof(HMap,count) == 0, "count must be first field of HMap");
+
+// predefined map types
+extern const HMapType kMapType_i32_i32; // i32 => i32
+extern const HMapType kMapType_ptr_ptr; // void* => void*
 
 // map_make implements map creation.
-// h and/or bucket may be non-null.
 // If h != NULL, the map can be created directly in h.
 // If h->buckets != NULL, bucket pointed to can be used as the first bucket.
-// Upon successful return, the resulting map can be found at h.
-hmap* nullable map_make(const maptype* t, hmap* nullable h, Mem, usize hint);
+// Returns NULL if memory allocation failed.
+HMap* nullable map_make(const HMapType* t, HMap* nullable h, Mem, usize hint);
 
 // map_init_small initializes a caller-managed map when hint is known to be
-// at most bucketCnt at compile time. Returns h.
-hmap* map_init_small(hmap* h, Mem);
+// at most 8 (bucketCnt) at compile time. Returns h.
+inline static HMap* map_init_small(HMap* h) { h->hash0 = fastrand(); return h; }
 
-// map_new_small implements map creation when hint is known to be at most bucketCnt
-// at compile time and the map needs to be allocated on the heap.
+// map_new_small implements map creation when hint is known to be at most 8 (bucketCnt)
+// and the map needs to be allocated with mem.
 // Returns NULL if memory allocation failed.
-hmap* nullable map_new_small(Mem);
+HMap* nullable map_new_small(Mem);
 
-// map_free deallocates a map and all of its internal resources.
-// h is invalid after this call (unless a non-null h was initially passed to map_make.)
-void map_free(const maptype* t, hmap* h);
+// map_len returns the number of entries stored at h
+inline static usize map_len(const HMap* h) { return h->count; }
 
 // map_access returns a pointer to h[key].
 // h can be NULL as a convenience (returns NULL early if so.)
 // Returns pointer to value storage, or NULL if key is not present in the map.
-void* nullable map_access(const maptype* t, hmap* nullable h, void* key);
+void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key);
 
 // map_assign is like map_access, but allocates a slot for the key if it is not present
-// in the map. Returns pointer to value storage.
-void* nullable map_assign(const maptype* t, hmap* h, void* key);
+// in the map. Returns pointer to value storage, which may contain an existing value to
+// be replaced (caller should manage externally-stored data as appropriate.)
+// Returns NULL on memory allocation failure.
+void* nullable map_assign(const HMapType* t, HMap* h, void* key, Mem);
 
 // map_delete removes the entry for key.
 // Returns a pointer to the removed value if found, or NULL if not found.
-void* nullable map_delete(const maptype* t, hmap* h, void* key);
+// Caller should manage externally-stored data as appropriate (eg. free memory.)
+void* nullable map_delete(const HMapType* t, HMap* nullable h, void* key, Mem);
+
+// map_clear removes all entries from a map.
+// After this call the map can be reused with the same HMapType directly
+// (e.g. map_assign) or with a different HMapType by calling map_make, which will use
+// existing resources of h.
+// If the keys and/or values contain heap-allocated memory, the caller should free
+// that heap memory before calling this function.
+void map_clear(const HMapType* t, HMap* nullable h, Mem);
+
+// map_free deallocates a map and all of its internal resources.
+// h is invalid after this call (unless a non-null h was initially passed to map_make.)
+// If the keys and/or values contain heap-allocated memory, the caller should free
+// that heap memory before calling this function.
+void map_free(const HMapType* t, HMap* h, Mem);
+
+
 
 ASSUME_NONNULL_END

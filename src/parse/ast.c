@@ -84,27 +84,33 @@ PosSpan _NodePosSpan(const Node* n) {
 
 
 Scope* ScopeNew(Mem mem, const Scope* parent) {
-  usize nbuckets = 8;
-  usize z = sizeof(Scope) + (sizeof(SymMapBucket) * nbuckets);
-  Scope* s = (Scope*)memalloc(mem, z);
+  Scope* s = memalloczt(mem, Scope);
   if (!s)
     return NULL;
   //assertf(IS_ALIGN2((uintptr)s, sizeof(void*)), "%p not a pointer aligned address", s);
   s->parent = parent;
-  SymMapInit(&s->bindings, (void*)s + sizeof(Scope), nbuckets, mem);
+  map_init_small(&s->bindings);
   return s;
 }
 
 void ScopeFree(Scope* s, Mem mem) {
-  SymMapDispose(&s->bindings);
+  symmap_free(&s->bindings, mem);
   memfree(mem, s);
+}
+
+error ScopeAssign(Scope* s, Sym key, Node* n, Mem mem) {
+  void** valp = symmap_assign(&s->bindings, key, mem);
+  if (UNLIKELY(valp == NULL))
+    return err_nomem;
+  *valp = n;
+  return 0;
 }
 
 const Node* ScopeLookup(const Scope* scope, Sym s) {
   const Node* n = NULL;
   while (scope && n == NULL) {
-    dlog("[lookup] %s in scope %p(len=%u)", s, scope, scope->bindings.len);
-    n = SymMapGet(&scope->bindings, s);
+    dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
+    n = symmap_access(&scope->bindings, s);
     scope = scope->parent;
   }
   #ifdef DEBUG_LOOKUP

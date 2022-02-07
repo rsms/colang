@@ -1,6 +1,7 @@
 // Sym -- immutable interned strings
 #pragma once
 #include "mem.h"
+#include "map.h"
 ASSUME_NONNULL_BEGIN
 
 // Sym is a string type that is interned and can be efficiently compared
@@ -148,7 +149,24 @@ inline static void sym_dangerously_set_len(Sym s, u32 len) {
 
 
 // ======================================================================================
-// SymMap -- hash map that maps Sym => pointer
+// hash map that maps Sym => pointer
+
+#define kSymMapType (&kMapType_ptr_ptr)
+
+inline static void** nullable symmap_assign(HMap* h, Sym key, Mem mem) {
+  return map_assign(kSymMapType, h, &key, mem);
+}
+
+inline static void* nullable symmap_access(const HMap* nullable h, Sym key) {
+  return map_access(kSymMapType, h, &key);
+}
+
+inline static void symmap_free(HMap* h, Mem mem) {
+  map_free(kSymMapType, h, mem);
+}
+
+// ======================================================================================
+// SymMap -- hash map that maps Sym => pointer (old)
 
 ASSUME_NONNULL_END
 #define HASHMAP_NAME  SymMap

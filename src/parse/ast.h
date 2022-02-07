@@ -1,6 +1,7 @@
 // AST nodes
 #pragma once
 #include "../array.h"
+#include "../map.h"
 #include "../sym.h"
 #include "token.h"
 #include "type.h"
@@ -210,10 +211,11 @@ struct FunTypeNode { Type;
 
 struct Scope {
   const Scope* parent;
-  // bindings must be the last member as composing structs places initial storage after it
-  SymMap bindings;
+  // bindings must be the last member as composing structs places initial storage after
+  // SymMap bindings;
+  HMap bindings;
 };
-static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(SymMap),
+static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(((Scope*)0)->bindings),
   "bindings is not last member of Scope");
 
 
@@ -1078,12 +1080,16 @@ Scope* nullable ScopeNew(Mem mem, const Scope* nullable parent);
 void ScopeFree(Scope*, Mem mem);
 const Node* nullable ScopeLookup(const Scope*, Sym);
 
-// ScopeAssoc associates key with *valuep_inout.
-// On return, sets *valuep_inout to a replaced node or NULL if no existing node was found.
+// ScopeAssign associates key with *valuep_inout.
 // Returns an error if memory allocation failed during growth of the hash table.
-WARN_UNUSED_RESULT
-inline static error ScopeAssoc(Scope* s, Sym key, Node** valuep_inout) {
-  return SymMapSet(&s->bindings, key, (void**)valuep_inout);
-}
+error ScopeAssign(Scope* s, Sym key, Node* n, Mem) WARN_UNUSED_RESULT;
+
+// // ScopeAssoc associates key with *valuep_inout.
+// // On return, sets *valuep_inout to a replaced node or NULL if no existing node was found.
+// // Returns an error if memory allocation failed during growth of the hash table.
+// WARN_UNUSED_RESULT
+// inline static error ScopeAssoc(Scope* s, Sym key, Node** valuep_inout) {
+//   return SymMapSet(&s->bindings, key, (void**)valuep_inout);
+// }
 
 ASSUME_NONNULL_END

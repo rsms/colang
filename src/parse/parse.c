@@ -509,7 +509,7 @@ static void _defsym(Parser* p, Sym s, Node* n) {
     // top level definition -- add to pkgscope.
     // TODO: For imports, make sure to add to file scope instead of package scope
     //       Lazily create: p->file->array.scope=ScopeNew(p->pkgscope, p->build->mem);
-    p->err = ScopeAssoc(p->pkgscope, s, &n);
+    p->err = ScopeAssign(p->pkgscope, s, n, p->build->mem);
   }
 }
 

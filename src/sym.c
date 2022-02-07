@@ -1,12 +1,6 @@
 #include "coimpl.h"
 #include "sym.h"
-
-// xxhash used for symbol hashing
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
-#define XXH_INLINE_ALL
-#include "xxhash.h"
-#pragma GCC diagnostic pop
+#include "hash.h"
 
 // red-black tree implementation used for SymPool interning
 #define RBKEY      Sym
@@ -28,16 +22,21 @@
 #undef HASHMAP_IMPLEMENTATION
 
 
-// sym_xxhash32_seed is the xxHash seed used for hashing sym data
-static const u32 sym_xxhash32_seed = 578;
+// Sym hashing
+//   SYM_HASH_SEED is the xxHash seed used for hashing sym data
+//   u32 HASH_SYM_DATA(const void* p, u32 len) computes a hash of a symbol's name
+// If you change these, you have to re-run the universe generator.
+#define SYM_HASH_SEED 578
+#define HASH_SYM_DATA(data, len) \
+  ((u32)hash_mem(data, (usize)len, SYM_HASH_SEED))
 
-#define HASH_SYM_DATA(data, len) XXH32((const void*)(data), (len), sym_xxhash32_seed)
 
 inline static SymRBNode* RBAllocNode(Mem mem) {
   return memalloct(mem, SymRBNode);
 }
 
-// syms are never removed from the interning tree
+// syms are never removed from the interning tree but other sympool instances, like
+// those used for testing, might.
 inline static void RBFreeNode(SymRBNode* node, Mem mem) {
   memfree(mem, (void*)_SYM_HEADER(node->key));
   memfree(mem, node);

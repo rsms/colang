@@ -99,8 +99,10 @@ inline static void A##InitStorage(A* a, T* storage, u32 storagecap) { \
   *a = (A){ .v=storage, .cap=storagecap, .ext=true }; \
 } \
 inline static void A##Free(A* a, Mem m) { \
-  if (!a->ext && a->v != NULL) \
+  if (!a->ext && a->v != NULL) { \
     memfree(m, a->v); \
+    a->v = NULL; \
+  } \
 } \
 inline static void A##Clear(A* a) { a->len = 0; } \
 inline static bool A##Push(A* a, T v, Mem m) { \
