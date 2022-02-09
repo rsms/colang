@@ -9,8 +9,8 @@ typedef struct HMapType HMapType; // describes types of keys and values of a map
 
 struct HMap {
   usize count;     // # live cells == size of map
-  u8    flags;     // (hflags)
-  u8    B;         // log_2 of # of buckets (can hold up to loadFactor * 2^B items)
+  u8    flags;     // (hflag)
+  u8    B;         // log2 of # of buckets (can hold up to loadFactor * 2^B items)
   u16   noverflow; // approximate number of overflow buckets; see incrnoverflow
   u32   hash0;     // hash seed
   void* buckets;   // (bmap*) array of 2^B Buckets. may be nil if count==0.
@@ -76,14 +76,22 @@ void map_clear(const HMapType* t, HMap* nullable h, Mem);
 void map_free(const HMapType* t, HMap* h, Mem);
 
 // map_bucketsize calculates the memory needed to store count entries, in bytes,
-// excluding the HMap structure when count is provided up front to map_make.
-// alloc_overhead is a number added to each separate allocation, useful for precise
-// calculations for tests.
+// excluding the HMap structure when count is provided up front to map_make,
+// assuming no collisions. alloc_overhead is added to each logical allocation.
 // Note that for map_make calls without a preallocated HMap, additional space is
 // required for the HMap struct. In that case, add sizeof(HMap)+alloc_overhead
-// to the result.
-// Returns 0 if the result would overflow usize.
+// to the result. Returns 0 if the result would overflow usize.
 usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead);
+
+// map_make_deterministic works like map_make but configures the map to have
+// reproducible deterministic behavior, useful for testing. Disables attack mitigations.
+HMap* nullable map_make_deterministic(
+  const HMapType*, HMap* nullable h, Mem, usize hint, u32 hash_seed);
+
+// map_set_deterministic enables or disables h to behave in a reproducible,
+// deterministic behavior, useful for testing. Disables attack mitigations.
+// Returns previous state.
+bool map_set_deterministic(HMap* h, bool enabled);
 
 // --------------------------------------------------------------------------------------
 // inline implementations

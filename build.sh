@@ -52,6 +52,7 @@ if [ -n "$WATCH" ]; then
   _exit() {
     _killcmd
     kill $(jobs -p) 2>/dev/null || true
+    rm -f "$RUN_PIDFILE"
     exit
   }
   trap _exit SIGINT  # make sure we can ctrl-c in the while loop

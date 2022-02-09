@@ -312,7 +312,8 @@ char* strrevn(char* s, usize len) {
 }
 
 usize strfmt_u64(char buf[64], u64 v, u32 base) {
-  static const char chars[] = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  static const char chars[] =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
   base = MIN(base, 62);
   char* p = buf;
   do {

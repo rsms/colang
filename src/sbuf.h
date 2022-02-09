@@ -8,14 +8,14 @@ ASSUME_NONNULL_BEGIN
 //
 // Here is a template for use with functions that uses SBuf:
 //
-// // It writes at most bufsize-1 of the characters to the output buf (the bufsize'th
+// // It writes at most bufcap-1 of the characters to the output buf (the bufcap'th
 // // character then gets the terminating '\0'). If the return value is greater than or
-// // equal to the bufsize argument, buf was too short and some of the characters were
+// // equal to the bufcap argument, buf was too short and some of the characters were
 // // discarded. The output is always null-terminated, unless size is 0.
-// // Returns the number of characters that would have been printed if bufsize was
+// // Returns the number of characters that would have been printed if bufcap was
 // // unlimited (not including the final `\0').
-// usize myprint(char* buf, usize bufsize, int somearg) {
-//   SBuf s = sbuf_make(buf, bufsize);
+// usize myprint(char* buf, usize bufcap, int somearg) {
+//   SBuf s = sbuf_make(buf, bufcap);
 //   // call sbuf_append functions here
 //   return sbuf_terminate(&s);
 // }

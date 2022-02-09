@@ -5,13 +5,7 @@
 // DEBUG_UNIVERSE_DUMP_SCOPE -- define to log universe_scope state
 //#define DEBUG_UNIVERSE_DUMP_SCOPE
 
-static struct {
-  Scope s;
-  //u8    bindings_storage[592];
-  u8    bindings_storage[816]; // TODO: on M1 macOS 12 sometimes we need 816, not 592... wtf?
-  // size from: map_bucketsize(kSymMapType, entries_count, kFixBufAllocatorOverhead)
-} g_scope = {0};
-
+static Scope   g_scope = {0};
 static SymPool g_universe_syms = {0};
 
 
@@ -26,27 +20,15 @@ static SymPool g_universe_syms = {0};
 static void universe_init_scope() {
 #if !RUN_GENERATOR
 
-  // count entries
-  // TODO: do this in universe generator once
-  usize count = 0;
-  #define _(...) count++;
-  DEF_TYPE_CODES_BASIC_PUB(_)
-  DEF_TYPE_CODES_BASIC(_)
-  DEF_TYPE_CODES_PUB(_)
-  DEF_CONST_NODES_PUB(_)
-  #undef _
-
-  count--; // don't count kType_nil
-
-  // TODO: look into creating the map at compile time or by the universe generator.
-  // Maybe as simple as building the map and generating a corresponding byte array
-  // for h->buckets (and state of h fields like count, flags, B and hash0.)
+  static u8 g_scope_storage[1168];
+  // size = map_bucketsize(kSymMapType, kUniverseScopeLen*2, kFixBufAllocatorOverhead)
 
   FixBufAllocator ma;
-  Mem mem = FixBufAllocatorInitz(
-    &ma, g_scope.bindings_storage, sizeof(g_scope.bindings_storage));
+  Mem mem = FixBufAllocatorInitz(&ma, g_scope_storage, sizeof(g_scope_storage));
 
-  HMap* h = symmap_make(&g_scope.s.bindings, mem, count);
+  HMap* h = map_make_deterministic(
+    kSymMapType, &g_scope.bindings, mem, kUniverseScopeLen, 0xfeedface);
+  assertnotnull(h);
   void** vp;
 
   // note: kType_nil is not exported as it would shadow kExpr_nil
@@ -72,14 +54,14 @@ static void universe_init_scope() {
   DEF_CONST_NODES_PUB(_)
   #undef _
 
-  // TODO: run map_bucketsize in universe generator to define bindings_storage size
-  // dlog("%zu B", map_bucketsize(kSymMapType, count, kFixBufAllocatorOverhead));
-  // dlog("ma.len %zu", ma.len);
+  // dlog("appox  %4zu B", map_bucketsize(
+  //   kSymMapType, kUniverseScopeLen*1.5, kFixBufAllocatorOverhead));
+  // dlog("ma.len %4zu B", ma.len);
 
   // TODO: DEBUG_UNIVERSE_DUMP_SCOPE
   // #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
   //   log("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() %p, %u bindings:",
-  //     universe_scope(), SymMapLen(&g_scope.s.bindings));
+  //     universe_scope(), SymMapLen(&g_scope.bindings));
   //   SymMapIter(&g_scope.s.bindings, &symmap_iter, NULL);
   // #endif
 #endif
@@ -98,7 +80,7 @@ void universe_init() {
 }
 
 const Scope* universe_scope() {
-  return &g_scope.s;
+  return &g_scope;
 }
 
 const SymPool* universe_syms() {

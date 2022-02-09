@@ -181,12 +181,14 @@ __attribute__((used)) static const char* const debugSymCheck =
   "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:f32 tc:f64 tc:int tc:uint tc:nil tc:ideal tc:str tc:auto sym:_ const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
 #endif
 
+#define kUniverseScopeLen 19
+
 //-- END gen_constants()
 
 // ---------------------------------------------------------------------------------------
 // sym constant data generator
 
-#if RUN_GENERATOR || !defined(NDEBUG)
+#if RUN_GENERATOR || defined(DEBUG)
   static Str gen_checksum(Str s) {
 
     #define _(tok, str) s = str_appendfmt(s, "kw:%s=%s ", #str, #tok);
@@ -219,6 +221,9 @@ __attribute__((used)) static const char* const debugSymCheck =
 
 
 #if RUN_GENERATOR
+#if !defined(DEBUG)
+  #error Trying to run the generator in a non-debug build
+#endif
 
 #ifndef CO_WITH_LIBC
   #error Generator depends on libc
@@ -504,6 +509,30 @@ static void gen_constants() {
     "  \"%s\";\n#endif\n",
     tmpstr->p);
 
+
+  // ------------------------------------------------------------------------------------
+  // generate scope map
+  {
+    // count scope map entries
+    u32 keycount = 0;
+    #define _(...) keycount++;
+    DEF_TYPE_CODES_BASIC_PUB(_)
+    DEF_TYPE_CODES_BASIC(_)
+    DEF_TYPE_CODES_PUB(_)
+    DEF_CONST_NODES_PUB(_)
+    #undef _
+    keycount--; // don't count kType_nil
+
+    printf("\n");
+    printf("#define kUniverseScopeLen %u\n", keycount);
+
+    // TODO: look into generating the HMap. The main challenge with doing this is that
+    // we use pointers to kSym_*s as keys, which vary per runtime session, so we would
+    // have to use symhash with symmap to get stable keys. However the issue with doing
+    // that is that then we would have poor cache locality as every internal map
+    // comparison would have to load a symbol's hash from wherever that symbol lives in
+    // memory.
+  }
 
   // ------------------------------------------------------------------------------------
 

@@ -77,7 +77,7 @@ Typical tables will be somewhat less loaded.
 #include "coimpl.h"
 #include "map.h"
 #include "test.h"
-#include "time.h"
+#include "sbuf.h" // for map_codegen
 #include "array.h"
 
 #ifdef CO_WITH_LIBC
@@ -185,11 +185,12 @@ typedef u8 hflag;
 static_assert(__builtin_types_compatible_p(hflag, __typeof__(((HMap*)0)->flags)),
               "type of HMap.flags doesn't match hflag type");
 enum hflag {
-  H_iterator     = 1 << 0, // there may be an iterator using buckets
-  H_oldIterator  = 1 << 1, // there may be an iterator using oldbuckets
-  H_hashWriting  = 1 << 2, // a goroutine is writing to the map
-  H_sameSizeGrow = 1 << 3, // the current map growth is to a new map of the same size
-  H_hmemManaged  = 1 << 4, // memory for HMap should be freed by mapfree
+  H_iterator      = 1 << 0, // there may be an iterator using buckets
+  H_oldIterator   = 1 << 1, // there may be an iterator using oldbuckets
+  H_hashWriting   = 1 << 2, // a thread is writing to the map
+  H_sameSizeGrow  = 1 << 3, // the current map growth is to a new map of the same size
+  H_hmemManaged   = 1 << 4, // memory for HMap should be freed by mapfree
+  H_deterministic = 1 << 5, // deterministic behavior (no attack mitigation)
 } END_TYPED_ENUM(hflag)
 
 typedef u8 tkind;
@@ -285,64 +286,66 @@ static bool maptype_needkeyupdate(const HMapType* mt) {
   return mt->flags&maptypeNeedKeyUpdate;}
 
 
-// rtype_isReflexive reports whether the == operation on the type is reflexive.
-// That is, x == x for all values x of type t.
-static bool rtype_isReflexive(const rtype* t) {
-  switch ((enum tkind)t->kind) {
-    case tkind_ptr:
-    case tkind_sint:
-    case tkind_uint:
-      return true;
-    case tkind_float:
-      return false;
-    case tkind_struct:
-      // really, the answer is MAX([rtype_isReflexive(f) for f in t->fields])
-      return false;
-    case tkind_invalid:
-      break;
+#ifdef CO_TESTING_ENABLED
+  // rtype_isReflexive reports whether the == operation on the type is reflexive.
+  // That is, x == x for all values x of type t.
+  static bool rtype_isReflexive(const rtype* t) {
+    switch ((enum tkind)t->kind) {
+      case tkind_ptr:
+      case tkind_sint:
+      case tkind_uint:
+        return true;
+      case tkind_float:
+        return false;
+      case tkind_struct:
+        // really, the answer is MAX([rtype_isReflexive(f) for f in t->fields])
+        return false;
+      case tkind_invalid:
+        break;
+    }
+    panic("non-key type %p", t);
   }
-  panic("non-key type %p", t);
-}
 
-// rtype_needKeyUpdate reports whether map overwrites require the key to be copied
-static bool rtype_needKeyUpdate(const rtype* t) {
-  switch ((enum tkind)t->kind) {
-    case tkind_ptr:
-    case tkind_sint:
-    case tkind_uint:
-      return false;
-    case tkind_float:
-      // Float keys can be updated from +0 to -0.
-      // String keys can be updated to use a smaller backing store.
-      // Interfaces might have floats of strings in them.
-      return true;
-    case tkind_struct:
-      // really, the answer is MAX([rtype_needKeyUpdate(f) for f in t->fields])
-      return true;
-    case tkind_invalid:
-      break;
+  // rtype_needKeyUpdate reports whether map overwrites require the key to be copied
+  static bool rtype_needKeyUpdate(const rtype* t) {
+    switch ((enum tkind)t->kind) {
+      case tkind_ptr:
+      case tkind_sint:
+      case tkind_uint:
+        return false;
+      case tkind_float:
+        // Float keys can be updated from +0 to -0.
+        // String keys can be updated to use a smaller backing store.
+        // Interfaces might have floats of strings in them.
+        return true;
+      case tkind_struct:
+        // really, the answer is MAX([rtype_needKeyUpdate(f) for f in t->fields])
+        return true;
+      case tkind_invalid:
+        break;
+    }
+    panic("non-key type %p", t);
   }
-  panic("non-key type %p", t);
-}
 
-static keyhasher rtype_hasher(const rtype* t) {
-  switch ((enum tkind)t->kind) {
-    case tkind_sint:
-    case tkind_uint:
-      if (t->size == 4)
-        return &hash_4;
-      if (t->size == 8)
-        return &hash_4;
-      break;
-    case tkind_ptr:
-        return &hash_ptr;
-    case tkind_float:
-    case tkind_struct:
-    case tkind_invalid:
-      break;
+  static keyhasher rtype_hasher(const rtype* t) {
+    switch ((enum tkind)t->kind) {
+      case tkind_sint:
+      case tkind_uint:
+        if (t->size == 4)
+          return &hash_4;
+        if (t->size == 8)
+          return &hash_4;
+        break;
+      case tkind_ptr:
+          return &hash_ptr;
+      case tkind_float:
+      case tkind_struct:
+      case tkind_invalid:
+        break;
+    }
+    panic("no hasher for rtype %d", t->kind);
   }
-  panic("no hasher for rtype %d", t->kind);
-}
+#endif // CO_TESTING_ENABLED
 
 // isEmpty reports whether the given tophash array entry
 // represents an empty bucket entry.
@@ -453,7 +456,7 @@ static void hmap_incrnoverflow(HMap* h) {
   u32 mask = ((u32)1 << (h->B - 15)) - 1; // [LOOK]
   // Example: if h->B == 18, then mask == 7,
   // and fastrand & 7 == 0 with probability 1/8.
-  if ((fastrand() & mask) == 0)
+  if ((fastrand() & mask) == 0 && (h->flags & H_deterministic) == 0)
     h->noverflow++;
 }
 
@@ -991,7 +994,7 @@ void* nullable map_delete(const HMapType* t, HMap* nullable h, void* key, Mem me
       h->count--;
       // Reset the hash seed to make it more difficult for attackers to
       // repeatedly trigger hash collisions. See Go issue 25237.
-      if (h->count == 0)
+      if (h->count == 0 && (h->flags & H_deterministic) == 0)
         h->hash0 = fastrand();
       goto end_search;
     }
@@ -1012,7 +1015,7 @@ void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key) 
 
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
   usize m = bucketMask(h->B);
-  bmap* b = (bmap*)((void*)h->buckets + (hash & m)*t->bucket.size);
+  bmap* b = ((void*)h->buckets + (hash & m)*t->bucket.size);
   bmap* c = h->oldbuckets;
 
   if (c != NULL) {
@@ -1071,7 +1074,8 @@ void map_clear(const HMapType* t, HMap* nullable h, Mem mem) {
 
   // Reset the hash seed to make it more difficult for attackers to
   // repeatedly trigger hash collisions. See Go issue 25237.
-  h->hash0 = fastrand();
+  if ((h->flags & H_deterministic) == 0)
+    h->hash0 = fastrand();
 
   // Keep the HMapExtra allocation but clear any extra information
   if (h->extra != NULL) {
@@ -1118,7 +1122,9 @@ void map_free(const HMapType* t, HMap* h, Mem mem) {
 // If h != NULL, the map can be created directly in h.
 // If h->buckets != NULL, bucket pointed to can be used as the first bucket.
 // Return NULL on memory allocation failure or overflow from too large hint.
-HMap* nullable map_make(const HMapType* t, HMap* nullable h, Mem mem, usize hint) {
+HMap* nullable map_make1(
+  const HMapType* t, HMap* nullable h, Mem mem, usize hint, u32 hash0, u8 flags)
+{
   // check if hint is too large
   usize z;
   if (check_mul_overflow(hint, t->bucket.size, &z))
@@ -1131,7 +1137,9 @@ HMap* nullable map_make(const HMapType* t, HMap* nullable h, Mem mem, usize hint
     h->flags |= H_hmemManaged;
   }
 
-  h->hash0 = fastrand(); // seed
+  assertf((flags & H_deterministic) == flags, "unexpected initial flags");
+  h->flags |= flags;
+  h->hash0 = hash0;
 
   // Find the size parameter B which will hold the requested # of elements.
   // For hint < 0 is_over_loadFactor returns false since hint < bucketCnt.
@@ -1169,6 +1177,17 @@ free_and_fail:
 }
 
 
+HMap* nullable map_make(const HMapType* t, HMap* nullable h, Mem mem, usize hint) {
+  return map_make1(t, h, mem, hint, fastrand(), 0);
+}
+
+HMap* nullable map_make_deterministic(
+  const HMapType* t, HMap* nullable h, Mem mem, usize hint, u32 hash_seed)
+{
+  return map_make1(t, h, mem, hint, hash_seed, H_deterministic);
+}
+
+
 // map_new_small implements map creation when hint is known to be at most bucketCnt
 // at compile time and the map needs to be allocated on the heap.
 HMap* nullable map_new_small(Mem mem) {
@@ -1181,7 +1200,95 @@ HMap* nullable map_new_small(Mem mem) {
 }
 
 
+bool map_set_deterministic(HMap* h, bool enabled) {
+  bool prevstate = (h->flags & H_deterministic) != 0;
+  SET_FLAG(h->flags, H_deterministic, enabled);
+  return prevstate;
+}
+
+
+usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead) {
+  u8 B = 0;
+  while (is_over_loadFactor(count, B))
+    B++;
+
+  // see comments in make_bucket_array
+  usize base = bucketShift(B);
+  usize nbuckets = base;
+  if (B >= 4) {
+    nbuckets += bucketShift(B - 4);
+    usize sz = t->bucket.size * nbuckets;
+    usize up = ALIGN2(sz, PTRSIZE);
+    if (up != sz)
+      nbuckets = up / t->bucket.size;
+  }
+
+  // alloc_overhead + (bucketsize * nbuckets)
+  usize nbyte;
+  if (check_mul_overflow(t->bucket.size, nbuckets, &nbyte))
+    return 0;
+  if (check_add_overflow(nbyte, alloc_overhead, &nbyte))
+    return 0;
+  return nbyte;
+}
+
 // ————————————————————————————————————————————————————————————————————————————————————
+// map types
+
+// static void noop_free(Mem mem, void** pv, usize count) { dlog("free %p", pv[0]); }
+static bool i32_equal(const i32* a, const i32* b) { return *a == *b; }
+static bool ptr_equal(const void** a, const void** b) { return *a == *b; }
+// static bool f64_equal(const f64* a, const f64* b) { return *a == *b; }
+
+// static const rtype kRType_i32 = {
+//   .size = sizeof(i32),
+//   .align = sizeof(i32),
+//   .kind = tkind_sint,
+//   .equal = (equalfun)&i32_equal,
+// };
+
+// MAPTYPE defines a HMapType at compile time
+#define MAPTYPE(kt, kalign, keqf, vt, valign, veqf, hashf, mtflags) {                \
+  .bucket = {                                                                        \
+    .align = PTRSIZE,                                                                \
+    .kind  = tkind_struct,                                                           \
+    .size  = MAPTYPE_SIZE(kt, vt),                                                   \
+  },                                                                                 \
+  .key = {                                                                           \
+    .size = sizeof(kt),                                                              \
+    .align = kalign,                                                                 \
+    .equal = (equalfun)(keqf),                                                       \
+  },                                                                                 \
+  .elem = {                                                                          \
+    .size = sizeof(vt),                                                              \
+    .align = valign,                                                                 \
+    .equal = (equalfun)(veqf),                                                       \
+  },                                                                                 \
+  .hasher = (keyhasher)(hashf),                                                      \
+  .keysize = sizeof(kt),                                                             \
+  .elemsize = sizeof(vt),                                                            \
+  .flags = mtflags,                                                                  \
+};                                                                                   \
+static_assert((MAPTYPE_SIZE(kt, vt) & alignof(kt) - 1) == 0, "not aligned");         \
+static_assert((MAPTYPE_SIZE(kt, vt) & alignof(vt) - 1) == 0, "not aligned");         \
+static_assert(sizeof(kt) <= maxKeySize, "must use make_ptr_type(ktyp) to calc size");\
+static_assert(sizeof(vt) <= maxKeySize, "must use make_ptr_type(vtyp) to calc size")
+
+#define MAPTYPE_SIZE(kt, vt) (bucketCnt*(1 + sizeof(kt) + sizeof(vt)) + PTRSIZE)
+
+const HMapType kMapType_i32_i32 =
+  MAPTYPE(i32, sizeof(i32), &i32_equal,
+          i32, sizeof(i32), &i32_equal,
+          &hash_4, maptypeReflexiveKey);
+
+const HMapType kMapType_ptr_ptr =
+  MAPTYPE(void*, sizeof(void*), &ptr_equal,
+          void*, sizeof(void*), &ptr_equal,
+          &hash_ptr, maptypeReflexiveKey);
+
+
+// ————————————————————————————————————————————————————————————————————————————————————
+#ifdef CO_TESTING_ENABLED
 
 static rtype make_ptr_type(const rtype* etyp) {
   return (rtype){ .size = PTRSIZE, .align = PTRSIZE, .kind = tkind_ptr };
@@ -1246,92 +1353,6 @@ static HMapType mkmaptype(
   return mt;
 }
 
-// ————————————————————————————————————————————————————————————————————————————————————
-
-
-// static void noop_free(Mem mem, void** pv, usize count) { dlog("free %p", pv[0]); }
-static bool i32_equal(const i32* a, const i32* b) { return *a == *b; }
-static bool ptr_equal(const void** a, const void** b) { return *a == *b; }
-// static bool f64_equal(const f64* a, const f64* b) { return *a == *b; }
-
-// static const rtype kRType_i32 = {
-//   .size = sizeof(i32),
-//   .align = sizeof(i32),
-//   .kind = tkind_sint,
-//   .equal = (equalfun)&i32_equal,
-// };
-
-// MAPTYPE defines a HMapType at compile time
-#define MAPTYPE(kt, kalign, keqf, vt, valign, veqf, hashf, mtflags) {                \
-  .bucket = {                                                                        \
-    .align = PTRSIZE,                                                                \
-    .kind  = tkind_struct,                                                           \
-    .size  = MAPTYPE_SIZE(kt, vt),                                                   \
-  },                                                                                 \
-  .key = {                                                                           \
-    .size = sizeof(kt),                                                              \
-    .align = kalign,                                                                 \
-    .equal = (equalfun)(keqf),                                                       \
-  },                                                                                 \
-  .elem = {                                                                          \
-    .size = sizeof(vt),                                                              \
-    .align = valign,                                                                 \
-    .equal = (equalfun)(veqf),                                                       \
-  },                                                                                 \
-  .hasher = (keyhasher)(hashf),                                                      \
-  .keysize = sizeof(kt),                                                             \
-  .elemsize = sizeof(vt),                                                            \
-  .flags = mtflags,                                                                  \
-};                                                                                   \
-static_assert((MAPTYPE_SIZE(kt, vt) & alignof(kt) - 1) == 0, "not aligned");         \
-static_assert((MAPTYPE_SIZE(kt, vt) & alignof(vt) - 1) == 0, "not aligned");         \
-static_assert(sizeof(kt) <= maxKeySize, "must use make_ptr_type(ktyp) to calc size");\
-static_assert(sizeof(vt) <= maxKeySize, "must use make_ptr_type(vtyp) to calc size")
-#define MAPTYPE_SIZE(kt, vt) (bucketCnt*(1 + sizeof(kt) + sizeof(vt)) + PTRSIZE)
-
-
-usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead) {
-  u8 B = 0;
-  while (is_over_loadFactor(count, B))
-    B++;
-
-  // see comments in make_bucket_array
-  usize base = bucketShift(B);
-  usize nbuckets = base;
-  if (B >= 4) {
-    nbuckets += bucketShift(B - 4);
-    usize sz = t->bucket.size * nbuckets;
-    usize up = ALIGN2(sz, PTRSIZE);
-    if (up != sz)
-      nbuckets = up / t->bucket.size;
-  }
-
-  // alloc_overhead + (bucketsize * nbuckets)
-  usize nbyte;
-  if (check_mul_overflow(t->bucket.size, nbuckets, &nbyte))
-    return 0;
-  if (check_add_overflow(nbyte, alloc_overhead, &nbyte))
-    return 0;
-  return nbyte;
-}
-
-
-const HMapType kMapType_i32_i32 =
-  MAPTYPE(i32, sizeof(i32), &i32_equal,
-          i32, sizeof(i32), &i32_equal,
-          &hash_4, maptypeReflexiveKey);
-
-const HMapType kMapType_ptr_ptr =
-  MAPTYPE(void*, sizeof(void*), &ptr_equal,
-          void*, sizeof(void*), &ptr_equal,
-          &hash_ptr, maptypeReflexiveKey);
-
-// const HMapType kMapType_f64_i32 =
-//   MAPTYPE(f64, sizeof(f64), &f64_equal,
-//           i32, sizeof(i32), &i32_equal,
-//           &hash_i32/*<-FIXME*/, maptypeNeedKeyUpdate);
-
-
 
 DEF_TEST(map) {
   Mem mem = mem_libc_allocator();
@@ -1349,6 +1370,7 @@ DEF_TEST(map) {
     HMap hstk = { .buckets = memallocz(mem, mt->bucket.size) };
     // HMap hstk = { 0 };
     HMap* h = map_init_small(&hstk);
+    map_set_deterministic(h, true);
   #endif
 
   i32 insert_count = 200;
@@ -1403,10 +1425,11 @@ DEF_TEST(map_allocfail) {
   const HMapType* mt = &kMapType_i32_i32;
   u8 membuf[sizeof(HMap) + MAPTYPE_SIZE(i32,i32) * 128] = {0};
   FixBufAllocator ma = {0};
+  u32 hash0 = 0xfeedface;
 
   { // test alloc failure of HMap in map_make
     Mem mem = FixBufAllocatorInit(&ma, membuf, sizeof(HMap)-1);
-    HMap* h = map_make(mt, NULL, mem, 0);
+    HMap* h = map_make_deterministic(mt, NULL, mem, 0, hash0);
     assertnull(h);
   }
 
@@ -1422,21 +1445,21 @@ DEF_TEST(map_allocfail) {
     usize memsize = sizeof(HMap) + MAPTYPE_SIZE(i32,i32)*2 + kFixBufAllocatorOverhead*2;
     Mem mem = FixBufAllocatorInit(&ma, membuf, memsize);
     assertnotnull(mem);
-    assertnotnull(map_make(mt, NULL, mem, bucketCnt + 1));
+    assertnotnull(map_make_deterministic(mt, NULL, mem, bucketCnt + 1, hash0));
     assertf(ma.cap == ma.len, "memory exhausted");
     //
     // Second, we reduce the available memory by 1 byte -- this should fail
     memsize = sizeof(HMap) + MAPTYPE_SIZE(i32,i32)*2 + kFixBufAllocatorOverhead*2 - 1;
     mem = FixBufAllocatorInit(&ma, membuf, memsize);
     assertnotnull(mem);
-    assertnull(map_make(mt, NULL, mem, bucketCnt + 1));
+    assertnull(map_make_deterministic(mt, NULL, mem, bucketCnt + 1, hash0));
   }
 
   { // test alloc failure during growth (lazy initial bucket)
     usize memsize = sizeof(HMap) + kFixBufAllocatorOverhead;
     Mem mem = FixBufAllocatorInit(&ma, membuf, memsize);
     assertnotnull(mem);
-    HMap* h = assertnotnull(map_make(mt, NULL, mem, 0));
+    HMap* h = assertnotnull(map_make_deterministic(mt, NULL, mem, 0, hash0));
     i32 key = 1;
     void* vp = map_assign(mt, h, &key, mem);
     assertnull(vp);
@@ -1446,7 +1469,7 @@ DEF_TEST(map_allocfail) {
     usize memsize = sizeof(HMap) + MAPTYPE_SIZE(i32,i32)*2 + kFixBufAllocatorOverhead*2;
     Mem mem = FixBufAllocatorInit(&ma, membuf, memsize);
     assertnotnull(mem);
-    HMap* h = assertnotnull(map_make(mt, NULL, mem, bucketCnt + 1));
+    HMap* h = assertnotnull(map_make_deterministic(mt, NULL, mem, bucketCnt + 1, hash0));
     for (i32 key = 0; key < (i32)bucketCnt*2; key++) {
       if (is_over_loadFactor(h->count + 1, h->B)) {
         // hash_grow is called and it should fail to allocate memory
@@ -1593,3 +1616,5 @@ DEF_TEST(map_allocfail) {
     }
   }
 #endif // ENABLE_LARGE_ENTRIES
+
+#endif // CO_TESTING_ENABLED

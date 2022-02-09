@@ -39,12 +39,12 @@ void sbuf_appendrepr(SBuf* s, const char* srcp, usize len) {
   usize nwrite = 0;
 
   for (usize i = 0; i < len; i++) {
-    char c = *srcp++;
+    u8 c = (u8)*srcp++;
     switch (c) {
       // \xHH
-      case '\0'...'\x08':
-      case '\x0E'...'\x1F':
-      case 0x7f:
+      case '\1'...'\x08':
+      case 0x0E ... 0x1F:
+      case 0x7f ... 0xFF:
         if (LIKELY( p + 3 < lastp )) {
           p[0] = '\\';
           p[1] = 'x';
@@ -65,10 +65,13 @@ void sbuf_appendrepr(SBuf* s, const char* srcp, usize len) {
       case '\t'...'\x0D':
       case '\\':
       case '"':
+      case '\0':
         static const char t[] = {'t','n','v','f','r'};
         if (LIKELY( p + 1 < lastp )) {
           p[0] = '\\';
-          p[1] = ((usize)c - '\t') <= sizeof(t) ? t[c - '\t'] : c;
+          if      (c == 0)                         p[1] = '0';
+          else if (((usize)c - '\t') <= sizeof(t)) p[1] = t[c - '\t'];
+          else                                     p[1] = c;
           p += 2;
         } else {
           p = lastp;

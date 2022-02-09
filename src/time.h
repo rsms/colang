@@ -37,10 +37,11 @@ inline static TimeLabel logtime_start(const char* label) {
 #define logtime_end(t) _logtime_end(&(t))
 void _logtime_end(const TimeLabel* t);
 #if __has_attribute(__cleanup__)
-  #define logtime_scope(label) \
-    UNUSED TimeLabel logtime__ __attribute__((__cleanup__(_logtime_end))) = logtime_start(label)
+  #define logtime_scope(label)                                              \
+    UNUSED TimeLabel logtime__ __attribute__((__cleanup__(_logtime_end))) = \
+    logtime_start(label)
 #else
-  #define logtime_scope(label) ((void)0)
+  #define logtime_scope(label) _logtime_end(logtime_start(label))
 #endif
 
 ASSUME_NONNULL_END
