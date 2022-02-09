@@ -8,27 +8,12 @@
 #define RBNODETYPE SymRBNode
 #include "rbtree.h"
 
-// SymMap implementation
-#define HASHMAP_IMPLEMENTATION
-#define HASHMAP_NAME     SymMap
-#define HASHMAP_KEY      Sym
-#define HASHMAP_KEY_HASH symhash
-#define HASHMAP_VALUE    void*
-#include "hashmap.h"
-#undef HASHMAP_NAME
-#undef HASHMAP_KEY
-#undef HASHMAP_KEY_HASH
-#undef HASHMAP_VALUE
-#undef HASHMAP_IMPLEMENTATION
-
-
 // Sym hashing
 //   SYM_HASH_SEED is the xxHash seed used for hashing sym data
 //   u32 HASH_SYM_DATA(const void* p, u32 len) computes a hash of a symbol's name
 // If you change these, you have to re-run the universe generator.
 #define SYM_HASH_SEED 578
-#define HASH_SYM_DATA(data, len) \
-  ((u32)hash_mem(data, (usize)len, SYM_HASH_SEED))
+#define HASH_SYM_DATA(data, len)  ((u32)hash_mem(data, (usize)len, SYM_HASH_SEED))
 
 
 inline static SymRBNode* RBAllocNode(Mem mem) {

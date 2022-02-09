@@ -28,14 +28,14 @@ void BuildCtxInit(
   ctx->diaglevel = DiagMAX;
   ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
   ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  SymMapInit(&ctx->types, ctx->types_st, countof(ctx->types_st), mem);
+  map_init_small(&ctx->types);
   DiagnosticArrayInit(&ctx->diagarray);
   posmap_init(&ctx->posmap, mem);
 }
 
 void BuildCtxDispose(BuildCtx* ctx) {
   DiagnosticArrayFree(&ctx->diagarray, ctx->mem);
-  SymMapDispose(&ctx->types);
+  symmap_free(&ctx->types, ctx->mem);
   posmap_dispose(&ctx->posmap);
   #if DEBUG
   memset(ctx, 0, sizeof(BuildCtx));

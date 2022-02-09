@@ -46,10 +46,7 @@ struct BuildCtx {
   Source*         srclist;   // list of sources (linked via Source.next)
 
   // interned types
-  struct {
-    SymMap       types;
-    SymMapBucket types_st[8];
-  };
+  HMap types;
 
   // diagnostics
   DiagHandler* nullable diagh;     // diagnostics handler

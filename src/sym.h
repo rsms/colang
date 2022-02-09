@@ -169,6 +169,7 @@ inline static void sym_dangerously_set_len(Sym s, u32 len) {
 
 // ======================================================================================
 // SymMap -- hash map that maps Sym => pointer (old)
+#if 0
 
 ASSUME_NONNULL_END
 #define HASHMAP_NAME  SymMap
@@ -225,5 +226,7 @@ typedef void(*SymMapIterator)(Sym key, void* value, bool* stop, void* nullable u
 
 // SymMapIter iterates over entries of the map.
 void SymMapIter(const SymMap*, SymMapIterator, void* nullable userdata);
+
+#endif
 
 ASSUME_NONNULL_END

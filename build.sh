@@ -161,8 +161,6 @@ fi
 # See https://gcc.gnu.org/onlinedocs/gcc-11.2.0/gcc/Unnamed-Fields.html
 # TODO: test with gcc; may require -fplan9-extensions
 
-#   -Wno-incompatible-pointer-types $
-
 cat << _END > build.ninja
 ninja_required_version = 1.3
 outdir = $OUTDIR
@@ -211,6 +209,7 @@ rule ast_gen
 build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c | src/parse/ast_gen.py
 _END
 
+
 _objfile() { echo \$objdir/${1//\//.}.o; }
 _gen_obj_build_rules() {
   local CFLAGS=$1 ; shift
@@ -238,7 +237,7 @@ _gen_obj_build_rules() {
 if [ -n "$TESTING_ENABLED" ]; then
   CO_SOURCES=( $(find src -name '*.c') )
 else
-  CO_SOURCES=( $(find src -name '*.c' -not -name '*_test.c') )
+  CO_SOURCES=( $(find src -name '*.c' -not -name '*_test.c' -not -name 'test.c') )
 fi
 
 CO_OBJECTS=( $(_gen_obj_build_rules "" "" "${CO_SOURCES[@]}") )
@@ -254,6 +253,6 @@ echo ninja "${NINJA_ARGS[@]}" "$@"
 if [ -n "$RUN" ]; then
   ninja "${NINJA_ARGS[@]}" "$@"
   echo $RUN
-  exec $RUN
+  exec $SHELL -c "$RUN"
 fi
 exec ninja "${NINJA_ARGS[@]}" "$@"

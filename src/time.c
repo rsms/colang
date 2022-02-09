@@ -1,4 +1,5 @@
 #include "coimpl.h"
+#include "time.h"
 #include "str.h"
 
 #ifdef CO_WITH_LIBC
@@ -143,4 +144,12 @@ u32 fmtduration(char buf[25], u64 duration_ns) {
   buf[i++] = unit[1];
   buf[i] = 0;
   return i;
+}
+
+
+void _logtime_end(const TimeLabel* t) {
+  u64 timespent = nanotime() - t->ns;
+  char durbuf[25];
+  fmtduration(durbuf, timespent);
+  log("◔ %s %s", t->label, durbuf);
 }

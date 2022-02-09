@@ -7,7 +7,8 @@
 
 static struct {
   Scope s;
-  u8    bindings_storage[592];
+  //u8    bindings_storage[592];
+  u8    bindings_storage[816]; // TODO: on M1 macOS 12 sometimes we need 816, not 592... wtf?
   // size from: map_bucketsize(kSymMapType, entries_count, kFixBufAllocatorOverhead)
 } g_scope = {0};
 
@@ -52,7 +53,8 @@ static void universe_init_scope() {
   #define _(name, ...) \
     if (kType_##name != kType_nil) { \
       /*dlog("set \"%s\"\t=> kType_%s (%p)", kSym_##name, #name, kType_##name);*/ \
-      vp = assertnotnull(symmap_assign(h, kSym_##name, mem)); \
+      vp = symmap_assign(h, kSym_##name, mem); \
+      assertf(vp != NULL, "ran out of memory (ma.len %zu)", ma.len); \
       assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
       *vp = kType_##name; \
     }
@@ -63,15 +65,16 @@ static void universe_init_scope() {
 
   #define _(name, ...) \
     /*dlog("set \"%s\"\t=> kExpr_%s (%p)", kSym_##name, #name, kExpr_##name);*/ \
-    vp = assertnotnull(symmap_assign(h, kSym_##name, mem)); \
+    vp = symmap_assign(h, kSym_##name, mem); \
+    assertf(vp != NULL, "ran out of memory (ma.len %zu)", ma.len); \
     assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
     *vp = kExpr_##name;
   DEF_CONST_NODES_PUB(_)
   #undef _
 
   // TODO: run map_bucketsize in universe generator to define bindings_storage size
-  //dlog("%zu B", map_bucketsize(kSymMapType, count, kFixBufAllocatorOverhead));
-  //dlog("ma.len %zu", ma.len);
+  // dlog("%zu B", map_bucketsize(kSymMapType, count, kFixBufAllocatorOverhead));
+  // dlog("ma.len %zu", ma.len);
 
   // TODO: DEBUG_UNIVERSE_DUMP_SCOPE
   // #ifdef DEBUG_UNIVERSE_DUMP_SCOPE

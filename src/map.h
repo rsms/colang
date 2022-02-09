@@ -33,8 +33,9 @@ extern const HMapType kMapType_ptr_ptr; // void* => void*
 HMap* nullable map_make(const HMapType* t, HMap* nullable h, Mem, usize hint);
 
 // map_init_small initializes a caller-managed map when hint is known to be
-// at most 8 (bucketCnt) at compile time. Returns h.
-inline static HMap* map_init_small(HMap* h) { h->hash0 = fastrand(); return h; }
+// at most 8 (bucketCnt) at compile time. h must be zeroed-initialized or be a reused map.
+// Returns h as a convenience.
+static HMap* map_init_small(HMap* h);
 
 // map_new_small implements map creation when hint is known to be at most 8 (bucketCnt)
 // and the map needs to be allocated with mem.
@@ -84,6 +85,12 @@ void map_free(const HMapType* t, HMap* h, Mem);
 // Returns 0 if the result would overflow usize.
 usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead);
 
+// --------------------------------------------------------------------------------------
+// inline implementations
 
+inline static HMap* map_init_small(HMap* h) {
+  h->hash0 = fastrand();
+  return h;
+}
 
 ASSUME_NONNULL_END

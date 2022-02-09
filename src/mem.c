@@ -364,6 +364,9 @@ Mem FixBufAllocatorInit(FixBufAllocator* a, void* buf, usize size) {
 }
 
 
+// --------------------------------------------------------------------------------------
+#ifdef CO_TESTING_ENABLED
+
 DEF_TEST(mem_fba) {
   u8 buf[256];
   FixBufAllocator ma;
@@ -467,3 +470,5 @@ DEF_TEST(mem_fba) {
     assert(fba_list_test(ma.use, FBA_PTR2H(a)));
   }
 }
+
+#endif // CO_TESTING_ENABLED

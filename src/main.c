@@ -7,6 +7,7 @@
 
 #include "coimpl.h"
 #include "test.h"
+#include "time.h"
 #include "parse/parse.h"
 #include "sys.h"
 
@@ -30,6 +31,7 @@ void print_src_checksum(Mem mem, const Source* src) {
 int main(int argc, const char** argv) {
   if (co_test_main(argc, argv)) return 1;
   universe_init();
+  logtime_scope("main");
 
   dlog("Total: %3lu B", sizeof(union NodeUnion));
   dlog("  Expr %3lu B", sizeof(Expr));
@@ -57,21 +59,21 @@ int main(int argc, const char** argv) {
   BuildCtxInit(&build, mem, &syms, pkgid, on_diag, NULL);
 
   // add a source file to the logical package
-  Source src1 = {0};
   const char* src_text =
     "fun hello(x, y int) int\n"
     "  x + 3\n"
     "fun foo() int\n"
     "  z * 3\n"
     ;
+  Source src1 = {0};
   error err = source_open_data(&src1, mem, "input", src_text, strlen(src_text));
   if (err)
     panic("source_open_data: %s", error_str(err));
   b_add_source(&build, &src1);
 
-  // compute and print source checksum
-  source_checksum(&src1);
-  print_src_checksum(mem, &src1);
+  // // compute and print source checksum
+  // source_checksum(&src1);
+  // print_src_checksum(mem, &src1);
 
   // scan all sources of the package
   #if 0
@@ -91,10 +93,12 @@ int main(int argc, const char** argv) {
   Parser p = {0};
   auto pkgscope = ScopeNew(mem, universe_scope());
   for (Source* src = build.srclist; src != NULL; src = src->next) {
+    auto t = logtime_start("parse");
     FileNode* result;
-    err = parse_tu(&p, &build, src, 0, pkgscope, &result);
+    error err = parse_tu(&p, &build, src, 0, pkgscope, &result);
     if (err)
       panic("parse_tu: %s", error_str(err));
+    logtime_end(t);
     printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", fmtast(result));
   }
 
