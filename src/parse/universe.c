@@ -58,12 +58,15 @@ static void universe_init_scope() {
   //   kSymMapType, kUniverseScopeLen*1.5, kFixBufAllocatorOverhead));
   // dlog("ma.len %4zu B", ma.len);
 
-  // TODO: DEBUG_UNIVERSE_DUMP_SCOPE
-  // #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
-  //   log("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() %p, %u bindings:",
-  //     universe_scope(), SymMapLen(&g_scope.bindings));
-  //   SymMapIter(&g_scope.s.bindings, &symmap_iter, NULL);
-  // #endif
+  #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
+    dlog("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() has %zu bindings:", map_len(h));
+    HMapIter it = {0};
+    map_iter_init(&it, kSymMapType, h);
+    while (it.key) {
+      dlog("  %-6s => %p", *(Sym*)it.key, it.val);
+      map_iter_next(&it);
+    }
+  #endif
 #endif
 }
 

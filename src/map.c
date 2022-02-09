@@ -109,7 +109,7 @@ Typical tables will be somewhat less loaded.
 #define dataOffset offsetof(struct{ bmap b; i64 v; },v)
 
 // sentinel bucket ID for iterator checks
-#define noCheck (1ul << (8 * PTRSIZE) - 1)
+#define IT_NO_CHECK ((uintptr)1ul << ((8 * PTRSIZE) - 1))
 
 typedef struct rtype     rtype;     // type descriptor
 typedef struct bmap      bmap;      // bucket
@@ -120,37 +120,6 @@ typedef uintptr(*keyhasher)(const void* keyp, uintptr seed);
 
 // equalfun is used by rtype
 typedef bool(*equalfun)(const void*, const void*);
-
-// tflag is used by an rtype to signal what extra type information is
-// available in the memory directly following the rtype value.
-typedef u8 tflag;
-enum tflag {
-  // tflagUncommon means that there is a pointer, *uncommonType,
-  // just beyond the outer type structure.
-  //
-  // For example, if t.Kind() == Struct and t.tflag&tflagUncommon != 0,
-  // then t has uncommonType data and it can be accessed as:
-  //
-  //  type tUncommon struct {
-  //    structType
-  //    u uncommonType
-  //  }
-  //  u := &(*tUncommon)(unsafe.Pointer(t)).u
-  tflagUncommon = 1 << 0,
-
-  // tflagExtraStar means the name in the str field has an
-  // extraneous '*' prefix. This is because for most types T in
-  // a program, the type *T also exists and reusing the str data
-  // saves binary size.
-  tflagExtraStar = 1 << 1,
-
-  // tflagNamed means the type has a name.
-  tflagNamed = 1 << 2,
-
-  // tflagRegularMemory means that equal and hash functions can treat
-  // this type as a single region of t.size bytes.
-  tflagRegularMemory = 1 << 3,
-} END_TYPED_ENUM(tflag)
 
 
 // Possible tophash values. We reserve a few possibilities for special marks.
@@ -223,7 +192,6 @@ struct bmap {
 
 struct rtype { // aka _type
   usize    size;
-  tflag    tflag;
   u8       align;
   tkind    kind;
   equalfun equal; // comparing objects of this type
@@ -1002,12 +970,13 @@ end_search:
 }
 
 
-void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key) {
+static void* nullable map_access1(const HMapType* t, const HMap* nullable h, void** kp) {
   if (h == NULL || h->count == 0)
     return NULL;
 
   assertf((h->flags & H_hashWriting) == 0, "concurrent map read and map write");
 
+  void* key = *kp;
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
   usize m = bucketMask(h->B);
   bmap* b = ((void*)h->buckets + (hash & m)*t->bucket.size);
@@ -1041,6 +1010,7 @@ void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key) 
         void* e = (void*)b + dataOffset + bucketCnt*t->keysize + i*t->elemsize;
         if (maptype_indirectelem(t))
           e = *(void**)e;
+        *kp = k;
         return e;
       }
     }
@@ -1048,6 +1018,11 @@ void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key) 
 
   // not found
   return NULL;
+}
+
+
+void* nullable map_access(const HMapType* t, const HMap* nullable h, void* key) {
+  return map_access1(t, h, &key);
 }
 
 
@@ -1226,6 +1201,162 @@ usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead) {
     return 0;
   return nbyte;
 }
+
+
+void map_iter_init(HMapIter* it, const HMapType* t, HMap* nullable h) {
+  #if DEBUG
+  HMapIter zeroit = {0};
+  assertf(memcmp(it,&zeroit,sizeof(zeroit)) == 0, "iterator not zeroed");
+  #endif
+
+  it->t = t;
+  if (h == NULL || h->count == 0)
+    return;
+  it->h = h;
+  it->B = h->B;
+  it->buckets = h->buckets;
+
+  // decide where to start
+  usize r = (usize)fastrand();
+  if (h->B > 31-bucketCntBits)
+    r += (usize)fastrand() << 31;
+  it->startbucket = r & bucketMask(h->B);
+  it->offset = (u8)(r >> h->B & (bucketCnt - 1));
+
+  // iterator state
+  it->bucket = it->startbucket;
+
+  // remember we have an iterator
+  h->flags |= H_iterator | H_oldIterator;
+
+  // advance to first entry
+  map_iter_next(it);
+}
+
+
+void* nullable map_iter_next(HMapIter* it) {
+  HMap* h = it->h;
+  assertf((h->flags & H_hashWriting) == 0, "concurrent map iteration & write");
+
+  const HMapType* t = it->t;
+  usize bucket      = it->bucket; // current bucket index
+  bmap* b           = it->bptr;   // current bucket data
+  u8 i              = it->i;      // current index in b
+  usize checkbucket = it->checkbucket;
+
+next:
+  if (b == NULL) {
+    if (bucket == it->startbucket && it->wrapped) {
+      // end of iteration
+      it->key = NULL;
+      it->val = NULL;
+      return NULL;
+    }
+    if (hmap_isgrowing(h) && it->B == h->B) {
+      // Iterator was started in the middle of a grow, and the grow isn't done yet.
+      // If the bucket we're looking at hasn't been filled in yet (i.e. the old
+      // bucket hasn't been evacuated) then we need to iterate through the old
+      // bucket and only return the ones that will be migrated to this bucket.
+      usize oldbucket = bucket & hmap_oldbucketmask(h);
+      b = h->oldbuckets + oldbucket*t->bucket.size;
+      if (!is_evacuated(b)) {
+        checkbucket = bucket;
+      } else {
+        b = it->buckets + bucket*t->bucket.size;
+        checkbucket = IT_NO_CHECK;
+      }
+    } else {
+      b = it->buckets + bucket*t->bucket.size;
+      checkbucket = IT_NO_CHECK;
+    }
+    bucket++;
+    if (bucket == bucketShift(it->B)) {
+      bucket = 0;
+      it->wrapped = true;
+    }
+    i = 0;
+  }
+
+  for ( ; i < bucketCnt; i++) {
+    usize offi = (i + it->offset) & (bucketCnt - 1);
+    if (isEmpty(b->tophash[offi]) || b->tophash[offi] == evacuatedEmpty) {
+      // TODO: emptyRest is hard to use here, as we start iterating
+      // in the middle of a bucket. It's feasible, just tricky.
+      continue;
+    }
+    void* k = (void*)b + dataOffset + offi*(uintptr)t->keysize;
+    if (maptype_indirectkey(t))
+      k = *(void**)k;
+    void* v = (void*)b + dataOffset + bucketCnt*(uintptr)t->keysize + offi*t->elemsize;
+
+    if (checkbucket != IT_NO_CHECK && !hmap_sameSizeGrow(h)) {
+      // Special case: iterator was started during a grow to a larger size
+      // and the grow is not done yet. We're working on a bucket whose
+      // oldbucket has not been evacuated yet. Or at least, it wasn't
+      // evacuated when we started the bucket. So we're iterating
+      // through the oldbucket, skipping any keys that will go
+      // to the other new bucket (each oldbucket expands to two
+      // buckets during a grow).
+      if (maptype_reflexivekey(t) || t->key.equal(k, k)) {
+        // If the item in the oldbucket is not destined for
+        // the current new bucket in the iteration, skip it.
+        uintptr hash = t->hasher(k, (uintptr)h->hash0);
+        if ((hash & bucketMask(it->B)) != checkbucket)
+          continue;
+      } else {
+        // Hash isn't repeatable if k != k (NaNs).  We need a
+        // repeatable and randomish choice of which direction
+        // to send NaNs during evacuation. We'll use the low
+        // bit of tophash to decide which way NaNs go.
+        // NOTE: this case is why we need two evacuate tophash
+        // values, evacuatedX and evacuatedY, that differ in
+        // their low bit.
+        if ((checkbucket >> (it->B - 1)) != ((uintptr)b->tophash[offi] & 1))
+          continue;
+      }
+    }
+
+    if ((b->tophash[offi] != evacuatedX && b->tophash[offi] != evacuatedY) ||
+        !(maptype_reflexivekey(t) ||
+        t->key.equal(k, k)) )
+    {
+      // This is the golden data, we can return it.
+      // OR
+      // key!=key, so the entry can't be deleted or updated, so we can just return it.
+      // That's lucky for us because when key!=key we can't look it up successfully.
+      it->key = k;
+      if (maptype_indirectelem(t))
+        v = *(void**)v;
+      it->val = v;
+    } else {
+      // The hash table has grown since the iterator was started.
+      // The golden data for this key is now somewhere else.
+      // Check the current hash table for the data.
+      // This code handles the case where the key
+      // has been deleted, updated, or deleted and reinserted.
+      // NOTE: we need to regrab the key as it has potentially been
+      // updated to an equal() but not identical key (e.g. +0.0 vs -0.0).
+
+      void* rk = NULL;
+      void* rv = map_access1(t, h, &rk);
+      if (rk == NULL)
+        continue; // key has been deleted
+      it->key = rk;
+      it->val = rv;
+    }
+
+    it->bucket = bucket;
+    it->bptr = b; // see Go issue 14921 (Go only writes here if they differ)
+    it->i = i + 1;
+    it->checkbucket = checkbucket;
+    return it->key;
+  } // for (i in bucketCnt)
+
+  b = bmap_overflow(b, t);
+  i = 0;
+  goto next;
+}
+
 
 // ————————————————————————————————————————————————————————————————————————————————————
 // map types
@@ -1413,6 +1544,39 @@ DEF_TEST(map) {
   map_free(mt, h, mem);
 
   // exit(0);
+}
+
+
+DEF_TEST(map_iter) {
+  u8 membuf[2048];
+  FixBufAllocator ma = {0};
+
+  const HMapType* mt = &kMapType_i32_i32;
+  u32 hash0 = 0xfeedface;
+  i32 insert_count = 20;
+
+  Mem mem = FixBufAllocatorInit(&ma, membuf, sizeof(membuf));
+  HMap hstk = {0};
+  HMap* h = map_make_deterministic(mt, &hstk, mem, insert_count, hash0);
+
+  i64 expectsum = 0;
+  for (i32 key = 0; key < insert_count; key++) {
+    i32* valp = map_assign(mt, h, &key, mem);
+    assertf(valp != NULL, "out of memory");
+    *valp = key;
+    expectsum += (i64)key;
+  }
+
+  HMapIter it = {0};
+  map_iter_init(&it, mt, h);
+  i64 actualsum = 0;
+  while (it.key) {
+    // dlog("%4d => %-4d (%p => %p)", *(i32*)it.key, *(i32*)it.val, it.key, it.val);
+    actualsum += (i64)*(i32*)it.val;
+    map_iter_next(&it);
+  }
+
+  assertf(expectsum == actualsum, "iterator should visit every entry exactly once");
 }
 
 

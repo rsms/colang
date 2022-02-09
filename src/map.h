@@ -6,6 +6,7 @@ ASSUME_NONNULL_BEGIN
 
 typedef struct HMap     HMap;     // hash map
 typedef struct HMapType HMapType; // describes types of keys and values of a map
+typedef struct HMapIter HMapIter; // iterator
 
 struct HMap {
   usize count;     // # live cells == size of map
@@ -20,7 +21,27 @@ struct HMap {
     // progress counter for evacuation (buckets less than this have been evacuated)
   struct HMapExtra* nullable extra; // optional fields
 };
-static_assert(offsetof(HMap,count) == 0, "count must be first field of HMap");
+
+struct HMapIter {
+  void* nullable key; // Must be in first position. NULL indicates iteration end.
+  void* nullable val; // Must be in second position
+
+  const HMapType* t;
+  HMap*           h;
+
+  void* buckets;     // bucket ptr at hash_iter initialization time
+  void* bptr;        // (bmap*) current bucket
+  void* overflow;    // (bmap*) keeps overflow buckets of h.buckets alive [FIXME]
+  void* oldoverflow; // (bmap*) keeps overflow buckets of h.oldbuckets alive [FIXME]
+  usize startbucket; // bucket that iteration started at
+  u8    offset;      // intra-bucket offset to start from during iteration
+                     // (should be big enough to hold bucketCnt-1)
+  bool  wrapped;     // already wrapped around from end of bucket array to beginning
+  u8    B;           // copy of h->B for cache efficiency
+  u8    i;           // index in current bucket
+  usize bucket;      // current bucket
+  usize checkbucket;
+};
 
 // predefined map types
 extern const HMapType kMapType_i32_i32; // i32 => i32
@@ -92,6 +113,23 @@ HMap* nullable map_make_deterministic(
 // deterministic behavior, useful for testing. Disables attack mitigations.
 // Returns previous state.
 bool map_set_deterministic(HMap* h, bool enabled);
+
+// map_iter_init initializes the HMapIter struct used for iterating over maps.
+// The HMapIter struct at "it" should be zeroed.
+// Returns the iterator positioned at the first entry.
+// Example use:
+//   HMapIter it = {0};
+//   map_iter_init(&it, mt, h);
+//   while (it.key) {
+//     printf("%p => %p\n", it.key, it.val);
+//     map_iter_next(&it);
+//   }
+void map_iter_init(HMapIter* it, const HMapType* t, HMap* nullable h);
+
+// map_iter_next advances "it", updating it->key and it->val.
+// If iteration has ended, it->key is NULL.
+// Returns it->key.
+void* nullable map_iter_next(HMapIter* it);
 
 // --------------------------------------------------------------------------------------
 // inline implementations
