@@ -77,7 +77,6 @@ Typical tables will be somewhat less loaded.
 #include "coimpl.h"
 #include "map.h"
 #include "test.h"
-#include "sbuf.h" // for map_codegen
 #include "array.h"
 
 #ifdef CO_WITH_LIBC
@@ -118,10 +117,6 @@ typedef struct HMapExtra HMapExtra; // fields that are not present on all maps
 
 // keyhasher is a function for hashing keys (ptr to key, seed) -> hash
 typedef uintptr(*keyhasher)(const void* keyp, uintptr seed);
-
-// freefun is a function for freeing removed keys and entries.
-// pv is an array of count pointers to free.
-typedef void(*freefun)(Mem, void** pv, usize count);
 
 // equalfun is used by rtype
 typedef bool(*equalfun)(const void*, const void*);
