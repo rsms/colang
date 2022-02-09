@@ -30,7 +30,7 @@ typedef struct SymRBNode {
 // SymPool holds a set of syms unique to the pool
 typedef struct SymPool SymPool;
 typedef struct SymPool {
-  SymRBNode*              root;
+  SymRBNode* nullable     root;
   const SymPool* nullable base;
   Mem                     mem;
   //rwmtx_t                 mu; // TODO MT
@@ -87,6 +87,25 @@ static u32 symlen(Sym);
 // symflags returns a symbols flags.
 // (currently only used for built-in keywords defined in universe)
 static u8 symflags(Sym);
+
+
+// symmap -- hash map that maps Sym => void*
+
+#define kSymMapType (&kMapType_ptr_ptr)
+
+inline static HMap* nullable symmap_make(HMap* nullable h, Mem mem, usize hint) {
+  return map_make(kSymMapType, h, mem, hint);
+}
+inline static void** nullable symmap_assign(HMap* h, Sym key, Mem mem) {
+  return map_assign(kSymMapType, h, &key, mem);
+}
+inline static void** nullable symmap_access(const HMap* nullable h, Sym key) {
+  return map_access(kSymMapType, h, &key);
+}
+inline static void symmap_free(HMap* h, Mem mem) {
+  map_free(kSymMapType, h, mem);
+}
+
 
 // ---- Sym inline implementation ----
 
@@ -147,23 +166,6 @@ inline static void sym_dangerously_set_len(Sym s, u32 len) {
   h->p[h->len] = 0;
 }
 
-
-// ======================================================================================
-// hash map that maps Sym => pointer
-
-#define kSymMapType (&kMapType_ptr_ptr)
-
-inline static void** nullable symmap_assign(HMap* h, Sym key, Mem mem) {
-  return map_assign(kSymMapType, h, &key, mem);
-}
-
-inline static void* nullable symmap_access(const HMap* nullable h, Sym key) {
-  return map_access(kSymMapType, h, &key);
-}
-
-inline static void symmap_free(HMap* h, Mem mem) {
-  map_free(kSymMapType, h, mem);
-}
 
 // ======================================================================================
 // SymMap -- hash map that maps Sym => pointer (old)

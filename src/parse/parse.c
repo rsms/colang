@@ -308,7 +308,12 @@ static void scopestackGrow(Parser* p) {
     p->scopestack.ptr = memalloc(mem, sizeof(void*) * p->scopestack.cap);
     memcpy(p->scopestack.ptr, p->scopestack.storage, sizeof(void*) * p->scopestack.len);
   } else {
-    p->scopestack.ptr = memrealloc(mem, p->scopestack.ptr, sizeof(void*) * p->scopestack.cap);
+    void* ptr = memresize(mem, p->scopestack.ptr, sizeof(void*) * p->scopestack.cap);
+    if UNLIKELY(ptr == NULL) {
+      p->err = err_nomem;
+    } else {
+      p->scopestack.ptr = ptr;
+    }
   }
 }
 
@@ -550,7 +555,8 @@ static Node* presolve_id(Parser* p, IdNode* id) {
 
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
-      dlog("lookup \"%s\" => %s %s", id->name, nodename(target), fmtnode(target));
+      dlog("lookup \"%s\" => %s %s (%p)",
+        id->name, nodename(target), fmtnode(target), target);
     } else {
       dlog("lookup \"%s\" => (not found; unresolved)", id->name);
     }
@@ -562,11 +568,18 @@ static Node* presolve_id(Parser* p, IdNode* id) {
 
 // presolve_type resolves a named type
 static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
+  Sym name = assertnotnull(tname->name);
+  if (name == kSym_nil) {
+    // special case for nil since "nil" in universe is kExpr_nil
+    return kType_nil;
+  }
+
   Node* target = lookupsym(p, assertnotnull(tname->name));
 
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
-      dlog("lookup type \"%s\" => %s %s", tname->name, nodename(target), fmtnode(target));
+      dlog("lookup type \"%s\" => %s %s (%p)",
+        tname->name, nodename(target), fmtnode(target), target);
     } else {
       dlog("lookup type \"%s\" => (not found; unresolved)", tname->name);
     }
@@ -2085,7 +2098,7 @@ static Node* parse_prefix(Parser* p, PFlag fl) {
     return n;
   }
   // dlog("parse_prefix FOUND for %s", TokName(p->tok));
-  return p->expr = parselet->fprefix(p, fl);
+  return parselet->fprefix(p, fl);
 }
 
 
@@ -2105,11 +2118,11 @@ static Node* parse_infix(Parser* p, int precedence, PFlag fl, Node* left) {
     if (!parselet->f || (int)parselet->prec < precedence) {
       break;
     }
-    p->expr = parselet->f(p, parselet, fl, left);
-    if (p->expr == NULL)
+    Node* expr = parselet->f(p, parselet, fl, left);
+    if (expr == NULL)
       return left;
-    assert(left != p->expr); // or else: infinite loop
-    left = p->expr;
+    assert(left != expr); // or else: infinite loop
+    left = expr;
   }
   return left;
 }
@@ -2264,7 +2277,6 @@ error parse_tu(
   // initialize parser state
   p->build = b;
   p->pkgscope = pkgscope;
-  p->expr = NULL;
   p->fnest = 0;
 
   // initialize or reset scopestack

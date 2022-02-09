@@ -87,9 +87,9 @@ void sympool_dispose(SymPool* p) {
 
 // Caller must hold read lock on rp->mu
 inline static Sym nullable symlookup(
-  const SymRBNode* node, const char* data, u32 len, u32 hash)
+  const SymRBNode* nullable node, const char* data, u32 len, u32 hash)
 {
-  while (node) {
+  while (node != NULL) {
     // IMPORTANT: The comparison here MUST match the comparison used for other
     // operations on the tree. I.e. it must match RBCmp.
     Sym b = (RBKEY)node->key;

@@ -74,6 +74,16 @@ void map_clear(const HMapType* t, HMap* nullable h, Mem);
 // that heap memory before calling this function.
 void map_free(const HMapType* t, HMap* h, Mem);
 
+// map_bucketsize calculates the memory needed to store count entries, in bytes,
+// excluding the HMap structure when count is provided up front to map_make.
+// alloc_overhead is a number added to each separate allocation, useful for precise
+// calculations for tests.
+// Note that for map_make calls without a preallocated HMap, additional space is
+// required for the HMap struct. In that case, add sizeof(HMap)+alloc_overhead
+// to the result.
+// Returns 0 if the result would overflow usize.
+usize map_bucketsize(const HMapType* t, usize count, usize alloc_overhead);
+
 
 
 ASSUME_NONNULL_END

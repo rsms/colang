@@ -5,6 +5,7 @@
 void posmap_init(PosMap* pm, Mem mem) {
   PtrArrayInitStorage(&pm->a, pm->a_storage, countof(pm->a_storage));
   // the first slot is used to return NULL in pos_source for unknown positions
+  pm->mem = mem;
   pm->a.v[0] = NULL;
   pm->a.len++;
 }
@@ -74,11 +75,12 @@ static u32* compute_line_offsets(Source* s, Mem mem, u32* nlines_out) {
       if (linecount == cap) {
         // more lines
         cap = cap * 2;
-        lineoffs = (u32*)memrealloc(mem, lineoffs, sizeof(u32) * cap);
-        if (!lineoffs) {
+        u32* lineoffs2 = memresize(mem, lineoffs, sizeof(u32) * cap);
+        if UNLIKELY(!lineoffs2) {
           memfree(mem, lineoffs);
           return NULL;
         }
+        lineoffs = lineoffs2;
       }
       lineoffs[linecount] = i;
       linecount++;

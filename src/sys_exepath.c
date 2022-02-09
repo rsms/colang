@@ -67,7 +67,7 @@ const char* sys_exepath() {
     if (path == pathst) {
       path = memalloc(mem_libc_allocator(), len);
     } else {
-      path = memrealloc(mem_libc_allocator(), path, len);
+      path = memresize(mem_libc_allocator(), path, len);
     }
   }
 

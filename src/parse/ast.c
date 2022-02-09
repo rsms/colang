@@ -106,11 +106,15 @@ error ScopeAssign(Scope* s, Sym key, Node* n, Mem mem) {
   return 0;
 }
 
-const Node* ScopeLookup(const Scope* scope, Sym s) {
+const Node* ScopeLookup(const Scope* nullable scope, Sym s) {
   const Node* n = NULL;
-  while (scope && n == NULL) {
-    dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
-    n = symmap_access(&scope->bindings, s);
+  while (scope) {
+    //dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
+    void** vp = symmap_access(&scope->bindings, s);
+    if (vp != NULL) {
+      n = *vp;
+      break;
+    }
     scope = scope->parent;
   }
   #ifdef DEBUG_LOOKUP

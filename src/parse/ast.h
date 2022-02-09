@@ -83,8 +83,8 @@ struct StrLitNode   { LitExpr;
 };
 
 struct IdNode { Expr;
-  Sym   name;
-  Node* target; // TODO: change type to Expr
+  Sym            name;
+  Node* nullable target; // TODO: change type to Expr
 };
 struct BinOpNode { Expr;
   Tok   op;
@@ -1078,7 +1078,7 @@ const char* _fmtast(const Node* nullable n);
 
 Scope* nullable ScopeNew(Mem mem, const Scope* nullable parent);
 void ScopeFree(Scope*, Mem mem);
-const Node* nullable ScopeLookup(const Scope*, Sym);
+const Node* nullable ScopeLookup(const Scope* nullable, Sym);
 
 // ScopeAssign associates key with *valuep_inout.
 // Returns an error if memory allocation failed during growth of the hash table.

@@ -79,7 +79,6 @@ struct Parser {
   Scanner; // parser is based on a scanner
 
   Scope* pkgscope; // package-level scope
-  Node*  expr;     // most recently parsed expression
   u32    fnest;    // function nesting level
   error  err;      // !0 if a fatal error occurred (e.g. memory allocation failed)
 

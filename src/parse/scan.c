@@ -289,7 +289,7 @@ static void snumber(Scanner* s) {
 static void indent_stack_grow(Scanner* s) {
   u32 cap = s->indentStack.cap * 2;
   if (s->indentStack.v != s->indentStack.storage) {
-    s->indentStack.v = memrealloc(s->build->mem, s->indentStack.v, sizeof(Indent) * cap);
+    s->indentStack.v = memresize(s->build->mem, s->indentStack.v, sizeof(Indent) * cap);
   } else {
     // moving array from stack to heap
     Indent* v = (Indent*)memalloc(s->build->mem, sizeof(Indent) * cap);

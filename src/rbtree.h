@@ -45,13 +45,13 @@ ASSUME_NONNULL_BEGIN
 #ifndef RBNODETYPE
 #define RBNODETYPE RBNode
 typedef struct RBNode {
-  RBKEY          key;
+  RBKEY key;
 #ifdef RBVALUE
-  RBVALUE        value;
+  RBVALUE value;
 #endif
-  bool           isred;
-  struct RBNode* left;
-  struct RBNode* right;
+  bool isred;
+  struct RBNode* nullable left;
+  struct RBNode* nullable right;
 } RBNode;
 #endif
 
@@ -111,7 +111,7 @@ static bool RBHas(const RBNODETYPE* n, RBKEY k RBUSERDATA_COMMA);
   // RBInsert adds k. May modify tree even if k exists.
   // *added is set to true if there was no existing entry with key k.
   // Returns new n (n maybe be unchanged even after insertion.)
-  static RBNODETYPE* RBInsert(RBNODETYPE* n, RBKEY k, bool* added RBUSERDATA_COMMA);
+  static RBNODETYPE* RBInsert(RBNODETYPE* nullable n, RBKEY k, bool* added RBUSERDATA_COMMA);
 #endif
 
 // RBDelete removes k if found. Returns new n (NULL if last entry was deleted)
@@ -251,13 +251,13 @@ inline static size_t RBCount(const RBNODETYPE* n) {
 #define RB_TREE_VARIANT 4
 
 
-inline static bool isred(RBNODETYPE* node) {
+inline static bool isred(RBNODETYPE* nullable node) {
   return node && node->isred;
 }
 
 
 static RBNODETYPE* rbInsert(
-  RBNODETYPE* node,
+  RBNODETYPE* nullable node,
   RBKEY key
 #ifdef RBVALUE
 , RBVALUE value
@@ -319,7 +319,9 @@ static RBNODETYPE* rbInsert(
 
 #ifdef RBVALUE
 
-inline static RBNODETYPE* RBSet(RBNODETYPE* root, RBKEY key, RBVALUE value RBUSERDATA_COMMA) {
+inline static RBNODETYPE* RBSet(
+  RBNODETYPE* nullable root, RBKEY key, RBVALUE value RBUSERDATA_COMMA)
+{
   root = rbInsert(root, key, value RBUSERDATA_NAME_COMMA);
   if (root) {
     // Note: rbInsert returns NULL when out of memory (malloc failure)
@@ -329,23 +331,24 @@ inline static RBNODETYPE* RBSet(RBNODETYPE* root, RBKEY key, RBVALUE value RBUSE
 }
 
 inline static RBNODETYPE* RBAdd(
-  RBNODETYPE* root, RBKEY key, RBVALUE value, bool* added RBUSERDATA_COMMA)
+  RBNODETYPE* nullable root, RBKEY key, RBVALUE value, bool* added RBUSERDATA_COMMA)
 {
-  if (!RBHas(root, key RBUSERDATA_NAME_COMMA)) {
-    *added = true;
-    root = rbInsert(root, key, value RBUSERDATA_NAME_COMMA);
-    if (root) {
-      root->isred = false;
-    }
-  } else {
+  if (root != NULL && RBHas(root, key RBUSERDATA_NAME_COMMA)) {
     *added = false;
+    return root;
   }
+  root = rbInsert(root, key, value RBUSERDATA_NAME_COMMA);
+  if (root)
+    root->isred = false;
+  *added = true;
   return root;
 }
 
 #else
 
-inline static RBNODETYPE* RBInsert(RBNODETYPE* root, RBKEY key, bool* added RBUSERDATA_COMMA) {
+inline static RBNODETYPE* RBInsert(
+  RBNODETYPE* nullable root, RBKEY key, bool* added RBUSERDATA_COMMA)
+{
   *added = true;
   root = rbInsert(root, key, added RBUSERDATA_NAME_COMMA);
   if (root) {

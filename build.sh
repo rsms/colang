@@ -20,8 +20,8 @@ while [[ $# -gt 0 ]]; do case "$1" in
   -h|-help|--help) cat << _END
 usage: $0 [options] [<target> ...]
 options:
-  -safe      Build optimized product with assertions enabled (default)
-  -fast      Build optimized product without assertions
+  -safe      Build optimized product with some assertions enabled (default)
+  -fast      Build optimized product without any assertions
   -debug     Build debug product
   -w         Rebuild as sources change
   -run=<cmd> Run <cmd> after successful build
@@ -36,12 +36,22 @@ esac; done
 # -w to enter "watch & build & run" mode
 if [ -n "$WATCH" ]; then
   command -v fswatch >/dev/null || _err "fswatch not found in PATH"
-  RUN_PID=
   # case "$RUN" in
   #   *" "*) RUN="$SHELL -c '$RUN'" ;;
   # esac
+  RUN_PIDFILE=${TMPDIR:-/tmp}/$(basename "$(dirname "$PWD")").build-runpid.$$
+  echo "RUN_PIDFILE=$RUN_PIDFILE"
+  _killcmd() {
+    local RUN_PID=$(cat "$RUN_PIDFILE" 2>/dev/null)
+    if [ -n "$RUN_PID" ]; then
+      kill $RUN_PID 2>/dev/null && echo "killing #$RUN_PID"
+      ( sleep 0.1 ; kill -9 "$RUN_PID" 2>/dev/null || true ) &
+      rm -f "$RUN_PIDFILE"
+    fi
+  }
   _exit() {
-    kill $RUN_PID 2>/dev/null || true
+    _killcmd
+    kill $(jobs -p) 2>/dev/null || true
     exit
   }
   trap _exit SIGINT  # make sure we can ctrl-c in the while loop
@@ -52,18 +62,24 @@ if [ -n "$WATCH" ]; then
     printf "\e[2m> watching files for changes...\e[m\n"
     if [ -n "$BUILD_OK" -a -n "$RUN" ]; then
       export ASAN_OPTIONS=detect_stack_use_after_return=1
-      echo "running $RUN"
-      ( trap 'kill $(jobs -p)' SIGINT ; $RUN ; echo "$RUN exited $?" ) &
-      RUN_PID=$!
+      export UBSAN_OPTIONS=print_stacktrace=1
+      _killcmd
+      ( $SHELL -c "$RUN" &
+        RUN_PID=$!
+        echo $RUN_PID > "$RUN_PIDFILE"
+        echo "$RUN (#$RUN_PID) started"
+        wait
+        # TODO: get exit code from $RUN
+        # Some claim wait sets the exit code, but not in my bash.
+        # The idea would be to capture exit code from wait:
+        #   status=$?
+        echo "$RUN (#$RUN_PID) exited"
+      ) &
     fi
     fswatch --one-event --extended --latency=0.1 \
             --exclude='.*' --include='\.(c|cc|cpp|m|mm|h|hh|sh|py)$' \
             --recursive \
             src $(basename "$0")
-    if [ -n "$RUN_PID" ]; then
-      kill $(jobs -p) 2>/dev/null && wait $(jobs -p) 2>/dev/null || true
-      RUN_PID=
-    fi
   done
   exit 0
 fi
@@ -109,8 +125,8 @@ if [ -n "$WITH_LUAJIT" ]; then
 fi
 
 if [ "$BUILD_MODE" != "debug" ]; then
-  CFLAGS+=( -O3 -mtune=native )
-  [ "$BUILD_MODE" = "fast" ] && CFLAGS+=( -DNDEBUG )
+  CFLAGS+=( -O3 -mtune=native -DNDEBUG )
+  [ "$BUILD_MODE" = "safe" ] && CFLAGS+=( -DCO_SAFE )
   LDFLAGS+=( -flto )
   # LDFLAGS+=( -dead_strip )
 else
@@ -121,9 +137,18 @@ fi
 
 # enable llvm address and UD sanitizer in debug builds
 if [ -n "$CC_IS_CLANG" -a "$BUILD_MODE" = "debug" ]; then
+  # See https://clang.llvm.org/docs/AddressSanitizer.html
+  # See https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html
   CFLAGS+=(
     -fsanitize=address,undefined \
+    \
     -fsanitize-address-use-after-scope \
+    \
+    -fsanitize=float-divide-by-zero \
+    -fsanitize=null \
+    -fsanitize=nonnull-attribute \
+    -fsanitize=nullability \
+    \
     -fno-omit-frame-pointer \
     -fno-optimize-sibling-calls \
   )

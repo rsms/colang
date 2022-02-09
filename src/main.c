@@ -40,7 +40,8 @@ int main(int argc, const char** argv) {
     Mem mem = mem_libc_allocator();
   #else
     static u8 memv[4096*8];
-    DEF_MEM_STACK_BUF_ALLOCATOR(mem, memv);
+    FixBufAllocator fba;
+    Mem mem = FixBufAllocatorInit(&fba, memv, sizeof(memv));
   #endif
 
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of

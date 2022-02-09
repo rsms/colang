@@ -13,7 +13,7 @@ MC debugging note to self:
 #include "xxhash.h"
 #pragma GCC diagnostic pop
 
-static u64 fastrand_state = 0;
+static u64 fastrand_state = 1;
 
 void fastrand_seed(u64 seed) {
   fastrand_state = seed;

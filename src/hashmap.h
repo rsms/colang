@@ -174,7 +174,7 @@ static bool hashmap_grow(HASHMAP_NAME* m) {
   // TODO: use realloc with m->buckets (need to revisit the growth loops)
 rehash:
   z = array_size(sizeof(HM_BUCKET), cap);
-  if (z == USIZE_MAX || (newbuckets = memrealloc(m->mem, newbuckets, z)) == NULL) {
+  if (z == USIZE_MAX || (newbuckets = memresize(m->mem, newbuckets, z)) == NULL) {
     if (newbuckets)
       memfree(m->mem, newbuckets);
     return false;

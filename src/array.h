@@ -112,7 +112,7 @@ inline static bool A##Push(A* a, T v, Mem m) { \
   return true; \
 } \
 inline static T A##Pop(A* a) { \
-  assert(a->len > 0); \
+  safecheck(a->len > 0); \
   return a->v[--a->len]; \
 } \
 inline static void A##Remove(A* a, u32 startindex, u32 count) { \

@@ -31,7 +31,7 @@ error array_grow(PtrArray* a, usize elemsize, usize count, Mem mem) {
       return err_nomem;
     memcpy(v, a->v, elemsize * a->len);
   } else {
-    v = memrealloc(mem, a->v, nbyte);
+    v = memresize(mem, a->v, nbyte);
     if (!v)
       return err_nomem;
   }
@@ -59,6 +59,7 @@ i32 array_lastindexof(const PtrArray* a, usize elemsize, const void* elemp) {
 }
 
 void array_remove(PtrArray* a, usize elemsize, u32 startindex, u32 count) {
+  safecheckf(startindex == 0 || startindex < a->len, "out of bounds");
   count = MIN(count, a->len - startindex);
   // array_remove( [0 1 2 3 4 5 6 7] startindex=2 count=3 ) => [0 1 5 6 7]
   //
@@ -81,6 +82,8 @@ void array_remove(PtrArray* a, usize elemsize, u32 startindex, u32 count) {
 error array_copy(
   PtrArray* dst, usize elemsize, u32 startindex, const void* srcv, u32 srclen, Mem mem)
 {
+  safecheckf(startindex == 0 || startindex < dst->len, "out of bounds");
+
   // needcap = startindex + srclen;
   u32 needcap;
   if (check_add_overflow(startindex, srclen, &needcap) || needcap > TYPED_ARRAY_CAP_MAX)

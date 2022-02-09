@@ -16,7 +16,7 @@ void BuildCtxInit(
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
-  assert(mem != NULL);
+  assertnotnull(mem);
   assert(strlen(pkgid) > 0);
   memset(ctx, 0, sizeof(BuildCtx));
   ctx->mem       = mem;

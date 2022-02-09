@@ -42,7 +42,7 @@ Str nullable str_grow(Str s, u32 addlen) {
   if (z == USIZE_MAX)
     return NULL;
   s->cap--; // does not include the sentinel byte
-  Str s2 = (Str)memrealloc(s->mem, s, z);
+  Str s2 = (Str)memresize(s->mem, s, z);
   memtrace("str_realloc %p (%zu) -> %p (%zu)", s, oldz, s2, z);
   return s2;
 }
@@ -271,14 +271,15 @@ Str* str_tmp() {
 
     #ifndef CO_WITH_LIBC
       Mem mem;
-      MemBufAllocator ma;
+      FixBufAllocator ma;
       char mbuf[4096*8];
     #endif
   } _tmpstr = {0};
 
   #ifndef CO_WITH_LIBC
     if (_tmpstr.mem == NULL)
-      _tmpstr.mem = mem_buf_allocator_init(&_tmpstr.ma, _tmpstr.mbuf, sizeof(_tmpstr.mbuf));
+      _tmpstr.mem = mem_buf_allocator_init(
+        &_tmpstr.ma, _tmpstr.mbuf, sizeof(_tmpstr.mbuf));
   #endif
 
   u32 bufindex = _tmpstr.index % STR_TMP_MAX;

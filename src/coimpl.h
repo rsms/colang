@@ -191,9 +191,11 @@ typedef unsigned long       usize;
   #define ATTR_MALLOC
 #endif
 #if __has_attribute(alloc_size)
-  #define ATTR_ALLOC_SIZE(whicharg) __attribute__((alloc_size(whicharg)))
+  // void *my_malloc(int a) ATTR_ALLOC_SIZE(1);
+  // void *my_calloc(int a, int b) ATTR_ALLOC_SIZE(1, 2);
+  #define ATTR_ALLOC_SIZE(args...) __attribute__((alloc_size(args)))
 #else
-  #define ATTR_ALLOC_SIZE(whicharg)
+  #define ATTR_ALLOC_SIZE(...)
 #endif
 
 #if __has_feature(address_sanitizer)
@@ -202,6 +204,12 @@ typedef unsigned long       usize;
   #define ASAN_DISABLE_ADDR_ATTR __attribute__((no_sanitize("address")))
 #else
   #define ASAN_DISABLE_ADDR_ATTR
+#endif
+
+#if __has_attribute(no_sanitize)
+  #define ATTR_NOSAN(str) __attribute__((no_sanitize(str)))
+#else
+  #define ATTR_NOSAN(str) __attribute__((no_sanitize(str)))
 #endif
 
 #ifdef CO_WITH_LIBC
@@ -226,8 +234,8 @@ typedef unsigned long       usize;
 
 // UNLIKELY(integralexpr)->integralexpr
 #if __has_builtin(__builtin_expect)
-  #define UNLIKELY(x) __builtin_expect((x), 0)
-  #define LIKELY(x)   __builtin_expect((x), 1)
+  #define UNLIKELY(x) (__builtin_expect((x), 0))
+  #define LIKELY(x)   (__builtin_expect((x), 1))
 #else
   #define UNLIKELY(x) (x)
   #define LIKELY(x)   (x)
@@ -493,7 +501,9 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 // void assert(expr condition)
 #undef assert
 #if defined(DEBUG) || !defined(NDEBUG)
+  #undef DEBUG
   #undef NDEBUG
+  #define DEBUG 1
 
   #define _assertfail(fmt, args...) \
     _panic(__FILE__, __LINE__, __FUNCTION__, "Assertion failed: " fmt, args)
@@ -501,7 +511,7 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   // or else certain applications of this macro are not expanded.
 
   #define assertf(cond, fmt, args...) \
-    if (UNLIKELY(!(cond))) _assertfail("%s; " fmt, #cond, ##args)
+    if (UNLIKELY(!(cond))) _assertfail(fmt " (%s)", ##args, #cond)
 
   #define assert(cond) \
     if (UNLIKELY(!(cond))) _assertfail("%s", #cond)
@@ -527,13 +537,17 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   #define assertgt(a,b)    assertop((a),>, (b))
   #define assertnull(a)    assertop((a),==,NULL)
 
-  #define assertnotnull(a) ({        \
-    __typeof__(a) val__ = (a);       \
-    if (UNLIKELY(val__ == NULL))     \
-      _assertfail("%s != NULL", #a); \
+  #define assertnotnull(a) ({                                         \
+    __typeof__(a) val__ = (a);                                        \
+    UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
+    if (UNLIKELY(val__ == NULL))                                      \
+      _assertfail("%s != NULL", #a);                                  \
     val__; })
 
 #else /* !defined(NDEBUG) */
+  #undef DEBUG
+  #undef NDEBUG
+  #define NDEBUG 1
   #define assert(cond)            ((void)0)
   #define assertf(cond, fmt, ...) ((void)0)
   #define assertop(a,op,b)        ((void)0)
@@ -545,6 +559,39 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   #define assertnull(a)           ((void)0)
   #define assertnotnull(a)        ({ a; }) /* note: (a) causes "unused" warnings */
 #endif /* !defined(NDEBUG) */
+
+
+// CO_SAFE -- checks enabled in "debug" and "safe" builds (but not in "fast" builds.)
+//
+// void safecheck(EXPR)
+// void safecheckf(EXPR, const char* fmt, ...)
+// typeof(EXPR) safenotnull(EXPR)
+//
+#if defined(CO_SAFE) || defined(DEBUG)
+  #undef CO_SAFE
+  #define CO_SAFE 1
+  #define _safefail(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
+  #define safecheckf(cond, fmt, args...) if UNLIKELY(!(cond)) _safefail(fmt, ##args)
+  #ifdef DEBUG
+    #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck (%s)", #cond)
+    #define safenotnull(a) ({                                           \
+      __typeof__(a) val__ = (a);                                        \
+      UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
+      safecheckf(val__ != NULL, "unexpected NULL (%s)", #a);            \
+      val__; })
+  #else
+    #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck")
+    #define safenotnull(a) ({                                           \
+      __typeof__(a) val__ = (a);                                        \
+      UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
+      safecheckf(val__ != NULL, "unexpected NULL");                     \
+      val__; })
+  #endif
+#else
+  #define safecheck(cond) ((void)0)
+  #define safecheckf(cond, fmt, args...) ((void)0)
+  #define safenotnull(a) (a) /* intentionally cause "unused" warnings */
+#endif
 
 // void dlog(const char* fmt, ...)
 #ifdef DEBUG
@@ -573,17 +620,21 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   ), x)
   // debug_tmpsprintf is like sprintf but uses a static buffer.
   // The buffer argument determines which buffer to use (constraint: buffer<6)
-  const char* debug_tmpsprintf(int buffer, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
-  #ifndef CO_WITH_LIBC
-    #warning dlog not implemented for no-libc
-    #define dlog(format, ...) ((void)0)
-  #else
+  const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
+    ATTR_FORMAT(printf, 2, 3);
+  #ifdef CO_WITH_LIBC
     ASSUME_NONNULL_END
-    #include <stdio.h>
+    #include <unistd.h> // isatty
     ASSUME_NONNULL_BEGIN
-    #define dlog(format, args...) ({                                                        \
-      log("\e[1;34m[D]\e[0m " format " \e[2m(%s %d)\e[0m", ##args, __FUNCTION__, __LINE__); \
+    #define dlog(format, args...) ({                                 \
+      if (isatty(2)) log("\e[1;35m▍\e[0m" format " \e[2m%s:%d\e[0m", \
+                         ##args, __FILE__, __LINE__);                \
+      else           log("[D] " format " (%s:%d)",                   \
+                         ##args, __FILE__, __LINE__);                \
       fflush(stderr); })
+  #else
+    #define dlog(format, args...) \
+      log("[D] " format " (%s:%d)", ##args, __FILE__, __LINE__)
   #endif
 #else
   #define dlog(format, ...) ((void)0)
