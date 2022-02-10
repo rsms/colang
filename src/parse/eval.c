@@ -269,7 +269,7 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
       return _eval(e, targetType, as_Expr(((IdNode*)(n))->target));
 
     case NLocal_BEG ... NLocal_END:
-      return _eval(e, targetType, ((LocalNode*)(n))->init);
+      return _eval(e, targetType, LocalInitField((LocalNode*)n));
 
     case NBoolLit:
     case NIntLit:

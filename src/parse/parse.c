@@ -720,7 +720,7 @@ static Node* PId(Parser* p, PFlag fl) {
 static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
   init = expectExpr(p, use_as_rvalue(p, init));
   NodeTransferUnresolved(n, init);
-  n->init = init;
+  SetLocalInitField(n, init);
 
   if (!n->type) {
     // infer local's type from initializer
@@ -742,8 +742,8 @@ static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
     if (UNLIKELY( !is_RefTypeNode(init->type) )) {
       // e.g. "x &Foo = a"  (fix: "x &Foo = &a")
       syntaxerrp(p, init->pos, "cannot initialize reference with value");
-      b_notef(p->build, NodePosSpan(n->init),
-        "try referencing the value: &%s", fmtnode(n->init));
+      b_notef(p->build, NodePosSpan(init),
+        "try referencing the value: &%s", fmtnode(init));
     }
     return;
   }
@@ -853,7 +853,8 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
       }
     } else {
       typ = pType(p, fl);
-      NodeSetConstCond(typ, isconst);
+      if (isconst && !is_BasicTypeNode(typ))
+        NodeSetConst(typ);
     }
   }
 
@@ -931,7 +932,10 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
 //!Parselet (TId ASSIGN)
 static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   NamedTypeNode* tname = pTypename(p);
-
+#if 1
+  syntaxerrp(p, tname->pos, "unexpected identifier %s", tname->name);
+  return bad(p);
+#else
   if (UNLIKELY(( fl & PFlagRValue) || !is_IdNode(left) )) {
     // fl & PFlagRValue  Occurs as an expression, e.g. "b" in "x = a b"
     // !is_IdNode(left)  Identifier following some expression e.g. "b" in "3 b"
@@ -951,6 +955,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   return as_Node(make_local(p, id1, init, typ));
+#endif
 }
 
 

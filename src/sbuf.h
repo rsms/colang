@@ -42,6 +42,8 @@ void sbuf_appendu64(SBuf* s, u64 v, u32 base);
 void sbuf_appendu32(SBuf* s, u32 v, u32 base);
 void sbuf_appendf64(SBuf* s, f64 v, int ndec);
 static void sbuf_appendstr(SBuf* s, const char* cstr);
+void sbuf_appendfill(SBuf* s, char c, usize len); // like memset
+
 bool sbuf_endswith(const SBuf* s, const char* str, usize len);
 
 // SBUF_AVAIL returns available space at s->p, not including null terminator

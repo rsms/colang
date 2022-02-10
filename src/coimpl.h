@@ -503,7 +503,9 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #if defined(DEBUG) || !defined(NDEBUG)
   #undef DEBUG
   #undef NDEBUG
+  #undef CO_SAFE
   #define DEBUG 1
+  #define CO_SAFE 1
 
   #define _assertfail(fmt, args...) \
     _panic(__FILE__, __LINE__, __FUNCTION__, "Assertion failed: " fmt, args)
@@ -567,7 +569,7 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 // void safecheckf(EXPR, const char* fmt, ...)
 // typeof(EXPR) safenotnull(EXPR)
 //
-#if defined(CO_SAFE) || defined(DEBUG)
+#if defined(CO_SAFE)
   #undef CO_SAFE
   #define CO_SAFE 1
   #define _safefail(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)

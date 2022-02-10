@@ -226,48 +226,82 @@ for name, subtypes in typemap.items():
 outh.append('')
 
 # as_*
-outh.append('// <type>* as_<type>(Node* n)')
-outh.append('// const <type>* as_<type>(const Node* n)')
-for name, subtypes in typemap.items():
-  shortname = strip_node_suffix(name)
-  if shortname == '':
-    continue # skip root type
-  if len(subtypes) == 0:
-    # has typedef so no need for "struct"
-    outh.append('#define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (
-      name, name, name))
-
-def gen_as_TYPE(out, name, subtypes):
+# mode = "assert" | "generic" | "none"
+def gen_as_TYPE(out, mode, name, subtypes):
   stname = structname(name, subtypes)
+  if mode == "none":
+    out.append('  #define as_%s(n) ((%s*)(n))' % (name, stname))
+    out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, stname))
+  elif mode == "assert":
+    out.append('  #define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (name, name, stname))
+    out.append('  #define as_const_%s(n) ({ assert_is_%s(n); (const %s*)(n); })' % (
+      name, name, stname))
+  else: # mode == "generic"
+    def visit(out, qual, name, subtypes):
+      for name2, subtypes2 in subtypes.items():
+        visit(out, qual, name2, subtypes2)
+      if mode == "generic":
+        #out.append('const %s*:(const %s*)(n),' % (structname(name, subtypes), stname))
+        out.append('%s%s*:(%s%s*)(n),' % (qual, structname(name, subtypes), qual, stname))
 
-  def visit(out, name, subtypes):
-    for name2, subtypes2 in subtypes.items():
-      visit(out, name2, subtypes2)
-    out.append('const %s*:(const %s*)(n),' % (structname(name, subtypes), stname))
-    out.append('%s*:(%s*)(n),' % (structname(name, subtypes), stname))
+    tmp = []
+    tmp.append('  #define as_%s(n) _Generic((n),' % (name))
+    visit(tmp, "", name, subtypes)
+    if strip_node_suffix(name) != '':
+      #tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
+      tmp.append('Node*: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+      # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
+    output_compact_macro(out, tmp, indent=2)
 
-  tmp = []
-  tmp.append('#define as_%s(n) _Generic((n),' % (name))
-  visit(tmp, name, subtypes)
+    tmp = []
+    tmp.append('  #define as_const_%s(n) _Generic((n),' % (name))
+    visit(tmp, "const ", name, subtypes)
+    if strip_node_suffix(name) != '':
+      #tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
+      tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }))' % (name, stname))
+      # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
+    output_compact_macro(out, tmp, indent=2)
 
-  if strip_node_suffix(name) != '':
-    # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
-    tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
-    tmp.append('Node*: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    out.append('')
 
-  tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
-  output_compact_macro(out, tmp)
-  out.append('')
-
-def gen_as_TYPE_all(out, subtypes):
+def gen_as_TYPE_supers(out, mode, subtypes):
   for name, subtypes2 in subtypes.items():
     if subtypes2:
-      gen_as_TYPE(out, name, subtypes2)
-      gen_as_TYPE_all(out, subtypes2)
+      gen_as_TYPE(out, mode, name, subtypes2)
+      gen_as_TYPE_supers(out, mode, subtypes2)
+
+def gen_as_TYPE_leafs(out, mode):
+  for name, subtypes in typemap.items():
+    shortname = strip_node_suffix(name)
+    if shortname == '' or len(subtypes) > 0: continue
+    if mode == "none":
+      out.append('  #define as_%s(n) ((%s*)(n))' % (name, name))
+      out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, name))
+    else: # mode == "assert" or mode == "generic"
+      out.append('  #define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (name, name, name))
+      out.append('  #define as_const_%s(n) ({ assert_is_%s(n); (const %s*)(n); })' % (
+        name, name, name))
 
 # as_Node
-gen_as_TYPE(outh, 'Node', Node)
-gen_as_TYPE_all(outh, Node)
+outh.append('// T* as_T(Node* n)')
+outh.append('// const T* as_const_T(const Node* n)')
+outh.append('//')
+outh.append('// Large _Generic with both const and non-const cases ("const T*" & "T*")')
+outh.append('// are really slow to compile, so we break up the "as_" macros into two forms.')
+outh.append('#if defined(DEBUG)')
+gen_as_TYPE(outh, "none", 'Node', Node)
+# gen_as_TYPE_leafs(outh, "assert")
+# gen_as_TYPE_supers(outh, "assert", Node)
+gen_as_TYPE_leafs(outh, "generic")
+gen_as_TYPE_supers(outh, "generic", Node)
+outh.append('#else // !defined(DEBUG)')
+gen_as_TYPE(outh, "none", 'Node', Node)
+gen_as_TYPE_leafs(outh, "none")
+gen_as_TYPE_supers(outh, "none", Node)
+outh.append('#endif // DEBUG')
+outh.append('')
 
 
 # maybe_*

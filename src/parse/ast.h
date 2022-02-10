@@ -105,12 +105,12 @@ struct AssignNode { Expr;
   Expr* dst; // assignment target (Local | Tuple | Index)
   Expr* val; // value
 };
-struct ListExpr { Expr;
+struct ListExprNode { Expr;
   ExprArray a;            // array of nodes
   Expr*     a_storage[5]; // in-struct storage for the first few entries of a
 };
-struct TupleNode { struct ListExpr; };
-struct ArrayNode { struct ListExpr; };
+struct TupleNode { struct ListExprNode; };
+struct ArrayNode { struct ListExprNode; };
 struct BlockNode { Expr;
   NodeArray a;            // array of nodes
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
@@ -135,15 +135,22 @@ struct TypeCastNode { Expr;
   // Note: destination type in Expr.type
 };
 struct LocalNode { Expr;
-  u32            nrefs;   // reference count
-  u32            index;   // argument index (used by function parameters)
-  Sym            name;
-  Expr* nullable init;    // initial/default value
+  u32 nrefs; // reference count
+  u32 index; // argument index (used by function parameters)
+  Sym name;
 };
-struct ConstNode { struct LocalNode; };
-struct VarNode { struct LocalNode; };
-struct ParamNode { struct LocalNode; };
-struct MacroParamNode { struct LocalNode; };
+struct ConstNode { struct LocalNode;
+  Expr* value; // value
+};
+struct VarNode { struct LocalNode;
+  Expr* nullable init; // initial/default value
+};
+struct ParamNode { struct LocalNode;
+  Expr* nullable init; // initial/default value
+};
+struct MacroParamNode { struct LocalNode;
+  Node* nullable init; // initial/default value
+};
 struct RefNode { Expr;
   Expr* target;
 };
@@ -349,6 +356,17 @@ ASSUME_NONNULL_BEGIN
 static_assert(sizeof(union NodeUnion) >= 104, "AST size shrunk");
 static_assert(sizeof(union NodeUnion) <= 104, "AST size grew");
 
+// all subtypes of LocalNode must have compatible init fields
+
+#define LocalInitField(n)      ( ((VarNode*)as_LocalNode((Node*)n))->init )
+#define SetLocalInitField(n,v) ( ((VarNode*)as_LocalNode((Node*)n))->init = (v) )
+static_assert(offsetof(ConstNode,value) == offsetof(VarNode,init), "");
+static_assert(offsetof(ConstNode,value) == offsetof(ParamNode,init), "");
+static_assert(offsetof(ConstNode,value) == offsetof(MacroParamNode,init), "");
+static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((VarNode*)0)->init), "");
+static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((ParamNode*)0)->init), "");
+static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((MacroParamNode*)0)->init), "");
+
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
 const char* NodeKindName(NodeKind);
 
@@ -425,7 +443,7 @@ const char* _fmtast(const Node* nullable n);
 
 Scope* nullable ScopeNew(Mem mem, const Scope* nullable parent);
 void ScopeFree(Scope*, Mem mem);
-const Node* nullable ScopeLookup(const Scope* nullable, Sym);
+Node* nullable ScopeLookup(const Scope* nullable, Sym);
 
 // ScopeAssign associates key with *valuep_inout.
 // Returns an error if memory allocation failed during growth of the hash table.
@@ -440,3 +458,66 @@ error ScopeAssign(Scope* s, Sym key, Node* n, Mem) WARN_UNUSED_RESULT;
 // }
 
 ASSUME_NONNULL_END
+
+
+/*
+switch template:
+
+static Node* example(Node* np) {
+  #define _(NAME)  return np; } case N##NAME: { \
+    UNUSED auto n = (NAME##Node*)np;
+  #define _G(NAME) return np; } case N##NAME##_BEG ... N##NAME##_END: { \
+    UNUSED auto n = (struct NAME##Node*)np;
+  switch (np->kind) { case NBad: {
+
+  _(Field)      panic("TODO %s", nodename(n));
+  _(Pkg)        panic("TODO %s", nodename(n));
+  _(File)       panic("TODO %s", nodename(n));
+  _(Comment)    panic("TODO %s", nodename(n));
+
+  _(Nil)        panic("TODO %s", nodename(n));
+  _(BoolLit)    panic("TODO %s", nodename(n));
+  _(IntLit)     panic("TODO %s", nodename(n));
+  _(FloatLit)   panic("TODO %s", nodename(n));
+  _(StrLit)     panic("TODO %s", nodename(n));
+  _(Id)         panic("TODO %s", nodename(n));
+  _(BinOp)      panic("TODO %s", nodename(n));
+  _(PrefixOp)   panic("TODO %s", nodename(n));
+  _(PostfixOp)  panic("TODO %s", nodename(n));
+  _(Return)     panic("TODO %s", nodename(n));
+  _(Assign)     panic("TODO %s", nodename(n));
+  _(Tuple)      panic("TODO %s", nodename(n));
+  _(Array)      panic("TODO %s", nodename(n));
+  _(Block)      panic("TODO %s", nodename(n));
+  _(Fun)        panic("TODO %s", nodename(n));
+  _(Macro)      panic("TODO %s", nodename(n));
+  _(Call)       panic("TODO %s", nodename(n));
+  _(TypeCast)   panic("TODO %s", nodename(n));
+  _(Const)      panic("TODO %s", nodename(n));
+  _(Var)        panic("TODO %s", nodename(n));
+  _(Param)      panic("TODO %s", nodename(n));
+  _(MacroParam) panic("TODO %s", nodename(n));
+  _(Ref)        panic("TODO %s", nodename(n));
+  _(NamedArg)   panic("TODO %s", nodename(n));
+  _(Selector)   panic("TODO %s", nodename(n));
+  _(Index)      panic("TODO %s", nodename(n));
+  _(Slice)      panic("TODO %s", nodename(n));
+  _(If)         panic("TODO %s", nodename(n));
+
+  _(TypeType)   panic("TODO %s", nodename(n));
+  _(NamedType)  panic("TODO %s", nodename(n));
+  _(AliasType)  panic("TODO %s", nodename(n));
+  _(RefType)    panic("TODO %s", nodename(n));
+  _(BasicType)  panic("TODO %s", nodename(n));
+  _(ArrayType)  panic("TODO %s", nodename(n));
+  _(TupleType)  panic("TODO %s", nodename(n));
+  _(StructType) panic("TODO %s", nodename(n));
+  _(FunType)    panic("TODO %s", nodename(n));
+
+  }}
+  #undef _
+  #undef _G
+  assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
+  UNREACHABLE;
+}
+*/

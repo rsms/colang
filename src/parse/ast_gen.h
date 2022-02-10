@@ -141,7 +141,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_PostfixOpNode(n) ((n)->kind==NPostfixOp)
 #define is_ReturnNode(n) ((n)->kind==NReturn)
 #define is_AssignNode(n) ((n)->kind==NAssign)
-#define is_ListExpr(n) NodeKindIsListExpr((n)->kind)
+#define is_ListExprNode(n) NodeKindIsListExpr((n)->kind)
 #define is_TupleNode(n) ((n)->kind==NTuple)
 #define is_ArrayNode(n) ((n)->kind==NArray)
 #define is_BlockNode(n) ((n)->kind==NBlock)
@@ -202,7 +202,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_PostfixOpNode(n) asserteq(assertnotnull(n)->kind,NPostfixOp)
 #define assert_is_ReturnNode(n) asserteq(assertnotnull(n)->kind,NReturn)
 #define assert_is_AssignNode(n) asserteq(assertnotnull(n)->kind,NAssign)
-#define assert_is_ListExpr(n) _assert_is1(ListExpr,(n))
+#define assert_is_ListExprNode(n) _assert_is1(ListExpr,(n))
 #define assert_is_TupleNode(n) asserteq(assertnotnull(n)->kind,NTuple)
 #define assert_is_ArrayNode(n) asserteq(assertnotnull(n)->kind,NArray)
 #define assert_is_BlockNode(n) asserteq(assertnotnull(n)->kind,NBlock)
@@ -232,198 +232,308 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_StructTypeNode(n) asserteq(assertnotnull(n)->kind,NStructType)
 #define assert_is_FunTypeNode(n) asserteq(assertnotnull(n)->kind,NFunType)
 
-// <type>* as_<type>(Node* n)
-// const <type>* as_<type>(const Node* n)
-#define as_BadNode(n) ({ assert_is_BadNode(n); (BadNode*)(n); })
-#define as_FieldNode(n) ({ assert_is_FieldNode(n); (FieldNode*)(n); })
-#define as_PkgNode(n) ({ assert_is_PkgNode(n); (PkgNode*)(n); })
-#define as_FileNode(n) ({ assert_is_FileNode(n); (FileNode*)(n); })
-#define as_CommentNode(n) ({ assert_is_CommentNode(n); (CommentNode*)(n); })
-#define as_NilNode(n) ({ assert_is_NilNode(n); (NilNode*)(n); })
-#define as_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (BoolLitNode*)(n); })
-#define as_IntLitNode(n) ({ assert_is_IntLitNode(n); (IntLitNode*)(n); })
-#define as_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (FloatLitNode*)(n); })
-#define as_StrLitNode(n) ({ assert_is_StrLitNode(n); (StrLitNode*)(n); })
-#define as_IdNode(n) ({ assert_is_IdNode(n); (IdNode*)(n); })
-#define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
-#define as_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (PrefixOpNode*)(n); })
-#define as_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (PostfixOpNode*)(n); })
-#define as_ReturnNode(n) ({ assert_is_ReturnNode(n); (ReturnNode*)(n); })
-#define as_AssignNode(n) ({ assert_is_AssignNode(n); (AssignNode*)(n); })
-#define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
-#define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
-#define as_BlockNode(n) ({ assert_is_BlockNode(n); (BlockNode*)(n); })
-#define as_FunNode(n) ({ assert_is_FunNode(n); (FunNode*)(n); })
-#define as_MacroNode(n) ({ assert_is_MacroNode(n); (MacroNode*)(n); })
-#define as_CallNode(n) ({ assert_is_CallNode(n); (CallNode*)(n); })
-#define as_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (TypeCastNode*)(n); })
-#define as_ConstNode(n) ({ assert_is_ConstNode(n); (ConstNode*)(n); })
-#define as_VarNode(n) ({ assert_is_VarNode(n); (VarNode*)(n); })
-#define as_ParamNode(n) ({ assert_is_ParamNode(n); (ParamNode*)(n); })
-#define as_MacroParamNode(n) ({ assert_is_MacroParamNode(n); (MacroParamNode*)(n); })
-#define as_RefNode(n) ({ assert_is_RefNode(n); (RefNode*)(n); })
-#define as_NamedArgNode(n) ({ assert_is_NamedArgNode(n); (NamedArgNode*)(n); })
-#define as_SelectorNode(n) ({ assert_is_SelectorNode(n); (SelectorNode*)(n); })
-#define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
-#define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
-#define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
-#define as_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (TypeTypeNode*)(n); })
-#define as_NamedTypeNode(n) ({ assert_is_NamedTypeNode(n); (NamedTypeNode*)(n); })
-#define as_AliasTypeNode(n) ({ assert_is_AliasTypeNode(n); (AliasTypeNode*)(n); })
-#define as_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (RefTypeNode*)(n); })
-#define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
-#define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
-#define as_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (TupleTypeNode*)(n); })
-#define as_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (StructTypeNode*)(n); })
-#define as_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (FunTypeNode*)(n); })
-#define as_Node(n) _Generic((n), const BadNode*:(const Node*)(n), BadNode*:(Node*)(n), \
-  const FieldNode*:(const Node*)(n), FieldNode*:(Node*)(n), \
-  const PkgNode*:(const Node*)(n), PkgNode*:(Node*)(n), \
-  const FileNode*:(const Node*)(n), FileNode*:(Node*)(n), \
-  const struct CUnitNode*:(const Node*)(n), struct CUnitNode*:(Node*)(n), \
-  const CommentNode*:(const Node*)(n), CommentNode*:(Node*)(n), \
-  const Stmt*:(const Node*)(n), Stmt*:(Node*)(n), const NilNode*:(const Node*)(n), \
-  NilNode*:(Node*)(n), const BoolLitNode*:(const Node*)(n), BoolLitNode*:(Node*)(n), \
-  const IntLitNode*:(const Node*)(n), IntLitNode*:(Node*)(n), \
-  const FloatLitNode*:(const Node*)(n), FloatLitNode*:(Node*)(n), \
-  const StrLitNode*:(const Node*)(n), StrLitNode*:(Node*)(n), \
-  const struct LitExpr*:(const Node*)(n), struct LitExpr*:(Node*)(n), \
-  const IdNode*:(const Node*)(n), IdNode*:(Node*)(n), const BinOpNode*:(const Node*)(n), \
-  BinOpNode*:(Node*)(n), const PrefixOpNode*:(const Node*)(n), PrefixOpNode*:(Node*)(n), \
-  const PostfixOpNode*:(const Node*)(n), PostfixOpNode*:(Node*)(n), \
-  const struct UnaryOpNode*:(const Node*)(n), struct UnaryOpNode*:(Node*)(n), \
-  const ReturnNode*:(const Node*)(n), ReturnNode*:(Node*)(n), \
-  const AssignNode*:(const Node*)(n), AssignNode*:(Node*)(n), \
-  const TupleNode*:(const Node*)(n), TupleNode*:(Node*)(n), \
-  const ArrayNode*:(const Node*)(n), ArrayNode*:(Node*)(n), \
-  const struct ListExpr*:(const Node*)(n), struct ListExpr*:(Node*)(n), \
-  const BlockNode*:(const Node*)(n), BlockNode*:(Node*)(n), \
-  const FunNode*:(const Node*)(n), FunNode*:(Node*)(n), \
-  const MacroNode*:(const Node*)(n), MacroNode*:(Node*)(n), \
-  const CallNode*:(const Node*)(n), CallNode*:(Node*)(n), \
-  const TypeCastNode*:(const Node*)(n), TypeCastNode*:(Node*)(n), \
-  const ConstNode*:(const Node*)(n), ConstNode*:(Node*)(n), \
-  const VarNode*:(const Node*)(n), VarNode*:(Node*)(n), \
-  const ParamNode*:(const Node*)(n), ParamNode*:(Node*)(n), \
-  const MacroParamNode*:(const Node*)(n), MacroParamNode*:(Node*)(n), \
-  const struct LocalNode*:(const Node*)(n), struct LocalNode*:(Node*)(n), \
-  const RefNode*:(const Node*)(n), RefNode*:(Node*)(n), \
-  const NamedArgNode*:(const Node*)(n), NamedArgNode*:(Node*)(n), \
-  const SelectorNode*:(const Node*)(n), SelectorNode*:(Node*)(n), \
-  const IndexNode*:(const Node*)(n), IndexNode*:(Node*)(n), \
-  const SliceNode*:(const Node*)(n), SliceNode*:(Node*)(n), \
-  const IfNode*:(const Node*)(n), IfNode*:(Node*)(n), const Expr*:(const Node*)(n), \
-  Expr*:(Node*)(n), const TypeTypeNode*:(const Node*)(n), TypeTypeNode*:(Node*)(n), \
-  const NamedTypeNode*:(const Node*)(n), NamedTypeNode*:(Node*)(n), \
-  const AliasTypeNode*:(const Node*)(n), AliasTypeNode*:(Node*)(n), \
-  const RefTypeNode*:(const Node*)(n), RefTypeNode*:(Node*)(n), \
-  const BasicTypeNode*:(const Node*)(n), BasicTypeNode*:(Node*)(n), \
-  const ArrayTypeNode*:(const Node*)(n), ArrayTypeNode*:(Node*)(n), \
-  const TupleTypeNode*:(const Node*)(n), TupleTypeNode*:(Node*)(n), \
-  const StructTypeNode*:(const Node*)(n), StructTypeNode*:(Node*)(n), \
-  const FunTypeNode*:(const Node*)(n), FunTypeNode*:(Node*)(n), \
-  const Type*:(const Node*)(n), Type*:(Node*)(n), const Node*:(const Node*)(n), \
-  Node*:(Node*)(n))
+// T* as_T(Node* n)
+// const T* as_const_T(const Node* n)
+//
+// Large _Generic with both const and non-const cases ("const T*" & "T*")
+// are really slow to compile, so we break up the "as_" macros into two forms.
+#if defined(DEBUG)
+  #define as_Node(n) ((Node*)(n))
+  #define as_const_Node(n) ((const Node*)(n))
+  #define as_BadNode(n) ({ assert_is_BadNode(n); (BadNode*)(n); })
+  #define as_const_BadNode(n) ({ assert_is_BadNode(n); (const BadNode*)(n); })
+  #define as_FieldNode(n) ({ assert_is_FieldNode(n); (FieldNode*)(n); })
+  #define as_const_FieldNode(n) ({ assert_is_FieldNode(n); (const FieldNode*)(n); })
+  #define as_PkgNode(n) ({ assert_is_PkgNode(n); (PkgNode*)(n); })
+  #define as_const_PkgNode(n) ({ assert_is_PkgNode(n); (const PkgNode*)(n); })
+  #define as_FileNode(n) ({ assert_is_FileNode(n); (FileNode*)(n); })
+  #define as_const_FileNode(n) ({ assert_is_FileNode(n); (const FileNode*)(n); })
+  #define as_CommentNode(n) ({ assert_is_CommentNode(n); (CommentNode*)(n); })
+  #define as_const_CommentNode(n) ({ assert_is_CommentNode(n); (const CommentNode*)(n); })
+  #define as_NilNode(n) ({ assert_is_NilNode(n); (NilNode*)(n); })
+  #define as_const_NilNode(n) ({ assert_is_NilNode(n); (const NilNode*)(n); })
+  #define as_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (BoolLitNode*)(n); })
+  #define as_const_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (const BoolLitNode*)(n); })
+  #define as_IntLitNode(n) ({ assert_is_IntLitNode(n); (IntLitNode*)(n); })
+  #define as_const_IntLitNode(n) ({ assert_is_IntLitNode(n); (const IntLitNode*)(n); })
+  #define as_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (FloatLitNode*)(n); })
+  #define as_const_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (const FloatLitNode*)(n); })
+  #define as_StrLitNode(n) ({ assert_is_StrLitNode(n); (StrLitNode*)(n); })
+  #define as_const_StrLitNode(n) ({ assert_is_StrLitNode(n); (const StrLitNode*)(n); })
+  #define as_IdNode(n) ({ assert_is_IdNode(n); (IdNode*)(n); })
+  #define as_const_IdNode(n) ({ assert_is_IdNode(n); (const IdNode*)(n); })
+  #define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
+  #define as_const_BinOpNode(n) ({ assert_is_BinOpNode(n); (const BinOpNode*)(n); })
+  #define as_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (PrefixOpNode*)(n); })
+  #define as_const_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (const PrefixOpNode*)(n); })
+  #define as_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (PostfixOpNode*)(n); })
+  #define as_const_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (const PostfixOpNode*)(n); })
+  #define as_ReturnNode(n) ({ assert_is_ReturnNode(n); (ReturnNode*)(n); })
+  #define as_const_ReturnNode(n) ({ assert_is_ReturnNode(n); (const ReturnNode*)(n); })
+  #define as_AssignNode(n) ({ assert_is_AssignNode(n); (AssignNode*)(n); })
+  #define as_const_AssignNode(n) ({ assert_is_AssignNode(n); (const AssignNode*)(n); })
+  #define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
+  #define as_const_TupleNode(n) ({ assert_is_TupleNode(n); (const TupleNode*)(n); })
+  #define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
+  #define as_const_ArrayNode(n) ({ assert_is_ArrayNode(n); (const ArrayNode*)(n); })
+  #define as_BlockNode(n) ({ assert_is_BlockNode(n); (BlockNode*)(n); })
+  #define as_const_BlockNode(n) ({ assert_is_BlockNode(n); (const BlockNode*)(n); })
+  #define as_FunNode(n) ({ assert_is_FunNode(n); (FunNode*)(n); })
+  #define as_const_FunNode(n) ({ assert_is_FunNode(n); (const FunNode*)(n); })
+  #define as_MacroNode(n) ({ assert_is_MacroNode(n); (MacroNode*)(n); })
+  #define as_const_MacroNode(n) ({ assert_is_MacroNode(n); (const MacroNode*)(n); })
+  #define as_CallNode(n) ({ assert_is_CallNode(n); (CallNode*)(n); })
+  #define as_const_CallNode(n) ({ assert_is_CallNode(n); (const CallNode*)(n); })
+  #define as_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (TypeCastNode*)(n); })
+  #define as_const_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (const TypeCastNode*)(n); })
+  #define as_ConstNode(n) ({ assert_is_ConstNode(n); (ConstNode*)(n); })
+  #define as_const_ConstNode(n) ({ assert_is_ConstNode(n); (const ConstNode*)(n); })
+  #define as_VarNode(n) ({ assert_is_VarNode(n); (VarNode*)(n); })
+  #define as_const_VarNode(n) ({ assert_is_VarNode(n); (const VarNode*)(n); })
+  #define as_ParamNode(n) ({ assert_is_ParamNode(n); (ParamNode*)(n); })
+  #define as_const_ParamNode(n) ({ assert_is_ParamNode(n); (const ParamNode*)(n); })
+  #define as_MacroParamNode(n) ({ assert_is_MacroParamNode(n); (MacroParamNode*)(n); })
+  #define as_const_MacroParamNode(n) ({ assert_is_MacroParamNode(n); (const MacroParamNode*)(n); })
+  #define as_RefNode(n) ({ assert_is_RefNode(n); (RefNode*)(n); })
+  #define as_const_RefNode(n) ({ assert_is_RefNode(n); (const RefNode*)(n); })
+  #define as_NamedArgNode(n) ({ assert_is_NamedArgNode(n); (NamedArgNode*)(n); })
+  #define as_const_NamedArgNode(n) ({ assert_is_NamedArgNode(n); (const NamedArgNode*)(n); })
+  #define as_SelectorNode(n) ({ assert_is_SelectorNode(n); (SelectorNode*)(n); })
+  #define as_const_SelectorNode(n) ({ assert_is_SelectorNode(n); (const SelectorNode*)(n); })
+  #define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
+  #define as_const_IndexNode(n) ({ assert_is_IndexNode(n); (const IndexNode*)(n); })
+  #define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
+  #define as_const_SliceNode(n) ({ assert_is_SliceNode(n); (const SliceNode*)(n); })
+  #define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
+  #define as_const_IfNode(n) ({ assert_is_IfNode(n); (const IfNode*)(n); })
+  #define as_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (TypeTypeNode*)(n); })
+  #define as_const_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (const TypeTypeNode*)(n); })
+  #define as_NamedTypeNode(n) ({ assert_is_NamedTypeNode(n); (NamedTypeNode*)(n); })
+  #define as_const_NamedTypeNode(n) ({ assert_is_NamedTypeNode(n); (const NamedTypeNode*)(n); })
+  #define as_AliasTypeNode(n) ({ assert_is_AliasTypeNode(n); (AliasTypeNode*)(n); })
+  #define as_const_AliasTypeNode(n) ({ assert_is_AliasTypeNode(n); (const AliasTypeNode*)(n); })
+  #define as_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (RefTypeNode*)(n); })
+  #define as_const_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (const RefTypeNode*)(n); })
+  #define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
+  #define as_const_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (const BasicTypeNode*)(n); })
+  #define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
+  #define as_const_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (const ArrayTypeNode*)(n); })
+  #define as_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (TupleTypeNode*)(n); })
+  #define as_const_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (const TupleTypeNode*)(n); })
+  #define as_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (StructTypeNode*)(n); })
+  #define as_const_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (const StructTypeNode*)(n); })
+  #define as_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (FunTypeNode*)(n); })
+  #define as_const_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (const FunTypeNode*)(n); })
+  #define as_Stmt(n) _Generic((n), PkgNode*:(Stmt*)(n), FileNode*:(Stmt*)(n), \
+    struct CUnitNode*:(Stmt*)(n), CommentNode*:(Stmt*)(n), Stmt*:(Stmt*)(n), \
+    Node*: ({ assert_is_Stmt(n); (Stmt*)(n); }))
+  #define as_const_Stmt(n) _Generic((n), const PkgNode*:(const Stmt*)(n), \
+    const FileNode*:(const Stmt*)(n), const struct CUnitNode*:(const Stmt*)(n), \
+    const CommentNode*:(const Stmt*)(n), const Stmt*:(const Stmt*)(n), \
+    const Node*: ({ assert_is_Stmt(n); (const Stmt*)(n); }))
 
-#define as_Stmt(n) _Generic((n), const PkgNode*:(const Stmt*)(n), PkgNode*:(Stmt*)(n), \
-  const FileNode*:(const Stmt*)(n), FileNode*:(Stmt*)(n), \
-  const struct CUnitNode*:(const Stmt*)(n), struct CUnitNode*:(Stmt*)(n), \
-  const CommentNode*:(const Stmt*)(n), CommentNode*:(Stmt*)(n), \
-  const Stmt*:(const Stmt*)(n), Stmt*:(Stmt*)(n), \
-  const Node*: ({ assert_is_Stmt(n); (const Stmt*)(n); }), \
-  Node*: ({ assert_is_Stmt(n); (Stmt*)(n); }))
+  #define as_CUnitNode(n) _Generic((n), PkgNode*:(struct CUnitNode*)(n), \
+    FileNode*:(struct CUnitNode*)(n), struct CUnitNode*:(struct CUnitNode*)(n), \
+    Node*: ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); }))
+  #define as_const_CUnitNode(n) _Generic((n), \
+    const PkgNode*:(const struct CUnitNode*)(n), \
+    const FileNode*:(const struct CUnitNode*)(n), \
+    const struct CUnitNode*:(const struct CUnitNode*)(n), \
+    const Node*: ({ assert_is_CUnitNode(n); (const struct CUnitNode*)(n); }))
 
-#define as_CUnitNode(n) _Generic((n), const PkgNode*:(const struct CUnitNode*)(n), \
-  PkgNode*:(struct CUnitNode*)(n), const FileNode*:(const struct CUnitNode*)(n), \
-  FileNode*:(struct CUnitNode*)(n), \
-  const struct CUnitNode*:(const struct CUnitNode*)(n), \
-  struct CUnitNode*:(struct CUnitNode*)(n), \
-  const Node*: ({ assert_is_CUnitNode(n); (const struct CUnitNode*)(n); }), \
-  Node*: ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); }))
+  #define as_Expr(n) _Generic((n), NilNode*:(Expr*)(n), BoolLitNode*:(Expr*)(n), \
+    IntLitNode*:(Expr*)(n), FloatLitNode*:(Expr*)(n), StrLitNode*:(Expr*)(n), \
+    struct LitExpr*:(Expr*)(n), IdNode*:(Expr*)(n), BinOpNode*:(Expr*)(n), \
+    PrefixOpNode*:(Expr*)(n), PostfixOpNode*:(Expr*)(n), struct UnaryOpNode*:(Expr*)(n), \
+    ReturnNode*:(Expr*)(n), AssignNode*:(Expr*)(n), TupleNode*:(Expr*)(n), \
+    ArrayNode*:(Expr*)(n), struct ListExprNode*:(Expr*)(n), BlockNode*:(Expr*)(n), \
+    FunNode*:(Expr*)(n), MacroNode*:(Expr*)(n), CallNode*:(Expr*)(n), \
+    TypeCastNode*:(Expr*)(n), ConstNode*:(Expr*)(n), VarNode*:(Expr*)(n), \
+    ParamNode*:(Expr*)(n), MacroParamNode*:(Expr*)(n), struct LocalNode*:(Expr*)(n), \
+    RefNode*:(Expr*)(n), NamedArgNode*:(Expr*)(n), SelectorNode*:(Expr*)(n), \
+    IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), IfNode*:(Expr*)(n), Expr*:(Expr*)(n), \
+    Node*: ({ assert_is_Expr(n); (Expr*)(n); }))
+  #define as_const_Expr(n) _Generic((n), const NilNode*:(const Expr*)(n), \
+    const BoolLitNode*:(const Expr*)(n), const IntLitNode*:(const Expr*)(n), \
+    const FloatLitNode*:(const Expr*)(n), const StrLitNode*:(const Expr*)(n), \
+    const struct LitExpr*:(const Expr*)(n), const IdNode*:(const Expr*)(n), \
+    const BinOpNode*:(const Expr*)(n), const PrefixOpNode*:(const Expr*)(n), \
+    const PostfixOpNode*:(const Expr*)(n), const struct UnaryOpNode*:(const Expr*)(n), \
+    const ReturnNode*:(const Expr*)(n), const AssignNode*:(const Expr*)(n), \
+    const TupleNode*:(const Expr*)(n), const ArrayNode*:(const Expr*)(n), \
+    const struct ListExprNode*:(const Expr*)(n), const BlockNode*:(const Expr*)(n), \
+    const FunNode*:(const Expr*)(n), const MacroNode*:(const Expr*)(n), \
+    const CallNode*:(const Expr*)(n), const TypeCastNode*:(const Expr*)(n), \
+    const ConstNode*:(const Expr*)(n), const VarNode*:(const Expr*)(n), \
+    const ParamNode*:(const Expr*)(n), const MacroParamNode*:(const Expr*)(n), \
+    const struct LocalNode*:(const Expr*)(n), const RefNode*:(const Expr*)(n), \
+    const NamedArgNode*:(const Expr*)(n), const SelectorNode*:(const Expr*)(n), \
+    const IndexNode*:(const Expr*)(n), const SliceNode*:(const Expr*)(n), \
+    const IfNode*:(const Expr*)(n), const Expr*:(const Expr*)(n), \
+    const Node*: ({ assert_is_Expr(n); (const Expr*)(n); }))
 
-#define as_Expr(n) _Generic((n), const NilNode*:(const Expr*)(n), NilNode*:(Expr*)(n), \
-  const BoolLitNode*:(const Expr*)(n), BoolLitNode*:(Expr*)(n), \
-  const IntLitNode*:(const Expr*)(n), IntLitNode*:(Expr*)(n), \
-  const FloatLitNode*:(const Expr*)(n), FloatLitNode*:(Expr*)(n), \
-  const StrLitNode*:(const Expr*)(n), StrLitNode*:(Expr*)(n), \
-  const struct LitExpr*:(const Expr*)(n), struct LitExpr*:(Expr*)(n), \
-  const IdNode*:(const Expr*)(n), IdNode*:(Expr*)(n), const BinOpNode*:(const Expr*)(n), \
-  BinOpNode*:(Expr*)(n), const PrefixOpNode*:(const Expr*)(n), PrefixOpNode*:(Expr*)(n), \
-  const PostfixOpNode*:(const Expr*)(n), PostfixOpNode*:(Expr*)(n), \
-  const struct UnaryOpNode*:(const Expr*)(n), struct UnaryOpNode*:(Expr*)(n), \
-  const ReturnNode*:(const Expr*)(n), ReturnNode*:(Expr*)(n), \
-  const AssignNode*:(const Expr*)(n), AssignNode*:(Expr*)(n), \
-  const TupleNode*:(const Expr*)(n), TupleNode*:(Expr*)(n), \
-  const ArrayNode*:(const Expr*)(n), ArrayNode*:(Expr*)(n), \
-  const struct ListExpr*:(const Expr*)(n), struct ListExpr*:(Expr*)(n), \
-  const BlockNode*:(const Expr*)(n), BlockNode*:(Expr*)(n), \
-  const FunNode*:(const Expr*)(n), FunNode*:(Expr*)(n), \
-  const MacroNode*:(const Expr*)(n), MacroNode*:(Expr*)(n), \
-  const CallNode*:(const Expr*)(n), CallNode*:(Expr*)(n), \
-  const TypeCastNode*:(const Expr*)(n), TypeCastNode*:(Expr*)(n), \
-  const ConstNode*:(const Expr*)(n), ConstNode*:(Expr*)(n), \
-  const VarNode*:(const Expr*)(n), VarNode*:(Expr*)(n), \
-  const ParamNode*:(const Expr*)(n), ParamNode*:(Expr*)(n), \
-  const MacroParamNode*:(const Expr*)(n), MacroParamNode*:(Expr*)(n), \
-  const struct LocalNode*:(const Expr*)(n), struct LocalNode*:(Expr*)(n), \
-  const RefNode*:(const Expr*)(n), RefNode*:(Expr*)(n), \
-  const NamedArgNode*:(const Expr*)(n), NamedArgNode*:(Expr*)(n), \
-  const SelectorNode*:(const Expr*)(n), SelectorNode*:(Expr*)(n), \
-  const IndexNode*:(const Expr*)(n), IndexNode*:(Expr*)(n), \
-  const SliceNode*:(const Expr*)(n), SliceNode*:(Expr*)(n), \
-  const IfNode*:(const Expr*)(n), IfNode*:(Expr*)(n), const Expr*:(const Expr*)(n), \
-  Expr*:(Expr*)(n), const Node*: ({ assert_is_Expr(n); (const Expr*)(n); }), \
-  Node*: ({ assert_is_Expr(n); (Expr*)(n); }))
+  #define as_LitExpr(n) _Generic((n), NilNode*:(struct LitExpr*)(n), \
+    BoolLitNode*:(struct LitExpr*)(n), IntLitNode*:(struct LitExpr*)(n), \
+    FloatLitNode*:(struct LitExpr*)(n), StrLitNode*:(struct LitExpr*)(n), \
+    struct LitExpr*:(struct LitExpr*)(n), \
+    Node*: ({ assert_is_LitExpr(n); (struct LitExpr*)(n); }))
+  #define as_const_LitExpr(n) _Generic((n), const NilNode*:(const struct LitExpr*)(n), \
+    const BoolLitNode*:(const struct LitExpr*)(n), \
+    const IntLitNode*:(const struct LitExpr*)(n), \
+    const FloatLitNode*:(const struct LitExpr*)(n), \
+    const StrLitNode*:(const struct LitExpr*)(n), \
+    const struct LitExpr*:(const struct LitExpr*)(n), \
+    const Node*: ({ assert_is_LitExpr(n); (const struct LitExpr*)(n); }))
 
-#define as_LitExpr(n) _Generic((n), const NilNode*:(const struct LitExpr*)(n), \
-  NilNode*:(struct LitExpr*)(n), const BoolLitNode*:(const struct LitExpr*)(n), \
-  BoolLitNode*:(struct LitExpr*)(n), const IntLitNode*:(const struct LitExpr*)(n), \
-  IntLitNode*:(struct LitExpr*)(n), const FloatLitNode*:(const struct LitExpr*)(n), \
-  FloatLitNode*:(struct LitExpr*)(n), const StrLitNode*:(const struct LitExpr*)(n), \
-  StrLitNode*:(struct LitExpr*)(n), const struct LitExpr*:(const struct LitExpr*)(n), \
-  struct LitExpr*:(struct LitExpr*)(n), \
-  const Node*: ({ assert_is_LitExpr(n); (const struct LitExpr*)(n); }), \
-  Node*: ({ assert_is_LitExpr(n); (struct LitExpr*)(n); }))
+  #define as_UnaryOpNode(n) _Generic((n), PrefixOpNode*:(struct UnaryOpNode*)(n), \
+    PostfixOpNode*:(struct UnaryOpNode*)(n), \
+    struct UnaryOpNode*:(struct UnaryOpNode*)(n), \
+    Node*: ({ assert_is_UnaryOpNode(n); (struct UnaryOpNode*)(n); }))
+  #define as_const_UnaryOpNode(n) _Generic((n), \
+    const PrefixOpNode*:(const struct UnaryOpNode*)(n), \
+    const PostfixOpNode*:(const struct UnaryOpNode*)(n), \
+    const struct UnaryOpNode*:(const struct UnaryOpNode*)(n), \
+    const Node*: ({ assert_is_UnaryOpNode(n); (const struct UnaryOpNode*)(n); }))
 
-#define as_UnaryOpNode(n) _Generic((n), \
-  const PrefixOpNode*:(const struct UnaryOpNode*)(n), \
-  PrefixOpNode*:(struct UnaryOpNode*)(n), \
-  const PostfixOpNode*:(const struct UnaryOpNode*)(n), \
-  PostfixOpNode*:(struct UnaryOpNode*)(n), \
-  const struct UnaryOpNode*:(const struct UnaryOpNode*)(n), \
-  struct UnaryOpNode*:(struct UnaryOpNode*)(n), \
-  const Node*: ({ assert_is_UnaryOpNode(n); (const struct UnaryOpNode*)(n); }), \
-  Node*: ({ assert_is_UnaryOpNode(n); (struct UnaryOpNode*)(n); }))
+  #define as_ListExprNode(n) _Generic((n), TupleNode*:(struct ListExprNode*)(n), \
+    ArrayNode*:(struct ListExprNode*)(n), \
+    struct ListExprNode*:(struct ListExprNode*)(n), \
+    Node*: ({ assert_is_ListExprNode(n); (struct ListExprNode*)(n); }))
+  #define as_const_ListExprNode(n) _Generic((n), \
+    const TupleNode*:(const struct ListExprNode*)(n), \
+    const ArrayNode*:(const struct ListExprNode*)(n), \
+    const struct ListExprNode*:(const struct ListExprNode*)(n), \
+    const Node*: ({ assert_is_ListExprNode(n); (const struct ListExprNode*)(n); }))
 
-#define as_ListExpr(n) _Generic((n), const TupleNode*:(const struct ListExpr*)(n), \
-  TupleNode*:(struct ListExpr*)(n), const ArrayNode*:(const struct ListExpr*)(n), \
-  ArrayNode*:(struct ListExpr*)(n), const struct ListExpr*:(const struct ListExpr*)(n), \
-  struct ListExpr*:(struct ListExpr*)(n), \
-  const Node*: ({ assert_is_ListExpr(n); (const struct ListExpr*)(n); }), \
-  Node*: ({ assert_is_ListExpr(n); (struct ListExpr*)(n); }))
+  #define as_LocalNode(n) _Generic((n), ConstNode*:(struct LocalNode*)(n), \
+    VarNode*:(struct LocalNode*)(n), ParamNode*:(struct LocalNode*)(n), \
+    MacroParamNode*:(struct LocalNode*)(n), struct LocalNode*:(struct LocalNode*)(n), \
+    Node*: ({ assert_is_LocalNode(n); (struct LocalNode*)(n); }))
+  #define as_const_LocalNode(n) _Generic((n), \
+    const ConstNode*:(const struct LocalNode*)(n), \
+    const VarNode*:(const struct LocalNode*)(n), \
+    const ParamNode*:(const struct LocalNode*)(n), \
+    const MacroParamNode*:(const struct LocalNode*)(n), \
+    const struct LocalNode*:(const struct LocalNode*)(n), \
+    const Node*: ({ assert_is_LocalNode(n); (const struct LocalNode*)(n); }))
 
-#define as_LocalNode(n) _Generic((n), const ConstNode*:(const struct LocalNode*)(n), \
-  ConstNode*:(struct LocalNode*)(n), const VarNode*:(const struct LocalNode*)(n), \
-  VarNode*:(struct LocalNode*)(n), const ParamNode*:(const struct LocalNode*)(n), \
-  ParamNode*:(struct LocalNode*)(n), const MacroParamNode*:(const struct LocalNode*)(n), \
-  MacroParamNode*:(struct LocalNode*)(n), \
-  const struct LocalNode*:(const struct LocalNode*)(n), \
-  struct LocalNode*:(struct LocalNode*)(n), \
-  const Node*: ({ assert_is_LocalNode(n); (const struct LocalNode*)(n); }), \
-  Node*: ({ assert_is_LocalNode(n); (struct LocalNode*)(n); }))
+  #define as_Type(n) _Generic((n), TypeTypeNode*:(Type*)(n), NamedTypeNode*:(Type*)(n), \
+    AliasTypeNode*:(Type*)(n), RefTypeNode*:(Type*)(n), BasicTypeNode*:(Type*)(n), \
+    ArrayTypeNode*:(Type*)(n), TupleTypeNode*:(Type*)(n), StructTypeNode*:(Type*)(n), \
+    FunTypeNode*:(Type*)(n), Type*:(Type*)(n), \
+    Node*: ({ assert_is_Type(n); (Type*)(n); }))
+  #define as_const_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
+    const NamedTypeNode*:(const Type*)(n), const AliasTypeNode*:(const Type*)(n), \
+    const RefTypeNode*:(const Type*)(n), const BasicTypeNode*:(const Type*)(n), \
+    const ArrayTypeNode*:(const Type*)(n), const TupleTypeNode*:(const Type*)(n), \
+    const StructTypeNode*:(const Type*)(n), const FunTypeNode*:(const Type*)(n), \
+    const Type*:(const Type*)(n), \
+    const Node*: ({ assert_is_Type(n); (const Type*)(n); }))
 
-#define as_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
-  TypeTypeNode*:(Type*)(n), const NamedTypeNode*:(const Type*)(n), \
-  NamedTypeNode*:(Type*)(n), const AliasTypeNode*:(const Type*)(n), \
-  AliasTypeNode*:(Type*)(n), const RefTypeNode*:(const Type*)(n), \
-  RefTypeNode*:(Type*)(n), const BasicTypeNode*:(const Type*)(n), \
-  BasicTypeNode*:(Type*)(n), const ArrayTypeNode*:(const Type*)(n), \
-  ArrayTypeNode*:(Type*)(n), const TupleTypeNode*:(const Type*)(n), \
-  TupleTypeNode*:(Type*)(n), const StructTypeNode*:(const Type*)(n), \
-  StructTypeNode*:(Type*)(n), const FunTypeNode*:(const Type*)(n), \
-  FunTypeNode*:(Type*)(n), const Type*:(const Type*)(n), Type*:(Type*)(n), \
-  const Node*: ({ assert_is_Type(n); (const Type*)(n); }), \
-  Node*: ({ assert_is_Type(n); (Type*)(n); }))
+#else // !defined(DEBUG)
+  #define as_Node(n) ((Node*)(n))
+  #define as_const_Node(n) ((const Node*)(n))
+  #define as_BadNode(n) ((BadNode*)(n))
+  #define as_const_BadNode(n) ((const BadNode*)(n))
+  #define as_FieldNode(n) ((FieldNode*)(n))
+  #define as_const_FieldNode(n) ((const FieldNode*)(n))
+  #define as_PkgNode(n) ((PkgNode*)(n))
+  #define as_const_PkgNode(n) ((const PkgNode*)(n))
+  #define as_FileNode(n) ((FileNode*)(n))
+  #define as_const_FileNode(n) ((const FileNode*)(n))
+  #define as_CommentNode(n) ((CommentNode*)(n))
+  #define as_const_CommentNode(n) ((const CommentNode*)(n))
+  #define as_NilNode(n) ((NilNode*)(n))
+  #define as_const_NilNode(n) ((const NilNode*)(n))
+  #define as_BoolLitNode(n) ((BoolLitNode*)(n))
+  #define as_const_BoolLitNode(n) ((const BoolLitNode*)(n))
+  #define as_IntLitNode(n) ((IntLitNode*)(n))
+  #define as_const_IntLitNode(n) ((const IntLitNode*)(n))
+  #define as_FloatLitNode(n) ((FloatLitNode*)(n))
+  #define as_const_FloatLitNode(n) ((const FloatLitNode*)(n))
+  #define as_StrLitNode(n) ((StrLitNode*)(n))
+  #define as_const_StrLitNode(n) ((const StrLitNode*)(n))
+  #define as_IdNode(n) ((IdNode*)(n))
+  #define as_const_IdNode(n) ((const IdNode*)(n))
+  #define as_BinOpNode(n) ((BinOpNode*)(n))
+  #define as_const_BinOpNode(n) ((const BinOpNode*)(n))
+  #define as_PrefixOpNode(n) ((PrefixOpNode*)(n))
+  #define as_const_PrefixOpNode(n) ((const PrefixOpNode*)(n))
+  #define as_PostfixOpNode(n) ((PostfixOpNode*)(n))
+  #define as_const_PostfixOpNode(n) ((const PostfixOpNode*)(n))
+  #define as_ReturnNode(n) ((ReturnNode*)(n))
+  #define as_const_ReturnNode(n) ((const ReturnNode*)(n))
+  #define as_AssignNode(n) ((AssignNode*)(n))
+  #define as_const_AssignNode(n) ((const AssignNode*)(n))
+  #define as_TupleNode(n) ((TupleNode*)(n))
+  #define as_const_TupleNode(n) ((const TupleNode*)(n))
+  #define as_ArrayNode(n) ((ArrayNode*)(n))
+  #define as_const_ArrayNode(n) ((const ArrayNode*)(n))
+  #define as_BlockNode(n) ((BlockNode*)(n))
+  #define as_const_BlockNode(n) ((const BlockNode*)(n))
+  #define as_FunNode(n) ((FunNode*)(n))
+  #define as_const_FunNode(n) ((const FunNode*)(n))
+  #define as_MacroNode(n) ((MacroNode*)(n))
+  #define as_const_MacroNode(n) ((const MacroNode*)(n))
+  #define as_CallNode(n) ((CallNode*)(n))
+  #define as_const_CallNode(n) ((const CallNode*)(n))
+  #define as_TypeCastNode(n) ((TypeCastNode*)(n))
+  #define as_const_TypeCastNode(n) ((const TypeCastNode*)(n))
+  #define as_ConstNode(n) ((ConstNode*)(n))
+  #define as_const_ConstNode(n) ((const ConstNode*)(n))
+  #define as_VarNode(n) ((VarNode*)(n))
+  #define as_const_VarNode(n) ((const VarNode*)(n))
+  #define as_ParamNode(n) ((ParamNode*)(n))
+  #define as_const_ParamNode(n) ((const ParamNode*)(n))
+  #define as_MacroParamNode(n) ((MacroParamNode*)(n))
+  #define as_const_MacroParamNode(n) ((const MacroParamNode*)(n))
+  #define as_RefNode(n) ((RefNode*)(n))
+  #define as_const_RefNode(n) ((const RefNode*)(n))
+  #define as_NamedArgNode(n) ((NamedArgNode*)(n))
+  #define as_const_NamedArgNode(n) ((const NamedArgNode*)(n))
+  #define as_SelectorNode(n) ((SelectorNode*)(n))
+  #define as_const_SelectorNode(n) ((const SelectorNode*)(n))
+  #define as_IndexNode(n) ((IndexNode*)(n))
+  #define as_const_IndexNode(n) ((const IndexNode*)(n))
+  #define as_SliceNode(n) ((SliceNode*)(n))
+  #define as_const_SliceNode(n) ((const SliceNode*)(n))
+  #define as_IfNode(n) ((IfNode*)(n))
+  #define as_const_IfNode(n) ((const IfNode*)(n))
+  #define as_TypeTypeNode(n) ((TypeTypeNode*)(n))
+  #define as_const_TypeTypeNode(n) ((const TypeTypeNode*)(n))
+  #define as_NamedTypeNode(n) ((NamedTypeNode*)(n))
+  #define as_const_NamedTypeNode(n) ((const NamedTypeNode*)(n))
+  #define as_AliasTypeNode(n) ((AliasTypeNode*)(n))
+  #define as_const_AliasTypeNode(n) ((const AliasTypeNode*)(n))
+  #define as_RefTypeNode(n) ((RefTypeNode*)(n))
+  #define as_const_RefTypeNode(n) ((const RefTypeNode*)(n))
+  #define as_BasicTypeNode(n) ((BasicTypeNode*)(n))
+  #define as_const_BasicTypeNode(n) ((const BasicTypeNode*)(n))
+  #define as_ArrayTypeNode(n) ((ArrayTypeNode*)(n))
+  #define as_const_ArrayTypeNode(n) ((const ArrayTypeNode*)(n))
+  #define as_TupleTypeNode(n) ((TupleTypeNode*)(n))
+  #define as_const_TupleTypeNode(n) ((const TupleTypeNode*)(n))
+  #define as_StructTypeNode(n) ((StructTypeNode*)(n))
+  #define as_const_StructTypeNode(n) ((const StructTypeNode*)(n))
+  #define as_FunTypeNode(n) ((FunTypeNode*)(n))
+  #define as_const_FunTypeNode(n) ((const FunTypeNode*)(n))
+  #define as_Stmt(n) ((Stmt*)(n))
+  #define as_const_Stmt(n) ((const Stmt*)(n))
+  #define as_CUnitNode(n) ((struct CUnitNode*)(n))
+  #define as_const_CUnitNode(n) ((const struct CUnitNode*)(n))
+  #define as_Expr(n) ((Expr*)(n))
+  #define as_const_Expr(n) ((const Expr*)(n))
+  #define as_LitExpr(n) ((struct LitExpr*)(n))
+  #define as_const_LitExpr(n) ((const struct LitExpr*)(n))
+  #define as_UnaryOpNode(n) ((struct UnaryOpNode*)(n))
+  #define as_const_UnaryOpNode(n) ((const struct UnaryOpNode*)(n))
+  #define as_ListExprNode(n) ((struct ListExprNode*)(n))
+  #define as_const_ListExprNode(n) ((const struct ListExprNode*)(n))
+  #define as_LocalNode(n) ((struct LocalNode*)(n))
+  #define as_const_LocalNode(n) ((const struct LocalNode*)(n))
+  #define as_Type(n) ((Type*)(n))
+  #define as_const_Type(n) ((const Type*)(n))
+#endif // DEBUG
 
 // <type>* nullable maybe_<type>(Node* n)
 // const <type>* nullable maybe_<type>(const Node* n)
@@ -448,7 +558,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_PostfixOpNode(n) (is_PostfixOpNode(n)?(PostfixOpNode*)(n):NULL)
 #define maybe_ReturnNode(n) (is_ReturnNode(n)?(ReturnNode*)(n):NULL)
 #define maybe_AssignNode(n) (is_AssignNode(n)?(AssignNode*)(n):NULL)
-#define maybe_ListExpr(n) (is_ListExpr(n)?as_ListExpr(n):NULL)
+#define maybe_ListExprNode(n) (is_ListExprNode(n)?as_ListExprNode(n):NULL)
 #define maybe_TupleNode(n) (is_TupleNode(n)?(TupleNode*)(n):NULL)
 #define maybe_ArrayNode(n) (is_ArrayNode(n)?(ArrayNode*)(n):NULL)
 #define maybe_BlockNode(n) (is_BlockNode(n)?(BlockNode*)(n):NULL)
@@ -508,16 +618,17 @@ typedef struct FunTypeNode FunTypeNode;
   const AssignNode*:(const Type*)((Expr*)(n))->type, AssignNode*:((Expr*)(n))->type, \
   const TupleNode*:(const Type*)((Expr*)(n))->type, TupleNode*:((Expr*)(n))->type, \
   const ArrayNode*:(const Type*)((Expr*)(n))->type, ArrayNode*:((Expr*)(n))->type, \
-  const struct ListExpr*:(const Type*)((Expr*)(n))->type, \
-  struct ListExpr*:((Expr*)(n))->type, const BlockNode*:(const Type*)((Expr*)(n))->type, \
-  BlockNode*:((Expr*)(n))->type, const FunNode*:(const Type*)((Expr*)(n))->type, \
-  FunNode*:((Expr*)(n))->type, const MacroNode*:(const Type*)((Expr*)(n))->type, \
-  MacroNode*:((Expr*)(n))->type, const CallNode*:(const Type*)((Expr*)(n))->type, \
-  CallNode*:((Expr*)(n))->type, const TypeCastNode*:(const Type*)((Expr*)(n))->type, \
-  TypeCastNode*:((Expr*)(n))->type, const ConstNode*:(const Type*)((Expr*)(n))->type, \
-  ConstNode*:((Expr*)(n))->type, const VarNode*:(const Type*)((Expr*)(n))->type, \
-  VarNode*:((Expr*)(n))->type, const ParamNode*:(const Type*)((Expr*)(n))->type, \
-  ParamNode*:((Expr*)(n))->type, const MacroParamNode*:(const Type*)((Expr*)(n))->type, \
+  const struct ListExprNode*:(const Type*)((Expr*)(n))->type, \
+  struct ListExprNode*:((Expr*)(n))->type, \
+  const BlockNode*:(const Type*)((Expr*)(n))->type, BlockNode*:((Expr*)(n))->type, \
+  const FunNode*:(const Type*)((Expr*)(n))->type, FunNode*:((Expr*)(n))->type, \
+  const MacroNode*:(const Type*)((Expr*)(n))->type, MacroNode*:((Expr*)(n))->type, \
+  const CallNode*:(const Type*)((Expr*)(n))->type, CallNode*:((Expr*)(n))->type, \
+  const TypeCastNode*:(const Type*)((Expr*)(n))->type, TypeCastNode*:((Expr*)(n))->type, \
+  const ConstNode*:(const Type*)((Expr*)(n))->type, ConstNode*:((Expr*)(n))->type, \
+  const VarNode*:(const Type*)((Expr*)(n))->type, VarNode*:((Expr*)(n))->type, \
+  const ParamNode*:(const Type*)((Expr*)(n))->type, ParamNode*:((Expr*)(n))->type, \
+  const MacroParamNode*:(const Type*)((Expr*)(n))->type, \
   MacroParamNode*:((Expr*)(n))->type, \
   const struct LocalNode*:(const Type*)((Expr*)(n))->type, \
   struct LocalNode*:((Expr*)(n))->type, const RefNode*:(const Type*)((Expr*)(n))->type, \
@@ -650,8 +761,8 @@ void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
   struct LitExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct ListExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct ListExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  const struct ListExprNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
+  struct ListExprNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const struct LocalNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   struct LocalNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
   const Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
@@ -707,7 +818,7 @@ struct ASTVisitorFuns {
   error(*nullable Expr)(ASTVisitor*, const Expr*);
   error(*nullable LitExpr)(ASTVisitor*, const struct LitExpr*);
   error(*nullable UnaryOp)(ASTVisitor*, const struct UnaryOpNode*);
-  error(*nullable ListExpr)(ASTVisitor*, const struct ListExpr*);
+  error(*nullable ListExpr)(ASTVisitor*, const struct ListExprNode*);
   error(*nullable Local)(ASTVisitor*, const struct LocalNode*);
   error(*nullable Type)(ASTVisitor*, const Type*);
 

@@ -31,6 +31,17 @@ void sbuf_appendu64(SBuf* s, u64 v, u32 base) {
 }
 
 
+void sbuf_appendfill(SBuf* s, char c, usize len) {
+  if (check_add_overflow(s->len, len, &s->len))
+    s->len = USIZE_MAX;
+  usize avail = SBUF_AVAIL(s);
+  if (avail < len)
+    len = avail;
+  memset(s->p, c, len);
+  s->p += len;
+}
+
+
 void sbuf_appendrepr(SBuf* s, const char* srcp, usize len) {
   static const char* hexchars = "0123456789abcdef";
 

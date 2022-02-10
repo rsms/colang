@@ -18,7 +18,7 @@ Node* NodeInit(Node* n, NodeKind kind) {
     }
     case NArray:
     case NTuple: {
-      auto N = as_ListExpr(n);
+      auto N = as_ListExprNode(n);
       ExprArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
       break;
     }
@@ -106,8 +106,8 @@ error ScopeAssign(Scope* s, Sym key, Node* n, Mem mem) {
   return 0;
 }
 
-const Node* ScopeLookup(const Scope* nullable scope, Sym s) {
-  const Node* n = NULL;
+Node* ScopeLookup(const Scope* nullable scope, Sym s) {
+  Node* n = NULL;
   while (scope) {
     //dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
     void** vp = symmap_access(&scope->bindings, s);

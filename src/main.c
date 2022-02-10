@@ -9,6 +9,7 @@
 #include "test.h"
 #include "time.h"
 #include "parse/parse.h"
+#include "parse/resolve.h"
 #include "sys.h"
 
 
@@ -26,6 +27,19 @@ void print_src_checksum(Mem mem, const Source* src) {
   Str s = str_make_hex_lc(mem, src->sha256, sizeof(src->sha256));
   printf("%s %s\n", s->p, src->filename->p);
   str_free(s);
+}
+
+void scan_all(BuildCtx* build) {
+  Scanner scanner = {0};
+  for (Source* src = build->srclist; src != NULL; src = src->next) {
+    dlog("scan %s", src->filename->p);
+    error err = ScannerInit(&scanner, build, src, 0);
+    if (err)
+      panic("ScannerInit: %s", error_str(err));
+    while (ScannerNext(&scanner) != TNone) {
+      printf(">> %s\n", TokName(scanner.tok));
+    }
+  }
 }
 
 int main(int argc, const char** argv) {
@@ -57,7 +71,8 @@ int main(int argc, const char** argv) {
   // add a source file to the logical package
   const char* src_text =
     "fun hello(x, y int) int\n"
-    "  x = 3\n"
+    "  var k int\n"
+    "  x = 2\n"
     "  x + 3\n"
     "fun foo() int\n"
     "  z * 4\n"
@@ -74,18 +89,7 @@ int main(int argc, const char** argv) {
   // print_src_checksum(mem, &src1);
 
   // scan all sources of the package
-  #if 0
-  Scanner scanner = {0};
-  for (Source* src = build.srclist; src != NULL; src = src->next) {
-    dlog("scan %s", src->filename->p);
-    error err = ScannerInit(&scanner, &build, src, 0);
-    if (err)
-      panic("ScannerInit: %s", error_str(err));
-    while (ScannerNext(&scanner) != TNone) {
-      printf(">> %s\n", TokName(scanner.tok));
-    }
-  }
-  #endif
+  // scan_all(&build);
 
   // parse
   Parser p = {0};
@@ -97,7 +101,14 @@ int main(int argc, const char** argv) {
     if (err)
       panic("parse_tu: %s", error_str(err));
     logtime_end(t);
-    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", fmtast(result));
+    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n",
+      fmtast(result));
+
+    t = logtime_start("resolve");
+    result = resolve_ast(&build, pkgscope, result);
+    logtime_end(t);
+    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n",
+      fmtast(result));
   }
 
   // -- lua example --

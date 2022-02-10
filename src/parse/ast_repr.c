@@ -229,8 +229,9 @@ struct Repr {
   const char* rparen;
 };
 
+#define STYLE_NODE  TS_BOLD        // node name
 #define STYLE_LIT   TS_LIGHTGREEN
-#define STYLE_NAME  TS_LIGHTBLUE     // symbolic names like Id, NamedType, etc.
+#define STYLE_NAME  TS_LIGHTBLUE   // symbolic names like Id, NamedType, etc.
 #define STYLE_OP    TS_LIGHTORANGE
 #define STYLE_TYPE  TS_DARKGREY_BG
 #define STYLE_META  TS_DIM
@@ -274,14 +275,9 @@ static void write_paren_end(Repr* r) {
 
 static void write_newline(Repr* r) {
   SBuf* buf = &r->buf;
-
   sbuf_appendc(buf, '\n');
   r->lnstart = printable_len(r);
-
-  buf->len += r->indent;
-  usize indent = MIN(r->indent, SBUF_AVAIL(buf));
-  memset(buf->p, ' ', indent);
-  buf->p += indent;
+  sbuf_appendfill(buf, ' ', r->indent);
 }
 
 static void write_push_indent(Repr* r) {
@@ -321,70 +317,85 @@ static void _meta_end(Meta* m) {
   }
 }
 
-static void write_node_fields(Repr* r, const Node* n);
 
-#define write_node(r,n) _write_node((r),as_Node(n))
-static void _write_node(Repr* r, const Node* nullable n) {
+static void write_node_fields(Repr* r, const Node* n);
+static void _write_node1(Repr* r, const Node* nullable n);
+static void write_node(Repr* r, const Node* nullable n) {
   SBuf* buf = &r->buf;
 
   // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
   char lastch = *(buf->p - MIN(buf->len, 1));
   bool indent = buf->len > 0 && lastch != '<';
-  if (n) {
-    if (indent)     write_push_indent(r);
-    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
-  } else if (indent) {
-    sbuf_appendc(&r->buf, ' ');
-  }
 
-  write_paren_start(r);
+  if (indent) write_push_indent(r);
 
-  if (n != NULL) {
-    if (is_Expr(n)) { // include type of expressions
-      auto typ = ((Expr*)n)->type;
-      write_push_style(r, STYLE_TYPE);
-      sbuf_appendc(&r->buf, '<');
-      if (typ == NULL) {
-        sbuf_appendstr(&r->buf, "?");
-      } else {
-        write_node(r, typ);
-      }
-      sbuf_appendc(&r->buf, '>');
-      write_pop_style(r);
-      sbuf_appendc(&r->buf, ' ');
-    }
-
-    write_push_style(r, is_Type(n) ? STYLE_TYPE : TS_BOLD);
-    sbuf_appendstr(buf, NodeKindName(n->kind));
-    write_pop_style(r);
-
-    // [meta]
-    auto m = meta_begin(r);
-    NodeFlags fl = n->flags;
-    if (fl & NF_Unresolved)  meta_write_entry(m, "unres");
-    if (fl & NF_Const)       meta_write_entry(m, "const");
-    if (fl & NF_Base)        meta_write_entry(m, "base");
-    if (fl & NF_RValue)      meta_write_entry(m, "rval");
-    if (fl & NF_Unused)      meta_write_entry(m, "unused");
-    if (fl & NF_Public)      meta_write_entry(m, "pub");
-    if (fl & NF_Named)       meta_write_entry(m, "named");
-    if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
-    if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
-    meta_end(m);
-
-    write_node_fields(r, n);
-  } else {
+  if (n == NULL || n == (Node*)kExpr_nil) {
+    // "nil"
     write_push_style(r, STYLE_LIT);
     sbuf_appendstr(buf, "nil");
     write_pop_style(r);
-  }
+  } else {
+    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
 
-  write_paren_end(r);
+    if (is_BasicTypeNode(n)) {
+      // "name" for BasicType (e.g. "int")
+      write_push_style(r, STYLE_NODE);
+      Sym name = ((BasicTypeNode*)n)->name;
+      sbuf_append(buf, name, symlen(name));
+      write_pop_style(r);
+    } else {
+      // "(Node field1 field2 ...fieldN)" for everything else
+      write_paren_start(r);
+      _write_node1(r, n);
+      write_paren_end(r);
+    }
 
-  if (n) {
     if (is_Type(n)) write_pop_style(r);
-    if (indent)     write_pop_indent(r);
   }
+
+  if (indent) write_pop_indent(r);
+}
+
+#define write_node(r,n) write_node((r),as_Node(n))
+
+static void _write_node1(Repr* r, const Node* n) {
+  SBuf* buf = &r->buf;
+
+  // "<type>" of expressions
+  if (is_Expr(n)) {
+    auto typ = ((Expr*)n)->type;
+    write_push_style(r, STYLE_TYPE);
+    sbuf_appendc(&r->buf, '<');
+    if (typ == NULL) {
+      sbuf_appendstr(&r->buf, "?");
+    } else {
+      write_node(r, typ);
+    }
+    sbuf_appendc(&r->buf, '>');
+    write_pop_style(r);
+    sbuf_appendc(&r->buf, ' ');
+  }
+
+  // "NodeName"
+  write_push_style(r, STYLE_NODE);
+  sbuf_appendstr(buf, NodeKindName(n->kind));
+  write_pop_style(r);
+
+  // "[meta]"
+  auto m = meta_begin(r);
+  NodeFlags fl = n->flags;
+  if (fl & NF_Unresolved)  meta_write_entry(m, "unres");
+  if (fl & NF_Const)       meta_write_entry(m, "const");
+  if (fl & NF_Base)        meta_write_entry(m, "base");
+  if (fl & NF_RValue)      meta_write_entry(m, "rval");
+  if (fl & NF_Unused)      meta_write_entry(m, "unused");
+  if (fl & NF_Public)      meta_write_entry(m, "pub");
+  if (fl & NF_Named)       meta_write_entry(m, "named");
+  if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
+  if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
+  meta_end(m);
+
+  write_node_fields(r, n);
 }
 
 static void write_array(Repr* r, const NodeArray* a) {
@@ -438,7 +449,7 @@ static void write_node_fields(Repr* r, const Node* np) {
     return; } case N##NAME: { \
       UNUSED auto n = (const NAME##Node*)np;
 
-  #define _CLS(NAME)                                  \
+  #define _G(NAME)                                  \
     return; } case N##NAME##_BEG ... N##NAME##_END: { \
       UNUSED auto n = (const NAME##Node*)np;
 
@@ -459,11 +470,7 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(Comment) write_TODO(r);
 
   // expressions
-  _(Nil)
-    sbuf_appendc(buf, ' ');
-    write_push_style(r, STYLE_LIT);
-    sbuf_appendstr(buf, "nil");
-    write_pop_style(r);
+  _(Nil) UNREACHABLE; // handled by _write_node
 
   _(BoolLit)
     sbuf_appendc(buf, ' ');
@@ -518,9 +525,10 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->result);
     write_node(r, n->body);
 
-  _CLS(Local)
+  _G(Local)
     write_name(r, n->name);
-    write_node(r, n->init);
+    if (LocalInitField(n))
+      write_node(r, LocalInitField(n));
 
   _(Macro)    write_TODO(r);
   _(Call)     write_TODO(r);
@@ -533,10 +541,10 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(If)       write_TODO(r);
 
   // types
+  _(BasicType) UNREACHABLE; // handled by _write_node
   _(TypeType)  write_TODO(r);
   _(NamedType) write_name(r, n->name);
   _(RefType)   write_node(r, n->elem);
-  _(BasicType) write_name(r, n->name);
 
   _(AliasType)
     write_name(r, n->name);
@@ -564,8 +572,6 @@ Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
   } else {
     r.lparen = "\x1b[2m(\x1b[22m";
     r.rparen = "\x1b[2m)\x1b[22m";
-    r.lparen = "\0";
-    r.rparen = "\0";
   }
 
   Str s2 = str_makeroom(s, 4096);

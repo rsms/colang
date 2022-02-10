@@ -22,8 +22,8 @@ DEF_TEST(ast_typecast) {
 
   {
     UNUSED Node* a = as_Node(n);
-    UNUSED const Node* b = as_Node(n);
-    UNUSED const Node* c = as_Node(cn);
+    UNUSED Node* b = as_Node(n);
+    UNUSED const Node* c = as_const_Node(cn);
     // this should cause warning -Wincompatible-pointer-types-discards-qualifiers
     // because d is non-const while the result of as_Node is const (since cn is const.)
     //UNUSED Node* d = as_Node(cn);
@@ -40,7 +40,7 @@ DEF_TEST(ast_typecast) {
     UNUSED Node* a = as_Node(n); // BinOp is a node of course
     UNUSED Expr* b = as_Expr(n); // BinOp is an expression (based on Expr struct)
     UNUSED BinOpNode* c = as_BinOpNode(n);
-    UNUSED const BinOpNode* d = as_BinOpNode(cn);
+    UNUSED const BinOpNode* d = as_const_BinOpNode(cn);
   }
 
   // TypeOfNode

@@ -69,9 +69,9 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
   Node* tn = id->target;
   while (NodeIsConst(tn) &&
          (is_VarNode(tn) || is_ConstNode(tn)) &&
-         ((LocalNode*)tn)->init != NULL )
+         LocalInitField(tn) != NULL )
   {
-    tn = as_Node(((LocalNode*)tn)->init);
+    tn = as_Node(LocalInitField(tn));
     // Note: no NodeUnrefLocal here
   }
 
