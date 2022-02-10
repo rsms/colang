@@ -590,9 +590,9 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
       val__; })
   #endif
 #else
-  #define safecheck(cond) ((void)0)
+  #define safecheck(cond)                ((void)0)
   #define safecheckf(cond, fmt, args...) ((void)0)
-  #define safenotnull(a) (a) /* intentionally cause "unused" warnings */
+  #define safenotnull(a)                 ({ a; }) /* note: (a) causes "unused" warnings */
 #endif
 
 // void dlog(const char* fmt, ...)
