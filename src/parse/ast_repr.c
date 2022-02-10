@@ -96,9 +96,18 @@ Str _NodeStr(Str s, const Node* nullable n) {
   case NTuple: // tuple (one two 3)
     s = NODEARRAY(STR(s, "tuple ("), &((TupleNode*)n)->a);
     return str_appendc(s, ')');
+  case NConst: // const x
+    s = STR(s, "const");
+    return SYM(SPACE(s), ((LocalNode*)n)->name);
   case NVar: // var x
-    s = STR(s, ((VarNode*)n)->isconst ? "const" : NodeIsParam(n) ? "param" : "var");
-    return SYM(SPACE(s), ((VarNode*)n)->name);
+    s = STR(s, "var");
+    return SYM(SPACE(s), ((LocalNode*)n)->name);
+  case NParam: // param x
+    s = STR(s, "param");
+    return SYM(SPACE(s), ((LocalNode*)n)->name);
+  case NMacroParam: // macroparam x
+    s = STR(s, "macroparam");
+    return SYM(SPACE(s), ((LocalNode*)n)->name);
   case NRef: // &x, mut&x
     s = STR(s, NodeIsConst(n) ? "&" : "mut&");
     return NODE(s, ((RefNode*)n)->target);
@@ -224,7 +233,7 @@ struct Repr {
 #define STYLE_NAME  TS_LIGHTBLUE     // symbolic names like Id, NamedType, etc.
 #define STYLE_OP    TS_LIGHTORANGE
 #define STYLE_TYPE  TS_DARKGREY_BG
-#define STYLE_META  TS_PINK
+#define STYLE_META  TS_DIM
 
 // -- repr output writers
 
@@ -285,6 +294,33 @@ static void write_pop_indent(Repr* r) {
   r->indent -= 2;
 }
 
+typedef struct Meta Meta;
+struct Meta {
+  Repr* r;
+  usize startlen;
+};
+static Meta meta_begin(Repr* r) {
+  return (Meta){ .r = r, .startlen = r->buf.len };
+}
+static void _meta_start(Meta* mp) {
+  if (mp->startlen == mp->r->buf.len) {
+    sbuf_appendc(&mp->r->buf, ' ');
+    write_push_style(mp->r, STYLE_META);
+    sbuf_appendc(&mp->r->buf, '[');
+  } else {
+    sbuf_appendc(&mp->r->buf, ' ');
+  }
+}
+#define meta_write_entry_start(m) _meta_start(&(m))
+#define meta_write_entry(m,s) ({ _meta_start(&(m)); sbuf_appendstr(&(m).r->buf, (s)); })
+#define meta_end(m) _meta_end(&(m))
+static void _meta_end(Meta* m) {
+  if (m->startlen < m->r->buf.len) {
+    sbuf_appendc(&m->r->buf, ']');
+    write_pop_style(m->r);
+  }
+}
+
 static void write_node_fields(Repr* r, const Node* n);
 
 #define write_node(r,n) _write_node((r),as_Node(n))
@@ -321,6 +357,20 @@ static void _write_node(Repr* r, const Node* nullable n) {
     write_push_style(r, is_Type(n) ? STYLE_TYPE : TS_BOLD);
     sbuf_appendstr(buf, NodeKindName(n->kind));
     write_pop_style(r);
+
+    // [meta]
+    auto m = meta_begin(r);
+    NodeFlags fl = n->flags;
+    if (fl & NF_Unresolved)  meta_write_entry(m, "unres");
+    if (fl & NF_Const)       meta_write_entry(m, "const");
+    if (fl & NF_Base)        meta_write_entry(m, "base");
+    if (fl & NF_RValue)      meta_write_entry(m, "rval");
+    if (fl & NF_Unused)      meta_write_entry(m, "unused");
+    if (fl & NF_Public)      meta_write_entry(m, "pub");
+    if (fl & NF_Named)       meta_write_entry(m, "named");
+    if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
+    if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
+    meta_end(m);
 
     write_node_fields(r, n);
   } else {
@@ -379,37 +429,19 @@ static void _write_TODO(Repr* r, const char* file, u32 line) {
   write_pop_style(r);
 }
 
-static void write_meta(Repr* r, const char* name) {
-  SBuf* buf = &r->buf;
-  sbuf_appendc(buf, ' ');
-  write_push_style(r, STYLE_META);
-  sbuf_appendstr(buf, name);
-  sbuf_appendc(&r->buf, ']');
-  write_pop_style(r);
-}
-
-static void write_push_meta(Repr* r, const char* name) {
-  SBuf* buf = &r->buf;
-  sbuf_appendc(buf, ' ');
-  write_push_style(r, STYLE_META);
-  sbuf_appendc(buf, '[');
-  usize len = strlen(name);
-  if (len > 0) {
-    sbuf_append(buf, name, len);
-    sbuf_appendc(buf, ' ');
-  }
-}
-
-static void write_pop_meta(Repr* r) {
-  sbuf_appendc(&r->buf, ']');
-  write_pop_style(r);
-}
-
 // -- visitor functions
 
 static void write_node_fields(Repr* r, const Node* np) {
   SBuf* buf = &r->buf;
-  #define _(NAME) return; } case N##NAME: { UNUSED auto n = (const NAME##Node*)np;
+
+  #define _(NAME)             \
+    return; } case N##NAME: { \
+      UNUSED auto n = (const NAME##Node*)np;
+
+  #define _CLS(NAME)                                  \
+    return; } case N##NAME##_BEG ... N##NAME##_END: { \
+      UNUSED auto n = (const NAME##Node*)np;
+
   switch (np->kind) {
   case NBad: {
   _(Field) write_TODO(r);
@@ -468,7 +500,10 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(PrefixOp) write_TODO(r);
   _(PostfixOp) write_TODO(r);
   _(Return) write_TODO(r);
-  _(Assign) write_TODO(r);
+
+  _(Assign)
+    write_node(r, n->dst);
+    write_node(r, n->val);
 
   _(Tuple) write_array(r, as_NodeArray(&n->a));
   _(Array) write_array(r, as_NodeArray(&n->a));
@@ -483,16 +518,9 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->result);
     write_node(r, n->body);
 
-  _(Var)
+  _CLS(Local)
     write_name(r, n->name);
     write_node(r, n->init);
-    if (n->isconst)
-      write_meta(r, "const");
-    if (NodeIsParam(n)) {
-      write_push_meta(r, "param");
-      sbuf_appendu32(buf, n->index, 10);
-      write_pop_meta(r);
-    }
 
   _(Macro)    write_TODO(r);
   _(Call)     write_TODO(r);

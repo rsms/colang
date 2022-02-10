@@ -136,9 +136,9 @@ const char* NodeKindName(NodeKind k) {
 "Bad", "Field", "Pkg", "File", "Comment", "Nil", "BoolLit", "IntLit",
     "FloatLit", "StrLit", "Id", "BinOp", "PrefixOp", "PostfixOp", "Return",
     "Assign", "Tuple", "Array", "Block", "Fun", "Macro", "Call", "TypeCast",
-    "Var", "Ref", "NamedArg", "Selector", "Index", "Slice", "If", "TypeType",
-    "NamedType", "AliasType", "RefType", "BasicType", "ArrayType", "TupleType",
-    "StructType", "FunType", "?"
+    "Const", "Var", "Param", "MacroParam", "Ref", "NamedArg", "Selector",
+    "Index", "Slice", "If", "TypeType", "NamedType", "AliasType", "RefType",
+    "BasicType", "ArrayType", "TupleType", "StructType", "FunType", "?"
   };
   return kNodeNameTable[MIN(NodeKind_MAX+2,k)];
 }
@@ -188,7 +188,13 @@ void ASTVisitorInit(ASTVisitor* v, const ASTVisitorFuns* f) {
   v->ftable[NMacro] = f->Macro ? ((ASTVisitorFun)f->Macro) : dft;
   v->ftable[NCall] = f->Call ? ((ASTVisitorFun)f->Call) : dft;
   v->ftable[NTypeCast] = f->TypeCast ? ((ASTVisitorFun)f->TypeCast) : dft;
+  // begin Local
+  if (f->Local) { dft1 = dft; dft = ((ASTVisitorFun)f->Local); }
+  v->ftable[NConst] = f->Const ? ((ASTVisitorFun)f->Const) : dft;
   v->ftable[NVar] = f->Var ? ((ASTVisitorFun)f->Var) : dft;
+  v->ftable[NParam] = f->Param ? ((ASTVisitorFun)f->Param) : dft;
+  v->ftable[NMacroParam] = f->MacroParam ? ((ASTVisitorFun)f->MacroParam) : dft;
+  dft = dft1; // end Local
   v->ftable[NRef] = f->Ref ? ((ASTVisitorFun)f->Ref) : dft;
   v->ftable[NNamedArg] = f->NamedArg ? ((ASTVisitorFun)f->NamedArg) : dft;
   v->ftable[NSelector] = f->Selector ? ((ASTVisitorFun)f->Selector) : dft;

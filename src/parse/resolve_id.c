@@ -28,9 +28,9 @@ Node* resolve_id(IdNode* id, Node* nullable target) {
     case NFun:
       // Note: Don't transfer "unresolved" attribute of functions
       break;
-    case NVar:
-      // increment variable ref count
-      NodeRefVar((VarNode*)target);
+    case NLocal_BEG ... NLocal_END:
+      // increment local's ref count
+      NodeRefLocal((LocalNode*)target);
       FALLTHROUGH;
     default:
       NodeTransferUnresolved(id, target);
@@ -49,27 +49,30 @@ Node* resolve_id(IdNode* id, Node* nullable target) {
 //   var x bool
 //   x = true
 // Without simplifying these ids the AST would look like this:
-//   (Var x (Id bool -> (BasicType bool)))
-//   (Assign (Id x -> (Var x)) (Id true -> (BoolLit true)))
+//   (Local x (Id bool -> (BasicType bool)))
+//   (Assign (Id x -> (Local x)) (Id true -> (BoolLit true)))
 // With simplify_id, the AST would instead look like this:
-//   (Var (Id x) (BasicType bool))
-//   (Assign (Var x) (BoolLit true))
+//   (Local (Id x) (BasicType bool))
+//   (Assign (Local x) (BoolLit true))
 //
 // Note:
 //   We would need to make sure post_resolve_id uses the same algorithm to get the
 //   same outcome for cases like this:
 //     fun foo()   | (Fun foo
 //       x = true  |   (Assign (Id x -> ?) (BoolLit true)) )
-//     var x bool  | (Var x (BasicType bool))
+//     var x bool  | (Local x (BasicType bool))
 //
 static Node* simplify_id(IdNode* id, Node* nullable _ign) {
   assertnotnull(id->target);
 
-  // unwind var targeting a type
+  // unwind local targeting a type
   Node* tn = id->target;
-  while (is_VarNode(tn) && NodeIsConst(tn) && !NodeIsParam(tn) && ((VarNode*)tn)->init) {
-    tn = as_Node(((VarNode*)tn)->init);
-    // Note: no NodeUnrefVar here
+  while (NodeIsConst(tn) &&
+         (is_VarNode(tn) || is_ConstNode(tn)) &&
+         ((LocalNode*)tn)->init != NULL )
+  {
+    tn = as_Node(((LocalNode*)tn)->init);
+    // Note: no NodeUnrefLocal here
   }
 
   // when the id is an rvalue, simplify its target no matter what kind it is

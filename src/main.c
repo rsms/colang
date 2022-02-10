@@ -29,13 +29,9 @@ void print_src_checksum(Mem mem, const Source* src) {
 }
 
 int main(int argc, const char** argv) {
-  if (co_test_main(argc, argv)) return 1;
+  if (co_test_main(argc, argv))
+    return 1;
   universe_init();
-  logtime_scope("main");
-
-  dlog("Total: %3lu B", sizeof(union NodeUnion));
-  dlog("  Expr %3lu B", sizeof(Expr));
-  dlog("  Type %3lu B", sizeof(Type));
 
   // select a memory allocator
   #ifdef CO_WITH_LIBC
@@ -61,9 +57,11 @@ int main(int argc, const char** argv) {
   // add a source file to the logical package
   const char* src_text =
     "fun hello(x, y int) int\n"
+    "  x = 3\n"
     "  x + 3\n"
     "fun foo() int\n"
-    "  z * 3\n"
+    "  z * 4\n"
+    "z = 5\n"
     ;
   Source src1 = {0};
   error err = source_open_data(&src1, mem, "input", src_text, strlen(src_text));

@@ -290,14 +290,14 @@ static Node* parse_infix(Parser* p, int precedence, PFlag fl, Node* left);
 // parse_next_tuple = Tuple | Node
 static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl);
 
-static const char* var_kind_name(VarNode* n) {
-  if (NodeIsParam(n))
-    return "function parameter";
-
-  // if (n->var.init && NodeIsType(n->var.init))
-  //   return "type definition";
-
-  return "variable";
+static const char* local_kind_name(LocalNode* n) {
+  switch (n->kind) {
+    case NConst:      return "constant";
+    case NVar:        return "variable";
+    case NParam:      return "function parameter";
+    case NMacroParam: return "macro parameter";
+    default:          assert(0); return "";
+  }
 }
 
 
@@ -360,11 +360,11 @@ static void scopestackCheckUnused(Parser* p) {
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
     //dlog(">>  %s => %s %s", key, nodename(n), fmtnode(n));
-    if (UNLIKELY(key != kSym__ && n->kind == NVar && as_VarNode(n)->nrefs == 0)) {
+    if UNLIKELY(key != kSym__ && is_LocalNode(n) && ((LocalNode*)n)->nrefs == 0) {
       // TODO: combine the error message with that of package-level reporter
+      LocalNode* local = (LocalNode*)n;
       PosSpan ps = { n->pos, n->endpos };
-      VarNode* var = as_VarNode(n);
-      b_warnf(p->build, ps, "unused %s %s", var_kind_name(var), var->name);
+      b_warnf(p->build, ps, "unused %s %s", local_kind_name(local), local->name);
     }
   }
 }
@@ -409,7 +409,7 @@ static void popScope(Parser* p) {
 
 
 inline static void popScopeAndCheckUnused(Parser* p) {
-  // check for unused variables and parameters
+  // check for unused locals and parameters
   if (p->build->debug && p->scopestack.len - p->scopestack.base > 1)
     scopestackCheckUnused(p);
   popScope(p);
@@ -491,7 +491,7 @@ static Node* nullable lookupsymShallow(Parser* p, Sym key) {
 #define defsym(p, s, n) _defsym((p), (s), as_Node(assertnotnull(n)))
 
 static void _defsym(Parser* p, Sym s, Node* n) {
-  assert(is_Type(n) || is_VarNode(n) || is_FieldNode(n) || is_FunNode(n));
+  assert(is_Type(n) || is_LocalNode(n) || is_FieldNode(n) || is_FunNode(n));
 
   #ifdef DEBUG_DEFSYM
   Node* existing = lookupsymShallow(p, s);
@@ -597,11 +597,11 @@ static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
 // For example:
 //   fun foo(x, y int) int {
 //     x
-//     ~ might be the beginning of a var definition
+//     ~ might be the beginning of a local definition
 // Scenario 1:
 //   fun foo(x, y int) int {
 //     x = 4
-//     ~~~~~ lvalue in a var definition; defining not resolving.
+//     ~~~~~ lvalue in a local definition; defining not resolving.
 // Scenario 2:
 //   fun foo(x, y int) int {
 //     x + y
@@ -717,13 +717,13 @@ static Node* PId(Parser* p, PFlag fl) {
 }
 
 
-static void set_var_init(Parser* p, VarNode* n, Expr* init) {
+static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
   init = expectExpr(p, use_as_rvalue(p, init));
   NodeTransferUnresolved(n, init);
   n->init = init;
 
   if (!n->type) {
-    // infer var type from initializer
+    // infer local's type from initializer
     if (init->type != kType_ideal)
       n->type = init->type;
     return;
@@ -754,9 +754,11 @@ static void set_var_init(Parser* p, VarNode* n, Expr* init) {
 }
 
 
-static VarNode* make_var(Parser* p, IdNode* name, Expr* nullable init, Type* nullable t) {
+static LocalNode* make_local(
+  Parser* p, IdNode* name, Expr* nullable init, Type* nullable t)
+{
   asserteq(name->kind, NId);
-  VarNode* n = mknode(p, Var);
+  auto n = as_LocalNode(mknode(p, Var));
   NodeSetConst(n);
   NodeSetUnused(n);
   NodeSetPublic(n, (p->fnest == 0 && name_is_pub(name->name)));
@@ -765,14 +767,15 @@ static VarNode* make_var(Parser* p, IdNode* name, Expr* nullable init, Type* nul
   n->type = t;
 
   if (init)
-    set_var_init(p, n, init);
+    set_local_init(p, n, init);
 
   Node* existing = lookupsymShallow(p, n->name);
-  if (existing) {
+  if UNLIKELY(existing) {
     b_warnf(p->build, NodePosSpan(name),
       "%s definition shadows %s",
-      var_kind_name(n),
-      is_VarNode(existing) ? var_kind_name((VarNode*)existing) : nodename(existing) );
+      local_kind_name(n),
+      is_LocalNode(existing) ? local_kind_name((LocalNode*)existing)
+                             : nodename(existing) );
     b_notef(p->build, NodePosSpan(existing), "previous definition");
   }
 
@@ -811,9 +814,9 @@ static Node* PMut(Parser* p, PFlag fl) {
 }
 
 
-// VarDef      = ConstVarDef | MutVarDecl
-// ConstVarDef = "const" Id Type? "=" Expr
-// MutVarDef   = "var" Id (Type | Type? "=" Expr)
+// LocalDef = ConstDef | VarDef
+// ConstDef = "const" Id Type? "=" Expr
+// VarDef   = "var" Id (Type | Type? "=" Expr)
 //
 // e.g. "var x int", "var x = 4", "var x int = 4"
 // e.g. "const x int", "const x = 4", "const x int = 4"
@@ -861,18 +864,20 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
     Type* ctxtype = set_ctxtype(p, typ);
     init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
     p->ctxtype = ctxtype;
+    if (typ == NULL)
+      typ = init->type;
   } else if (isconst) {
     syntaxerr(p, "expecting assignment of value");
   }
 
-  VarNode* var = make_var(p, name, init, typ);
-  var->isconst = isconst;
-  return as_Node(var);
+  LocalNode* local = make_local(p, name, init, typ);
+  local->kind = isconst ? NConst : NVar;
+  return as_Node(local);
 }
 
 
 // e.g. "a = x"
-// returns VarNode or AssignNode
+// returns LocalNode or AssignNode
 static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
   IdNode* dst = as_IdNode(dstn);
   Node* target = dst->target;
@@ -882,35 +887,35 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
       target = dst->target;
   }
 
-  if (!target || !is_VarNode(target)) {
-    // var definition, e.g. "x = 3" -> (var (Id x) (Int 3))
+  if (!target || !is_LocalNode(target)) {
+    // local definition, e.g. "x = 3" -> (Local (Id x) (Int 3))
     nexttok(p); // consume '='
     Type* ctxtype = set_ctxtype(p, NULL);
     Expr* init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
     p->ctxtype = ctxtype;
-    return as_Node(make_var(p, dst, init, NULL)); // copies dst->name and dst->pos
+    return as_Node(make_local(p, dst, init, init->type)); // copies dst->name & dst->pos
   }
 
   // assignment
-  VarNode* targetvar = (VarNode*)target;
-  if (UNLIKELY(targetvar->isconst)) {
-    // syntaxerr(p, "assignment to constant %s", targetvar->name);
+  LocalNode* targetlocal = (LocalNode*)target;
+  if UNLIKELY(is_ConstNode(targetlocal)) {
     b_errf(p->build, NodePosSpan(dst),
-      "cannot assign to constant %s", targetvar->name);
-    b_notef(p->build, NodePosSpan(targetvar),
-      "constant %s defined here", targetvar->name);
+      "cannot assign to constant %s", targetlocal->name);
+    b_notef(p->build, NodePosSpan(targetlocal),
+      "constant %s defined here", targetlocal->name);
     b_notef(p->build, NodePosSpan(dst),
       "to define a new shadowing variable, use explicit mutability keyword"
       " mut or const. For example: mut %s = ...",
-      targetvar->name);
+      targetlocal->name);
   }
-  // assign to existing var and make sure the target is marked as variable
-  NodeClearConst(targetvar);
-  NodeRefVar(targetvar);
+
+  // assign to existing local and make sure the target is marked as variable
+  NodeClearConst(targetlocal);
+  NodeRefLocal(targetlocal);
   auto n = mknode(p, Assign);
   nexttok(p); // consume '='
   Expr* right = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
-  n->dst = as_Expr(targetvar); // store target instead of NId to simplify IR generation
+  n->dst = as_Expr(targetlocal); // store target instead of NId to simplify IR generation
   n->val = right;
   NodeTransferUnresolved(n, right);
   if (dst->type && dst->type == right->type) {
@@ -945,7 +950,7 @@ static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     p->ctxtype = ctxtype;
   }
 
-  return as_Node(make_var(p, id1, init, typ));
+  return as_Node(make_local(p, id1, init, typ));
 }
 
 
@@ -1005,12 +1010,12 @@ static Node* pAssignToTuple(Parser* p, const Parselet* e, PFlag fl, Node* dstn) 
     Expr* target = expectExpr(p, presolve_id(p, dst));
     if (target) {
       NodeClearConst(target);
-      if (is_VarNode(target))
-        NodeRefVar(as_VarNode(target));
+      if (is_LocalNode(target))
+        NodeRefLocal((LocalNode*)target);
       NodeTransferUnresolved(n, init);
       lnodes->v[i] = target;
     } else {
-      lnodes->v[i] = as_Expr(make_var(p, dst, init, NULL));
+      lnodes->v[i] = as_Expr(make_local(p, dst, init, init->type));
       rnodes->v[i] = NULL; // indicate that lnodes->v[i]->init is to be used
     }
   }
@@ -1234,16 +1239,15 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
     // e.g. "x = &y"
     !NodeIsUnresolved(target) && (
       // if the target is a "const name T = ..." then the ref is const too: "&T"
-      // but for vars we leave the ref mutable.
-      is_VarNode(target) ? ((VarNode*)target)->isconst :
-      NodeIsConst(target)
+      // but for locals we leave the ref mutable.
+      is_LocalNode(target) ? is_ConstNode(target) : NodeIsConst(target)
     )
     // else: target is a global (or undefined)
   ) {
     NodeSetConst(ref);
-  } else if (is_VarNode(target) && !((VarNode*)target)->isconst) {
-    // since we're making a mutable ref, treat it as a var store,
-    // making sure the target var is upgraded to "mut".
+  } else if (is_LocalNode(target) && !is_ConstNode(target)) {
+    // since we're making a mutable ref, treat it as a local store,
+    // making sure the target local is upgraded to "mut".
     NodeClearConst(target);
   }
 
@@ -1257,7 +1261,7 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
   // TODO: consider moving the rest of this function into the type resolver and
   // use it both here and there, as we need to perform the same logic in both places.
 
-  // check compatibility with any current context type, e.g. for var initializer
+  // check compatibility with any current context type, e.g. for local initializer
   if (p->ctxtype) {
     if (UNLIKELY(
       !is_RefTypeNode(p->ctxtype) ||
@@ -1622,8 +1626,8 @@ static Expr* pBlock(Parser* p, PFlag fl) {
   // Note: if end_block(p) fails, a syntax error is logged
   if (end_block(p) && cn) {
     // if last expression is a local, increment its refcount
-    if (is_VarNode(cn))
-      NodeRefVar(as_VarNode(cn));
+    if (is_LocalNode(cn))
+      NodeRefLocal(as_LocalNode(cn));
 
     // last expression is used as rvalue
     block->a.v[block->a.len - 1] = use_as_rvalue(p, cn);
@@ -1800,7 +1804,7 @@ static TupleNode* pParams(Parser* p) {
   bool hasTypedParam = false; // true when at least one param has type; e.g. "x T"
   PFlag fl = PFlagRValue;
 
-  // typeq: temporary storage for VarNodes to support "typed groups" of parameters,
+  // typeq: temporary storage for LocalNodes to support "typed groups" of parameters,
   // e.g. "x, y int" -- "x" does not have a type until we parsed "y" and "int", so when
   // we parse "x" we put it in typeq. Also, "x" might be just a type and not a name in
   // the case all args are just types e.g. "T1, T2, T3".
@@ -1809,36 +1813,35 @@ static TupleNode* pParams(Parser* p) {
   NodeArrayInitStorage(&typeq, typeq_st, countof(typeq_st));
 
   while (1) {
-    auto var = mknode(p, Var);
-    NodeSetConst(var);
-    NodeSetUnused(var);
-    NodeSetParam(var);
-    ExprArrayPush(&params->a, as_Expr(var), p->build->mem);
+    auto local = mknode(p, Param);
+    NodeSetConst(local);
+    NodeSetUnused(local);
+    ExprArrayPush(&params->a, as_Expr(local), p->build->mem);
 
     if (p->tok == TId) {
       // name eg "x"
-      var->name = p->name;
+      local->name = p->name;
       nexttok(p);
       switch (p->tok) {
         case TRParen:
         case TComma:
         case TSemi:
           // just a lone name, eg "x" in "(x, y)"
-          NodeArrayPush(&typeq, as_Node(var), p->build->mem);
+          NodeArrayPush(&typeq, as_Node(local), p->build->mem);
           break;
 
         default:
           // type follows name, eg "x int"
-          var->type = pType(p, fl);
+          local->type = pType(p, fl);
           hasTypedParam = true;
           // cascade type to predecessors
           for (u32 i = 0; i < typeq.len; i++)
-            ((VarNode*)typeq.v[i])->type = var->type;
+            ((LocalNode*)typeq.v[i])->type = local->type;
           typeq.len = 0;
       }
     } else {
       // definitely just type, e.g. "fun([]int,bool)"
-      var->type = pType(p, fl);
+      local->type = pType(p, fl);
     }
 
     // end loop?
@@ -1868,19 +1871,19 @@ finish:
     }
     u32 index = 0;
     for (u32 i = 0; i < params->a.len; i++) {
-      auto param = as_VarNode(params->a.v[i]);
+      auto param = as_ParamNode(params->a.v[i]);
       param->index = index++;
       defsym(p, param->name, param);
     }
   } else {
     // type-only form, e.g. "(T, T, Y)"
-    // make ident of each cn->var.name where cn->type == NULL
+    // make ident of each cn->local.name where cn->type == NULL
     //
     // TODO: for template parameters, this case means "name only without type constraints"
     //
     u32 index = 0;
     for (u32 i = 0; i < params->a.len; i++) {
-      auto param = as_VarNode(params->a.v[i]);
+      auto param = as_ParamNode(params->a.v[i]);
       if (!param->type) {
         auto tname = mknode(p, NamedType);
         tname->name = param->name;
@@ -1892,7 +1895,7 @@ finish:
   }
 
   for (u32 i = 0; i < params->a.len; i++) {
-    auto param = as_VarNode(params->a.v[i]);
+    auto param = as_ParamNode(params->a.v[i]);
     NodeTransferUnresolved(param, param->type);
     NodeTransferUnresolved(params, param);
   }
@@ -1921,10 +1924,9 @@ static TupleNode* templateParams(Parser* p) {
       // TODO: allow types as well as expressions
       init = expectExpr(p, parse_prefix(p, fl | PFlagRValue));
     }
-    VarNode* var = make_var(p, name, init, NULL);
-    var->flags |= NF_MacroParam;
-    var->type = kType_nil;
-    ExprArrayPush(&params->a, as_Expr(var), p->build->mem);
+    auto local = make_local(p, name, init, kType_nil);
+    local->kind = NMacroParam;
+    ExprArrayPush(&params->a, as_Expr(local), p->build->mem);
   } while (got(p, TComma) && p->tok != TGt);
   want(p, TGt);
   set_endpos(p, params);
@@ -2306,8 +2308,10 @@ error parse_tu(
     // if we didn't end on EOF and we didn'd find a semicolon, report error
     if (UNLIKELY( p->tok != TNone && !got(p, TSemi) )) {
       syntaxerr(p, "after top level declaration");
-      if (n && is_IdNode(n))
-        b_notef(b, (PosSpan){n->pos,NoPos}, "Did you mean \"var %s\"?", as_IdNode(n)->name);
+      if (n && is_IdNode(n)) {
+        b_notef(b, (PosSpan){n->pos,NoPos},
+          "Did you mean \"var %s\"?", as_IdNode(n)->name);
+      }
       Tok stoplist[] = { TType, TFun, TSemi, 0 };
       advance(p, stoplist);
     }

@@ -765,7 +765,7 @@ static bool hash_grow(const HMapType* t, HMap* h, Mem mem) {
 // Returns pointer to value storage.
 void* nullable map_assign(const HMapType* t, HMap* h, void* key, Mem mem) {
   assertnotnull(h);
-  assertf((h->flags & H_hashWriting) == 0, "concurrent map writes");
+  safecheckf((h->flags & H_hashWriting) == 0, "concurrent map writes");
   h->flags ^= H_hashWriting;
 
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
@@ -864,7 +864,7 @@ end_bucketloop:
   h->count++;
 
 done:
-  assertf(h->flags & H_hashWriting, "concurrent map writes");
+  safecheckf(h->flags & H_hashWriting, "concurrent map writes");
   h->flags &= ~H_hashWriting;
   if (maptype_indirectelem(t))
     elem = *(void**)elem;
@@ -905,7 +905,7 @@ void* nullable map_delete(const HMapType* t, HMap* nullable h, void* key, Mem me
   if (h == NULL || h->count == 0)
     return NULL;
 
-  assertf((h->flags & H_hashWriting) == 0, "concurrent map writes");
+  safecheckf((h->flags & H_hashWriting) == 0, "concurrent map writes");
   h->flags ^= H_hashWriting;
 
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
@@ -964,7 +964,7 @@ void* nullable map_delete(const HMapType* t, HMap* nullable h, void* key, Mem me
   }
 end_search:
 
-  assertf(h->flags & H_hashWriting, "concurrent map writes");
+  safecheckf(h->flags & H_hashWriting, "concurrent map writes");
   h->flags &= ~H_hashWriting;
   return founde;
 }
@@ -974,7 +974,7 @@ static void* nullable map_access1(const HMapType* t, const HMap* nullable h, voi
   if (h == NULL || h->count == 0)
     return NULL;
 
-  assertf((h->flags & H_hashWriting) == 0, "concurrent map read and map write");
+  safecheckf((h->flags & H_hashWriting) == 0, "concurrent map read & write");
 
   void* key = *kp;
   uintptr hash = t->hasher(key, (uintptr)h->hash0);
@@ -1030,7 +1030,7 @@ void map_clear(const HMapType* t, HMap* nullable h, Mem mem) {
   if (h == NULL || h->count == 0)
     return;
 
-  assertf((h->flags & H_hashWriting) == 0, "concurrent map writes");
+  safecheckf((h->flags & H_hashWriting) == 0, "concurrent map writes");
   h->flags ^= H_hashWriting;
 
   h->flags &= ~H_sameSizeGrow;
@@ -1065,7 +1065,7 @@ void map_clear(const HMapType* t, HMap* nullable h, Mem mem) {
     h->extra->nextOverflow = nextOverflow;
   }
 
-  assertf(h->flags & H_hashWriting, "concurrent map writes");
+  safecheckf(h->flags & H_hashWriting, "concurrent map writes");
   h->flags &= ~H_hashWriting;
 }
 
@@ -1236,7 +1236,7 @@ void map_iter_init(HMapIter* it, const HMapType* t, HMap* nullable h) {
 
 void* nullable map_iter_next(HMapIter* it) {
   HMap* h = it->h;
-  assertf((h->flags & H_hashWriting) == 0, "concurrent map iteration & write");
+  safecheckf((h->flags & H_hashWriting) == 0, "concurrent map iteration & write");
 
   const HMapType* t = it->t;
   usize bucket      = it->bucket; // current bucket index
@@ -1361,10 +1361,8 @@ next:
 // ————————————————————————————————————————————————————————————————————————————————————
 // map types
 
-// static void noop_free(Mem mem, void** pv, usize count) { dlog("free %p", pv[0]); }
 static bool i32_equal(const i32* a, const i32* b) { return *a == *b; }
 static bool ptr_equal(const void** a, const void** b) { return *a == *b; }
-// static bool f64_equal(const f64* a, const f64* b) { return *a == *b; }
 
 // static const rtype kRType_i32 = {
 //   .size = sizeof(i32),
@@ -1374,31 +1372,31 @@ static bool ptr_equal(const void** a, const void** b) { return *a == *b; }
 // };
 
 // MAPTYPE defines a HMapType at compile time
-#define MAPTYPE(kt, kalign, keqf, vt, valign, veqf, hashf, mtflags) {                \
-  .bucket = {                                                                        \
-    .align = PTRSIZE,                                                                \
-    .kind  = tkind_struct,                                                           \
-    .size  = MAPTYPE_SIZE(kt, vt),                                                   \
-  },                                                                                 \
-  .key = {                                                                           \
-    .size = sizeof(kt),                                                              \
-    .align = kalign,                                                                 \
-    .equal = (equalfun)(keqf),                                                       \
-  },                                                                                 \
-  .elem = {                                                                          \
-    .size = sizeof(vt),                                                              \
-    .align = valign,                                                                 \
-    .equal = (equalfun)(veqf),                                                       \
-  },                                                                                 \
-  .hasher = (keyhasher)(hashf),                                                      \
-  .keysize = sizeof(kt),                                                             \
-  .elemsize = sizeof(vt),                                                            \
-  .flags = mtflags,                                                                  \
-};                                                                                   \
-static_assert((MAPTYPE_SIZE(kt, vt) & alignof(kt) - 1) == 0, "not aligned");         \
-static_assert((MAPTYPE_SIZE(kt, vt) & alignof(vt) - 1) == 0, "not aligned");         \
-static_assert(sizeof(kt) <= maxKeySize, "must use make_ptr_type(ktyp) to calc size");\
-static_assert(sizeof(vt) <= maxKeySize, "must use make_ptr_type(vtyp) to calc size")
+#define MAPTYPE(kt, kalign, keqf, vt, valign, veqf, hashf, mtflags) {        \
+  .bucket = {                                                                \
+    .align = PTRSIZE,                                                        \
+    .kind  = tkind_struct,                                                   \
+    .size  = MAPTYPE_SIZE(kt, vt),                                           \
+  },                                                                         \
+  .key = {                                                                   \
+    .size = sizeof(kt),                                                      \
+    .align = kalign,                                                         \
+    .equal = (equalfun)(keqf),                                               \
+  },                                                                         \
+  .elem = {                                                                  \
+    .size = sizeof(vt),                                                      \
+    .align = valign,                                                         \
+    .equal = (equalfun)(veqf),                                               \
+  },                                                                         \
+  .hasher = (keyhasher)(hashf),                                              \
+  .keysize = sizeof(kt),                                                     \
+  .elemsize = sizeof(vt),                                                    \
+  .flags = mtflags,                                                          \
+};                                                                           \
+static_assert((MAPTYPE_SIZE(kt, vt) & alignof(kt) - 1) == 0, "not aligned"); \
+static_assert((MAPTYPE_SIZE(kt, vt) & alignof(vt) - 1) == 0, "not aligned"); \
+static_assert(sizeof(kt) <= maxKeySize, "must use make_ptr_type(ktyp)");     \
+static_assert(sizeof(vt) <= maxKeySize, "must use make_ptr_type(vtyp)")
 
 #define MAPTYPE_SIZE(kt, vt) (bucketCnt*(1 + sizeof(kt) + sizeof(vt)) + PTRSIZE)
 

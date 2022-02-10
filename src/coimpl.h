@@ -232,13 +232,13 @@ typedef unsigned long       usize;
   #define UNREACHABLE TRAP()
 #endif
 
-// UNLIKELY(integralexpr)->integralexpr
+// UNLIKELY(integralexpr)->bool
 #if __has_builtin(__builtin_expect)
-  #define UNLIKELY(x) (__builtin_expect((x), 0))
-  #define LIKELY(x)   (__builtin_expect((x), 1))
+  #define LIKELY(x)   (__builtin_expect((bool)(x), true))
+  #define UNLIKELY(x) (__builtin_expect((bool)(x), false))
 #else
-  #define UNLIKELY(x) (x)
   #define LIKELY(x)   (x)
+  #define UNLIKELY(x) (x)
 #endif
 
 #ifndef offsetof
