@@ -164,8 +164,8 @@ fi
 
 cat << _END > build.ninja
 ninja_required_version = 1.3
-outdir = $OUTDIR
-objdir = \$outdir/$BUILD_MODE
+builddir = $OUTDIR
+objdir = \$builddir/$BUILD_MODE
 
 cflags = $
   -g $
@@ -206,8 +206,9 @@ rule cxx
 
 rule ast_gen
   command = python3 src/parse/ast_gen.py \$in \$out
+  generator = true
 
-build \$objdir/ast_gen.mark: ast_gen src/parse/ast.h src/parse/ast.c | src/parse/ast_gen.py
+build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/parse/ast_gen.py
 _END
 
 
@@ -244,8 +245,8 @@ fi
 CO_OBJECTS=( $(_gen_obj_build_rules "" "" "${CO_SOURCES[@]}") )
 echo >> build.ninja
 
-echo "build co: phony \$outdir/co" >> build.ninja
-echo "build \$outdir/co: link ${CO_OBJECTS[@]} | \$objdir/ast_gen.mark" >> build.ninja
+echo "build co: phony \$builddir/co" >> build.ninja
+echo "build \$builddir/co: link ${CO_OBJECTS[@]}" >> build.ninja
 echo >> build.ninja
 
 echo "default co" >> build.ninja
