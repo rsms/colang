@@ -1,4 +1,4 @@
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
 
 #include "coimpl.h"
 #include "sys.h"
@@ -40,4 +40,4 @@ int sys_stacktrace_fwrite(FILE* fp, int offset, int limit) {
   return framecount - offset;
 }
 
-#endif // defined(CO_WITH_LIBC)
+#endif // !defined(CO_NO_LIBC)

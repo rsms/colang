@@ -3,7 +3,7 @@
 #include "unicode.h"
 #include "str.h" // strfmtu64
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdio.h>
 #endif
 
@@ -105,7 +105,7 @@ void sbuf_appendrepr(SBuf* s, const char* srcp, usize len) {
 
 
 void sbuf_appendf64(SBuf* s, f64 v, int ndec) {
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     #warning TODO implement for non-libc
     assert(!"not implemented");
     // TODO: consider using fmt_fp (stdio/vfprintf.c) in musl

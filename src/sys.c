@@ -1,37 +1,37 @@
 #include "coimpl.h"
 #include "sys.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <errno.h>
   #include <dirent.h>
   #include <unistd.h>
 #endif
 
 error sys_getcwd(char* buf, usize bufcap) {
-  #ifdef CO_WITH_LIBC
-    if (buf == NULL) // don't allow libc heap allocation semantics
-      return err_invalid;
-    if (getcwd(buf, bufcap) != buf)
-      return error_from_errno(errno);
-    return 0;
-  #else
+  #ifdef CO_NO_LIBC
     if (bufcap < 2)
       return err_name_too_long;
     buf[0] = '/';
     buf[1] = 0;
     return 0;
+  #else
+    if (buf == NULL) // don't allow libc heap allocation semantics
+      return err_invalid;
+    if (getcwd(buf, bufcap) != buf)
+      return error_from_errno(errno);
+    return 0;
   #endif
 }
 
 // dirs
-#ifndef CO_WITH_LIBC
+#ifdef CO_NO_LIBC
 
 error sys_dir_open(const char* filename, FSDir* result) { return err_not_supported; }
 error sys_dir_open_fd(int fd, FSDir* result) { return err_not_supported; }
 error sys_dir_close(FSDir d) { return err_invalid; }
 error sys_dir_read(FSDir d, FSDirEnt* ent) { return err_invalid; }
 
-#else // CO_WITH_LIBC
+#else // defined(CO_NO_LIBC)
 
 error sys_dir_open(const char* filename, FSDir* result) {
   DIR* d = opendir(filename);
@@ -88,4 +88,4 @@ error sys_dir_read(FSDir d, FSDirEnt* ent) {
   return 1;
 }
 
-#endif // CO_WITH_LIBC
+#endif // !defined(CO_NO_LIBC)

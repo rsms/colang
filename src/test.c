@@ -5,7 +5,7 @@
 #include "path.h"
 #include "time.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <unistd.h>  // isatty
   #include <stdlib.h>  // getenv
 #endif
@@ -89,7 +89,9 @@ int co_test_main(int argc, const char** argv) {
 
   const char* filter_prefix;
 
-  #ifdef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
+    filter_prefix = "";
+  #else
     stderr_isatty = isatty(2);
     if (stderr_isatty) {
       waitstyle  = "";
@@ -99,8 +101,6 @@ int co_test_main(int argc, const char** argv) {
       nostyle    = "\e[0m";
     }
     filter_prefix = getenv("R_TEST_FILTER");
-  #else
-    filter_prefix = "";
   #endif
 
   if (argc > 1 && strlen(argv[1]) > 0)

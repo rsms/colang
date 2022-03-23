@@ -8,7 +8,7 @@
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
 #define CO_PARSE_RESOLVE_DEBUG
 
-#if defined(CO_WITH_LIBC) && defined(CO_PARSE_RESOLVE_DEBUG)
+#if !defined(CO_NO_LIBC) && defined(CO_PARSE_RESOLVE_DEBUG)
   #include <unistd.h> // isatty
 #endif
 
@@ -41,7 +41,7 @@ enum rflag {
 
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     #define isatty(fd) false
   #endif
   #define dlog2(format, args...) ({                                                 \

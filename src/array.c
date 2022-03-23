@@ -1,7 +1,7 @@
 #include "coimpl.h"
 #include "array.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdlib.h> // for qsort_r
 #endif
 
@@ -112,10 +112,10 @@ error array_copy(
 }
 
 void array_sort(PtrArray* a, usize elemsize, PtrArraySortFun f, void* ctx) {
-  #ifdef CO_WITH_LIBC
-    qsort_r(a->v, a->len, elemsize, ctx, (int(*)(void*,const void*,const void*))f);
-  #else
+  #ifdef CO_NO_LIBC
     assert(!"array_sort not implemented");
+  #else
+    qsort_r(a->v, a->len, elemsize, ctx, (int(*)(void*,const void*,const void*))f);
   #endif
 }
 

@@ -29,7 +29,7 @@ error sys_set_exepath(const char* path) {
 
 
 // --------------------------------------------------------------------------------------
-#if defined(CO_WITH_LIBC) && defined(__MACH__) && defined(__APPLE__)
+#if !defined(CO_NO_LIBC) && defined(__MACH__) && defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <stdlib.h> // realpath
 #include <limits.h> // PATH_MAX

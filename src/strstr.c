@@ -24,8 +24,9 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 #include "coimpl.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <string.h>
+
 #else
 
 
@@ -208,4 +209,4 @@ char *strstr(const char *h, const char *n)
 	return twoway_strstr((void *)h, (void *)n);
 }
 
-#endif // CO_WITH_LIBC
+#endif // defined(CO_NO_LIBC)

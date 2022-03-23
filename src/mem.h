@@ -157,7 +157,7 @@ inline static Mem mem_nil_allocator() {
 
 // --------------------------------------------------------------------------------------
 // libc allocator
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
 ASSUME_NONNULL_END
 #include <stdlib.h>
 ASSUME_NONNULL_BEGIN
@@ -220,7 +220,7 @@ inline static Mem mem_libc_allocator() {
   return &_mem_libc;
 }
 
-#endif // defined(CO_WITH_LIBC)
+#endif // !defined(CO_NO_LIBC)
 
 // --------------------------------------------------------------------------------------
 // inline implementations

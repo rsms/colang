@@ -42,7 +42,7 @@ error sys_set_exepath(const char* path);
 // sys_exepath returns the absolute path of the current executable
 const char* sys_exepath();
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   // sys_stacktrace_fwrite writes a stacktrace (aka backtrace) to fp.
   // offset: number of stack frames to skip (starting at the top.)
   // limit: max number of stack frames to print.

@@ -2,7 +2,7 @@
 #include "../sha256.h"
 #include "source.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <errno.h> // errno
   #include <fcntl.h> // open
   #include <unistd.h> // close
@@ -21,7 +21,7 @@ static error source_init(Source* src, Mem mem, const char* filename) {
 }
 
 error source_open_file(Source* src, Mem mem, const char* filename) {
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     return err_not_supported;
   #else
     error err = source_init(src, mem, filename);
@@ -41,7 +41,7 @@ error source_open_file(Source* src, Mem mem, const char* filename) {
     src->len = (size_t)st.st_size;
 
     return 0;
-  #endif // CO_WITH_LIBC
+  #endif // CO_NO_LIBC
 }
 
 error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len) {
@@ -57,7 +57,7 @@ error source_open_data(Source* src, Mem mem, const char* filename, const char* t
 error source_body_open(Source* src) {
   if (src->body != NULL)
     return 0;
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     return err_not_supported;
   #else
     src->body = mmap(0, src->len, PROT_READ, MAP_PRIVATE, src->fd, 0);
@@ -73,7 +73,7 @@ error source_body_close(Source* src) {
     return 0;
 
   if (src->ismmap) {
-    #ifndef CO_WITH_LIBC
+    #ifdef CO_NO_LIBC
       return err_invalid;
     #else
       src->ismmap = false;
@@ -89,7 +89,7 @@ error source_body_close(Source* src) {
 error source_close(Source* src) {
   error err = source_body_close(src);
   if (src->fd > -1) {
-    #ifndef CO_WITH_LIBC
+    #ifdef CO_NO_LIBC
       return err_invalid;
     #else
       if (close(src->fd) != 0 && err == 0)

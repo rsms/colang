@@ -2,14 +2,14 @@
 #include "path.h"
 #include "sys.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdio.h>
   #include <stdlib.h> // abort
   #include <unistd.h> // STDERR_FILENO
 #endif
 
 NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...) {
-  #ifdef CO_WITH_LIBC
+  #ifndef CO_NO_LIBC
     file = path_cwdrel(file);
     FILE* fp = stderr;
     flockfile(fp);

@@ -4,7 +4,7 @@
 #include "universe.h"
 #include "typeid.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdio.h> // vsnprintf
 #endif
 
@@ -67,7 +67,7 @@ void b_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_li
       ctx->errcount++;
     return;
   }
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     #warning TODO implement b_diagv for non-libc (need vsnprintf)
     // Note: maybe we can implement str_appendfmtv for non-libc and use that?
   #else
@@ -225,7 +225,7 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
 
 // --- functions to aid unit tests
 
-#if defined(CO_TEST) && defined(CO_WITH_LIBC)
+#if defined(CO_TEST) && !defined(CO_NO_LIBC)
 
 BuildCtx* b_testctx_new() {
   Mem mem = mem_libc_allocator();
@@ -251,4 +251,4 @@ void b_testctx_free(BuildCtx* b) {
   // MemLinearFree(mem);
 }
 
-#endif // defined(CO_TEST) && defined(CO_WITH_LIBC)
+#endif // defined(CO_TEST) && !defined(CO_NO_LIBC)

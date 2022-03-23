@@ -225,7 +225,7 @@ __attribute__((used)) static const char* const debugSymCheck =
   #error Trying to run the generator in a non-debug build
 #endif
 
-#ifndef CO_WITH_LIBC
+#ifdef CO_NO_LIBC
   #error Generator depends on libc
 #endif
 #include <stdio.h>

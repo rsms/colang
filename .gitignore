@@ -1,10 +1,7 @@
-/out
+/build
 /deps
-/work
-/build.ninja
-/_*
 .DS_Store
-.ninja*
+/_*
 ~*
 *.o
 *.d

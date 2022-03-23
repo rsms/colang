@@ -2,7 +2,7 @@
 #include "time.h"
 #include "str.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <errno.h>
   #include <time.h>
   #include <sys/time.h>
@@ -28,7 +28,7 @@ error unixtime2(i64* sec, u64* nsec) {
     *sec = (i64)ts.tv_sec;
     *nsec = (u64)ts.tv_nsec;
     return 0;
-  #elif defined(CO_WITH_LIBC)
+  #elif !defined(CO_NO_LIBC)
     struct timeval tv;
     gettimeofday(&tv, 0);
     *sec = (i64)tv.tv_sec;
@@ -82,7 +82,7 @@ u64 nanotime(void) {
     return ((u64)(ts.tv_sec) * 1000000000) + ts.tv_nsec;
   // #elif (defined _MSC_VER && (defined _M_IX86 || defined _M_X64))
     // TODO: QueryPerformanceCounter
-  #elif defined(CO_WITH_LIBC)
+  #elif !defined(CO_NO_LIBC)
     struct timeval tv;
     #ifdef NDEBUG
     gettimeofday(&tv, nullptr);
@@ -98,7 +98,7 @@ u64 nanotime(void) {
 
 
 u64 microsleep(u64 microseconds) {
-  #ifdef CO_WITH_LIBC
+  #ifndef CO_NO_LIBC
     u64 sec = microseconds / 1000000;
     struct timespec request = {
       .tv_sec  = (long)sec,

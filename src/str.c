@@ -3,7 +3,7 @@
 #include "sbuf.h"
 #include "unicode.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdio.h>
 #endif
 
@@ -99,7 +99,7 @@ Str str_appendc(Str s, char c) {
 }
 
 Str str_appendfmtv(Str s, const char* fmt, va_list ap) {
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     #warning TODO implement str_appendfmtv for non-libc
     assert(!"not implemented");
   #else
@@ -125,7 +125,7 @@ Str str_appendfmtv(Str s, const char* fmt, va_list ap) {
     }
     // update len (vsnprintf wrote terminating \0 already)
     s->len += len;
-  #endif // CO_WITH_LIBC
+  #endif // CO_NO_LIBC
   return s;
 }
 
@@ -269,14 +269,14 @@ Str* str_tmp() {
     u32 index; // next buffer index (effective index = index % STR_TMP_MAX)
     Str bufs[STR_TMP_MAX];
 
-    #ifndef CO_WITH_LIBC
+    #ifdef CO_NO_LIBC
       Mem mem;
       FixBufAllocator ma;
       char mbuf[4096*8];
     #endif
   } _tmpstr = {0};
 
-  #ifndef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
     if (_tmpstr.mem == NULL)
       _tmpstr.mem = mem_buf_allocator_init(
         &_tmpstr.ma, _tmpstr.mbuf, sizeof(_tmpstr.mbuf));
@@ -288,10 +288,10 @@ Str* str_tmp() {
   if (s) {
     str_trunc(s);
   } else {
-    #ifdef CO_WITH_LIBC
-      Mem mem = mem_libc_allocator();
-    #else
+    #ifdef CO_NO_LIBC
       Mem mem = _tmpstr.mem;
+    #else
+      Mem mem = mem_libc_allocator();
     #endif
     _tmpstr.bufs[bufindex] = str_make(mem, 64);
   }

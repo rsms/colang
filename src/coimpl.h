@@ -212,7 +212,7 @@ typedef unsigned long       usize;
   #define ATTR_NOSAN(str) __attribute__((no_sanitize(str)))
 #endif
 
-#ifdef CO_WITH_LIBC
+#if !defined(CO_NO_LIBC)
   void abort(void); // stdlib.h
 #elif __has_builtin(__builtin_trap)
   #define abort __builtin_trap
@@ -483,14 +483,14 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   ATTR_FORMAT(printf, 4, 5);
 
 // void log(const char* fmt, ...)
-#ifdef CO_WITH_LIBC
+#ifdef CO_NO_LIBC
+  #warning log not implemented for no-libc
+  #define log(format, ...) ((void)0)
+#else
   ASSUME_NONNULL_END
   #include <stdio.h>
   ASSUME_NONNULL_BEGIN
   #define log(format, args...) fprintf(stderr, format "\n", ##args)
-#else
-  #warning log not implemented for no-libc
-  #define log(format, ...) ((void)0)
 #endif
 
 // void errlog(const char* fmt, ...)
@@ -624,7 +624,10 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   // The buffer argument determines which buffer to use (constraint: buffer<6)
   const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
     ATTR_FORMAT(printf, 2, 3);
-  #ifdef CO_WITH_LIBC
+  #ifdef CO_NO_LIBC
+    #define dlog(format, args...) \
+      log("[D] " format " (%s:%d)", ##args, __FILE__, __LINE__)
+  #else
     ASSUME_NONNULL_END
     #include <unistd.h> // isatty
     ASSUME_NONNULL_BEGIN
@@ -634,9 +637,6 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
       else           log("[D] " format " (%s:%d)",                   \
                          ##args, __FILE__, __LINE__);                \
       fflush(stderr); })
-  #else
-    #define dlog(format, args...) \
-      log("[D] " format " (%s:%d)", ##args, __FILE__, __LINE__)
   #endif
 #else
   #define dlog(format, ...) ((void)0)

@@ -79,7 +79,7 @@ Typical tables will be somewhat less loaded.
 #include "test.h"
 #include "array.h"
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <stdlib.h>
 #endif
 

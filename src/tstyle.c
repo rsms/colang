@@ -7,7 +7,7 @@
   #include "test.h"
 #endif
 
-#ifdef CO_WITH_LIBC
+#ifndef CO_NO_LIBC
   #include <unistd.h> // isatty
   #include <stdlib.h> // getenv
 #endif
@@ -172,7 +172,7 @@ TStyles TStylesForTerm() {
   if (t != NULL)
     return t;
   t = &t0;
-  #ifdef CO_WITH_LIBC
+  #ifndef CO_NO_LIBC
     const char* TERM = getenv("TERM");
     if (!TERM)
       return t;
@@ -189,7 +189,7 @@ TStyles TStylesForStdout() {
   static TStyles t = NULL;
   if (t != NULL)
     return t;
-  #ifdef CO_WITH_LIBC
+  #ifndef CO_NO_LIBC
     t = isatty(STDOUT_FILENO) ? TStylesForTerm() : &t0;
   #else
     t = &t0;
@@ -201,7 +201,7 @@ TStyles TStylesForStderr() {
   static TStyles t = NULL;
   if (t != NULL)
     return t;
-  #ifdef CO_WITH_LIBC
+  #ifndef CO_NO_LIBC
     t = isatty(STDERR_FILENO) ? TStylesForTerm() : &t0;
   #else
     t = &t0;

@@ -1,9 +1,5 @@
 #include <stdio.h>
 #include <err.h>
-#include <lualib.h>
-#include <lauxlib.h>
-// #include <lua.h>
-// #include <luajit.h>
 
 #include "coimpl.h"
 #include "test.h"
@@ -48,12 +44,12 @@ int main(int argc, const char** argv) {
   universe_init();
 
   // select a memory allocator
-  #ifdef CO_WITH_LIBC
-    Mem mem = mem_libc_allocator();
-  #else
+  #ifdef CO_NO_LIBC
     static u8 memv[4096*8];
     FixBufAllocator fba;
     Mem mem = FixBufAllocatorInit(&fba, memv, sizeof(memv));
+  #else
+    Mem mem = mem_libc_allocator();
   #endif
 
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
@@ -110,31 +106,6 @@ int main(int argc, const char** argv) {
     printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n",
       fmtast(result));
   }
-
-  // -- lua example --
-
-  // create a new execution context
-  lua_State* L = luaL_newstate();
-  if (!L)
-    panic("luaL_newstate");
-
-  // load all standard libraries
-  luaL_openlibs(L);
-
-  // load script
-  const char* filename = "misc/zs.lua";
-  int status = luaL_loadfile(L, filename);
-  if (status != 0)
-    panic("luaL_loadfile: %s", lua_tostring(L, -1));
-
-  // run script
-  printf("[evaluating Lua script %s]\n", filename);
-  int ret = lua_pcall(L, 0, 0, 0);
-  if (ret != 0)
-    panic("lua_pcall: %s", lua_tostring(L, -1));
-
-  // close execution context
-  lua_close(L);
 
   return 0;
 }
