@@ -1,0 +1,9 @@
+fun hello(x, y int) int
+  var k int
+  x = 2
+  x + 3
+
+fun foo() int
+  z * 4
+
+z = 5

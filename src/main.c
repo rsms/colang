@@ -65,17 +65,8 @@ int main(int argc, const char** argv) {
   BuildCtxInit(&build, mem, &syms, pkgid, on_diag, NULL);
 
   // add a source file to the logical package
-  const char* src_text =
-    "fun hello(x, y int) int\n"
-    "  var k int\n"
-    "  x = 2\n"
-    "  x + 3\n"
-    "fun foo() int\n"
-    "  z * 4\n"
-    "z = 5\n"
-    ;
   Source src1 = {0};
-  error err = source_open_data(&src1, mem, "input", src_text, strlen(src_text));
+  error err = source_open_file(&src1, mem, "examples/hello.co");
   if (err)
     panic("source_open_data: %s", error_str(err));
   b_add_source(&build, &src1);
