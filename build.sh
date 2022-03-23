@@ -14,6 +14,7 @@ XFLAGS=( $XFLAGS "-I$SRCDIR" )
 CFLAGS=( $CFLAGS -fms-extensions -Wno-microsoft )
 CXXFLAGS=()
 NINJA=${NINJA:-ninja}
+WATCHFILES=( $SRCDIR $(basename "$0") examples )
 
 BUILD_MODE=safe ; DEBUG=false
 WATCH= ; _WATCHED=
@@ -59,6 +60,13 @@ BUILD_DIR=$OUTDIR/$BUILD_MODE
 if [ -n "$WATCH" ]; then
   RUN_PIDFILE=${TMPDIR:-/tmp}/$(basename "$(dirname "$PWD")").build-runpid.$$
   echo "RUN_PIDFILE=$RUN_PIDFILE"
+
+  _WATCH_FILES=()
+  _WATCH_DIRS=()
+  for fn in "${WATCHFILES[@]}"; do
+    [ -d "$fn" ] && _WATCH_DIRS+=( "$fn" ) || _WATCH_FILES+=( "$fn" )
+  done
+
   _killcmd() {
     local RUN_PID=$(cat "$RUN_PIDFILE" 2>/dev/null)
     if [ -n "$RUN_PID" ]; then
@@ -73,34 +81,56 @@ if [ -n "$WATCH" ]; then
     rm -f "$RUN_PIDFILE"
     exit
   }
+  _find_watch_files() {
+    [ ${#_WATCH_FILES[@]} -gt 0 ] &&
+      echo "${_WATCH_FILES[@]}"
+    [ ${#_WATCH_DIRS[@]} -gt 0 ] &&
+      find "${_WATCH_DIRS[@]}" -type f -name "*.*" -not -path "*/_*" -and -not -name ".*"
+  }
+  _stat_mtime() { stat -c '%Y' "$1"; }
+  if [ "$(uname -s)" = "Darwin" ]; then
+    _stat_mtime() { stat -f '%m' "$1"; }
+  fi
   _watch_source_files() {
+    [ ${#WATCHFILES[@]} -eq 0 ] && _err "WATCHFILES is empty"
     if command -v fswatch >/dev/null; then
       fswatch --one-event --extended --latency=0.1 \
-              --exclude='.*' --include='\.(c|cc|cpp|m|mm|h|hh|sh|py)$' \
+              --exclude='.*' --include='\.[^\.]+$' \
               --recursive \
-              $SRCDIR $(basename "$0")
+              "${WATCHFILES[@]}"
       return
     fi
-    local DIR=$(realpath "$SRCDIR")
-    local mtime_max=$(stat -c '%Y' "$DIR")
+    # no watch tool available -- fall back to polling with "find"
+    local mtime_max=$(_stat_mtime "$SRCDIR")
+    local mtime_max_fn=
     local mtime f
-    for f in $(find "$DIR" -type f -name "*.*" -not -path "*/_*" -and -not -name ".*"); do
-      mtime=$(stat -c '%Y' "$f")
-      [ "$mtime" -gt "$mtime_max" ] && mtime_max=$mtime
+    for f in $(_find_watch_files); do
+      mtime=$(_stat_mtime "$f")
+      if [ "$mtime" -gt "$mtime_max" ]; then
+        mtime_max=$mtime
+        mtime_max_fn=$f
+      fi
     done
+    # create reference file for find
+    mkdir -p "$BUILD_DIR"
+    if [ -n "$mtime_max_fn" ]; then
+      cp -a "$mtime_max_fn" "$BUILD_DIR/watch-ref-mtime"
+    else  # avoid silent error in find, in case mtime_max_fn is empty
+      touch "$BUILD_DIR/watch-ref-mtime"
+    fi
     while true; do
       sleep 0.5
-      if [ "$mtime" -gt "$mtime_max" ]; then
-        echo "${DIR##$ORIG_PWD/} changed"
-        return
-      fi
-      for f in $(find "$DIR" -type f -name "*.*" -not -path "*/_*" -and -not -name ".*"); do
-        mtime=$(stat -c '%Y' "$f")
-        if [ "$mtime" -gt $mtime_max ]; then
-          echo "${f##$ORIG_PWD/} changed"
+      if [ ${#_WATCH_DIRS[@]} -gt 0 ]; then
+        [ -n "$(find "${_WATCH_DIRS[@]}" -type f -not -path '*/.*' \
+                     -newer "$BUILD_DIR/watch-ref-mtime" -print -quit)" ] &&
           return
-        fi
-      done
+      fi
+      if [ ${#_WATCH_FILES[@]} -gt 0 ]; then
+        for f in "${_WATCH_FILES[@]}"; do
+          [ "$f" -nt "$BUILD_DIR/watch-ref-mtime" ] &&
+            return
+        done
+      fi
     done
   }
   trap _exit SIGINT  # make sure we can ctrl-c in the while loop
