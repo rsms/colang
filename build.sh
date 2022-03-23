@@ -332,6 +332,16 @@ $VERBOSE && {
 }
 
 #————————————————————————————————————————————————————————————————————————————————————————
+# generate .clang_complete
+
+if $CC_IS_CLANG; then
+  echo "-I$(realpath "$SRCDIR")" > .clang_complete
+  for flag in "${XFLAGS[@]}" "${XFLAGS_HOST[@]}" "${CFLAGS_HOST[@]}"; do
+    echo "$flag" >> .clang_complete
+  done
+fi
+
+#————————————————————————————————————————————————————————————————————————————————————————
 # generate build.ninja
 
 NF=$BUILD_DIR/new-build.ninja     # temporary file
@@ -346,14 +356,16 @@ builddir = $BUILD_DIR
 objdir = \$builddir/obj
 
 xflags = ${XFLAGS[@]}
+xflags_host = \$xflags ${XFLAGS_HOST[@]}
+xflags_wasm = \$xflags ${XFLAGS_WASM[@]}
 
-cflags = \$xflags ${CFLAGS[@]}
-cflags_host = \$cflags ${XFLAGS_HOST[@]} ${CFLAGS_HOST[@]}
-cflags_wasm = \$cflags ${XFLAGS_WASM[@]} ${CFLAGS_WASM[@]}
+cflags = ${CFLAGS[@]}
+cflags_host = \$xflags_host \$cflags ${CFLAGS_HOST[@]}
+cflags_wasm = \$xflags_wasm \$cflags ${CFLAGS_WASM[@]}
 
-cxxflags = \$xflags ${CXXFLAGS[@]}
-cxxflags_host = \$cxxflags ${XFLAGS_HOST[@]} ${CXXFLAGS_HOST[@]}
-cxxflags_wasm = \$cxxflags ${XFLAGS_WASM[@]} ${CXXFLAGS_WASM[@]}
+cxxflags = ${CXXFLAGS[@]}
+cxxflags_host = \$xflags_host \$cxxflags ${CXXFLAGS_HOST[@]}
+cxxflags_wasm = \$xflags_wasm \$cxxflags ${CXXFLAGS_WASM[@]}
 
 ldflags_host = ${LDFLAGS_HOST[@]}
 ldflags_wasm = ${LDFLAGS_WASM[@]}

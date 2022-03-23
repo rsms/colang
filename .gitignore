@@ -1,8 +1,11 @@
-/build
-/deps
-.DS_Store
-/_*
 ~*
 *.o
 *.d
 *.pch
+
+.DS_Store
+.clang_complete
+
+/build
+/deps
+/_*
