@@ -10,7 +10,7 @@ typedef u32 CTypecastResult;
 enum CTypecastFlags {
   CTypecastFImplicit = 0,      // implicit conversion
   CTypecastFExplicit = 1 << 0, // explicit conversion (greater range of conversions)
-} END_TYPED_ENUM(CTypecastFlags)
+} END_ENUM(CTypecastFlags)
 
 enum CTypecastResult {
   CTypecastUnchanged = 0, // no conversion needed
@@ -18,7 +18,7 @@ enum CTypecastResult {
   // conversion failed because...
   CTypecastErrCompat = -0x80, // ...type of value is not convertible to destination type
   CTypecastErrOverflow,       // ...the value would overflow the destination type
-} END_TYPED_ENUM(CTypecastResult)
+} END_ENUM(CTypecastResult)
 
 // ctypecast converts the type of the constant expressions n to t.
 // On failure, a diagnostic error message is emitted in the build context.

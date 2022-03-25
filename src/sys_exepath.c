@@ -1,9 +1,9 @@
 #include "coimpl.h"
 #include "sys.h"
-#include "mem.h"
+#include "mem.c"
 #include "path.h"
 
-static char pathst[1024];
+static char exepath_buf[1024];
 static const char* exepath = NULL;
 
 
@@ -11,19 +11,19 @@ error sys_set_exepath(const char* path) {
   usize cwdlen = 0;
 
   if (!path_isabs(path)) {
-    if (sys_getcwd(pathst, sizeof(pathst)) != 0)
+    if (sys_getcwd(exepath_buf, sizeof(exepath_buf)) != 0)
       return err_name_too_long;
-    cwdlen = strlen(pathst);
-    pathst[cwdlen++] = PATH_SEPARATOR;
+    cwdlen = strlen(exepath_buf);
+    exepath_buf[cwdlen++] = PATH_SEPARATOR;
   }
 
   usize pathlen = strlen(path);
-  if (pathlen + cwdlen > sizeof(pathst)-1)
+  if (pathlen + cwdlen > sizeof(exepath_buf)-1)
     return err_name_too_long;
 
-  memcpy(&pathst[cwdlen], path, pathlen);
-  pathst[cwdlen + pathlen] = 0;
-  exepath = pathst;
+  memcpy(&exepath_buf[cwdlen], path, pathlen);
+  exepath_buf[cwdlen + pathlen] = 0;
+  exepath = exepath_buf;
   return 0;
 }
 
@@ -47,12 +47,12 @@ error sys_set_exepath(const char* path) {
 const char* sys_exepath() {
   if (exepath)
     return exepath;
-  char* path = pathst;
-  u32 len = sizeof(pathst);
+  char* path = exepath_buf;
+  u32 len = sizeof(exepath_buf);
 
   while (1) {
     if (_NSGetExecutablePath(path, &len) == 0) {
-      path = realpath(path, NULL);
+      path = realpath(path, NULL); // copies path with libc allocator
       break;
     }
     if (len >= PATH_MAX) {
@@ -63,12 +63,12 @@ const char* sys_exepath() {
       break;
     }
     // not enough space in path
-    len *= 2;
-    if (path == pathst) {
-      path = memalloc(mem_libc_allocator(), len);
+    if (path == exepath_buf) {
+      path = mem_alloc(mem_mkalloc_libc(), len*2);
     } else {
-      path = memresize(mem_libc_allocator(), path, len);
+      path = mem_resize(mem_mkalloc_libc(), path, len, len*2);
     }
+    len *= 2;
   }
 
   if (path == NULL || strlen(path) == 0)

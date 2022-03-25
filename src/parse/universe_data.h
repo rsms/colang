@@ -547,7 +547,7 @@ static void gen_constants() {
 
 __attribute__((constructor)) static void debug_check() {
   u8 membuf[2048];
-  DEF_STACK_FixBufAllocator(mem, membuf);
+  Mem mem = mem_mkalloc_buf(membuf, sizeof(membuf));
   Str s = gen_checksum(str_make(mem, sizeof(membuf)/2));
   if (strcmp(debugSymCheck, s->p) != 0) {
     errlog(

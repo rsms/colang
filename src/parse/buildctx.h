@@ -22,7 +22,7 @@ enum DiagLevel {
   DiagWarn,
   DiagNote,
   DiagMAX = DiagNote,
-} END_TYPED_ENUM(DiagLevel)
+} END_ENUM(DiagLevel)
 
 struct Diagnostic {
   BuildCtx*   build;

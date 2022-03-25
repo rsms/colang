@@ -37,7 +37,7 @@ enum rflag {
   flExplicitTypeCast = 1 << 0,
   flResolveIdeal     = 1 << 1,  // set when resolving ideal types
   flEager            = 1 << 2,  // set when resolving eagerly
-} END_TYPED_ENUM(rflag)
+} END_ENUM(rflag)
 
 
 #ifdef CO_PARSE_RESOLVE_DEBUG

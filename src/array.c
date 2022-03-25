@@ -1,10 +1,6 @@
 #include "coimpl.h"
 #include "array.h"
 
-#ifndef CO_NO_LIBC
-  #include <stdlib.h> // for qsort_r
-#endif
-
 #define MAX_EXTRA_CAP(elemsize) ((usize)4096/elemsize)
 
 
@@ -26,12 +22,12 @@ error array_grow(PtrArray* a, usize elemsize, usize count, Mem mem) {
 
   void** v;
   if (a->ext) { // moving data from external storage to mem-allocated storage
-    v = (void**)memalloc(mem, nbyte);
+    v = (void**)mem_alloc(mem, nbyte);
     if (!v)
       return err_nomem;
     memcpy(v, a->v, elemsize * a->len);
   } else {
-    v = memresize(mem, a->v, nbyte);
+    v = mem_resize(mem, a->v, (usize)a->cap * elemsize, nbyte);
     if (!v)
       return err_nomem;
   }
@@ -95,7 +91,7 @@ error array_copy(
       usize nbyte;
       if (check_mul_overflow((usize)needcap, elemsize, &nbyte))
         return err_overflow;
-      dst->v = (void*)memalloc(mem, nbyte);
+      dst->v = (void*)mem_alloc(mem, nbyte);
       dst->cap = needcap;
       dst->ext = 0;
     } else {
@@ -109,13 +105,5 @@ error array_copy(
   memcpy(&dst->v[startindex * elemsize], srcv, srclen * elemsize);
   dst->len = MAX(dst->len, startindex + srclen);
   return 0;
-}
-
-void array_sort(PtrArray* a, usize elemsize, PtrArraySortFun f, void* ctx) {
-  #ifdef CO_NO_LIBC
-    assert(!"array_sort not implemented");
-  #else
-    qsort_r(a->v, a->len, elemsize, ctx, (int(*)(void*,const void*,const void*))f);
-  #endif
 }
 

@@ -153,7 +153,7 @@ outc.append('')
 # enum NodeKind
 outh.append('enum NodeKind {')
 nodekind_max = gen_NodeKind_enum(outh, 1, 0, Node) - 1
-outh.append('} END_TYPED_ENUM(NodeKind)')
+outh.append('} END_ENUM(NodeKind)')
 outh.append('')
 
 # NodeKindName

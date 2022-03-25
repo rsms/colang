@@ -49,7 +49,7 @@ int main(int argc, const char** argv) {
     FixBufAllocator fba;
     Mem mem = FixBufAllocatorInit(&fba, memv, sizeof(memv));
   #else
-    Mem mem = mem_libc_allocator();
+    Mem mem = mem_mkalloc_libc();
   #endif
 
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
@@ -66,9 +66,10 @@ int main(int argc, const char** argv) {
 
   // add a source file to the logical package
   Source src1 = {0};
-  error err = source_open_file(&src1, mem, "examples/hello.co");
+  const char* filename = argv[1] ? argv[1] : "examples/hello.co";
+  error err = source_open_file(&src1, mem, filename);
   if (err)
-    panic("source_open_data: %s", error_str(err));
+    panic("source_open_data: %s %s", filename, error_str(err));
   b_add_source(&build, &src1);
 
   // // compute and print source checksum

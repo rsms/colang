@@ -23,7 +23,7 @@ typedef struct Indent  Indent;     // source indentation
 enum ParseFlags {
   ParseComments = 1 << 1, // parse comments, populating S.comments_{head,tail}
   ParseOpt      = 1 << 2, // apply optimizations. might produce a non-1:1 AST/token stream
-} END_TYPED_ENUM(ParseFlags)
+} END_ENUM(ParseFlags)
 
 
 // Comment is a scanned comment

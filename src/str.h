@@ -1,6 +1,6 @@
 // Str -- dynamic C strings
 #pragma once
-#include "mem.h"
+#include "mem.c"
 ASSUME_NONNULL_BEGIN
 
 // STR_TMP_MAX is the limit of concurrent valid buffers returned by str_tmp.

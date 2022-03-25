@@ -23,7 +23,7 @@ enum FSDirEntType {
   FSDirEnt_LNK     = 10, // symbolic link
   FSDirEnt_SOCK    = 12, // local-domain socket
   FSDirEnt_WHT     = 14, // BSD whiteout
-} END_TYPED_ENUM(FSDirEntType);
+} END_ENUM(FSDirEntType);
 
 // sys_getcwd populates buf with the current working directory including a nul terminator.
 // If bufsize is not enough, an error is returned.

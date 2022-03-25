@@ -103,7 +103,7 @@ enum Tok {
   Tok_MAX = TKeywordsEnd,
 
   #undef I_ENUM
-} END_TYPED_ENUM(Tok)
+} END_ENUM(Tok)
 // We only have 5 bits to encode tokens in Sym. Additionally, the value 0 is reserved
 // for "not a keyword", leaving the max number of values at 31 (i.e. 2^5=32-1).
 static_assert(TKeywordsEnd - TKeywordsStart < 32, "too many keywords");

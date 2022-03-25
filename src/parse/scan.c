@@ -105,16 +105,15 @@ error ScannerInit(Scanner* s, BuildCtx* build, Source* src, ParseFlags flags) {
 }
 
 void ScannerDispose(Scanner* s) {
-  if (s->indentStack.v != s->indentStack.storage) {
-    memfree(s->build->mem, s->indentStack.v);
-  }
+  if (s->indentStack.v != s->indentStack.storage)
+    mem_free(s->build->mem, s->indentStack.v, sizeof(Indent) * s->indentStack.cap);
 
   // free comments
   while (1) {
     Comment* c = ScannerCommentPop(s);
     if (!c)
       break;
-    memfree(s->build->mem, c);
+    mem_free(s->build->mem, c, sizeof(Comment));
   }
 }
 
@@ -173,7 +172,7 @@ Comment* ScannerCommentPop(Scanner* s) {
 
 
 static void comments_push_back(Scanner* s) {
-  Comment* c = (Comment*)memalloc(s->build->mem, sizeof(Comment));
+  Comment* c = mem_alloct(s->build->mem, Comment);
   c->next = NULL;
   c->src = s->src;
   c->ptr = s->tokstart;
@@ -287,16 +286,17 @@ static void snumber(Scanner* s) {
 
 
 static void indent_stack_grow(Scanner* s) {
-  u32 cap = s->indentStack.cap * 2;
+  u32 newcap = s->indentStack.cap * 2;
   if (s->indentStack.v != s->indentStack.storage) {
-    s->indentStack.v = memresize(s->build->mem, s->indentStack.v, sizeof(Indent) * cap);
+    s->indentStack.v = mem_resizev(
+      s->build->mem, s->indentStack.v, sizeof(Indent), s->indentStack.cap, newcap);
   } else {
     // moving array from stack to heap
-    Indent* v = (Indent*)memalloc(s->build->mem, sizeof(Indent) * cap);
+    Indent* v = (Indent*)mem_allocv(s->build->mem, sizeof(Indent), newcap);
     memcpy(v, s->indentStack.v, sizeof(Indent) * s->indentStack.len);
     s->indentStack.v = v;
   }
-  s->indentStack.cap = cap;
+  s->indentStack.cap = newcap;
 }
 
 

@@ -302,19 +302,25 @@ static const char* local_kind_name(LocalNode* n) {
 
 
 static void scopestackGrow(Parser* p) {
-  p->scopestack.cap *= 2;
+  u32 newcap = p->scopestack.cap * 2;
   Mem mem = p->build->mem;
   if (p->scopestack.ptr == p->scopestack.storage) {
-    p->scopestack.ptr = memalloc(mem, sizeof(void*) * p->scopestack.cap);
-    memcpy(p->scopestack.ptr, p->scopestack.storage, sizeof(void*) * p->scopestack.len);
+    p->scopestack.ptr = mem_allocv(mem, sizeof(void*), newcap);
+    if UNLIKELY(p->scopestack.ptr) {
+      p->err = err_nomem;
+    } else {
+      memcpy(p->scopestack.ptr, p->scopestack.storage, sizeof(void*) * p->scopestack.len);
+    }
   } else {
-    void* ptr = memresize(mem, p->scopestack.ptr, sizeof(void*) * p->scopestack.cap);
+    void* ptr = mem_resizev(
+      mem, p->scopestack.ptr, sizeof(void*), p->scopestack.cap, newcap);
     if UNLIKELY(ptr == NULL) {
       p->err = err_nomem;
     } else {
       p->scopestack.ptr = ptr;
     }
   }
+  p->scopestack.cap = newcap;
 }
 
 #ifdef DEBUG_SCOPE_BINDINGS

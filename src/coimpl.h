@@ -1,5 +1,6 @@
 // This files contains definitions used across the entire codebase. Keep it lean.
-#pragma once
+#ifndef CO_IMPL
+#define CO_IMPL
 
 #ifndef __cplusplus
   typedef _Bool bool;
@@ -55,9 +56,6 @@ typedef unsigned long       usize;
   #define UINTPTR_MAX USIZE_MAX
 #endif
 
-#ifndef NULL
-  #define NULL ((void*)0)
-#endif
 
 // compiler feature test macros
 #ifndef __has_attribute
@@ -77,34 +75,33 @@ typedef unsigned long       usize;
 #endif
 
 // nullability
+#ifndef NULL
+  #define NULL ((void*)0)
+#endif
+#if __has_feature(nullability)
+  #define nonull _Nonnull
+#else
+  #define nonull _Nonnull
+#endif
 #if defined(__clang__) && __has_feature(nullability)
-  #define __NULLABILITY_PRAGMA_PUSH \
-    _Pragma("clang diagnostic push")  \
-    _Pragma("clang diagnostic ignored \"-Wnullability-completeness\"") \
-    _Pragma("clang diagnostic ignored \"-Wnullability-inferred-on-nested-type\"")
-
-  #define __NULLABILITY_PRAGMA_POP \
-    _Pragma("clang diagnostic pop")
-
-  #define ASSUME_NONNULL_BEGIN \
-    __NULLABILITY_PRAGMA_PUSH  \
+  #ifndef nullable
+    #define nullable _Nullable
+  #endif
+  #define ASSUME_NONNULL_BEGIN                                                \
+    _Pragma("clang diagnostic push")                                              \
+    _Pragma("clang diagnostic ignored \"-Wnullability-completeness\"")            \
+    _Pragma("clang diagnostic ignored \"-Wnullability-inferred-on-nested-type\"") \
     _Pragma("clang assume_nonnull begin")
-
-  #define ASSUME_NONNULL_END \
-    __NULLABILITY_PRAGMA_POP \
+  #define ASSUME_NONNULL_END    \
+    _Pragma("clang diagnostic pop") \
     _Pragma("clang assume_nonnull end")
 #else
-  #define _Nullable
-  #define _Nonnull
-  #define _Null_unspecified
-  #define __NULLABILITY_PRAGMA_PUSH
-  #define __NULLABILITY_PRAGMA_POP
+  #ifndef nullable
+    #define nullable
+  #endif
   #define ASSUME_NONNULL_BEGIN
   #define ASSUME_NONNULL_END
 #endif
-#define nullable      _Nullable
-#define nonull        _Nonnull
-#define nonnullreturn __attribute__((returns_nonnull))
 
 #ifdef __cplusplus
   #define NORETURN noreturn
@@ -120,7 +117,9 @@ typedef unsigned long       usize;
   #define FALLTHROUGH
 #endif
 
-#if __has_attribute(musttail)
+#if __has_attribute(musttail) && !defined(__wasm__)
+  // Note on "!defined(__wasm__)": clang 13 claims to have this attribute for wasm
+  // targets but it's actually not implemented and causes an error.
   #define MUSTTAIL __attribute__((musttail))
 #else
   #define MUSTTAIL
@@ -168,9 +167,9 @@ typedef unsigned long       usize;
 #endif
 
 #if __has_attribute(used)
-  #define USED __attribute__((used))
+  #define ATTR_USED __attribute__((used))
 #else
-  #define USED
+  #define ATTR_USED
 #endif
 
 #if __has_attribute(warn_unused_result)
@@ -212,24 +211,23 @@ typedef unsigned long       usize;
   #define ATTR_NOSAN(str) __attribute__((no_sanitize(str)))
 #endif
 
-#if !defined(CO_NO_LIBC)
+// _Noreturn abort()
+#ifndef CO_NO_LIBC
   void abort(void); // stdlib.h
 #elif __has_builtin(__builtin_trap)
   #define abort __builtin_trap
+#elif __has_builtin(__builtin_unreachable)
+  #define abort __builtin_unreachable()
 #else
   #error no abort()
 #endif
 
-#if __has_builtin(__builtin_trap)
-  #define TRAP __builtin_trap
-#else
-  #define TRAP abort
-#endif
-
 #if __has_builtin(__builtin_unreachable)
   #define UNREACHABLE __builtin_unreachable()
+#elif __has_builtin(__builtin_trap)
+  #define UNREACHABLE __builtin_trap
 #else
-  #define UNREACHABLE TRAP()
+  #define UNREACHABLE abort()
 #endif
 
 // UNLIKELY(integralexpr)->bool
@@ -239,6 +237,15 @@ typedef unsigned long       usize;
 #else
   #define LIKELY(x)   (x)
   #define UNLIKELY(x) (x)
+#endif
+
+#if defined(__clang__) || defined(__gcc__)
+  #define _DIAGNOSTIC_IGNORE_PUSH(x)  _Pragma("GCC diagnostic push") _Pragma(#x)
+  #define DIAGNOSTIC_IGNORE_PUSH(STR) _DIAGNOSTIC_IGNORE_PUSH(GCC diagnostic ignored STR)
+  #define DIAGNOSTIC_IGNORE_POP()     _Pragma("GCC diagnostic pop")
+#else
+  #define DIAGNOSTIC_IGNORE_PUSH(STR)
+  #define DIAGNOSTIC_IGNORE_POP()
 #endif
 
 #ifndef offsetof
@@ -283,32 +290,71 @@ typedef unsigned long       usize;
 // T ALIGN2_FLOOR<T>(T x, anyuint a) rounds down x to nearest a
 // bool IS_ALIGN2(T x, anyuint a)    true if x is aligned to a
 #define ALIGN2(x,a)           _ALIGN2_MASK(x, (__typeof__(x))(a) - 1)
-#define ALIGN2_DOWN(x, a)     ALIGN2((x) - ((a) - 1), (a))
+#define ALIGN2_FLOOR(x, a)    ALIGN2((x) - ((a) - 1), (a))
 #define IS_ALIGN2(x, a)       (((x) & ((__typeof__(x))(a) - 1)) == 0)
 #define _ALIGN2_MASK(x, mask) (((x) + (mask)) & ~(mask))
 
-// END_TYPED_ENUM(NAME) should be placed at an enum that has a matching integer typedef.
+// co_ctz returns the number of trailing 0-bits in x,
+// starting at the least significant bit position. If x is 0, the result is undefined.
+#define co_ctz(x) _Generic((x), \
+  u32:   __builtin_ctz,       \
+  usize: __builtin_ctzl,      \
+  u64:   __builtin_ctzll)(x)
+
+// END_ENUM(NAME) should be placed at an enum that has a matching integer typedef.
 // Example 1:
 //   typedef u16 foo;
-//   enum foo { fooA, fooB = 0xff, fooC = 0xfff } END_TYPED_ENUM(foo);
+//   enum foo { fooA, fooB = 0xff, fooC = 0xfff } END_ENUM(foo);
 //   // ok; no error since fooC fits in u16
 // Example 2:
 //   typedef u8 foo; // too small for fooC value
-//   enum foo { fooA, fooB = 0xff, fooC = 0xfff } END_TYPED_ENUM(foo);
+//   enum foo { fooA, fooB = 0xff, fooC = 0xfff } END_ENUM(foo);
 //   // error: static_assert failed due to requirement
 //   // 'sizeof(enum foo) <= sizeof(unsigned char)' "too many foo values"
 //
 #if __has_attribute(__packed__)
-  #define END_ENUM(NAME, MAXSIZE) \
+  #define END_ENUM(NAME) \
     __attribute__((__packed__));  \
-    static_assert(sizeof(enum NAME) <= MAXSIZE, "too many " #NAME " values");
-  #define END_TYPED_ENUM(NAME) END_ENUM(NAME, sizeof(NAME))
+    static_assert(sizeof(enum NAME) <= sizeof(NAME), "too many " #NAME " values");
 #else
-  #define END_TYPED_ENUM(NAME) ;
+  #define END_ENUM(NAME) ;
 #endif
 
+// u32 CAST_U32(anyint z) => [0-U32_MAX]
+#define CAST_U32(z) ({ \
+  __typeof__(z) z__ = (z); \
+  sizeof(u32) < sizeof(z__) ? (u32)MIN((__typeof__(z__))U32_MAX,z__) : (u32)z__; \
+})
 
-// ======================================================================================
+// __fls(uint n) finds the last (most-significant) bit set
+#define __fls(n) ((sizeof(n) <= 4) ? __fls32(n) : __fls64(n))
+static ALWAYS_INLINE int __fls32(unsigned int x) {
+  return x ? sizeof(x) * 8 - __builtin_clz(x) : 0;
+}
+static ALWAYS_INLINE unsigned long __flsl(unsigned long x) {
+  return (sizeof(x) * 8) - 1 - __builtin_clzl(x);
+}
+#if USIZE_MAX < 0xffffffffffffffff
+  static ALWAYS_INLINE int __fls64(u64 x) {
+    u32 h = x >> 32;
+    if (h)
+      return __fls32(h) + 32;
+    return __fls32(x);
+  }
+#else
+  static ALWAYS_INLINE int __fls64(u64 x) {
+    if (x == 0)
+      return 0;
+    return __flsl(x) + 1;
+  }
+#endif
+
+static inline WARN_UNUSED_RESULT bool __must_check_unlikely(bool unlikely) {
+  return UNLIKELY(unlikely);
+}
+
+
+// —————————————————————————————————————————————————————————————————————————————————————
 // BEGIN code adapted from Linux.
 // The code listed on the following lines up until "END code adapted from Linux"
 // is licensed under the MIT license: (<linux-src>/LICENSES/preferred/MIT)
@@ -345,12 +391,8 @@ typedef unsigned long       usize;
 // #define PTR_ALIGN_DOWN(p, a)   ((__typeof__(p))ALIGN_DOWN((unsigned long)(p), (a)))
 // #define IS_ALIGNED(x, a)       (((x) & ((__typeof__(x))(a) - 1)) == 0)
 
-static inline WARN_UNUSED_RESULT bool __must_check_overflow(bool overflow) {
-  return UNLIKELY(overflow);
-}
-
 // a + b => d
-#define check_add_overflow(a, b, d) __must_check_overflow(({  \
+#define check_add_overflow(a, b, d) __must_check_unlikely(({  \
   __typeof__(a) __a = (a);      \
   __typeof__(b) __b = (b);      \
   __typeof__(d) __d = (d);      \
@@ -360,7 +402,7 @@ static inline WARN_UNUSED_RESULT bool __must_check_overflow(bool overflow) {
 }))
 
 // a - b => d
-#define check_sub_overflow(a, b, d) __must_check_overflow(({  \
+#define check_sub_overflow(a, b, d) __must_check_unlikely(({  \
   __typeof__(a) __a = (a);      \
   __typeof__(b) __b = (b);      \
   __typeof__(d) __d = (d);      \
@@ -370,7 +412,7 @@ static inline WARN_UNUSED_RESULT bool __must_check_overflow(bool overflow) {
 }))
 
 // a * b => d
-#define check_mul_overflow(a, b, d) __must_check_overflow(({  \
+#define check_mul_overflow(a, b, d) __must_check_unlikely(({  \
   __typeof__(a) __a = (a);      \
   __typeof__(b) __b = (b);      \
   __typeof__(d) __d = (d);      \
@@ -422,61 +464,67 @@ static inline WARN_UNUSED_RESULT usize array_size(usize a, usize b) {
 // ARRAY_LEN: number of elements of an array
 #define ARRAY_LEN(arr) (sizeof(arr) / sizeof((arr)[0]) + __must_be_array(arr))
 
-// __fls finds the last (most-significant) bit set
-#define __fls(x) (x ? sizeof(x) * 8 - __builtin_clz(x) : 0)
-
 // ILOG2 calculates the log of base 2
-#define ILOG2(n) (             \
-  __builtin_constant_p(n) ?    \
-    ((n) < 2 ? 0 :             \
-    63 - __builtin_clzll(n)) : \
-  __fls(n)                     \
-)
+#define ILOG2(n) ( \
+  __builtin_constant_p(n) ? ((n) < 2 ? 0 : 63 - __builtin_clzll(n)) : __fls(n) - 1 )
 
 // CEIL_POW2 rounds up n to nearest power of two. Result is undefined when n is 0.
-#define CEIL_POW2(n) (              \
-  __builtin_constant_p(n) ? (       \
-    ((n) == 1) ? 1 :                \
-      (1UL << (ILOG2((n) - 1) + 1)) \
-    ) :                             \
-    (1UL << __fls(n - 1))           \
-)
+#define CEIL_POW2(n) ( \
+  __builtin_constant_p(n) ? ( ((n) == 1) ? 1 : (1UL << (ILOG2((n) - 1) + 1)) ) \
+                          : (1UL << __fls(n - 1)) )
 
 // END code adapted from Linux
-// ======================================================================================
+// —————————————————————————————————————————————————————————————————————————————————————
+
+#define BEGIN_INTERFACE \
+  ASSUME_NONNULL_BEGIN \
+  DIAGNOSTIC_IGNORE_PUSH("-Wunused-function")
+
+#define END_INTERFACE \
+  DIAGNOSTIC_IGNORE_POP() \
+  ASSUME_NONNULL_END
 
 // assume pointer types are "nonull"
 ASSUME_NONNULL_BEGIN
 
-// ======================================================================================
+// —————————————————————————————————————————————————————————————————————————————————————
 // error
 
 typedef i32 error;
-enum error {
-  err_ok            =   0, // no error
-  err_invalid       =  -1, // invalid data or argument
-  err_sys_op        =  -2, // invalid syscall op or syscall op data
-  err_badfd         =  -3, // invalid file descriptor
-  err_bad_name      =  -4, // invalid or misformed name
-  err_not_found     =  -5, // resource not found
-  err_name_too_long =  -6, // name too long
-  err_canceled      =  -7, // operation canceled
-  err_not_supported =  -8, // not supported
-  err_exists        =  -9, // already exists
-  err_end           = -10, // end of resource
-  err_access        = -11, // permission denied
-  err_nomem         = -12, // cannot allocate memory
-  err_mfault        = -13, // bad memory address
-  err_overflow      = -14, // value too large
+#define CO_FOREACH_ERROR(_) \
+  _(ok            , "(no error)") \
+  _(invalid       , "invalid data or argument") \
+  _(sys_op        , "invalid syscall op or syscall op data") \
+  _(badfd         , "invalid file descriptor") \
+  _(bad_name      , "invalid or misformed name") \
+  _(not_found     , "not found") \
+  _(name_too_long , "name too long") \
+  _(canceled      , "operation canceled") \
+  _(not_supported , "not supported") \
+  _(exists        , "already exists") \
+  _(access        , "permission denied") \
+  _(nomem         , "cannot allocate memory") \
+  _(mfault        , "bad memory address") \
+  _(overflow      , "value too large") \
+// end CO_FOREACH_ERROR
+enum _co_error_tmp_ { // generate positive values
+  #define _(NAME, ...) _err_##NAME,
+  CO_FOREACH_ERROR(_)
+  #undef _
 };
+enum error { // canonical negative values
+  #define _(NAME, ...) err_##NAME = - _err_##NAME,
+  CO_FOREACH_ERROR(_)
+  #undef _
+} END_ENUM(error)
 
 error error_from_errno(int errno);
 const char* error_str(error);
 
-// ======================================================================================
+// —————————————————————————————————————————————————————————————————————————————————————
 // panic & assert
 
-// panic prints msg to stderr and calls TRAP()
+// panic prints msg to stderr and calls abort()
 #define panic(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
 
 NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...)
@@ -565,17 +613,22 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 
 // CO_SAFE -- checks enabled in "debug" and "safe" builds (but not in "fast" builds.)
 //
-// void safecheck(EXPR)
-// void safecheckf(EXPR, const char* fmt, ...)
-// typeof(EXPR) safenotnull(EXPR)
+// void safecheck(COND)                        -- elided from non-safe builds
+// void safecheckf(COND, const char* fmt, ...) -- elided from non-safe builds
+// EXPR safecheckexpr(EXPR, EXPECT)            -- included in non-safe builds (without check)
+// typeof(EXPR) safenotnull(EXPR)              -- included in non-safe builds (without check)
 //
-#if defined(CO_SAFE)
+#ifdef CO_SAFE
   #undef CO_SAFE
   #define CO_SAFE 1
   #define _safefail(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
   #define safecheckf(cond, fmt, args...) if UNLIKELY(!(cond)) _safefail(fmt, ##args)
   #ifdef DEBUG
     #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck (%s)", #cond)
+    #define safecheckexpr(expr, expect) ({                                        \
+      __typeof__(expr) val__ = (expr);                                            \
+      safecheckf(val__ == expect, "unexpected value (%s != %s)", #expr, #expect); \
+      val__; })
     #define safenotnull(a) ({                                           \
       __typeof__(a) val__ = (a);                                        \
       UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
@@ -583,15 +636,18 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
       val__; })
   #else
     #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck")
+    #define safecheckexpr(expr, expect) ({ \
+      __typeof__(expr) val__ = (expr); safecheck(val__ == expect); val__; })
     #define safenotnull(a) ({                                           \
       __typeof__(a) val__ = (a);                                        \
       UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
-      safecheckf(val__ != NULL, "unexpected NULL");                     \
+      safecheckf(val__ != NULL, "NULL");                                \
       val__; })
   #endif
 #else
-  #define safecheck(cond)                ((void)0)
   #define safecheckf(cond, fmt, args...) ((void)0)
+  #define safecheck(cond)                ((void)0)
+  #define safecheckexpr(expr, expect)    (expr) /* intentionally complain if not used */
   #define safenotnull(a)                 ({ a; }) /* note: (a) causes "unused" warnings */
 #endif
 
@@ -643,8 +699,7 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #endif
 
 
-// ======================================================================================
-// libc host-independent functions (just the parts we need)
+// —————————————————————————————————————————————————————————————————————————————————————
 
 #define fabs   __builtin_fabs
 #define sinf   __builtin_sinf
@@ -671,6 +726,15 @@ typedef __builtin_va_list va_list;
 
 char* strstr(const char* haystack, const char* needle);
 
+// xqsort is qsort_r aka qsort_s
+typedef int(*xqsort_cmp)(const void* x, const void* y, void* nullable ctx);
+void xqsort(void* base, usize nmemb, usize size, xqsort_cmp cmp, void* nullable ctx);
 
-// ======================================================================================
+// —————————————————————————————————————————————————————————————————————————————————————
+
+typedef struct SSlice { const char* p; usize len; } SSlice; // TODO: rename to Str
+#define SSLICE(cstr) ((SSlice){ (cstr), strlen(cstr) })
+
+// —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END
+#endif // CO_IMPL

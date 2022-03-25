@@ -1,7 +1,7 @@
 // AST nodes
 #pragma once
 #include "../array.h"
-#include "../map.h"
+#include "../map.c"
 #include "../sym.h"
 #include "token.h"
 #include "type.h"
@@ -241,7 +241,7 @@ enum NodeFlags {
   NF_PartialType = 1 << 7, // Type resolver should visit even if the node is typed
   NF_CustomInit  = 1 << 8, // struct has fields w/ non-zero initializer
   // Changing this? Remember to update NodeFlagsStr impl
-} END_TYPED_ENUM(NodeFlags)
+} END_ENUM(NodeFlags)
 
 #define NodeIsUnresolved(n) _NodeIsUnresolved(as_Node(n))
 #define NodeSetUnresolved(n) _NodeSetUnresolved(as_Node(n))
@@ -376,7 +376,7 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
 }
 
 inline static Node* nullable NodeAlloc(Mem mem) {
-  return (Node*)memalloc(mem, sizeof(union NodeUnion));
+  return (Node*)mem_alloc(mem, sizeof(union NodeUnion));
 }
 
 Node* NodeInit(Node* n, NodeKind kind);
@@ -415,7 +415,7 @@ enum NodeReprFlags {
   NodeReprUseCount = 1 << 3, // include information about uses (ie for Local)
   NodeReprRefs     = 1 << 4, // include "#N" reference indicators
   NodeReprAttrs    = 1 << 5, // include "@attr" attributes
-} END_TYPED_ENUM(NodeReprFlags)
+} END_ENUM(NodeReprFlags)
 
 // nodename returns a node's type name. E.g. "Tuple"
 // const char* nodename(const Node* n)

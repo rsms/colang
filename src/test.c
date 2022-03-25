@@ -82,31 +82,43 @@ static void testrun_end(CoTesting* t, u64 startat) {
 
 int co_test_main(int argc, const char** argv) {
   // usage: $0 [filter_prefix]
-  // note: if env R_TEST_FILTER is set, it is used as the default value for argv[1]
+  // note: if env CO_TEST_FILTER is set, it is used as the default value for argv[1]
+  int failcount = 0;
+  bool exit_when_done = false;
+  const char* filter_prefix = NULL;
 
   if (!testlist_head)
-    return 0;
+    goto done;
 
-  const char* filter_prefix;
-
-  #ifdef CO_NO_LIBC
-    filter_prefix = "";
-  #else
-    stderr_isatty = isatty(2);
-    if (stderr_isatty) {
-      waitstyle  = "";
-      okstyle    = "\e[1;32m"; // green
-      failstyle  = "\e[1;31m"; // red
-      dimstyle   = "\e[2m";
-      nostyle    = "\e[0m";
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--test-only") == 0) {
+      exit_when_done = true;
+    } else if (strcmp(argv[i], "--test-filter") == 0) {
+      i++;
+      if (i == argc) {
+        errlog("missing <filter> for --test-filter");
+        return 1;
+      }
+      filter_prefix = argv[i];
     }
-    filter_prefix = getenv("R_TEST_FILTER");
-  #endif
+  }
 
-  if (argc > 1 && strlen(argv[1]) > 0)
-    filter_prefix = argv[1];
+  if (filter_prefix == NULL) {
+    #ifdef CO_NO_LIBC
+      filter_prefix = "";
+    #else
+      stderr_isatty = isatty(2);
+      if (stderr_isatty) {
+        waitstyle  = "";
+        okstyle    = "\e[1;32m"; // green
+        failstyle  = "\e[1;31m"; // red
+        dimstyle   = "\e[2m";
+        nostyle    = "\e[0m";
+      }
+      filter_prefix = getenv("CO_TEST_FILTER");
+    #endif
+  }
 
-  int failcount = 0;
   int runcount = 0;
   for (CoTesting* t = testlist_head; t; t = t->_next) {
     if (should_run_test(t, filter_prefix)) {
@@ -123,7 +135,7 @@ int co_test_main(int argc, const char** argv) {
   if (runcount == 0) {
     assertnotnull(filter_prefix);
     fprintf(stderr, "no tests with prefix %s\n", filter_prefix);
-    return 0;
+    goto done;
   }
 
   const char* progname = path_base(argv[0]);
@@ -139,6 +151,12 @@ int co_test_main(int argc, const char** argv) {
   //   fprintf(stderr, "%sPASS:%s %s\n", okstyle, nostyle, progname);
   }
 
+done:
+  if (exit_when_done) {
+    #ifndef CO_NO_LIBC
+      exit(0);
+    #endif
+  }
   return failcount > 0 ? 1 : 0;
 }
 

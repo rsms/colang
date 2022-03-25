@@ -1,6 +1,6 @@
 // Array -- dynamic linear container. Valid when zero-initialized.
 #pragma once
-#include "mem.h"
+#include "mem.c"
 ASSUME_NONNULL_BEGIN
 
 #define TYPED_ARRAY_CAP_MAX 0x7fffffff
@@ -26,7 +26,6 @@ ASSUME_NONNULL_BEGIN
     u32 cap : 31; /* capacity of v          */\
     u32 ext : 1;  /* true if v is external  */\
   } A; \
-  typedef int (*A##SortFun)(void* nullable ctx, const T* elemp1, const T* elemp2);
 
 
 
@@ -36,7 +35,7 @@ ASSUME_NONNULL_BEGIN
 static void {A}Init({A}* a);
 
 // {A}InitStorage initializes a with initial storage.
-// As a grows, memcpy may be used to move storage to memalloc allocated memory.
+// As a grows, memcpy may be used to move storage to mem_alloc allocated memory.
 static void {A}InitStorage({A}* a, {T}* storage, u32 storagecap);
 
 // {A}Free frees up a->v (but does not zero len or cap.)
@@ -71,12 +70,6 @@ static error {A}Copy({A}* dst, u32 startindex, const {T}* src, u32 srclen, Mem m
 // Returns an error on overflow or allocation failure.
 static error {A}MakeRoom({A}* a, u32 addl_count, Mem);
 
-// {A}Sort reorders a in place according to comparator, which is called with ctx
-// and pointers to two values. The comparator should return -1 if *p1 is lesser
-// than *p2, +1 if *p1 is greater than *p2 or 0 if the values are equivalent.
-static void {A}Sort({A}* a, {A}SortFun comparator, void* nullable ctx);
-typedef int (*{A}SortFun)(void* nullable ctx, const {T}* p1, const {T}* p2);
-
 */
 #define DEF_TYPED_ARRAY_FUNCS(A, T)                                                \
   static void  A##Init(A* a);                                                      \
@@ -90,7 +83,6 @@ typedef int (*{A}SortFun)(void* nullable ctx, const {T}* p1, const {T}* p2);
   static i32   A##LastIndexOf(const A* a, const T entry);                          \
   static error A##Copy(A* dst, u32 startindex, const T* src, u32 srclen, Mem);     \
   static error A##MakeRoom(A* a, u32 addl_count, Mem);                             \
-  static void  A##Sort(A* a, A##SortFun comparator, void* nullable ctx);           \
 \
 inline static void A##Init(A* a) { *a = (A){0}; } \
 inline static void A##InitStorage(A* a, T* storage, u32 storagecap) { \
@@ -100,7 +92,7 @@ inline static void A##InitStorage(A* a, T* storage, u32 storagecap) { \
 } \
 inline static void A##Free(A* a, Mem m) { \
   if (!a->ext && a->v != NULL) { \
-    memfree(m, a->v); \
+    mem_free(m, a->v, a->len * sizeof(T)); \
     a->v = NULL; \
   } \
 } \
@@ -132,9 +124,6 @@ inline static error A##MakeRoom(A* a, u32 addl_count, Mem m) { \
     return array_grow((PtrArray*)a, sizeof(T), addl_count, m); \
   return 0; \
 } \
-inline static void A##Sort(A* a, A##SortFun comparator, void* nullable ctx) { \
-  array_sort((PtrArray*)a, sizeof(T), (PtrArraySortFun)comparator, ctx); \
-} \
 // end DEF_TYPED_ARRAY_API
 
 #define DEF_TYPED_PTR_ARRAY_FUNCS(A, PT)                                             \
@@ -157,8 +146,6 @@ inline static void A##Sort(A* a, A##SortFun comparator, void* nullable ctx) { \
     return PtrArrayCopy((PtrArray*)dst, startindex, (const void**)src, srclen, m); } \
   ALWAYS_INLINE static error A##MakeRoom(A* a, u32 addl_count, Mem m) {              \
     return PtrArrayMakeRoom((PtrArray*)a, addl_count, m); }                          \
-  ALWAYS_INLINE static void A##Sort(A* a, A##SortFun cmpf, void* nullable ctx) {     \
-    PtrArraySort((PtrArray*)a, (PtrArraySortFun)cmpf, ctx); }                        \
 // end DEF_TYPED_PTR_ARRAY_FUNCS
 
 // PtrArray
@@ -168,7 +155,6 @@ i32 array_indexof(const PtrArray*, usize elemsize, const void* elemp);
 i32 array_lastindexof(const PtrArray*, usize elemsize, const void* elemp);
 void array_remove(PtrArray* a, usize elemsize, u32 startindex, u32 count);
 error array_copy(PtrArray*, usize elemsize, u32 si, const void* srcv, u32 srclen, Mem);
-void array_sort(PtrArray*, usize elemsize, PtrArraySortFun, void* nullable ctx);
 DEF_TYPED_ARRAY_FUNCS(PtrArray, void*)
 
 

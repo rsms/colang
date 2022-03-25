@@ -16,7 +16,6 @@ void BuildCtxInit(
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
-  assertnotnull(mem);
   assert(strlen(pkgid) > 0);
   memset(ctx, 0, sizeof(BuildCtx));
   ctx->mem       = mem;
@@ -28,7 +27,7 @@ void BuildCtxInit(
   ctx->diaglevel = DiagMAX;
   ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
   ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  map_init_small(&ctx->types);
+  panic("TODO HMap"); // map_init_small(&ctx->types);
   DiagnosticArrayInit(&ctx->diagarray);
   posmap_init(&ctx->posmap, mem);
 }
@@ -42,8 +41,8 @@ void BuildCtxDispose(BuildCtx* ctx) {
   #endif
 }
 
-Diagnostic* b_mkdiag(BuildCtx* ctx) {
-  Diagnostic* d = memalloct(ctx->mem, Diagnostic);
+static Diagnostic* b_mkdiag(BuildCtx* ctx) {
+  Diagnostic* d = mem_alloct(ctx->mem, Diagnostic);
   d->build = ctx;
   DiagnosticArrayPush(&ctx->diagarray, d, ctx->mem);
   return d;
@@ -75,13 +74,13 @@ void b_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_li
     va_list ap1;
     va_copy(ap1, ap);
     isize n = vsnprintf(buf, sizeof(buf), fmt, ap1);
-    if (n < (isize)sizeof(buf))
+    if LIKELY(n < (isize)sizeof(buf))
       return b_diag(ctx, level, pos, buf);
     // buf too small; heap allocate
-    char* buf2 = (char*)memalloc(ctx->mem, n + 1);
+    char* buf2 = (char*)mem_alloc(ctx->mem, n + 1);
     n = vsnprintf(buf2, n + 1, fmt, ap);
     b_diag(ctx, level, pos, buf2);
-    memfree(ctx->mem, buf2);
+    mem_free(ctx->mem, buf2, n + 1);
   #endif
 }
 
@@ -121,10 +120,10 @@ void b_add_source(BuildCtx* b, Source* src) {
 }
 
 error b_add_file(BuildCtx* b, const char* filename) {
-  Source* src = memalloct(b->mem, Source);
+  Source* src = mem_alloczt(b->mem, Source);
   error err = source_open_file(src, b->mem, filename);
   if (err) {
-    memfree(b->mem, src);
+    mem_free(b->mem, src, sizeof(Source));
     return err;
   }
   b_add_source(b, src);
@@ -187,14 +186,14 @@ Sym b_typeid_assign(BuildCtx* b, Type* t) {
     return t->tid = symget(b->syms, buf, len);
   // didn't fit in stack buffer; resort to heap allocation
   len++;
-  char* s = memalloc(b->mem, len);
+  char* s = mem_alloc(b->mem, len);
   if (!s) {
     b_errf(b, (PosSpan){0}, "out of memory");
     return kSym__;
   }
   len = typeid_make(s, len, t);
   t->tid = symget(b->syms, s, len);
-  memfree(b->mem, s);
+  mem_free(b->mem, s, len);
   return t->tid;
 }
 

@@ -60,7 +60,7 @@ enum TStyle {
   _TS_FGCOLOR_END = TS_WHITE+1,
   _TS_BGCOLOR_START = TS_BLACK_BG,
   _TS_BGCOLOR_END = TS_WHITE_BG+1,
-} END_TYPED_ENUM(TStyle)
+} END_ENUM(TStyle)
 
 struct TStyles {
   u16  offs[_TS_MAX]; // index style constant => strs offset

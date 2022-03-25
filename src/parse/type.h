@@ -65,7 +65,7 @@ enum TypeCode {
   DEF_TYPE_CODES_ETC(_)
   #undef _
   TC_END
-} END_TYPED_ENUM(TypeCode)
+} END_ENUM(TypeCode)
 // order of intrinsic integer types must be signed,unsigned,signed,unsigned...
 static_assert(TC_i8+1  == TC_u8,  "integer order incorrect");
 static_assert(TC_i16+1 == TC_u16, "integer order incorrect");
@@ -90,7 +90,7 @@ enum TypeKind {
   TF_KindType,    // Types
   TF_Kind_MAX = TF_KindVector,
   TF_Kind_NBIT = ILOG2(TF_Kind_MAX) + 1,
-} END_TYPED_ENUM(TypeKind)
+} END_ENUM(TypeKind)
 
 enum TypeFlags {
   // implicitly includes TF_Kind* (enum TypeKind)
@@ -111,7 +111,7 @@ enum TypeFlags {
   #define B TF_Attr_BITOFFS
   TF_Signed = 1 << B,       // is signed (integers only)
   #undef B
-} END_TYPED_ENUM(TypeFlags)
+} END_ENUM(TypeFlags)
 
 const char* TypeKindName(TypeKind); // e.g. "integer"
 

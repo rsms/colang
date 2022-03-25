@@ -1,5 +1,6 @@
 // Mem -- heap memory allocator
 #pragma once
+#if DISABLED
 ASSUME_NONNULL_BEGIN
 
 // CO_MEM_DEBUG_ALLOCATIONS   -- define to trace log allocation activity
@@ -354,3 +355,4 @@ inline static void* nullable memalloczv(Mem m, usize elemsize, usize count) {
 // CO_MEM_DEBUG_ALLOCATIONS defines.
 
 ASSUME_NONNULL_END
+#endif

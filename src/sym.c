@@ -17,14 +17,15 @@
 
 
 inline static SymRBNode* RBAllocNode(Mem mem) {
-  return memalloct(mem, SymRBNode);
+  return mem_alloct(mem, SymRBNode);
 }
 
-// syms are never removed from the interning tree but other sympool instances, like
-// those used for testing, might.
+// syms are never removed from the interning tree,
+// but other sympool instances might, like those used for testing.
 inline static void RBFreeNode(SymRBNode* node, Mem mem) {
-  memfree(mem, (void*)_SYM_HEADER(node->key));
-  memfree(mem, node);
+  SymHeader* hp = (SymHeader*)_SYM_HEADER(node->key);
+  mem_free(mem, hp, sizeof(SymHeader) + (usize)hp->len + 1);
+  mem_free(mem, node, sizeof(SymRBNode));
 }
 
 static int RBCmp(Sym a, Sym b, Mem mem) {
@@ -100,7 +101,7 @@ static Sym symaddh(SymPool* p, const char* data, u32 len, u32 hash) {
   assert(len <= 0xFFFFFFFF);
 
   // allocate a new Sym
-  SymHeader* hp = (SymHeader*)memalloc(p->mem, sizeof(SymHeader) + (usize)len + 1);
+  SymHeader* hp = (SymHeader*)mem_alloc(p->mem, sizeof(SymHeader) + (usize)len + 1);
   hp->hash = hash;
   hp->len = SYM_MAKELEN(len, /*flags*/ 0);
   char* sp = &hp->p[0];
@@ -126,7 +127,7 @@ static Sym symaddh(SymPool* p, const char* data, u32 len, u32 hash) {
   if (!added) {
     // Another thread managed to insert the same symbol before we did.
     // Free the symbol we allocated
-    memfree(p->mem, hp);
+    mem_free(p->mem, hp, sizeof(SymHeader) + (usize)hp->len + 1);
     // return the equivalent symbol
     assert(s2 != NULL);
     s = s2;

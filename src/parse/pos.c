@@ -58,12 +58,13 @@ Pos pos_union(Pos a, Pos b) {
   return pos_make_unchecked(pos_origin(a), pos_line(a), c, w);
 }
 
-static u32* compute_line_offsets(Source* s, Mem mem, u32* nlines_out) {
+static u32* compute_line_offsets(Source* s, Mem mem, u32* nlinesp, usize* nbytesp) {
   if (!s->body)
     source_body_open(s);
 
   usize cap = 256; // best guess for common line numbers, to allocate up-front
-  u32* lineoffs = (u32*)memalloc(mem, sizeof(u32) * cap);
+  usize nbytes = sizeof(u32) * cap;
+  u32* lineoffs = (u32*)mem_allocv(mem, sizeof(u32), cap);
   if (!lineoffs)
     return NULL;
   lineoffs[0] = 0;
@@ -74,19 +75,20 @@ static u32* compute_line_offsets(Source* s, Mem mem, u32* nlines_out) {
     if (s->body[i++] == '\n') {
       if (linecount == cap) {
         // more lines
-        cap = cap * 2;
-        u32* lineoffs2 = memresize(mem, lineoffs, sizeof(u32) * cap);
+        u32* lineoffs2 = mem_resize(mem, lineoffs, nbytes, nbytes * 2);
         if UNLIKELY(!lineoffs2) {
-          memfree(mem, lineoffs);
+          mem_free(mem, lineoffs, nbytes);
           return NULL;
         }
+        nbytes *= 2;
         lineoffs = lineoffs2;
       }
       lineoffs[linecount] = i;
       linecount++;
     }
   }
-  *nlines_out = linecount;
+  *nlinesp = linecount;
+  *nbytesp = nbytes;
   return lineoffs;
 }
 
@@ -98,11 +100,12 @@ static const u8* src_line_contents(Source* s, Mem mem, u32 line, u32* out_len) {
     return NULL;
 
   u32 nlines;
-  u32* lineoffs = compute_line_offsets(s, mem, &nlines);
+  usize nbytes;
+  u32* lineoffs = compute_line_offsets(s, mem, &nlines, &nbytes);
   if (!lineoffs)
     return NULL;
   if (line == 0 || line > nlines) {
-    memfree(mem, lineoffs);
+    mem_free(mem, lineoffs, nbytes);
     return NULL;
   }
 
@@ -115,7 +118,7 @@ static const u8* src_line_contents(Source* s, Mem mem, u32 line, u32* out_len) {
       *out_len = (s->body + s->len) - lineptr;
     }
   }
-  memfree(mem, lineoffs);
+  mem_free(mem, lineoffs, nbytes);
   return lineptr;
 }
 

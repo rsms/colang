@@ -2,6 +2,8 @@
 #pragma once
 ASSUME_NONNULL_BEGIN
 
+typedef uintptr Hash;
+
 void fastrand_seed(u64 seed);
 u32 fastrand();
 

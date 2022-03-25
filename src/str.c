@@ -21,11 +21,14 @@
 Str str_make(Mem mem, u32 cap) {
   cap = MAX( ALIGN2(cap + 1, sizeof(usize)), ALLOC_MIN );
 
-  Str s = (Str)memalloctv(mem, struct Str, p, cap);
+  usize size = STRUCT_SIZE((struct Str*)0, p, cap);
+  if UNLIKELY(size == USIZE_MAX)
+    return NULL;
+  Str s = (Str)mem_alloc(mem, size);
   if (!s)
     return NULL;
 
-  memtrace("str_alloc %p (%zu)", s, STRUCT_SIZE( ((struct Str*)0), p, cap ));
+  memtrace("str_alloc %p (%zu)", s, size);
   s->mem = mem;
   s->len = 0;
   s->cap = cap - 1; // does not include the sentinel byte
@@ -37,12 +40,13 @@ Str nullable str_grow(Str s, u32 addlen) {
   #ifdef DEBUG_STR_TRACE_MEM
     usize oldz = STRUCT_SIZE( ((struct Str*)0), p, s->cap + 1 );
   #endif
+  usize oldsize = s->cap;
   s->cap = ALIGN2((s->len + addlen) * 2, sizeof(usize));
   usize z = STRUCT_SIZE( ((struct Str*)0), p, s->cap );
   if (z == USIZE_MAX)
     return NULL;
   s->cap--; // does not include the sentinel byte
-  Str s2 = (Str)memresize(s->mem, s, z);
+  Str s2 = (Str)mem_resize(s->mem, s, oldsize, z);
   memtrace("str_realloc %p (%zu) -> %p (%zu)", s, oldz, s2, z);
   return s2;
 }
@@ -79,7 +83,7 @@ Str nullable str_make_hex_lc(Mem mem, const u8* data, u32 len) {
 
 void str_free(Str s) {
   memtrace("str_free %p", s);
-  memfree(s->mem, s);
+  mem_free(s->mem, s, s->cap + 1);
 }
 
 Str str_appendn(Str s, const char* p, u32 len) {
@@ -150,7 +154,7 @@ Str str_appendfill(Str s, u32 n, char c) {
 // string literals, with "special" bytes escaped (e.g. \n, \xFE, etc.)
 Str str_appendrepr(Str s, const char* data, u32 len) {
   // TODO: replace this with sbuf_appendrepr
-  assert((u64)len <= ((u64)UINT32_MAX) * 8);
+  assert((u64)len <= ((u64)U32_MAX) * 8);
   u32 morelen = len * 4;
   char* dst;
   bool prevesc = false; // true when an escape sequence was written
@@ -291,7 +295,7 @@ Str* str_tmp() {
     #ifdef CO_NO_LIBC
       Mem mem = _tmpstr.mem;
     #else
-      Mem mem = mem_libc_allocator();
+      Mem mem = mem_mkalloc_libc();
     #endif
     _tmpstr.bufs[bufindex] = str_make(mem, 64);
   }

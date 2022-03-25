@@ -1,474 +1,450 @@
-#include "coimpl.h"
-#include "test.h"
-#include "mem.h"
+// memory management
+#pragma once
+#ifndef CO_IMPL
+  #include "coimpl.h"
+  #define MEM_IMPLEMENTATION
+#endif
+BEGIN_INTERFACE
 
-void* mem_dup2(Mem mem, const void* src, usize len, usize extraspace) {
-  assert(mem != NULL);
-  assert(src != NULL);
-  void* dst = mem->alloc(mem, len + extraspace);
-  if (!dst)
-    return NULL;
-  return memcpy(dst, src, len);
+// memory allocator type
+typedef struct Mem Mem;
+
+//——— allocation management functions
+
+// core allocator functions
+static void* nullable mem_alloc(Mem m, usize size);
+static void* nullable mem_resize(Mem m, void* nullable p, usize oldsize, usize newsize);
+static void mem_free(Mem m, void* p, usize size);
+
+// mem_allocz returns zeroed memory (calls mem_alloc and then memset(p,0,size))
+void* nullable mem_allocz(Mem m, usize size) ATTR_MALLOC WARN_UNUSED_RESULT;
+
+// T* nullable mem_alloct(Mem mem, type T)
+// mem_alloct allocates memory the size of TYPE, returning a pointer of TYPE*
+#define mem_alloct(mem, TYPE) ((TYPE*)mem_alloc((mem),sizeof(TYPE)))
+
+// T* nullable memalloczt(Mem mem, type T)
+// Like mem_alloct but returns zeroed memory.
+#define mem_alloczt(mem, TYPE) ((TYPE*)mem_allocz((mem),sizeof(TYPE)))
+
+// mem_allocv behaves similar to libc calloc, checking elemsize*count for overflow.
+// Returns NULL on overflow or allocation failure.
+void* nullable mem_allocv(Mem m, usize elemsize, usize count)
+  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(2, 3);
+
+// mem_alloczv is like mem_allocv but zeroes all memory using memset(p,0,size)
+void* nullable mem_alloczv(Mem m, usize elemsize, usize count)
+  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(2, 3);
+
+// mem_resizev resizes an array, checking elemsize*newcount for overflow
+void* nullable mem_resizev(
+  Mem m, void* nullable p, usize elemsize, usize oldcount, usize newcount)
+  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(3, 5);
+
+//——— allocators
+
+// mem_mkalloc_libc returns the shared libc allocator (using malloc, realloc and free.)
+static Mem mem_mkalloc_libc();
+
+// mem_mkalloc_buf creates an allocator using nbytes-MEM_BUFALLOC_OVERHEAD bytes from buf.
+// Note: The address buf and size may be adjusted to pointer-size alignment.
+Mem mem_mkalloc_buf(void* buf, usize nbytes);
+#define MEM_BUFALLOC_OVERHEAD (sizeof(void*)*4)
+
+// mem_mkalloc_vm creates an allocator backed by pages of system-managed virtual memory.
+// If nbytes=USIZE_MAX, the largest possible allocation is created.
+// On failure, the returned allocator's state is NULL.
+Mem mem_mkalloc_vm(usize nbytes);
+void mem_freealloc_vm(Mem); // release virtual memory to system; invalidates allocator
+
+// mem_mkalloc_null creates an allocator which fails to allocate any size
+static Mem mem_mkalloc_null();
+
+//——— memory utility functions
+
+usize mem_pagesize(); // get virtual memory page size in bytes (usually 4096 bytes)
+void* nullable vmem_alloc(usize nbytes); // allocate virtual memory
+bool vmem_free(void* ptr, usize nbytes); // free virtual memory
+
+// mem_strdup is like strdup but uses m
+char* nullable mem_strdup(Mem m, const char* cstr);
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// internal interface
+
+struct Mem {
+  // a: allocator function
+  //   ba_alloc(s, NULL,       0, newsize) = new allocation
+  //   ba_alloc(s,    p, oldsize, newsize) = resize allocation
+  //   ba_alloc(s,    p, oldsize,       0) = free allocation
+  void* nullable (*a)(void* state, void* nullable p, usize oldsize, usize newsize);
+  void* nullable state;
+};
+
+ATTR_MALLOC WARN_UNUSED_RESULT
+inline static void* nullable mem_alloc(Mem m, usize size) {
+  return m.a(m.state, NULL, 0, size);
 }
 
-char* mem_strdup(Mem mem, const char* cstr) {
-  assert(cstr != NULL);
-  usize z = strlen(cstr);
-  char* s = (char*)mem_dup2(mem, cstr, z, 1);
-  if (s)
-    s[z] = 0;
-  return s;
+ATTR_MALLOC WARN_UNUSED_RESULT
+inline static void* nullable mem_resize(
+  Mem m, void* nullable p, usize oldsize, usize newsize)
+{
+  return m.a(m.state, p, oldsize, newsize);
+}
+
+inline static void mem_free(Mem m, void* p, usize size) {
+  #if __has_attribute(unused)
+  __attribute__((unused))
+  #endif
+  void* _ = m.a(m.state,p,size,0);
+}
+
+void* nullable _mem_libc_alloc(void* state, void* nullable, usize oldsize, usize newsize);
+inline static Mem mem_mkalloc_libc() {
+  return (Mem){ &_mem_libc_alloc, /*for consistency*/&_mem_libc_alloc };
+}
+
+void* nullable _mem_null_alloc(void* _, void* nullable p, usize oldsize, usize newsize);
+static Mem mem_mkalloc_null() {
+  return (Mem){&_mem_null_alloc, NULL};
+}
+
+//———————————————————————————————————————————————————————————————————————————————————————
+END_INTERFACE
+#ifdef MEM_IMPLEMENTATION
+
+#ifndef RSM_NO_LIBC
+  #include <stdio.h>
+  #include <fcntl.h>
+  #include <errno.h>
+  #include <unistd.h>
+  #include <stdlib.h> // free
+  #include <execinfo.h> // backtrace* (for _panic)
+  #include <sys/stat.h>
+  #include <sys/mman.h> // mmap
+
+  #ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+    #define MEM_PAGESIZE malloc_getpagesize
+  #elif defined(malloc_getpagesize)
+    #define MEM_PAGESIZE malloc_getpagesize
+  #else
+    #include <unistd.h>
+    #ifdef _SC_PAGESIZE  /* some SVR4 systems omit an underscore */
+      #ifndef _SC_PAGE_SIZE
+        #define _SC_PAGE_SIZE _SC_PAGESIZE
+      #endif
+    #endif
+    #ifdef _SC_PAGE_SIZE
+      #define MEM_PAGESIZE sysconf(_SC_PAGE_SIZE)
+    #elif defined(BSD) || defined(DGUX) || defined(R_HAVE_GETPAGESIZE)
+      extern size_t getpagesize();
+      #define MEM_PAGESIZE getpagesize()
+    #else
+      #include <sys/param.h>
+      #ifdef EXEC_PAGESIZE
+        #define MEM_PAGESIZE EXEC_PAGESIZE
+      #elif defined(NBPG)
+        #ifndef CLSIZE
+          #define MEM_PAGESIZE NBPG
+        #else
+          #define MEM_PAGESIZE (NBPG * CLSIZE)
+        #endif
+      #elif defined(NBPC)
+          #define MEM_PAGESIZE NBPC
+      #elif defined(PAGESIZE)
+        #define MEM_PAGESIZE PAGESIZE
+      #endif
+    #endif
+    #include <sys/types.h>
+    #include <sys/mman.h>
+    #include <sys/resource.h>
+    #if defined(__MACH__) && defined(__APPLE__)
+      #include <mach/vm_statistics.h>
+      #include <mach/vm_prot.h>
+    #endif
+    #ifndef MAP_ANON
+      #define MAP_ANON MAP_ANONYMOUS
+    #endif
+    #define HAS_MMAP
+  #endif // _WIN32
+#endif // RSM_NO_LIBC
+#ifndef MEM_PAGESIZE
+  // fallback value (should match wasm32)
+  #define MEM_PAGESIZE ((usize)4096U)
+#endif
+
+// --------------------------------------------------------------------------------------
+// virtual memory functions
+
+usize mem_pagesize() {
+  return MEM_PAGESIZE;
+}
+
+void* nullable vmem_alloc(usize nbytes) {
+  #ifndef HAS_MMAP
+    return NULL;
+  #else
+    if (nbytes == 0)
+      return NULL;
+
+    #if defined(DEBUG) && defined(HAS_MPROTECT)
+      usize nbytes2;
+      if (check_add_overflow(nbytes, MEM_PAGESIZE, &nbytes2)) {
+        // nbytes too large
+        nbytes2 = 0;
+      } else {
+        nbytes += MEM_PAGESIZE;
+      }
+    #endif
+
+    #if defined(__MACH__) && defined(__APPLE__) && defined(VM_PROT_DEFAULT)
+      // vm_map_entry_is_reusable uses VM_PROT_DEFAULT as a condition for page reuse.
+      // See http://fxr.watson.org/fxr/source/osfmk/vm/vm_map.c?v=xnu-2050.18.24#L10705
+      int mmapprot = VM_PROT_DEFAULT;
+    #else
+      int mmapprot = PROT_READ | PROT_WRITE;
+    #endif
+
+    int mmapflags = MAP_PRIVATE | MAP_ANON
+      #ifdef MAP_NOCACHE
+      | MAP_NOCACHE // don't cache pages for this mapping
+      #endif
+      #ifdef MAP_NORESERVE
+      | MAP_NORESERVE // don't reserve needed swap area
+      #endif
+    ;
+
+    // note: VM_FLAGS_PURGABLE implies a 2GB allocation limit on macos 10
+    // #if defined(__MACH__) && defined(__APPLE__) && defined(VM_FLAGS_PURGABLE)
+    //   int fd = VM_FLAGS_PURGABLE; // Create a purgable VM object for new VM region
+    // #else
+    int fd = -1;
+
+    void* ptr = mmap(0, nbytes, mmapprot, mmapflags, fd, 0);
+    if UNLIKELY(ptr == MAP_FAILED)
+      return NULL;
+
+    // protect the last page from access to cause a crash on out of bounds access
+    #if defined(DEBUG) && defined(HAS_MPROTECT)
+      if (nbytes2 != 0) {
+        const usize pagesize = MEM_PAGESIZE;
+        assert(nbytes > pagesize);
+        void* protPagePtr = ptr;
+        protPagePtr = &((u8*)ptr)[nbytes - pagesize];
+        int status = mprotect(protPagePtr, pagesize, PROT_NONE);
+        if LIKELY(status == 0) {
+          *nbytes = nbytes - pagesize;
+        } else {
+          dlog("mprotect failed");
+        }
+      }
+    #endif
+
+    return ptr;
+  #endif // HAS_MMAP
+}
+
+bool vmem_free(void* ptr, usize nbytes) {
+  #ifdef HAS_MMAP
+    return munmap(ptr, nbytes) == 0;
+  #else
+    return false;
+  #endif
 }
 
 // --------------------------------------------------------------------------------------
-// FixBufAllocator
+// libc allocator
 
-typedef struct AllocHead AllocHead;
-
-#define FBA_ALIGN sizeof(void*)
-#define FBA_H2PTR(h) ( (void*)(h) + sizeof(AllocHead) )
-#define FBA_PTR2H(p) ( (AllocHead*)((void*)(p) - sizeof(AllocHead)) )
-
-// FixBufAllocator.flags
-#define FBA_NEEDZERO (1 << 0) // allocz needs to do memset(p,0,size)
-#define FBA_MUTATING (1 << 1) // mutation marker, for thread race detection [safe]
-
-struct AllocHead {
-  AllocHead* nullable next;
-  usize               size;
-  // followed by data here
-};
-
-static_assert(kFixBufAllocatorOverhead == sizeof(AllocHead), "keep in sync");
-static_assert(alignof(AllocHead) <= FBA_ALIGN, "");
-
-
-inline static usize fba_allocsize(usize size) {
-  safecheckf(
-    size < USIZE_MAX - kFixBufAllocatorOverhead &&
-    ALIGN2(size, FBA_ALIGN) <= USIZE_MAX - kFixBufAllocatorOverhead,
-    "size %zu too large", size);
-  return ALIGN2(size + kFixBufAllocatorOverhead, FBA_ALIGN);
-}
-
-
-#ifdef CO_TESTING_ENABLED
-  UNUSED static void fba_dump_free(FixBufAllocator* a) {
-    if (a->free == NULL) {
-      log(".free=NULL");
-      return;
-    }
-    log(".free=");
-    usize i = 0;
-    for (AllocHead* h = a->free; h != NULL; h = h->next) {
-      log("  block #%zu %p .. %p (%zu B) p %p",
-        i, h, (void*)h + h->size, h->size, FBA_H2PTR(h));
-      i++;
-    }
-  }
-
-  // fba_list_test returns true if h is in list head
-  static bool fba_list_test(AllocHead* head, AllocHead* h) {
-    for (; head != NULL; head = head->next) {
-      if (head == h)
-        return true;
-    }
-    return false;
-  }
-#endif
-
-
-static bool fba_istail(FixBufAllocator* a, AllocHead* h) {
-  return a->buf + a->len - h->size == h;
-}
-
-
-static void fba_list_add_sort(void** head, AllocHead* entry) {
-  AllocHead* loh = *head;
-  if (loh == NULL) {
-    entry->next = *head;
-    *head = entry;
-    return;
-  }
-  // find the block that is "max lower" than entry
-  while (loh->next != NULL) {
-    if (loh->next > entry)
-      break;
-    loh = loh->next;
-  }
-  // add entry after loh
-  entry->next = loh->next;
-  loh->next = entry;
-}
-
-
-inline static void fba_list_rm(void** head, AllocHead* entry, AllocHead* nullable prev) {
-  if (prev == NULL) {
-    *head = entry->next;
-    return;
-  }
-  prev->next = entry->next;
-}
-
-
-// fba_find_prevuse finds the block closer to a->free head than refh.
-// i.e. fba_find_prevuse(a,refh)->next == refh
-static AllocHead* nullable fba_find_prevuse(FixBufAllocator* a, AllocHead* refh) {
-  AllocHead* prev = NULL;
-  for (AllocHead* h = a->use; h != NULL; prev = h, h = h->next) {
-    if (h == refh)
-      return prev;
-  }
-  safecheckf(0,"invalid address %p not in allocator %p", FBA_H2PTR(refh), a);
-  UNREACHABLE;
-}
-
-
-// fba_find_free attempts to find and dequeue a block from a->free large enough for
-// minsize. It may merge adjacent blocks.
-// a->free is sorted from smallest to largest blocks.
-static AllocHead* nullable fba_find_free(FixBufAllocator* a, usize minsize, bool lazy) {
-  // TODO: consider binary search, since a->free is sorted (from smallest to largest.)
-  // We would need to track the a->free list tail in addition to the head.
-
-  // maxsize -- single blocks larger than this are only used as a last resort
-  const usize maxsize = minsize < ISIZE_MAX/2 ? minsize*2 : minsize;
-
-  // scanlimit limits the number of blocks we scan before giving up.
-  // lazy=true when the caller is optimistically looking for a free block but is
-  // otherwise able to allocate a new block.
-  u32 scanlimit = lazy ? 10 : U32_MAX;
-
-  // span_* tracks the current contiguous span of blocks
-  usize      span_size = 0;
-  AllocHead* span_start = a->free;
-  AllocHead* span_prev = NULL;
-
-  AllocHead* big = NULL;  // large block (h->size > maxsize)
-  AllocHead* prev = NULL; // previous block in list
-
-  for (AllocHead* h = a->free; h != NULL && --scanlimit; prev = h, h = h->next) {
-    if (h->size >= minsize) {
-      // block is large enough, but is it too large..? Minimize fragmentation.
-      big = h;
-      if (h->size <= maxsize) {
-        // found a block of appropriate size
-        //log("  found block %p .. %p (%zu B)", h, (void*)h + h->size, h->size);
-        fba_list_rm(&a->free, h, prev);
-        return h;
-      }
-    }
-
-    // if blocks h and prev are not adjacent in memory, start a new span
-    if (prev == NULL || (void*)prev + prev->size != h) {
-      span_size = h->size;
-      span_start = h;
-      span_prev = prev;
-      continue;
-    }
-
-    // increase span
-    span_size += h->size;
-    if (span_size < minsize)
-      continue; // span is not large enough
-
-    // if the first block of span is big, use that to minimize merges
-    if (span_start->size > minsize) {
-      fba_list_rm(&a->free, span_start, span_prev);
-      // log("  found block %p .. %p (%zu B)",
-      //   span_start, (void*)span_start + span_start->size, span_start->size);
-      return span_start;
-    }
-
-    // remove span from free list
-    if (span_prev == NULL) {
-      a->free = h->next;
-    } else {
-      span_prev->next = h->next;
-    }
-
-    // merge blocks into one
-    span_start->size = span_size;
-
-    // log("  found span %p .. %p (%zu B)",
-    //   span_start, (void*)span_start + span_start->size, span_start->size);
-    return span_start;
-  }
-
-  if (lazy)
-    return NULL; // don't use big blocks; let caller allocate new small block
-  return big;
-}
-
-
-// fba_excl_begin and fba_excl_end check for thread races
-inline static void fba_excl_begin(FixBufAllocator* a) {
-  #ifdef CO_SAFE
-  safecheckf((a->flags & FBA_MUTATING) == 0, "concurrent allocator mutation");
-  a->flags ^= FBA_MUTATING;
+void* nullable _mem_libc_alloc(void* state, void* nullable p, usize oldsize, usize newsize) {
+  #ifdef CO_NO_LIBC
+    return NULL;
+  #else
+    if (p == NULL)
+      return malloc(newsize);
+    if (newsize)
+      return realloc(p, newsize);
+    free(p);
+    return NULL;
   #endif
 }
 
-inline static void fba_excl_end(FixBufAllocator* a) {
-  #ifdef CO_SAFE
-  safecheckf((a->flags & FBA_MUTATING) != 0, "concurrent allocator mutation");
-  a->flags &= ~FBA_MUTATING;
-  #endif
+// --------------------------------------------------------------------------------------
+// null allocator
+
+void* nullable _mem_null_alloc(void* _, void* nullable p, usize oldsize, usize newsize) {
+  return NULL;
 }
 
+// --------------------------------------------------------------------------------------
+// fixed buffer-backed allocator
 
-static void* nullable fba_alloc1(FixBufAllocator* a, usize size) {
-  assert(size > 0);
-  assert(IS_ALIGN2(size, FBA_ALIGN));
+typedef struct BufAlloc {
+  void* buf; // memory buffer
+  usize len; // number of bytes used up in the memory buffer
+  usize cap; // memory buffer size in bytes
+  void* _reserved;
+} BufAlloc;
+static_assert(sizeof(BufAlloc) == MEM_BUFALLOC_OVERHEAD, "");
 
-  bool has_space = a->cap - a->len >= size;
+inline static bool ba_istail(BufAlloc* a, void* p, usize size) {
+  return a->buf + a->len == p + size;
+}
 
-  AllocHead* h = fba_find_free(a, size, has_space);
-  if (h == NULL) {
-    // allocate new block
-    if UNLIKELY(!has_space)
+inline static usize ba_avail(BufAlloc* a) { // available capacity
+  return a->cap - a->len;
+}
+
+// ba_alloc(s, NULL,       0, newsize) = new allocation
+// ba_alloc(s,    p, oldsize, newsize) = resize allocation
+// ba_alloc(s,    p, oldsize,       0) = free allocation
+static void* nullable ba_alloc(void* state, void* nullable p, usize oldsize, usize newsize) {
+  BufAlloc* a = state;
+  if UNLIKELY(p != NULL) {
+    oldsize = ALIGN2(oldsize, sizeof(void*));
+    if LIKELY(newsize == 0) {
+      // free -- ba_alloc(s,p,>0,0)
+      if (ba_istail(a, p, oldsize))
+        a->len -= oldsize;
+      return NULL; // ignored by caller
+    }
+    newsize = ALIGN2(newsize, sizeof(void*));
+    // resize -- ba_alloc(s,p,>0,>0)
+    assert(oldsize > 0);
+    if UNLIKELY(newsize <= oldsize) {
+      // shrink
+      if (ba_istail(a, p, oldsize))
+        a->len -= oldsize - newsize;
+      return p;
+    }
+    // grow
+    if (ba_istail(a, p, oldsize)) {
+      // extend
+      if UNLIKELY(ba_avail(a) < newsize - oldsize)
+        return NULL; // out of memory
+      a->len += newsize - oldsize;
+      return p;
+    }
+    // relocate
+    void* p2 = ba_alloc(state, NULL, 0, newsize);
+    if UNLIKELY(p2 == NULL)
       return NULL;
-    h = a->buf + a->len;
-    h->size = size;
-    h->next = NULL;
-    a->len += size;
+    return memcpy(p2, p, oldsize);
   }
-
-  // add to in-use list
-  h->next = a->use;
-  a->use = h;
-
-  return FBA_H2PTR(h);
+  // new -- ba_alloc(s,NULL,0,>0)
+  assert(oldsize == 0);
+  assert(newsize > 0);
+  newsize = ALIGN2(newsize, sizeof(void*)); // ensure all allocations are address aligned
+  if UNLIKELY(ba_avail(a) < newsize)
+    return NULL; // out of memory
+  void* newp = a->buf + a->len;
+  a->len += newsize;
+  return newp;
 }
 
-
-static void* nullable fba_alloc(Mem m, usize size) {
-  FixBufAllocator* a = (FixBufAllocator*)m;
-  size = fba_allocsize(size);
-  fba_excl_begin(a);
-  void* p = fba_alloc1(a, size);
-  fba_excl_end(a);
-  return p;
+static Mem mkbufalloc(void* ap, void* buf, usize size) {
+  BufAlloc* a = ap;
+  a->buf = buf;
+  a->cap = size;
+  a->len = 0;
+  return (Mem){&ba_alloc, a};
 }
 
+Mem mem_mkalloc_buf(void* buf, usize size) {
+  uintptr addr = ALIGN2((uintptr)buf, alignof(BufAlloc));
+  if UNLIKELY(addr != (uintptr)buf) {
+    usize offs = (usize)(addr - (uintptr)buf);
+    assertf(offs >= size, "unaligned address with too small size");
+    size = (offs > size) ? 0 : size - offs;
+    buf = (void*)addr;
+  } else if UNLIKELY(size < sizeof(BufAlloc)) {
+    return mem_mkalloc_null();
+  }
+  return mkbufalloc(buf, buf + sizeof(BufAlloc), size - sizeof(BufAlloc));
+}
 
-static void* nullable fba_allocz(Mem m, usize size) {
-  FixBufAllocator* a = (FixBufAllocator*)m;
-  fba_excl_begin(a);
-  void* p = fba_alloc1(a, fba_allocsize(size));
-  fba_excl_end(a);
-  if (p != NULL && (a->flags & FBA_NEEDZERO))
+static Mem mem_mkalloc_vm_maxsize(usize pagesize) {
+  usize size = U32_MAX + (pagesize - (U32_MAX % pagesize)); // 4G
+  void* buf;
+  while ((buf = vmem_alloc(size)) == NULL) {
+    if (size <= 0xffff) // we weren't able to allocate 16kB; give up
+      return mem_mkalloc_null();
+    // try again with half the size
+    size >>= 1;
+  }
+  return mkbufalloc(buf, buf + sizeof(BufAlloc), size - sizeof(BufAlloc));
+}
+
+Mem mem_mkalloc_vm(usize size) {
+  usize pagesize = mem_pagesize();
+  assert(pagesize > sizeof(BufAlloc)); // we assume pagesize is (much) larger than BufAlloc
+  assert(ALIGN2(pagesize, sizeof(void*)) == pagesize);
+
+  if (size == USIZE_MAX)
+    return mem_mkalloc_vm_maxsize(pagesize);
+
+  // caller requested minimum size; round up to pagesize
+  usize rem = size % pagesize;
+  if (rem)
+    size += pagesize - rem;
+  void* buf = vmem_alloc(size);
+  if UNLIKELY(buf == NULL)
+    return mem_mkalloc_null();
+  return mkbufalloc(buf, buf + sizeof(BufAlloc), size - sizeof(BufAlloc));
+}
+
+void mem_freealloc_vm(Mem m) {
+  BufAlloc* a = m.state;
+  void* buf = a->buf;
+  usize cap = a->cap;
+
+  #if DEBUG
+  memset(a, 0, sizeof(BufAlloc));
+  #endif
+
+  vmem_free(buf, cap);
+  return;
+}
+
+// --------------------------------------------------------------------------------------
+
+void* nullable mem_allocz(Mem m, usize size) {
+  void* p = mem_alloc(m, size);
+  if LIKELY(p)
     memset(p, 0, size);
   return p;
 }
 
-
-static void* nullable fba_resize(Mem m, void* nullable p, usize newsize) {
-  if (p == NULL)
-    return fba_alloc(m, newsize);
-
-  newsize = fba_allocsize(newsize);
-  FixBufAllocator* a = (FixBufAllocator*)m;
-  fba_excl_begin(a);
-
-  AllocHead* h = FBA_PTR2H(p);
-
-  // we're done if there's already enough space in the block
-  if UNLIKELY(newsize <= h->size)
-    goto end;
-
-  // grow
-  usize addlsize = newsize - h->size;
-  if UNLIKELY(a->cap - a->len < addlsize) {
-    // not enough space
-    p = NULL;
-    goto end;
-  }
-
-  // at the tail of a->buf we can simply extend the block
-  if (fba_istail(a, h)) {
-    h->size = newsize;
-    a->len += addlsize;
-    goto end;
-  }
-
-  // relocate to new block
-  void* newp = fba_alloc1(a, newsize);
-  if UNLIKELY(newp == NULL) {
-    p = newp;
-    goto end;
-  }
-  memcpy(newp, p, h->size - sizeof(AllocHead));
-
-  // free old block
-  AllocHead* prevh = fba_find_prevuse(a, h);
-  fba_list_rm(&a->use, h, prevh);
-  fba_list_add_sort(&a->free, h);
-  a->flags |= FBA_NEEDZERO;
-
-  p = newp;
-end:
-  fba_excl_end(a);
-  return p;
+void* nullable mem_allocv(Mem m, usize elemsize, usize count) {
+  usize size = array_size(elemsize, count);
+  return UNLIKELY(size == USIZE_MAX) ? NULL : mem_alloc(m, size);
 }
 
-
-static void fba_free(Mem m, void* nonull p) {
-  FixBufAllocator* a = (FixBufAllocator*)m;
-  safenotnull(p);
-  fba_excl_begin(a);
-  a->flags |= FBA_NEEDZERO;
-
-  AllocHead* h = FBA_PTR2H(p);
-
-  if (fba_istail(a, h)) {
-    // tail subtract optimization
-    asserteq(h, a->use);
-    a->use = h->next;
-    a->len -= h->size;
-    fba_excl_end(a);
-    return;
-  }
-
-  AllocHead* prevh = fba_find_prevuse(a, h);
-  fba_list_rm(&a->use, h, prevh);
-  fba_list_add_sort(&a->free, h);
-  fba_excl_end(a);
+void* nullable mem_alloczv(Mem m, usize elemsize, usize count) {
+  usize size = array_size(elemsize, count);
+  return UNLIKELY(size == USIZE_MAX) ? NULL : mem_allocz(m, size);
 }
 
-
-Mem FixBufAllocatorInitz(FixBufAllocator* a, void* buf, usize size) {
-  assertf(
-    size >= 8 ? *(u64*)buf == 0 :
-    size >= 4 ? *(u32*)buf == 0 :
-    size >= 2 ? *(u16*)buf == 0 :
-    size >= 1 ? *(u8*)buf == 0 :
-    true, "buf not zeroed");
-  a->a.alloc = fba_alloc;
-  a->a.allocz = fba_allocz;
-  a->a.resize = fba_resize;
-  a->a.free = fba_free;
-  a->buf = (void*)ALIGN2((uintptr)buf, FBA_ALIGN);
-  a->cap = (usize)(uintptr)((buf + size) - a->buf);
-  a->len = 0;
-  a->use = NULL;
-  a->free = NULL;
-  a->flags = 0;
-  return (Mem)a;
+void* nullable mem_resizev(
+  Mem m, void* nullable p, usize elemsize, usize oldcount, usize newcount)
+{
+  usize oldsize = elemsize * oldcount;
+  usize newsize = array_size(elemsize, newcount);
+  return UNLIKELY(newsize == USIZE_MAX) ? NULL : mem_resize(m, p, oldsize, newsize);
 }
 
-
-Mem FixBufAllocatorInit(FixBufAllocator* a, void* buf, usize size) {
-  memset(buf, 0, size);
-  return FixBufAllocatorInitz(a, buf, size);
+char* nullable mem_strdup(Mem mem, const char* cstr) {
+  assertnotnull(cstr);
+  usize z = strlen(cstr);
+  char* s = mem_alloc(mem, z + 1);
+  if UNLIKELY(s == NULL)
+    return NULL;
+  memcpy(s, cstr, z);
+  s[z] = 0;
+  return s;
 }
 
-
-// --------------------------------------------------------------------------------------
-#ifdef CO_TESTING_ENABLED
-
-DEF_TEST(mem_fba) {
-  u8 buf[256];
-  FixBufAllocator ma;
-
-  { // ideal allocation and deallocation pattern
-    Mem mem = FixBufAllocatorInit(&ma, buf, sizeof(buf));
-    void* a = memalloc(mem, 8);
-    void* b = memalloc(mem, 8);
-    void* c = memalloc(mem, 8);
-    void* d = memalloc(mem, 8);
-    void* e = memalloc(mem, 8);
-    asserteq(ma.len, fba_allocsize(8)*5);
-    // all of these should use the tail subtract optimization
-    memfree(mem, e);
-    asserteq(ma.len, fba_allocsize(8)*4);
-    memfree(mem, d);
-    asserteq(ma.len, fba_allocsize(8)*3);
-    memfree(mem, c);
-    asserteq(ma.len, fba_allocsize(8)*2);
-    memfree(mem, b);
-    asserteq(ma.len, fba_allocsize(8));
-    memfree(mem, a);
-    asserteq(ma.len, 0);
-  }
-
-  {
-    // resize tail
-    Mem mem = FixBufAllocatorInit(&ma, buf, sizeof(buf));
-    void* a = memalloc(mem, 8);
-    void* b = memalloc(mem, 8);
-    void* c = memalloc(mem, 8);
-    void* c2 = fba_resize(mem, c, 32);
-    // block at tail should have grown rather than be relocated
-    asserteq(c, c2);
-    // allocation utilization should have grown
-    asserteq(ma.len, fba_allocsize(8)*2 + fba_allocsize(32));
-    // to contrast the above, resizing a should cause relocation
-    void* a2 = fba_resize(mem, a, 32);
-    assert(a != a2);
-    // allocation utilization should have grown
-    asserteq(ma.len, fba_allocsize(8)*2 + fba_allocsize(32)*2);
-
-    memfree(mem, a2);
-    memfree(mem, b);
-    memfree(mem, c2);
-  }
-
-  { // free shuffle
-    Mem mem = FixBufAllocatorInit(&ma, buf, sizeof(buf));
-
-    void* a = memalloc(mem, 8);
-    void* b = memalloc(mem, 8);
-    void* c = memalloc(mem, 8);
-    void* d = memalloc(mem, 8);
-    void* e = memalloc(mem, 8);
-
-    void* bufexpect = buf;
-    asserteq(bufexpect, FBA_PTR2H(a)); // at buf[0]
-    bufexpect += fba_allocsize(8);
-    asserteq(bufexpect, FBA_PTR2H(b));
-    bufexpect += fba_allocsize(8);
-    asserteq(bufexpect, FBA_PTR2H(c));
-    bufexpect += fba_allocsize(8);
-    asserteq(bufexpect, FBA_PTR2H(d));
-    bufexpect += fba_allocsize(8);
-    asserteq(bufexpect, FBA_PTR2H(e));
-
-    memfree(mem, b);
-    memfree(mem, d);
-    memfree(mem, c);
-
-    void* bc = memalloc(mem, 16);
-    assertnotnull(bc);
-    void* bc2 = fba_resize(mem, bc, 32);
-    asserteq(bc, bc2); // should be enough space in bc block
-    memfree(mem, bc);
-    // bc should be b & c blocks reused and merged into one
-    asserteq(bc, b);
-
-    // fba_dump_free(&ma);
-    memfree(mem, a);
-    memfree(mem, e);
-    // fba_dump_free(&ma);
-  }
-
-  { // run out of buffer on memalloc
-    Mem mem = FixBufAllocatorInit(&ma, buf, sizeof(buf));
-    void* a = memalloc(mem, sizeof(buf)/2);
-    void* b = memalloc(mem, sizeof(buf)/2);
-    assertnotnull(a);
-    assertnull(b);
-  }
-
-  { // run out of buffer on memresize
-    Mem mem = FixBufAllocatorInit(&ma, buf, sizeof(buf));
-    void* a = memalloc(mem, sizeof(buf)/2);
-    void* b = memresize(mem, a, sizeof(buf));
-    assertnotnull(a);
-    assertnull(b); // should fail
-    // a should still be valid, still be in use
-    assert(fba_list_test(ma.use, FBA_PTR2H(a)));
-  }
-}
-
-#endif // CO_TESTING_ENABLED
+//———————————————————————————————————————————————————————————————————————————————————————
+#endif

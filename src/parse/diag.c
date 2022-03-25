@@ -19,6 +19,6 @@ Str diag_fmt(const Diagnostic* d, Str s) {
 
 void diag_free(Diagnostic* d) {
   assert(d->build != NULL);
-  memfree(d->build->mem, (void*)d->message);
-  memfree(d->build->mem, d);
+  mem_free(d->build->mem, (void*)d->message, strlen(d->message) + 1);
+  mem_free(d->build->mem, d, sizeof(Diagnostic));
 }

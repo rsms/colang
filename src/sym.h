@@ -1,7 +1,7 @@
 // Sym -- immutable interned strings
 #pragma once
-#include "mem.h"
-#include "map.h"
+#include "mem.c"
+#include "map.c"
 ASSUME_NONNULL_BEGIN
 
 // Sym is a string type that is interned and can be efficiently compared
@@ -94,16 +94,20 @@ static u8 symflags(Sym);
 #define kSymMapType (&kMapType_ptr_ptr)
 
 inline static HMap* nullable symmap_make(HMap* nullable h, Mem mem, usize hint) {
-  return map_make(kSymMapType, h, mem, hint);
+  panic("TODO HMap"); return NULL;
+  // return map_make(kSymMapType, h, mem, hint);
 }
 inline static void** nullable symmap_assign(HMap* h, Sym key, Mem mem) {
-  return map_assign(kSymMapType, h, &key, mem);
+  panic("TODO HMap"); return NULL;
+  // return map_assign(kSymMapType, h, &key, mem);
 }
 inline static void** nullable symmap_access(const HMap* nullable h, Sym key) {
-  return map_access(kSymMapType, h, &key);
+  panic("TODO HMap"); return NULL;
+  // return map_access(kSymMapType, h, &key);
 }
 inline static void symmap_free(HMap* h, Mem mem) {
-  map_free(kSymMapType, h, mem);
+  panic("TODO HMap");
+  // map_free(kSymMapType, h, mem);
 }
 
 

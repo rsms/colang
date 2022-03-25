@@ -61,7 +61,7 @@ enum NodeKind {
     NFunType      = 41, // struct FunTypeNode
   NType_END       = 41,
   NodeKind_MAX    = 41,
-} END_TYPED_ENUM(NodeKind)
+} END_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
 const char* NodeKindName(NodeKind);

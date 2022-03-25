@@ -84,18 +84,18 @@ PosSpan _NodePosSpan(const Node* n) {
 
 
 Scope* ScopeNew(Mem mem, const Scope* parent) {
-  Scope* s = memalloczt(mem, Scope);
+  Scope* s = mem_alloczt(mem, Scope);
   if (!s)
     return NULL;
   //assertf(IS_ALIGN2((uintptr)s, sizeof(void*)), "%p not a pointer aligned address", s);
   s->parent = parent;
-  map_init_small(&s->bindings);
+  panic("TODO HMap"); // map_init_small(&s->bindings);
   return s;
 }
 
 void ScopeFree(Scope* s, Mem mem) {
   symmap_free(&s->bindings, mem);
-  memfree(mem, s);
+  mem_free(mem, s, sizeof(Scope));
 }
 
 error ScopeAssign(Scope* s, Sym key, Node* n, Mem mem) {
