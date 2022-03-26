@@ -1,5 +1,4 @@
 #include "../coimpl.h"
-#include "../array.h"
 #include "ctypecast.h"
 #include "eval.h"
 

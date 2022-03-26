@@ -1,6 +1,6 @@
 #include "../coimpl.h"
 #include "../tstyle.h"
-#include "../array.h"
+#include "../array.c"
 #include "../str.h"
 #include "../sbuf.h"
 #include "../unicode.c"
@@ -606,6 +606,3 @@ const char* _fmtast(const Node* n) {
   *sp = _NodeRepr(*sp, n, 0);
   return (*sp)->p;
 }
-
-
-

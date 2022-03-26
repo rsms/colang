@@ -66,7 +66,10 @@ const char* sys_exepath() {
     if (path == exepath_buf) {
       path = mem_alloc(mem_mkalloc_libc(), len*2);
     } else {
-      path = mem_resize(mem_mkalloc_libc(), path, len, len*2);
+      u32 newlen;
+      if (check_mul_overflow(len, 2, &newlen))
+        break;
+      path = mem_resize(mem_mkalloc_libc(), path, len, (usize)newlen);
     }
     len *= 2;
   }

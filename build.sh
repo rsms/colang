@@ -245,6 +245,7 @@ XFLAGS=(
   -Wno-unused-parameter \
   -Werror=implicit-function-declaration \
   -Werror=incompatible-pointer-types \
+  -Werror=int-conversion \
 )
 XFLAGS_HOST=()
 XFLAGS_WASM=(

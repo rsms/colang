@@ -15,6 +15,9 @@ typedef struct Mem Mem;
 static void* nullable mem_alloc(Mem m, usize size);
 static void* nullable mem_resize(Mem m, void* nullable p, usize oldsize, usize newsize);
 static void mem_free(Mem m, void* p, usize size);
+// *x versions returns effective potentially adjusted size (always >= input value)
+static void* nullable mem_allocx(Mem m, usize* size);
+static void* nullable mem_resizex(Mem m, void* nullable p, usize oldsize, usize* newsize);
 
 // mem_allocz returns zeroed memory (calls mem_alloc and then memset(p,0,size))
 void* nullable mem_allocz(Mem m, usize size) ATTR_MALLOC WARN_UNUSED_RESULT;
@@ -76,19 +79,31 @@ struct Mem {
   // a: allocator function
   //   ba_alloc(s, NULL,       0, newsize) = new allocation
   //   ba_alloc(s,    p, oldsize, newsize) = resize allocation
-  //   ba_alloc(s,    p, oldsize,       0) = free allocation
-  void* nullable (*a)(void* state, void* nullable p, usize oldsize, usize newsize);
+  //   ba_alloc(s,    p, oldsize,    NULL) = free allocation
+  void* nullable (*a)(void* state, void* nullable p, usize oldsize, usize* nullable newsize);
   void* nullable state;
 };
 
 ATTR_MALLOC WARN_UNUSED_RESULT
 inline static void* nullable mem_alloc(Mem m, usize size) {
+  return m.a(m.state, NULL, 0, &size);
+}
+
+ATTR_MALLOC WARN_UNUSED_RESULT
+inline static void* nullable mem_allocx(Mem m, usize* size) {
   return m.a(m.state, NULL, 0, size);
 }
 
 ATTR_MALLOC WARN_UNUSED_RESULT
 inline static void* nullable mem_resize(
   Mem m, void* nullable p, usize oldsize, usize newsize)
+{
+  return m.a(m.state, p, oldsize, &newsize);
+}
+
+ATTR_MALLOC WARN_UNUSED_RESULT
+inline static void* nullable mem_resizex(
+  Mem m, void* nullable p, usize oldsize, usize* newsize)
 {
   return m.a(m.state, p, oldsize, newsize);
 }
@@ -97,15 +112,17 @@ inline static void mem_free(Mem m, void* p, usize size) {
   #if __has_attribute(unused)
   __attribute__((unused))
   #endif
-  void* _ = m.a(m.state,p,size,0);
+  void* _ = m.a(m.state, p, size, NULL);
 }
 
-void* nullable _mem_libc_alloc(void* state, void* nullable, usize oldsize, usize newsize);
+void* nullable _mem_libc_alloc(
+  void* state, void* nullable, usize oldsize, usize* nullable newsize);
 inline static Mem mem_mkalloc_libc() {
   return (Mem){ &_mem_libc_alloc, /*for consistency*/&_mem_libc_alloc };
 }
 
-void* nullable _mem_null_alloc(void* _, void* nullable p, usize oldsize, usize newsize);
+void* nullable _mem_null_alloc(
+  void* _, void* nullable p, usize oldsize, usize* nullable newsize);
 static Mem mem_mkalloc_null() {
   return (Mem){&_mem_null_alloc, NULL};
 }
@@ -258,14 +275,18 @@ bool vmem_free(void* ptr, usize nbytes) {
 // --------------------------------------------------------------------------------------
 // libc allocator
 
-void* nullable _mem_libc_alloc(void* state, void* nullable p, usize oldsize, usize newsize) {
+void* nullable _mem_libc_alloc(
+  void* state, void* nullable p, usize oldsize, usize* nullable newsize)
+{
   #ifdef CO_NO_LIBC
     return NULL;
   #else
-    if (p == NULL)
-      return malloc(newsize);
+    if (p == NULL) {
+      assertnotnull(newsize);
+      return malloc(*newsize);
+    }
     if (newsize)
-      return realloc(p, newsize);
+      return realloc(p, *newsize);
     free(p);
     return NULL;
   #endif
@@ -274,7 +295,10 @@ void* nullable _mem_libc_alloc(void* state, void* nullable p, usize oldsize, usi
 // --------------------------------------------------------------------------------------
 // null allocator
 
-void* nullable _mem_null_alloc(void* _, void* nullable p, usize oldsize, usize newsize) {
+void* nullable _mem_null_alloc(
+  void* _, void* nullable p, usize oldsize, usize* nullable newsize)
+{
+  *newsize = 0;
   return NULL;
 }
 
@@ -300,47 +324,54 @@ inline static usize ba_avail(BufAlloc* a) { // available capacity
 // ba_alloc(s, NULL,       0, newsize) = new allocation
 // ba_alloc(s,    p, oldsize, newsize) = resize allocation
 // ba_alloc(s,    p, oldsize,       0) = free allocation
-static void* nullable ba_alloc(void* state, void* nullable p, usize oldsize, usize newsize) {
+static void* nullable ba_alloc(
+  void* state, void* nullable p, usize oldsize, usize* nullable newsize)
+{
   BufAlloc* a = state;
+  usize nz = newsize == NULL ? 0 : *newsize;
   if UNLIKELY(p != NULL) {
     oldsize = ALIGN2(oldsize, sizeof(void*));
-    if LIKELY(newsize == 0) {
+    if LIKELY(nz == 0) {
       // free -- ba_alloc(s,p,>0,0)
       if (ba_istail(a, p, oldsize))
         a->len -= oldsize;
       return NULL; // ignored by caller
     }
-    newsize = ALIGN2(newsize, sizeof(void*));
+    nz = ALIGN2(nz, sizeof(void*));
+    *newsize = nz;
     // resize -- ba_alloc(s,p,>0,>0)
+    assertnotnull(newsize);
     assert(oldsize > 0);
-    if UNLIKELY(newsize <= oldsize) {
+    if UNLIKELY(nz <= oldsize) {
       // shrink
       if (ba_istail(a, p, oldsize))
-        a->len -= oldsize - newsize;
+        a->len -= oldsize - nz;
       return p;
     }
     // grow
     if (ba_istail(a, p, oldsize)) {
       // extend
-      if UNLIKELY(ba_avail(a) < newsize - oldsize)
+      if UNLIKELY(ba_avail(a) < nz - oldsize)
         return NULL; // out of memory
-      a->len += newsize - oldsize;
+      a->len += nz - oldsize;
       return p;
     }
     // relocate
-    void* p2 = ba_alloc(state, NULL, 0, newsize);
+    void* p2 = ba_alloc(state, NULL, 0, newsize); // new allocation
     if UNLIKELY(p2 == NULL)
       return NULL;
     return memcpy(p2, p, oldsize);
   }
   // new -- ba_alloc(s,NULL,0,>0)
   assert(oldsize == 0);
-  assert(newsize > 0);
-  newsize = ALIGN2(newsize, sizeof(void*)); // ensure all allocations are address aligned
-  if UNLIKELY(ba_avail(a) < newsize)
+  assertnotnull(newsize);
+  assert(*newsize > 0);
+  nz = ALIGN2(nz, sizeof(void*)); // ensure all allocations are address aligned
+  if UNLIKELY(ba_avail(a) < nz)
     return NULL; // out of memory
   void* newp = a->buf + a->len;
-  a->len += newsize;
+  a->len += nz;
+  *newsize = nz;
   return newp;
 }
 

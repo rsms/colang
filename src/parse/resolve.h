@@ -1,6 +1,5 @@
 // Pos -- compact representation of source positions
 #pragma once
-#include "../array.h"
 #include "ast.h"
 #include "buildctx.h"
 ASSUME_NONNULL_BEGIN

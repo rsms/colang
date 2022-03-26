@@ -225,7 +225,7 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
     .build = build,
     .lookupscope = lookupscope,
   };
-  ExprArrayInitStorage(&r.funstack, r.funstack_storage, countof(r.funstack_storage));
+  exprarray_init(&r.funstack, r.funstack_storage, sizeof(r.funstack_storage));
 
   // always one slot so we can access the top of the stack without checks
   r.funstack_storage[0] = NULL;
@@ -237,7 +237,7 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
 
   n = resolve(&r, 0, n);
 
-  ExprArrayFree(&r.funstack, build->mem);
+  exprarray_free(&r.funstack, build->mem);
   asserteq(initial_kind, n->kind); // since we typecast the result (see header file)
   return n;
 }

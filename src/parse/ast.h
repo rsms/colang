@@ -1,6 +1,6 @@
 // AST nodes
 #pragma once
-#include "../array.h"
+#include "../array.c"
 #include "../map.c"
 #include "../sym.c"
 #include "token.h"
@@ -24,10 +24,11 @@ typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 // forward decl of things defined in universe but referenced by ast.h
 extern Type* kType_type;
 
-DEF_TYPED_PTR_ARRAY(NodeArray, Node*)
-DEF_TYPED_PTR_ARRAY(ExprArray, Expr*)
-DEF_TYPED_PTR_ARRAY(TypeArray, Type*)
-DEF_TYPED_PTR_ARRAY(FieldArray, FieldNode*)
+DEF_ARRAY(NodeArray, Node*, nodearray)
+DEF_ARRAY(ExprArray, Expr*, exprarray)
+DEF_ARRAY(TypeArray, Type*, typearray)
+DEF_ARRAY(FieldArray, FieldNode*, fieldarray)
+
 #define as_NodeArray(n) _Generic((n), \
   const ExprArray*:(const NodeArray*)(n), ExprArray*:(NodeArray*)(n), \
   const TypeArray*:(const NodeArray*)(n), TypeArray*:(NodeArray*)(n), \

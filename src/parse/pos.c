@@ -3,7 +3,7 @@
 #include "pos.h"
 
 void posmap_init(PosMap* pm, Mem mem) {
-  PtrArrayInitStorage(&pm->a, pm->a_storage, countof(pm->a_storage));
+  ptrarray_init(&pm->a, pm->a_storage, sizeof(pm->a_storage));
   // the first slot is used to return NULL in pos_source for unknown positions
   pm->mem = mem;
   pm->a.v[0] = NULL;
@@ -11,7 +11,7 @@ void posmap_init(PosMap* pm, Mem mem) {
 }
 
 void posmap_dispose(PosMap* pm) {
-  PtrArrayFree(&pm->a, pm->mem);
+  ptrarray_free(&pm->a, pm->mem);
 }
 
 u32 posmap_origin(PosMap* pm, Source* source) {
@@ -21,7 +21,7 @@ u32 posmap_origin(PosMap* pm, Source* source) {
       return i;
   }
   u32 i = pm->a.len;
-  PtrArrayPush(&pm->a, source, pm->mem);
+  ptrarray_push(&pm->a, pm->mem, source);
   return i;
 }
 
@@ -75,7 +75,8 @@ static u32* compute_line_offsets(Source* s, Mem mem, u32* nlinesp, usize* nbytes
     if (s->body[i++] == '\n') {
       if (linecount == cap) {
         // more lines
-        u32* lineoffs2 = mem_resize(mem, lineoffs, nbytes, nbytes * 2);
+        usize newsize = nbytes * 2; // TODO check_mul_overflow
+        u32* lineoffs2 = mem_resize(mem, lineoffs, nbytes, newsize);
         if UNLIKELY(!lineoffs2) {
           mem_free(mem, lineoffs, nbytes);
           return NULL;

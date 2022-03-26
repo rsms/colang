@@ -27,13 +27,13 @@ void BuildCtxInit(
   ctx->diaglevel = DiagMAX;
   ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
   ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  DiagnosticArrayInit(&ctx->diagarray);
+  diagarray_init(&ctx->diagarray, NULL, 0);
   symmap_init(&ctx->types, mem, 1);
   posmap_init(&ctx->posmap, mem);
 }
 
 void BuildCtxDispose(BuildCtx* ctx) {
-  DiagnosticArrayFree(&ctx->diagarray, ctx->mem);
+  diagarray_free(&ctx->diagarray, ctx->mem);
   symmap_free(&ctx->types);
   posmap_dispose(&ctx->posmap);
   #if DEBUG
@@ -44,7 +44,7 @@ void BuildCtxDispose(BuildCtx* ctx) {
 static Diagnostic* b_mkdiag(BuildCtx* ctx) {
   Diagnostic* d = mem_alloct(ctx->mem, Diagnostic);
   d->build = ctx;
-  DiagnosticArrayPush(&ctx->diagarray, d, ctx->mem);
+  diagarray_push(&ctx->diagarray, ctx->mem, d);
   return d;
 }
 

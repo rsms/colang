@@ -1,6 +1,6 @@
 // build context
 #pragma once
-#include "../array.h"
+#include "../array.c"
 #include "../sym.c"
 #include "type.h"
 #include "pos.h"
@@ -15,7 +15,7 @@ typedef u8                DiagLevel;  // diagnostic level (Error, Warn ...)
 // msg is a preformatted error message and is only valid until this function returns.
 typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
-DEF_TYPED_ARRAY(DiagnosticArray, Diagnostic*)
+DEF_ARRAY(DiagnosticArray, Diagnostic*, diagarray)
 
 enum DiagLevel {
   DiagError,

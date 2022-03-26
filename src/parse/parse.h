@@ -1,6 +1,6 @@
 #pragma once
 #include "../mem.c"
-#include "../array.h"
+#include "../array.c"
 #include "../str.h"
 #include "../sym.c"
 #include "token.h"    // Tok { T* }

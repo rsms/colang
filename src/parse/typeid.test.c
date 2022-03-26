@@ -28,7 +28,7 @@ DEF_TEST(typeid_make) {
   }
   {
     TupleTypeNode t = { .kind = NTupleType };
-    TypeArrayInitStorage(&t.a, t.a_storage, countof(t.a_storage));
+    typearray_init(&t.a, t.a_storage, sizeof(t.a_storage));
     t.a.v[t.a.len++] = kType_i32;
     t.a.v[t.a.len++] = kType_u32;
     u32 n = typeid_make(buf, sizeof(buf), &t);
@@ -41,7 +41,7 @@ DEF_TEST(typeid_make) {
   }
   {
     StructTypeNode t = { .kind = NStructType };
-    FieldArrayInitStorage(&t.fields, t.fields_storage, countof(t.fields_storage));
+    fieldarray_init(&t.fields, t.fields_storage, sizeof(t.fields_storage));
     FieldNode f1 = { .type = kType_i32 };
     FieldNode f2 = { .type = kType_u32 };
     t.fields.v[t.fields.len++] = &f1;

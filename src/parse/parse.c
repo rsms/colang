@@ -1116,7 +1116,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   // parse elements
   while (p->tok != TRBrack) {
     Expr* v = as_Expr(parse_next(p, PREC_LOWEST, fl));
-    ExprArrayPush(&n->a, v, p->build->mem);
+    exprarray_push(&n->a, p->build->mem, v);
     if (set_type && (!v->type || !b_typeeq(p->build, p->ctxtype, v->type)))
       set_type = false;
     switch (p->tok) {
@@ -1372,7 +1372,7 @@ parse_arg:
       goto err_pos_after_named;
   }
 
-  ExprArrayPush(&tuple->a, arg, p->build->mem);
+  exprarray_push(&tuple->a, p->build->mem, arg);
 
   switch (p->tok) {
     case TComma:
@@ -1540,7 +1540,7 @@ static Node* pStructType(Parser* p, PFlag fl, StructTypeNode* stype) {
     auto field = pField(p);
     NodeTransferUnresolved(stype, field);
     NodeTransferCustomInit(stype, field);
-    FieldArrayPush(&stype->fields, field, p->build->mem);
+    fieldarray_push(&stype->fields, p->build->mem, field);
 
     if (!got(p, TSemi))
       break;
@@ -1628,7 +1628,7 @@ static Expr* pBlock(Parser* p, PFlag fl) {
   Node* cn = NULL;
   while (p->tok != TNone && p->tok != TRBrace) {
     cn = parse_next_tuple(p, PREC_LOWEST, fl & ~PFlagRValue);
-    NodeArrayPush(&block->a, cn, p->build->mem);
+    nodearray_push(&block->a, p->build->mem, cn);
     NodeTransferUnresolved(block, cn);
     if (!got(p, TSemi))
       break;
@@ -1821,13 +1821,13 @@ static TupleNode* pParams(Parser* p) {
   // the case all args are just types e.g. "T1, T2, T3".
   Node* typeq_st[32];
   NodeArray typeq;
-  NodeArrayInitStorage(&typeq, typeq_st, countof(typeq_st));
+  nodearray_init(&typeq, typeq_st, sizeof(typeq_st));
 
   while (1) {
     auto local = mknode(p, Param);
     NodeSetConst(local);
     NodeSetUnused(local);
-    ExprArrayPush(&params->a, as_Expr(local), p->build->mem);
+    exprarray_push(&params->a, p->build->mem, as_Expr(local));
 
     if (p->tok == TId) {
       // name eg "x"
@@ -1838,7 +1838,7 @@ static TupleNode* pParams(Parser* p) {
         case TComma:
         case TSemi:
           // just a lone name, eg "x" in "(x, y)"
-          NodeArrayPush(&typeq, as_Node(local), p->build->mem);
+          nodearray_push(&typeq, p->build->mem, as_Node(local));
           break;
 
         default:
@@ -1911,7 +1911,7 @@ finish:
     NodeTransferUnresolved(params, param);
   }
 
-  NodeArrayFree(&typeq, p->build->mem);
+  nodearray_free(&typeq, p->build->mem);
   want(p, TRParen);
   return params;
 }
@@ -1937,7 +1937,7 @@ static TupleNode* templateParams(Parser* p) {
     }
     auto local = make_local(p, name, init, kType_nil);
     local->kind = NMacroParam;
-    ExprArrayPush(&params->a, as_Expr(local), p->build->mem);
+    exprarray_push(&params->a, p->build->mem, as_Expr(local));
   } while (got(p, TComma) && p->tok != TGt);
   want(p, TGt);
   set_endpos(p, params);
@@ -2212,18 +2212,18 @@ static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
       g = as_Node(tuple);
     }
 
-    NodeArrayPush(array, left, p->build->mem);
+    nodearray_push(array, p->build->mem, left);
     NodeTransferUnresolved(g, left);
     if (fl & PFlagRValue) {
       do {
         Node* cn = parse_next(p, precedence, fl);
-        NodeArrayPush(array, cn, p->build->mem);
+        nodearray_push(array, p->build->mem, cn);
         NodeTransferUnresolved(g, cn);
       } while (got(p, TComma));
     } else {
       do {
         Node* cn = parse_prefix(p, fl);
-        NodeArrayPush(array, cn, p->build->mem);
+        nodearray_push(array, p->build->mem, cn);
         NodeTransferUnresolved(g, cn);
       } while (got(p, TComma));
     }
@@ -2239,7 +2239,7 @@ static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
 }
 
 
-#if rstrstrstsrt
+#if 0
 static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
   auto left = (
     fl & PFlagRValue ? expr(p, precedence, fl) :
@@ -2249,7 +2249,7 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
     // start a tuple
     auto g = mknode(p, fl & PFlagType ? NTupleType : NTuple);
     NodeArray* array = fl & PFlagType ? &g->t.tuple.a : &g->array.a;
-    NodeArrayAppend(p->build->mem, array, left);
+    nodearray_push(array, p->build->mem, left);
     NodeTransferUnresolved(g, left);
     if (fl & PFlagRValue) {
       do {
@@ -2313,7 +2313,7 @@ error parse_tu(
   // do while have a valid token...
   while (p->tok != TNone && p->err == 0) {
     Node* n = parse_next_tuple(p, PREC_LOWEST, PFlagNone);
-    NodeArrayPush(&file->a, n, p->build->mem);
+    nodearray_push(&file->a, p->build->mem, n);
     NodeTransferUnresolved(file, n);
 
     // if we didn't end on EOF and we didn'd find a semicolon, report error

@@ -8,33 +8,33 @@ Node* NodeInit(Node* n, NodeKind kind) {
     case NPkg:
     case NFile: {
       auto N = as_CUnitNode(n);
-      NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      nodearray_init(&N->a, N->a_storage, sizeof(N->a_storage));
       break;
     }
     case NBlock: {
       auto N = (BlockNode*)n;
-      NodeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      nodearray_init(&N->a, N->a_storage, sizeof(N->a_storage));
       break;
     }
     case NArray:
     case NTuple: {
       auto N = as_ListExprNode(n);
-      ExprArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      exprarray_init(&N->a, N->a_storage, sizeof(N->a_storage));
       break;
     }
     case NSelector: {
       auto N = (SelectorNode*)n;
-      U32ArrayInitStorage(&N->indices, N->indices_storage, countof(N->indices_storage));
+      u32array_init(&N->indices, N->indices_storage, sizeof(N->indices_storage));
       break;
     }
     case NTupleType: {
       auto N = (TupleTypeNode*)n;
-      TypeArrayInitStorage(&N->a, N->a_storage, countof(N->a_storage));
+      typearray_init(&N->a, N->a_storage, sizeof(N->a_storage));
       break;
     }
     case NStructType: {
       auto N = (StructTypeNode*)n;
-      FieldArrayInitStorage(&N->fields, N->fields_storage, countof(N->fields_storage));
+      fieldarray_init(&N->fields, N->fields_storage, sizeof(N->fields_storage));
       break;
     }
     default:
