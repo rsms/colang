@@ -1,8 +1,8 @@
 #pragma once
-#include "../mem.h"
+#include "../mem.c"
 #include "../array.h"
 #include "../str.h"
-#include "../sym.h"
+#include "../sym.c"
 #include "token.h"    // Tok { T* }
 #include "type.h"     // TypeCode { TC_* }, TypeFlags { TF_*}
 #include "source.h"   // Source, Pkg

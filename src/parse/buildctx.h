@@ -1,7 +1,7 @@
 // build context
 #pragma once
 #include "../array.h"
-#include "../sym.h"
+#include "../sym.c"
 #include "type.h"
 #include "pos.h"
 #include "ast.h"

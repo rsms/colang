@@ -3,7 +3,6 @@
 //
 #ifndef _HASH_IMPL
 #define _HASH_IMPL
-
 #pragma once
 #ifndef CO_IMPL
   #include "coimpl.h"
@@ -35,7 +34,7 @@ Hash hash_8(const void* p, Hash seed); // 8 bytes (eg. i64, u64)
 Hash hash_f32(const f32* p, Hash seed); // f32, supports ±0 and NaN
 Hash hash_f64(const f64* p, Hash seed); // f64, supports ±0 and NaN
 Hash hash_mem(const void* p, usize size, Hash seed); // size bytes at p
-// uintptr hash_ptr(const void* p, uintptr seed)
+// uintptr hash_ptr(const void** p, uintptr seed)
 // (Must be a macro rather than inline function so that we can take its address.)
 #if UINTPTR_MAX >= 0xFFFFFFFFFFFFFFFFu
   #define hash_ptr hash_8

@@ -2,7 +2,7 @@
 #pragma once
 #include "../array.h"
 #include "../map.c"
-#include "../sym.h"
+#include "../sym.c"
 #include "token.h"
 #include "type.h"
 #include "pos.h"
