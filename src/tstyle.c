@@ -4,7 +4,7 @@
 #ifdef CO_TESTING_ENABLED
   #include "sbuf.h"
   #include "str.h"
-  #include "test.h"
+  #include "test.c"
 #endif
 
 #ifndef CO_NO_LIBC

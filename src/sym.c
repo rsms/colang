@@ -1,6 +1,6 @@
 #include "coimpl.h"
 #include "sym.h"
-#include "hash.h"
+#include "hash.c"
 
 // red-black tree implementation used for SymPool interning
 #define RBKEY      Sym

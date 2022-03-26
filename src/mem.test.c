@@ -1,5 +1,5 @@
 #include "coimpl.h"
-#include "test.h"
+#include "test.c"
 #include "mem.c"
 
 #ifndef CO_NO_LIBC

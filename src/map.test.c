@@ -1,25 +1,102 @@
 #include "coimpl.h"
+#include "test.c"
 #include "map.c"
 
 // #include <stdlib.h>
 // #include <stdio.h>
 
-DEF_TEST(hmap) {
-  // #define tlog dlog
-  #define tlog(...) ((void)0)
-  #define S SSLICE
+// #define tlog dlog
+#define tlog(...) ((void)0)
+#define S SSLICE
 
-  tlog("testing SMap");
+static u8 membuf[4096*2];
 
-  static u8 membuf[4096*2];
+static SSlice samples[] = {
+  S("i32"), S("div"), S("cmpgt"), S("and"),
+  S("add"), S("brz"), S("brnz"), S("cmpeq"),
+  S("cmplt"), S("i1"), S("fun"), S("i16"),
+  S("move"), S("i8"), S("i64"), S("mod"),
+  S("loadk"), S("shrs"), S("or"), S("mul"),
+  S("shl"), S("ret"), S("sub"), S("shru"),
+  S("xor"),
+};
+
+
+DEF_TEST(pmap) {
+  tlog("testing hmap via PMap");
+  static_assert(sizeof(uintptr) >= sizeof(usize), "");
   Mem mem = mem_mkalloc_buf(membuf, sizeof(membuf));
+  usize nsamples = countof(samples);
 
-  static SSlice samples[] = {
-    S("i32"), S("div"), S("cmpgt"), S("and"), S("add"), S("brz"), S("brnz"), S("cmpeq"),
-    S("cmplt"), S("i1"), S("fun"), S("i16"), S("move"), S("i8"), S("i64"), S("mod"),
-    S("loadk"), S("shrs"), S("or"), S("mul"), S("shl"), S("ret"), S("sub"), S("shru"),
-    S("xor"),
-  };
+  HMap m = {0};
+  assertnotnull(pmap_init(&m, mem, nsamples, MAPLF_2)); // hint=1 so that it grows
+  m.hash0 = 1234;
+
+  // // log hash values
+  // for (usize i = 0; i < nsamples; i++) {
+  //   Hash h = hash_ptr2(&samples[i]);
+  //   // Hash h = hash_ptr(&samples[i], m.hash0);
+  //   usize slot = (usize)h % m.cap;
+  //   printf("%16llx %4lu %-5s %p\n", (u64)h, slot, samples[i].p, &samples[i]);
+  // }
+
+  // add all
+  for (usize i = 0; i < nsamples; i++) {
+    uintptr* vp = assertnotnull(pmap_assign(&m, &samples[i]));
+    *vp = i;
+  }
+  asserteq(m.len, nsamples);
+
+  // find all
+  for (usize i = 0; i < nsamples; i++) {
+    uintptr* vp = assertnotnull(pmap_find(&m, &samples[i]));
+    asserteq(*vp, i);
+  }
+
+  // remove all
+  for (usize i = 0; i < nsamples; i++)
+    assert(pmap_del(&m, &samples[i]));
+
+  // find none
+  for (usize i = 0; i < nsamples; i++)
+    assertnull(pmap_find(&m, &samples[i]));
+
+  // add all
+  for (usize i = 0; i < nsamples; i++) {
+    uintptr* vp = assertnotnull(pmap_assign(&m, &samples[i]));
+    *vp = i;
+  }
+
+  // find all
+  for (usize i = 0; i < nsamples; i++) {
+    uintptr* vp = assertnotnull(pmap_find(&m, &samples[i]));
+    asserteq(*vp, i);
+  }
+
+  // iterate over all
+  const PMapEnt* e = assertnotnull(hmap_citstart(&m));
+  for (usize i = 0; i < nsamples; i++) {
+    uintptr* vp = assertnotnull(pmap_find(&m, e->key)); // find an entry ...
+    asserteq(*vp, e->value); // ... with matching value
+    if (i+1 < nsamples)
+      assertf(hmap_citnext(&m, &e), "%zu", i); // iterator yields an entry
+  }
+  assert(hmap_citnext(&m, &e) == false); // iterator is exhausted
+
+  // empty
+  hmap_clear(&m);
+
+  // find none
+  for (usize i = 0; i < nsamples; i++)
+    assertnull(pmap_find(&m, &samples[i]));
+
+  hmap_dispose(&m);
+}
+
+
+DEF_TEST(hmap) {
+  tlog("testing hmap via SMap");
+  Mem mem = mem_mkalloc_buf(membuf, sizeof(membuf));
   usize nsamples = countof(samples);
 
   HMap m = {0};
@@ -43,12 +120,12 @@ DEF_TEST(hmap) {
   }
   asserteq(m.len, nsamples);
 
-  // smap_lookup
+  // smap_find
   tlog("find all");
   for (usize i = 0; i < nsamples; i++) {
-    uintptr* vp = smap_lookup(&m, samples[i]);
+    uintptr* vp = smap_find(&m, samples[i]);
     assertf(vp != NULL, "vp=NULL  key=\"%s\"", samples[i].p);
-    assertf(*vp == i,   "vp=%zu != i=%zu  key=\"%s\"", *vp, i, samples[i].p);
+    assertf(*vp == i, "vp=%zu != i=%zu  key=\"%s\"", *vp, i, samples[i].p);
   }
 
   // smap_del
@@ -58,10 +135,10 @@ DEF_TEST(hmap) {
     assertf(ok, "smap_del \"%s\"", samples[i].p);
   }
 
-  // smap_lookup
+  // smap_find
   tlog("find none");
   for (usize i = 0; i < nsamples; i++) {
-    uintptr* vp = smap_lookup(&m, samples[i]);
+    uintptr* vp = smap_find(&m, samples[i]);
     assertf(vp == NULL, "vp!=NULL  key=\"%s\"", samples[i].p);
   }
 
@@ -80,9 +157,10 @@ DEF_TEST(hmap) {
   // printf("\n");
   const SMapEnt* e = assertnotnull(hmap_citstart(&m));
   for (usize i = 0; i < nsamples; i++) {
-    assert(hmap_citnext(&m, &e)); // iterator yields an entry
-    uintptr* vp = assertnotnull(smap_lookup(&m, e->key)); // lookup finds an entry ...
+    uintptr* vp = assertnotnull(smap_find(&m, e->key)); // find an entry ...
     asserteq(*vp, e->value); // ... with matching value
+    if (i+1 < nsamples)
+      assert(hmap_citnext(&m, &e)); // iterator yields an entry
   }
   assert(hmap_citnext(&m, &e) == false); // iterator is exhausted
 
@@ -90,10 +168,10 @@ DEF_TEST(hmap) {
   tlog("hmap_clear");
   hmap_clear(&m);
 
-  // smap_lookup
+  // smap_find
   tlog("find none");
   for (usize i = 0; i < nsamples; i++) {
-    uintptr* vp = smap_lookup(&m, samples[i]);
+    uintptr* vp = smap_find(&m, samples[i]);
     assertf(vp == NULL, "vp!=NULL  key=\"%s\"", samples[i].p);
   }
 

@@ -2,7 +2,8 @@
 #include <err.h>
 
 #include "coimpl.h"
-#include "test.h"
+#include "test.c"
+#include "hash.c"
 #include "time.h"
 #include "parse/parse.h"
 #include "parse/resolve.h"
@@ -41,6 +42,7 @@ void scan_all(BuildCtx* build) {
 int main(int argc, const char** argv) {
   if (co_test_main(argc, argv))
     return 1;
+  fastrand_seed(nanotime());
   universe_init();
 
   // select a memory allocator

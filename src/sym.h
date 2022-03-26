@@ -89,25 +89,21 @@ static u32 symlen(Sym);
 static u8 symflags(Sym);
 
 
-// symmap -- hash map that maps Sym => void*
+// symmap -- maps Sym => void*
 
-#define kSymMapType (&kMapType_ptr_ptr)
+typedef HMap SymMap;
 
-inline static HMap* nullable symmap_make(HMap* nullable h, Mem mem, usize hint) {
-  panic("TODO HMap"); return NULL;
-  // return map_make(kSymMapType, h, mem, hint);
+inline static SymMap* nullable symmap_init(SymMap* h, Mem mem, usize hint) {
+  return (SymMap*)pmap_init(h, mem, hint, MAPLF_2);
 }
-inline static void** nullable symmap_assign(HMap* h, Sym key, Mem mem) {
-  panic("TODO HMap"); return NULL;
-  // return map_assign(kSymMapType, h, &key, mem);
+inline static void** nullable symmap_assign(SymMap* h, Sym key) {
+  return (void**)pmap_assign(h, key);
 }
-inline static void** nullable symmap_access(const HMap* nullable h, Sym key) {
-  panic("TODO HMap"); return NULL;
-  // return map_access(kSymMapType, h, &key);
+inline static void** nullable symmap_find(const SymMap* h, Sym key) {
+  return (void**)pmap_find(h, key);
 }
-inline static void symmap_free(HMap* h, Mem mem) {
-  panic("TODO HMap");
-  // map_free(kSymMapType, h, mem);
+inline static void symmap_free(SymMap* h) {
+  hmap_dispose(h);
 }
 
 

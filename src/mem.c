@@ -30,16 +30,16 @@ void* nullable mem_allocz(Mem m, usize size) ATTR_MALLOC WARN_UNUSED_RESULT;
 // mem_allocv behaves similar to libc calloc, checking elemsize*count for overflow.
 // Returns NULL on overflow or allocation failure.
 void* nullable mem_allocv(Mem m, usize elemsize, usize count)
-  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(2, 3);
+  ATTR_MALLOC WARN_UNUSED_RESULT;
 
 // mem_alloczv is like mem_allocv but zeroes all memory using memset(p,0,size)
 void* nullable mem_alloczv(Mem m, usize elemsize, usize count)
-  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(2, 3);
+  ATTR_MALLOC WARN_UNUSED_RESULT;
 
 // mem_resizev resizes an array, checking elemsize*newcount for overflow
 void* nullable mem_resizev(
   Mem m, void* nullable p, usize elemsize, usize oldcount, usize newcount)
-  ATTR_MALLOC WARN_UNUSED_RESULT ATTR_ALLOC_SIZE(3, 5);
+  ATTR_MALLOC WARN_UNUSED_RESULT;
 
 //——— allocators
 

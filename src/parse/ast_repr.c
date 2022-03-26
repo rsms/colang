@@ -3,8 +3,8 @@
 #include "../array.h"
 #include "../str.h"
 #include "../sbuf.h"
-#include "../unicode.h"
-#include "../test.h"
+#include "../unicode.c"
+#include "../test.c"
 #include "ast.h"
 #include "universe.h"
 

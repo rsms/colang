@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../test.h"
+#include "../test.c"
 #include "typeid.h"
 #include "universe.h"
 

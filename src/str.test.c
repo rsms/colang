@@ -1,6 +1,6 @@
 #include "coimpl.h"
 #include "str.h"
-#include "test.h"
+#include "test.c"
 
 
 #define check_err(fun, input, base, err)                             \

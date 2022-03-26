@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../test.h"
+#include "../test.c"
 #include "ast.h"
 #include "universe.h"
 

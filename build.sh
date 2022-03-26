@@ -280,6 +280,7 @@ if $CC_IS_CLANG; then
   XFLAGS+=(
     -Wcovered-switch-default \
     -Werror=format-insufficient-args \
+    -Wno-pragma-once-outside-header \
   )
   [ -t 1 ] && XFLAGS+=( -fcolor-diagnostics )
 elif $CC_IS_GCC; then

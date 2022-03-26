@@ -1,7 +1,7 @@
 #include "coimpl.h"
 #include "str.h"
 #include "sbuf.h"
-#include "unicode.h"
+#include "unicode.c"
 
 #ifndef CO_NO_LIBC
   #include <stdio.h>

@@ -223,8 +223,7 @@ struct FunTypeNode { Type;
 struct Scope {
   const Scope* parent;
   // bindings must be the last member as composing structs places initial storage after
-  // SymMap bindings;
-  HMap bindings;
+  SymMap bindings;
 };
 static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(((Scope*)0)->bindings),
   "bindings is not last member of Scope");

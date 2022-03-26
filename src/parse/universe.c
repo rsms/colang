@@ -18,57 +18,56 @@ static SymPool g_universe_syms = {0};
 
 
 static void universe_init_scope() {
-  panic("TODO HMap");
-// #if !RUN_GENERATOR
+#if !RUN_GENERATOR
 
-//   static void* g_scope_storage[2048/sizeof(void*)];
-//   // size = map_bucketsize(kSymMapType, kUniverseScopeLen*2, kFixBufAllocatorOverhead)
+  static void* g_scope_storage[2048/sizeof(void*)];
+  // size = map_bucketsize(kSymMapType, kUniverseScopeLen*2, kFixBufAllocatorOverhead)
 
-//   usize memcap = sizeof(g_scope_storage) - MEM_BUFALLOC_OVERHEAD;
-//   Mem mem = mem_mkalloc_buf(g_scope_storage, sizeof(g_scope_storage));
+  usize memcap = sizeof(g_scope_storage) - MEM_BUFALLOC_OVERHEAD;
+  Mem mem = mem_mkalloc_buf(g_scope_storage, sizeof(g_scope_storage));
 
-//   HMap* h = map_make_deterministic(
-//     kSymMapType, &g_scope.bindings, mem, kUniverseScopeLen, 0xfeedface);
-//   assertnotnull(h);
-//   void** vp;
+  SymMap* h = symmap_init(&g_scope.bindings, mem, kUniverseScopeLen);
+  h->hash0 = 0xfeedface;
+  assertnotnull(h);
+  void** vp;
 
-//   // note: kType_nil is not exported as it would shadow kExpr_nil
-//   #define _(name, ...) \
-//     if (kType_##name != kType_nil) { \
-//       /*dlog("set \"%s\"\t=> kType_%s (%p)", kSym_##name, #name, kType_##name);*/ \
-//       vp = symmap_assign(h, kSym_##name, mem); \
-//       assertf(vp != NULL, "ran out of memory (memcap %zu)", memcap); \
-//       assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
-//       *vp = kType_##name; \
-//     }
-//   DEF_TYPE_CODES_BASIC_PUB(_)
-//   DEF_TYPE_CODES_BASIC(_)
-//   DEF_TYPE_CODES_PUB(_)
-//   #undef _
+  // note: kType_nil is not exported as it would shadow kExpr_nil
+  #define _(name, ...) \
+    if (kType_##name != kType_nil) { \
+      /*dlog("set \"%s\"\t=> kType_%s (%p)", kSym_##name, #name, kType_##name);*/ \
+      vp = symmap_assign(h, kSym_##name); \
+      assertf(vp != NULL, "ran out of memory (memcap %zu)", memcap); \
+      assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
+      *vp = kType_##name; \
+    }
+  DEF_TYPE_CODES_BASIC_PUB(_)
+  DEF_TYPE_CODES_BASIC(_)
+  DEF_TYPE_CODES_PUB(_)
+  #undef _
 
-//   #define _(name, ...) \
-//     /*dlog("set \"%s\"\t=> kExpr_%s (%p)", kSym_##name, #name, kExpr_##name);*/ \
-//     vp = symmap_assign(h, kSym_##name, mem); \
-//     assertf(vp != NULL, "ran out of memory (memcap %zu)", memcap); \
-//     assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
-//     *vp = kExpr_##name;
-//   DEF_CONST_NODES_PUB(_)
-//   #undef _
+  #define _(name, ...) \
+    /*dlog("set \"%s\"\t=> kExpr_%s (%p)", kSym_##name, #name, kExpr_##name);*/ \
+    vp = symmap_assign(h, kSym_##name); \
+    assertf(vp != NULL, "ran out of memory (memcap %zu)", memcap); \
+    assertf(*vp == NULL, "duplicate universe symbol %s", #name); \
+    *vp = kExpr_##name;
+  DEF_CONST_NODES_PUB(_)
+  #undef _
 
-//   // dlog("appox  %4zu B", map_bucketsize(
-//   //   kSymMapType, kUniverseScopeLen*1.5, kFixBufAllocatorOverhead));
-//   // dlog("ma.len %4zu B", ma.len);
+  // dlog("appox  %4zu B", map_bucketsize(
+  //   kSymMapType, kUniverseScopeLen*1.5, kFixBufAllocatorOverhead));
+  // dlog("ma.len %4zu B", ma.len);
 
-//   #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
-//     dlog("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() has %zu bindings:", map_len(h));
-//     HMapIter it = {0};
-//     map_iter_init(&it, kSymMapType, h);
-//     while (it.key) {
-//       dlog("  %-6s => %p", *(Sym*)it.key, it.val);
-//       map_iter_next(&it);
-//     }
-//   #endif
-// #endif
+  #ifdef DEBUG_UNIVERSE_DUMP_SCOPE
+    dlog("[DEBUG_UNIVERSE_DUMP_SCOPE] universe_scope() has %zu bindings:", map_len(h));
+    HMapIter it = {0};
+    map_iter_init(&it, kSymMapType, h);
+    while (it.key) {
+      dlog("  %-6s => %p", *(Sym*)it.key, it.val);
+      map_iter_next(&it);
+    }
+  #endif
+#endif
 }
 
 

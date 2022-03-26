@@ -1,6 +1,6 @@
 #include "coimpl.h"
 #include "sbuf.h"
-#include "test.h"
+#include "test.c"
 
 DEF_TEST(sbuf_f64) {
   char buf[64];

@@ -89,17 +89,17 @@ Scope* ScopeNew(Mem mem, const Scope* parent) {
     return NULL;
   //assertf(IS_ALIGN2((uintptr)s, sizeof(void*)), "%p not a pointer aligned address", s);
   s->parent = parent;
-  panic("TODO HMap"); // map_init_small(&s->bindings);
+  symmap_init(&s->bindings, mem, 1);
   return s;
 }
 
 void ScopeFree(Scope* s, Mem mem) {
-  symmap_free(&s->bindings, mem);
+  symmap_free(&s->bindings);
   mem_free(mem, s, sizeof(Scope));
 }
 
 error ScopeAssign(Scope* s, Sym key, Node* n, Mem mem) {
-  void** valp = symmap_assign(&s->bindings, key, mem);
+  void** valp = symmap_assign(&s->bindings, key);
   if (UNLIKELY(valp == NULL))
     return err_nomem;
   *valp = n;
@@ -110,7 +110,7 @@ Node* ScopeLookup(const Scope* nullable scope, Sym s) {
   Node* n = NULL;
   while (scope) {
     //dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
-    void** vp = symmap_access(&scope->bindings, s);
+    void** vp = symmap_find(&scope->bindings, s);
     if (vp != NULL) {
       n = *vp;
       break;

@@ -1,6 +1,6 @@
 #include "coimpl.h"
 #include "sbuf.h"
-#include "unicode.h"
+#include "unicode.c"
 #include "str.h" // strfmtu64
 
 #ifndef CO_NO_LIBC
