@@ -488,7 +488,7 @@ inline static bool RBIter(const RBNODETYPE* n, RBIterator* f, void* userdata) {
 // inline static Str RBRepr(const RBNODETYPE* n, Str s, int depth, Str(keyfmt)(Str,RBKEY)) {
 //   if (depth > 0) {
 //     s = str_appendc(s, '\n');
-//     s = str_appendfill(s, depth*2, ' ');
+//     s = str_appendfill(s, ' ', depth*2);
 //   }
 //   s = str_append(s, n->isred ? "(R " : "(B ", 3);
 //   s = keyfmt(s, n->key);

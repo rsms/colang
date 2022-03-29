@@ -34,10 +34,9 @@ error source_close(Source* src); // src can be reused with open after this call
 void  source_checksum(Source* src); // populates src->sha256 <= sha256(src->body)
 error source_compute_lineoffs(Source* src); // populates src->lineoffs if needed
 
-// source_line_bytes returns a pointer to line in src->body.
-// On success, *out_len is set to the line's length in bytes (excluding "\n").
-// Returns NULL if line is out of bounds or if source_compute_lineoffs fails.
-const u8* nullable source_line_bytes(Source* src, u32 line, u32* out_len);
+// source_line_bytes sets *out_linep to start of line in src->body and sets *out_len
+// to the line's length in bytes (excluding "\n")
+error source_line_bytes(Source* src, u32 line, const u8** out_linep, u32* out_len);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 END_INTERFACE
@@ -160,17 +159,19 @@ void source_checksum(Source* src) {
 
 
 error source_compute_lineoffs(Source* src) {
-  if (src->lineoffs.len > 0)
+  if (src->lineoffs.len > 0) // already computed
     return 0;
 
-  if (!src->body)
-    source_body_open(src);
+  if (!src->body) {
+    error err = source_body_open(src);
+    if (err)
+      return err;
+  }
 
   // estimate total number of lines.
   // From analysis of the Co codebase, 30 columns is average
-  error err = array_reserve(&src->lineoffs, MAX(8, src->len / 30));
-  if (err)
-    return err;
+  if (!array_reserve(&src->lineoffs, MAX(8, src->len / 30)))
+    return err_nomem;
 
   // line 0 is invalid (Pos 0 is invalid)
   array_push(&src->lineoffs, 0);
@@ -184,25 +185,28 @@ error source_compute_lineoffs(Source* src) {
 }
 
 
-const u8* nullable source_line_bytes(Source* src, u32 line, u32* out_len) {
+error source_line_bytes(Source* src, u32 line, const u8** out_linep, u32* out_len) {
   if (line == 0)
-    return NULL;
+    return err_invalid;
 
   error err = source_compute_lineoffs(src);
-  if (err || src->lineoffs.len < line)
-    return NULL;
+  if (err)
+    return err;
+
+  if (src->lineoffs.len < line)
+    return err_not_found;
 
   u32 start = array_at(&src->lineoffs, line - 1);
-  const u8* lineptr = src->body + start;
+  *out_linep = src->body + start;
 
   if (line < src->lineoffs.len) {
     u32 next_start = array_at(&src->lineoffs, line) - 1;
     *out_len = next_start - start;
   } else {
-    *out_len = (src->body + src->len) - lineptr;
+    *out_len = (src->body + src->len) - *out_linep;
   }
 
-  return lineptr;
+  return 0;
 }
 
 

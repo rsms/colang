@@ -16,8 +16,9 @@ void cli_usage(const char* prog) {
 
 void on_diag(Diagnostic* d, void* userdata) {
   Str str = str_make(tmpbuf, sizeof(tmpbuf));
-  diag_fmt(d, &str);
+  assert(diag_fmt(d, &str));
   fwrite(str.v, str.len, 1, stderr);
+  str_free(&str);
 }
 
 void print_src_checksum(Mem mem, const Source* src) {

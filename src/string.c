@@ -52,7 +52,7 @@ ABuf* abuf_fmt(ABuf* s, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
 ABuf* abuf_fmtv(ABuf* s, const char* fmt, va_list);
 
 static usize abuf_terminate(ABuf* s); // sets last byte to \0 and returns s->len
-static usize abuf_avail(const ABuf* s); // number of bytes available to write
+static usize abuf_avail(const ABuf* s); // bytes available to write (not including final \0)
 bool abuf_endswith(const ABuf* s, const char* str, usize len);
 // TODO: trim
 
@@ -61,14 +61,19 @@ bool abuf_endswith(const ABuf* s, const char* str, usize len);
 // // It writes at most bufcap-1 of the characters to the output buf (the bufcap'th
 // // character then gets the terminating '\0'). If the return value is greater than or
 // // equal to the bufcap argument, buf was too short and some of the characters were
-// // discarded. The output is always null-terminated, unless size is 0.
-// // Returns the number of characters that would have been printed if bufcap was
+// // discarded. The output is always null-terminated, unless bufcap is 0.
+// // Returns the number of characters that would have been written if bufcap was
 // // unlimited (not including the final `\0').
 // usize myfmt(char* buf, usize bufcap, int somearg) {
 //   ABuf s = abuf_make(buf, bufcap);
 //   // call abuf_append functions here
 //   return abuf_terminate(&s);
 // }
+//
+// Typical use:
+//   usize n = myfmt(buf, bufcap, 123);
+//   if (n >= bufcap)
+//     printf("not enough room in buf\n");
 //
 extern char abuf_zeroc;
 #define abuf_make(p,size) ({ /* ABuf abuf_make(char* buf, usize bufcap)               */\
@@ -81,13 +86,14 @@ extern char abuf_zeroc;
 typedef Array(char) Str;
 
 // functions provided by array implementation (str_* is a thin veneer on array_*)
-static Str str_make(char* nullable storage, usize storagesize);
+static Str  str_make(char* nullable storage, usize storagesize);
 static void str_init(Str* a, char* nullable storage, usize storagesize);
 static void str_clear(Str* a);
 static void str_free(Str* a);
 static char str_at(Str* a, u32 index);
 static char str_at_safe(Str* a, u32 index);
 static bool str_push(Str* a, char c);
+#define     str_appendc str_push
 static bool str_append(Str* a, const char* src, u32 len);
 static void str_remove(Str* a, u32 start, u32 len);
 static void str_move(Str* a, u32 dst, u32 start, u32 end);
@@ -104,8 +110,7 @@ bool str_appendrepr(Str*, const void* p, usize size);
 bool str_appendu32(Str*, u32 value, u32 base);
 bool str_appendu64(Str*, u32 value, u32 base);
 bool str_appendf64(Str*, f64 value, int ndecimals);
-
-
+bool str_terminate(Str*); // writes \0 to v[len] but does not increment len
 
 
 
@@ -135,14 +140,6 @@ inline static bool shasprefix(const char* s, usize len, const char* prefix_cstr)
 
 //————
 
-DEF_ARRAY_VENEER(Str, char, str_)
-
-inline static bool str_appendcstr(Str* s, const char* cstr) {
-  return str_append(s, cstr, strlen(cstr)) == 0;
-}
-
-//————
-
 struct ABuf {
   char* p;
   char* lastp;
@@ -156,10 +153,19 @@ inline static ABuf* abuf_cstr(ABuf* s, const char* cstr) {
   return abuf_append(s, cstr, strlen(cstr));
 }
 inline static usize abuf_terminate(ABuf* s) {
-  *s->p = 0; return s->len;
+  *s->p = 0;
+  return s->len;
 }
-inline static usize abuf_avail(const ABuf* s) {
+inline static usize abuf_avail(const ABuf* s) { // SANS terminating \0
   return (usize)(uintptr)(s->lastp - s->p);
+}
+
+//————
+
+DEF_ARRAY_VENEER(Str, char, str_)
+
+inline static bool str_appendcstr(Str* s, const char* cstr) {
+  return str_append(s, cstr, strlen(cstr)) == 0;
 }
 
 //———————————————————————————————————————————————————————————————————————————————————————
@@ -452,11 +458,11 @@ ABuf* abuf_reprhex(ABuf* s, const void* srcp, usize len) {
 ABuf* abuf_fmtv(ABuf* s, const char* fmt, va_list ap) {
   #if defined(CO_NO_LIBC) && !defined(__wasm__)
     dlog("abuf_fmtv not implemented");
-    int n = vsnprintf(tmpbuf, sizeof(tmpbuf), format, ap);
   #else
-    int n = vsnprintf(s->p, abuf_avail(s), fmt, ap);
+    int n = vsnprintf(s->p, abuf_avail(s)+1, fmt, ap);
+    assert(n >= 0);
     s->len += (usize)n;
-    s->p = MIN(s->p + n, s->lastp);
+    s->p = MIN(s->p + (usize)n, s->lastp);
   #endif
   return s;
 }
@@ -495,15 +501,48 @@ bool abuf_endswith(const ABuf* s, const char* str, usize len) {
   }
 
 
-bool str_appendfmtv(Str* s, const char* fmt, va_list ap) {
-  va_list ap2;
-  STR_USE_ABUF_BEGIN(strlen(fmt)*2)
-    va_copy(ap2, ap); // copy va_list since we might read it twice
-    abuf_fmtv(&buf, fmt, ap2);
-    va_end(ap2);
+bool str_appendrepr(Str* s, const void* p, usize size) {
+  STR_USE_ABUF_BEGIN(size*2)
+  abuf_repr(&buf, p, size);
   STR_USE_ABUF_END()
   return true;
 }
+
+
+bool str_appendf64(Str* s, f64 value, int ndecimals) {
+  STR_USE_ABUF_BEGIN(20)
+  abuf_f64(&buf, value, ndecimals);
+  STR_USE_ABUF_END()
+  return true;
+}
+
+
+bool str_appendfmtv(Str* s, const char* fmt, va_list ap) {
+  va_list ap2;
+  u32 nbytes = strlen(fmt)*2;
+
+again:
+  if UNLIKELY(!str_reserve(s, nbytes + 1)) // +1 for vsnprintf's \0 terminator
+    return false;
+
+  u32 avail = s->cap - s->len;
+  assert(avail >= nbytes + 1);
+  // ^ should not be possible, but prevent inifinite loop just in case
+
+  va_copy(ap2, ap); // copy va_list since we might read it twice
+  int n = vsnprintf(&s->v[s->len], avail, fmt, ap2);
+  va_end(ap2);
+  if UNLIKELY(n < 0)
+    return false;
+
+  nbytes = (u32)n;
+  if (nbytes >= avail) // not enough space
+    goto again;
+
+  s->len += nbytes;
+  return true;
+}
+
 
 bool str_appendfmt(Str* s, const char* fmt, ...) {
   va_list ap;
@@ -513,12 +552,6 @@ bool str_appendfmt(Str* s, const char* fmt, ...) {
   return ok;
 }
 
-bool str_appendrepr(Str* s, const void* p, usize size) {
-  STR_USE_ABUF_BEGIN(size*2)
-  abuf_repr(&buf, p, size);
-  STR_USE_ABUF_END()
-  return true;
-}
 
 bool str_appendu32(Str* s, u32 value, u32 base) {
   if UNLIKELY(!str_reserve(s, 32))
@@ -527,6 +560,7 @@ bool str_appendu32(Str* s, u32 value, u32 base) {
   return true;
 }
 
+
 bool str_appendu64(Str* s, u32 value, u32 base) {
   if UNLIKELY(!str_reserve(s, 64))
     return false;
@@ -534,10 +568,11 @@ bool str_appendu64(Str* s, u32 value, u32 base) {
   return true;
 }
 
-bool str_appendf64(Str* s, f64 value, int ndecimals) {
-  STR_USE_ABUF_BEGIN(20)
-  abuf_f64(&buf, value, ndecimals);
-  STR_USE_ABUF_END()
+
+bool str_terminate(Str* s) {
+  if (s->cap == 0 && UNLIKELY(!_array_grow((VoidArray*)s, mem_ctx(), 1, 1)))
+    return false;
+  s->v[s->len] = 0;
   return true;
 }
 
@@ -549,6 +584,7 @@ bool str_appendfill(Str* s, char c, u32 len) {
   s->len += len;
   return true;
 }
+
 
 //———————————————————————————————————————————————————————————————————————————————————————
 #endif // STRING_IMPLEMENTATION

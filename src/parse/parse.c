@@ -137,7 +137,6 @@ static const char* _node_type_name(Node* n) {
   return type_name(TypeOfNode(n));
 }
 
-
 // syntaxerrp reports a source-token related syntax error.
 // It will point to the source location of the last-scanned token.
 // If n is not NULL, use source location of n instead of current location.
@@ -169,24 +168,14 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
     tokname = TokName(p->tok);
   }
 
-  // message buffer
-  char msgbuf[2048];
-  ABuf msg = abuf_make(msgbuf, sizeof(msgbuf));
+  // message buffer starts on the stack and overflows to heap memory if needed
+  char msgbuf[512];
+  Str msg = str_make(msgbuf, sizeof(msgbuf));
 
-  // add caller message
-  if (strlen(format) > 0) {
-    va_list ap;
-    va_start(ap, format);
-    abuf_fmtv(&msg, format, ap);
-    va_end(ap);
-  }
-
-  // add context message
+  // add message
   usize formatlen = strlen(format);
-  va_list ap;
-  va_start(ap, format);
   if (formatlen == 0) {
-    abuf_fmt(&msg, "unexpected %s", tokname);
+    str_appendfmt(&msg, "unexpected %s", tokname);
   } else {
     if (
       shasprefix(format, formatlen, "expecting ") ||
@@ -194,23 +183,29 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
       shasprefix(format, formatlen, "in ") ||
       shasprefix(format, formatlen, "at ") )
     {
-      const char* sep = (tokname[0] == ';' || tokname[0] == ',') ? " " : ", ";
-      abuf_fmt(&msg, "unexpected %s%s", tokname, sep);
+      str_appendfmt(&msg, "unexpected %s", tokname);
+      if (tokname[0] == ';' || tokname[0] == ',') {
+        str_appendc(&msg, ' ');
+      } else {
+        str_appendcstr(&msg, ", ");
+      }
     }
-    abuf_fmtv(&msg, format, ap);
+    va_list ap;
+    va_start(ap, format);
+    str_appendfmtv(&msg, format, ap);
+    va_end(ap);
   }
-  va_end(ap);
-  abuf_terminate(&msg);
-  if (msg.len == sizeof(msgbuf))
-    dlog("warning: msgbuf too small");
+
+  str_terminate(&msg);
 
   // report
-  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msgbuf);
+  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msg.v);
 
   #ifdef DEBUG_PANIC_ON_PARSE_ERROR
-  panic("DEBUG_PANIC_ON_PARSE_ERROR %s", msgbuf);
+  panic("DEBUG_PANIC_ON_PARSE_ERROR %s", msg.v);
   #endif
 
+  str_free(&msg);
   return pos;
 }
 

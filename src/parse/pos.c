@@ -216,17 +216,23 @@ Pos pos_union(Pos a, Pos b) {
 static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src) {
   Pos start = span.start;
   Pos end = span.end;
-  str_push(s, '\n');
-  u32 linelen = 0;
-  const u8* lineptr = source_line_bytes(src, pos_line(start), &linelen);
-  if (lineptr)
-    str_append(s, (const char*)lineptr, linelen);
-  str_push(s, '\n');
+  str_appendc(s, '\n');
+
+  const u8* lineptr;
+  u32 linelen;
+  if (source_line_bytes(src, pos_line(start), &lineptr, &linelen) != 0)
+    return false;
+
+  str_append(s, (const char*)lineptr, linelen);
+  str_appendc(s, '\n');
 
   // indentation
   u32 col = pos_col(start);
-  if (col > 0)
-    str_appendfill(s, col - 1, ' '); // indentation
+  if (col > 0) {
+    // indentation
+    if UNLIKELY(!str_appendfill(s, ' ', col - 1))
+      return false;
+  }
 
   // squiggle "~~~" or arrow "^"
   u32 width = pos_width(start);
@@ -238,43 +244,45 @@ static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src)
   } // else if (pos_isknown(end)) TODO: spans lines
 
   if (width > 0) {
-    str_appendfill(s, width, '~'); // squiggle
-    return str_push(s, '\n');
+    str_appendfill(s, '~', width); // squiggle
+    return str_appendc(s, '\n');
   }
 
   return str_appendcstr(s, "^\n");
 }
 
 
-bool pos_str(const PosMap* pm, Pos p, Str* s) {
+bool pos_str(const PosMap* pm, Pos p, Str* dst) {
   const char* filename = "<input>";
   Source* src = (Source*)pos_source(pm, p);
   if (src)
     filename = src->filename;
-  return str_appendfmt(s, "%s:%u:%u", filename, pos_line(p), pos_col(p));
+  return str_appendfmt(dst, "%s:%u:%u", filename, pos_line(p), pos_col(p));
 }
 
-bool pos_fmtv(const PosMap* pm, PosSpan span, Str* s, const char* fmt, va_list ap) {
+
+bool pos_fmtv(const PosMap* pm, PosSpan span, Str* dst, const char* fmt, va_list ap) {
   TStyles style = TStylesForStderr();
 
   // "file:line:col: message ..." <LF>
-  str_appendcstr(s, tstyle_str(style, TS_BOLD));
-  pos_str(pm, span.start, s);
-  str_appendcstr(s, ": ");
-  str_appendcstr(s, tstyle_str(style, TS_RESET));
-  str_appendfmtv(s, fmt, ap);
+  str_appendcstr(dst, tstyle_str(style, TS_BOLD));
+  pos_str(pm, span.start, dst);
+  str_appendcstr(dst, ": ");
+  str_appendcstr(dst, tstyle_str(style, TS_RESET));
+  str_appendfmtv(dst, fmt, ap);
 
   // include line contents
   Source* src = (Source*)pos_source(pm, span.start);
   if (src)
-    return pos_add_context(pm, span, s, src);
-  return str_push(s, '\n');
+    return pos_add_context(pm, span, dst, src);
+  return str_appendc(dst, '\n');
 }
 
-bool pos_fmt(const PosMap* pm, PosSpan span, Str* s, const char* fmt, ...) {
+
+bool pos_fmt(const PosMap* pm, PosSpan span, Str* dst, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  bool ok = pos_fmtv(pm, span, s, fmt, ap);
+  bool ok = pos_fmtv(pm, span, dst, fmt, ap);
   va_end(ap);
   return ok;
 }

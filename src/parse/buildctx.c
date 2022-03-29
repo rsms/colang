@@ -131,7 +131,7 @@ static bool b_typeeq(BuildCtx* b, Type* x, Type* y);
 // ----
 
 // diag_fmt appends to dst a ready-to-print representation of a diagnostic message
-bool diag_fmt(const Diagnostic* d, Str* s);
+bool diag_fmt(const Diagnostic* d, Str* dst);
 
 // diag_free frees a diagnostics object.
 // It is useful when a ctx's mem is a shared allocator.
@@ -380,35 +380,51 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
 }
 #endif
 
+//———————————————————————————————————————————————————————————————————————————————————————
+
+static const char* const _DiagLevelName[DiagMAX + 1] = {
+  "error",
+  "warn",
+  "note",
+};
+
+const char* DiagLevelName(DiagLevel l) {
+  return _DiagLevelName[MAX(0, MIN(l, DiagMAX))];
+}
+
+bool diag_fmt(const Diagnostic* d, Str* dst) {
+  assert(d->level <= DiagMAX);
+  return pos_fmt(&d->build->posmap, d->pos, dst,
+    "%s: %s", DiagLevelName(d->level), d->message);
+}
+
+void diag_free(Diagnostic* d) {
+  assert(d->build != NULL);
+  memfree((void*)d->message, strlen(d->message) + 1);
+  memfree(d, sizeof(Diagnostic));
+}
+
 
 // --- functions to aid unit tests
-
-#if defined(CO_TEST) && !defined(CO_NO_LIBC)
-
-BuildCtx* b_testctx_new() {
-  Mem mem = mem_libc_allocator();
-
-  SymPool* syms = memalloct(mem, SymPool);
-  sympool_init(syms, universe_syms(), mem, NULL);
-
-  Pkg* pkg = memalloct(mem, Pkg);
-  pkg->dir = ".";
-
-  BuildCtx* b = memalloct(mem, BuildCtx);
-  b_init(b, mem, syms, pkg, NULL, NULL);
-
-  return b;
-}
-
-void b_testctx_free(BuildCtx* b) {
-  auto mem = b->mem;
-  sympool_dispose(b->syms);
-  memfree(mem, b->pkg);
-  memfree(mem, b->syms);
-  b_dispose(b);
-  // MemLinearFree(mem);
-}
-
-#endif // defined(CO_TEST) && !defined(CO_NO_LIBC)
+// #if CO_TESTING_ENABLED && !defined(CO_NO_LIBC)
+// BuildCtx* b_testctx_new() {
+//   Mem mem = mem_libc_allocator();
+//   SymPool* syms = memalloct(mem, SymPool);
+//   sympool_init(syms, universe_syms(), mem, NULL);
+//   Pkg* pkg = memalloct(mem, Pkg);
+//   pkg->dir = ".";
+//   BuildCtx* b = memalloct(mem, BuildCtx);
+//   b_init(b, mem, syms, pkg, NULL, NULL);
+//   return b;
+// }
+// void b_testctx_free(BuildCtx* b) {
+//   auto mem = b->mem;
+//   sympool_dispose(b->syms);
+//   memfree(mem, b->pkg);
+//   memfree(mem, b->syms);
+//   b_dispose(b);
+//   // MemLinearFree(mem);
+// }
+// #endif // CO_TESTING_ENABLED && !defined(CO_NO_LIBC)
 
 #endif // PARSE_BUILDCTX_IMPLEMENTATION

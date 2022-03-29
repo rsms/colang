@@ -55,7 +55,7 @@ const char* TokName(Tok t) {
     DEF_TOKENS(I_ENUM)
     #undef I_ENUM
 
-    #define I_ENUM(name, str) case name: return "keyword " #str;
+    #define I_ENUM(name, str) case name: return "keyword \"" #str "\"";
     DEF_TOKENS_KEYWORD(I_ENUM)
     #undef I_ENUM
 
