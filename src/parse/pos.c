@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../tstyle.h"
+#include "../tstyle.c"
 #include "pos.h"
 
 void posmap_init(PosMap* pm) {

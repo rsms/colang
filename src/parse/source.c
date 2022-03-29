@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../sha256.h"
+#include "../sha256.c"
 #include "source.h"
 
 #ifndef CO_NO_LIBC

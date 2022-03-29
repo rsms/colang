@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../tstyle.h"
+#include "../tstyle.c"
 #include "../array.c"
 #include "../string.c"
 #include "../unicode.c"
