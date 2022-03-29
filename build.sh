@@ -435,6 +435,14 @@ rule cxx_wasm
   depfile = \$out.d
   description = compile \$in
 
+
+rule ast_gen
+  command = python3 src/parse/ast_gen.py \$in \$out
+  generator = true
+
+
+build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.c | src/parse/ast_gen.py
+
 _END
 
 
