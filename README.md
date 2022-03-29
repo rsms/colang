@@ -1,9 +1,24 @@
-```
-./build.sh -debug -w -run=out/co
-```
+# Co programming language
 
 
-## Code style
+## Building
+
+First time setup:
+
+```
+./init.sh
+```
+
+Then build & run:
+
+```
+./build.sh -debug -w -run=build/debug/co
+```
+
+See `./build.sh -h` for more options.
+
+
+## Source code
 
 ### Source organization
 
