@@ -1,4 +1,6 @@
-// compact representation of source positions
+// Pos is a compact representation of a source position: source file, line and column.
+// Limits: 1048575 source files, 1048575 lines, 4095 columns, 4095 span width.
+// Inspired by the Go compiler's xpos & lico.
 //
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
@@ -13,9 +15,6 @@
 BEGIN_INTERFACE
 //———————————————————————————————————————————————————————————————————————————————————————
 
-// Pos is a compact representation of a source position: source file, line and column.
-// Limits: 1048575 number of sources, 1048575 max lines, 4095 max columns, 4095 max width.
-// Inspired by the Go compiler's xpos & lico.
 typedef u64            Pos;
 typedef struct PosMap  PosMap;  // maps Source to Pos indices
 typedef struct PosSpan PosSpan; // span in a Source
@@ -31,7 +30,7 @@ struct PosSpan {
 };
 
 // NoPos is a valid unknown position; pos_isknown(NoPos) returns false.
-static const Pos NoPos = 0;
+#define NoPos ((Pos)0)
 
 void posmap_init(PosMap* pm);
 void posmap_dispose(PosMap* pm);

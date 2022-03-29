@@ -1,21 +1,157 @@
-// semantic analysis and resolution -- late symbol bindings, type resolution, simplification
-#include "../coimpl.h"
-#include "resolve.h"
-#include "resolve_id.h"
-#include "universe.h"
-#undef resolve_ast
+// Semantic analysis and resolution.
+// Late symbol bindings, type resolution, simplifications.
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
+#pragma once
+#ifndef CO_IMPL
+  #include "coimpl.h"
+  #define PARSE_RESOLVE_IMPLEMENTATION
+#endif
+#include "ast.c"
+#include "buildctx.c"
+BEGIN_INTERFACE
+//———————————————————————————————————————————————————————————————————————————————————————
+
+// T* resolve_ast(BuildCtx*, Scope* lookupscope, T* n)
+// lookupscope is the outer scope to use for looking up unresolved identifiers.
+Node* resolve_ast(BuildCtx*, Scope* lookupscope, Node* n);
+#define resolve_ast(b, s, n) ( (__typeof__(n)) resolve_ast((b), (s), as_Node(n)) )
+
+// resolve_id resolves an identifier by setting id->target and id->type=TypeOfNode(target).
+//
+// This function may be called on an already-resolved id with NodeIsRValue(id)
+// to simplify the id, in which case the "target" argument is ignored and must be NULL.
+//
+// If target is NULL and the id has no existing target, the id is marked as "unresolved"
+// using NodeSetUnresolved(id).
+//
+// Returns id or a simplification e.g. (Id true -> (BoolLit true)) returns (BoolLit true).
+Node* resolve_id(IdNode* id, Node* nullable target);
+
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+END_INTERFACE
+#ifdef PARSE_RESOLVE_IMPLEMENTATION
+
+#include "universe.c"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
 #define CO_PARSE_RESOLVE_DEBUG
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// resolve_id impl
+
+static Node* simplify_id(IdNode* id, Node* nullable target);
+
+
+Node* resolve_id(IdNode* id, Node* nullable target) {
+  assertnotnull(id->name);
+
+  if (target == NULL) {
+    if (id->target) {
+      // simplify already-resolved id, which must be flagged as an rvalue
+      assert(NodeIsRValue(id));
+      MUSTTAIL return simplify_id(id, target);
+    }
+    // mark id as unresolved
+    NodeSetUnresolved(id);
+    return as_Node(id);
+  }
+
+  assertnull(id->target);
+  id->target = target;
+  id->type = TypeOfNode(target);
+
+  switch (target->kind) {
+    case NMacro:
+    case NFun:
+      // Note: Don't transfer "unresolved" attribute of functions
+      break;
+    case NLocal_BEG ... NLocal_END:
+      // increment local's ref count
+      NodeRefLocal((LocalNode*)target);
+      FALLTHROUGH;
+    default:
+      NodeTransferUnresolved(id, target);
+  }
+
+  // set id const == target const
+  id->flags = (id->flags & ~NF_Const) | (target->flags & NF_Const);
+
+  MUSTTAIL return simplify_id(id, target);
+}
+
+// simplify_id returns an Id's target if it's a simple constant, or the id itself.
+// This reduces the complexity of common code.
+//
+// For example:
+//   var x bool
+//   x = true
+// Without simplifying these ids the AST would look like this:
+//   (Local x (Id bool -> (BasicType bool)))
+//   (Assign (Id x -> (Local x)) (Id true -> (BoolLit true)))
+// With simplify_id, the AST would instead look like this:
+//   (Local (Id x) (BasicType bool))
+//   (Assign (Local x) (BoolLit true))
+//
+// Note:
+//   We would need to make sure post_resolve_id uses the same algorithm to get the
+//   same outcome for cases like this:
+//     fun foo()   | (Fun foo
+//       x = true  |   (Assign (Id x -> ?) (BoolLit true)) )
+//     var x bool  | (Local x (BasicType bool))
+//
+static Node* simplify_id(IdNode* id, Node* nullable _ign) {
+  assertnotnull(id->target);
+
+  // unwind local targeting a type
+  Node* tn = id->target;
+  while (NodeIsConst(tn) &&
+         (is_VarNode(tn) || is_ConstNode(tn)) &&
+         LocalInitField(tn) != NULL )
+  {
+    tn = as_Node(LocalInitField(tn));
+    // Note: no NodeUnrefLocal here
+  }
+
+  // when the id is an rvalue, simplify its target no matter what kind it is
+  if (NodeIsRValue(id)) {
+    id->target = tn;
+    id->type = TypeOfNode(tn);
+  }
+
+  // if the target is a pimitive constant, use that instead of the id node
+  switch (id->target->kind) {
+    case NNil:
+    case NBasicType:
+    case NBoolLit:
+      return id->target;
+    default:
+      return (Node*)id;
+  }
+}
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// resolve_ast impl
+#undef resolve_ast
 
 #if !defined(CO_NO_LIBC) && defined(CO_PARSE_RESOLVE_DEBUG)
   #include <unistd.h> // isatty
 #endif
 
-typedef struct R R;     // resolver state
-typedef u32      rflag; // flags
+typedef u32 rflag;
+enum rflag {
+  flExplicitTypeCast = 1 << 0,
+  flResolveIdeal     = 1 << 1,  // set when resolving ideal types
+  flEager            = 1 << 2,  // set when resolving eagerly
+} END_ENUM(rflag)
 
-struct R {
+// resolver state
+typedef struct R {
   BuildCtx* build;
   Scope*    lookupscope; // scope to look up undefined symbols in
 
@@ -31,13 +167,7 @@ struct R {
   #ifdef CO_PARSE_RESOLVE_DEBUG
   int debug_depth;
   #endif
-};
-
-enum rflag {
-  flExplicitTypeCast = 1 << 0,
-  flResolveIdeal     = 1 << 1,  // set when resolving ideal types
-  flEager            = 1 << 2,  // set when resolving eagerly
-} END_ENUM(rflag)
+} R;
 
 #define FMTNODE(n,bufno) \
   fmtnode(n, r->build->tmpbuf[bufno], sizeof(r->build->tmpbuf[bufno]))
@@ -245,3 +375,5 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
   asserteq(initial_kind, n->kind); // since we typecast the result (see header file)
   return n;
 }
+
+#endif // PARSE_RESOLVE_IMPLEMENTATION

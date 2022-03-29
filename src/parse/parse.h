@@ -5,12 +5,13 @@
 #include "sym.c"
 
 #include "token.h"    // Tok { T* }
-#include "type.h"     // TypeCode { TC_* }, TypeFlags { TF_*}
+#include "type.c"     // TypeCode { TC_* }, TypeFlags { TF_*}
 #include "source.c"   // Source, Pkg
 #include "pos.c"      // Pos, PosMap, PosSpan
-#include "ast.h"      // Scope, Node types, NodeKind { N* }, NodeFlags { NF_* }
-#include "buildctx.h" // BuildCtx, Diagnostic, DiagLevel
-#include "universe.h"
+#include "ast.c"      // Scope, Node types, NodeKind { N* }, NodeFlags { NF_* }
+#include "buildctx.c" // BuildCtx, Diagnostic, DiagLevel
+#include "resolve.c"
+#include "universe.c"
 ASSUME_NONNULL_BEGIN
 
 

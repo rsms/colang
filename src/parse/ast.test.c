@@ -1,7 +1,8 @@
-#include "../coimpl.h"
-#include "../test.c"
-#include "ast.h"
-#include "universe.h"
+#include "coimpl.h"
+#include "test.c"
+
+#include "ast.c"
+#include "universe.c"
 
 
 DEF_TEST(ast_typecast) {

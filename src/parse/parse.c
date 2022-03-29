@@ -1,9 +1,8 @@
 // co source code parser
 #include "../coimpl.h"
 #include "parse.h"
-#include "eval.h"
-#include "resolve_id.h"
-#include "ctypecast.h"
+#include "eval.c"
+#include "ctypecast.c"
 
 // Pratt-style recursive descent parser.
 //

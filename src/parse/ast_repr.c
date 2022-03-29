@@ -1,11 +1,12 @@
-#include "../coimpl.h"
-#include "../tstyle.c"
-#include "../array.c"
-#include "../string.c"
-#include "../unicode.c"
-#include "../test.c"
-#include "ast.h"
-#include "universe.h"
+#include "coimpl.h"
+#include "tstyle.c"
+#include "array.c"
+#include "string.c"
+#include "unicode.c"
+#include "test.c"
+
+#include "ast.c"
+#include "universe.c"
 
 // DEBUG_INCLUDE_POINTERS: define to include node memory addresses in output
 //#define DEBUG_INCLUDE_POINTERS

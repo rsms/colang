@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# This script parses the struct heirarchy in ast.h and writes ast_gen.{h,c}
+# This script parses the struct heirarchy in ast.c and writes ast_gen.{h,c}
 #
 import re, sys, os, os.path, pprint
 from collections import OrderedDict
@@ -147,7 +147,7 @@ outh.append('ASSUME_NONNULL_BEGIN')
 outh.append('')
 
 outc.append('#include "../coimpl.h"')
-outc.append('#include "ast.h"')
+outc.append('#include "ast.c"')
 outc.append('')
 
 # enum NodeKind
@@ -168,7 +168,7 @@ outtmp = ['"%s",' % strip_node_suffix(name) for name in leafnames]
 outtmp.append('"?"')
 output_compact(outc, outtmp, 80, '    ')
 outc.append('  };')
-outc.append('  return kNodeNameTable[MIN(NodeKind_MAX+2,k)];')
+outc.append('  return kNodeNameTable[MIN(NodeKind_MAX+1,k)];')
 outc.append('}')
 outc.append('')
 
@@ -441,9 +441,9 @@ outc.append('')
 outh.append('ASSUME_NONNULL_END')
 
 # # debug
-# print("——— ast.h ———")
+# print("——— ast_gen.h ———")
 # print("\n".join(outh))
-# print("——— ast.c ———")
+# print("——— ast_gen.c ———")
 # print("\n".join(outc))
 # sys.exit(0)
 

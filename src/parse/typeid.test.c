@@ -1,7 +1,7 @@
 #include "../coimpl.h"
 #include "../test.c"
-#include "typeid.h"
-#include "universe.h"
+#include "typeid.c"
+#include "universe.c"
 
 DEF_TEST(typeid_make) {
   char buf[128];

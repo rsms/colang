@@ -6,7 +6,6 @@
 #include "hash.c"
 #include "time.h"
 #include "parse/parse.h"
-#include "parse/resolve.h"
 #include "sys.c"
 
 static char tmpbuf[4096];
