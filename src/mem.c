@@ -63,6 +63,51 @@ void mem_freealloc_vm(Mem); // release virtual memory to system; invalidates all
 // mem_mkalloc_null creates an allocator which fails to allocate any size
 static Mem mem_mkalloc_null();
 
+//——— contextual allocation
+
+static Mem mem_ctx();
+static Mem mem_ctx_set(Mem m);
+
+// mem_ctx_set_scope(m) -- sets m as mem_ctx until leaving the current scope.
+// mem_ctx_scope(m) -- preceeds a statement or block, defines a new scope.
+// Examples:
+//   void foo() {
+//     // mem_ctx() is whatever it was when calling foo
+//     mem_ctx_set_scope(m);
+//     // mem_ctx() is m here
+//   } // mem_ctx() is restored when leaving foo()
+//
+//   void foo() {
+//     // mem_ctx() is whatever it was when calling foo
+//     mem_ctx_scope(m) {
+//       ... // mem_ctx() is m here
+//     } // mem_ctx() is restored when leaving the block or returning from current function
+//   }
+#if __has_attribute(cleanup)
+  #define mem_ctx_set_scope(mem) \
+    __attribute__((cleanup(_mem_ctx_scope_cleanup))) \
+    UNUSED Mem CONCAT(_tmp,__COUNTER__) = mem_ctx_set(mem)
+  #define mem_ctx_scope(mem) for ( \
+    __attribute__((cleanup(_mem_ctx_scope_cleanup))) UNUSED Mem _memprev = mem_ctx_set(mem);\
+    _memprev.a; \
+    mem_ctx_set(_memprev), _memprev.a=NULL )
+  void _mem_ctx_scope_cleanup(Mem* prev);
+#else
+  #warning compiler does not support cleanup attribute
+#endif
+
+static void* nullable memalloc(usize size);
+static void* nullable memresize(void* nullable p, usize oldsize, usize newsize);
+static void memfree(void* p, usize size);
+static void* nullable memallocx(usize* size);
+static void* nullable memresizex(void* nullable p, usize oldsize, usize* newsize);
+#define memallocz(args...) mem_allocz(mem_ctx(),args)
+#define memalloct(TYPE) ((TYPE*)memalloc(sizeof(TYPE)))
+#define memalloczt(TYPE) ((TYPE*)memallocz(sizeof(TYPE)))
+#define memallocv(args...) mem_allocv(mem_ctx(),args)
+#define memalloczv(args...) mem_alloczv(mem_ctx(),args)
+#define memresizev(args...) mem_resizev(mem_ctx(),args)
+
 //——— memory utility functions
 
 usize mem_pagesize(); // get virtual memory page size in bytes (usually 4096 bytes)
@@ -115,6 +160,29 @@ inline static void mem_free(Mem m, void* p, usize size) {
   void* _ = m.a(m.state, p, size, NULL);
 }
 
+
+extern _Thread_local Mem _mem_ctx;
+inline static Mem mem_ctx() { return _mem_ctx; }
+inline static Mem mem_ctx_set(Mem m) { Mem prev = _mem_ctx; _mem_ctx = m; return prev; }
+
+
+inline static void* nullable memalloc(usize size) {
+  return mem_alloc(mem_ctx(), size);
+}
+inline static void* nullable memresize(void* nullable p, usize oldsize, usize newsize) {
+  return mem_resize(mem_ctx(), p, oldsize, newsize);
+}
+inline static void memfree(void* p, usize size) {
+  return mem_free(mem_ctx(), p, size);
+}
+inline static void* nullable memallocx(usize* size) {
+  return mem_allocx(mem_ctx(), size);
+}
+inline static void* nullable memresizex(void* nullable p, usize oldsize, usize* newsize) {
+  return mem_resizex(mem_ctx(), p, oldsize, newsize);
+}
+
+
 void* nullable _mem_libc_alloc(
   void* state, void* nullable, usize oldsize, usize* nullable newsize);
 inline static Mem mem_mkalloc_libc() {
@@ -131,7 +199,7 @@ static Mem mem_mkalloc_null() {
 END_INTERFACE
 #ifdef MEM_IMPLEMENTATION
 
-#ifndef RSM_NO_LIBC
+#ifndef CO_NO_LIBC
   #include <stdio.h>
   #include <fcntl.h>
   #include <errno.h>
@@ -187,7 +255,7 @@ END_INTERFACE
     #endif
     #define HAS_MMAP
   #endif // _WIN32
-#endif // RSM_NO_LIBC
+#endif // CO_NO_LIBC
 #ifndef MEM_PAGESIZE
   // fallback value (should match wasm32)
   #define MEM_PAGESIZE ((usize)4096U)
@@ -437,6 +505,17 @@ void mem_freealloc_vm(Mem m) {
 
   vmem_free(buf, cap);
   return;
+}
+
+// --------------------------------------------------------------------------------------
+// mem_ctx
+
+_Thread_local Mem _mem_ctx = {&_mem_null_alloc, NULL};
+
+void _mem_ctx_scope_cleanup(Mem* prev) {
+  dlog("_mem_ctx_scope_cleanup prev->a=%p", prev->a);
+  if (prev->a)
+    mem_ctx_set(*prev);
 }
 
 // --------------------------------------------------------------------------------------

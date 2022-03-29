@@ -1,5 +1,7 @@
 // Sym -- immutable interned strings
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 #pragma once
 #ifndef CO_IMPL

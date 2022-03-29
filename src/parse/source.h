@@ -1,13 +1,14 @@
 // source -- representations of input source files and packages
 #pragma once
-#include "../str.h"
+#include "../string.c"
 ASSUME_NONNULL_BEGIN
 
 typedef struct Source Source; // an input source file
+typedef Array(Source*) SourceArray;
 
 struct Source {
   Source*   next;       // list link
-  Str       filename;   // copy of filename given to source_open
+  char*     filename;   // copy of filename given to source_open
   const u8* body;       // file body (usually mmap'ed)
   u32       len;        // size of body in bytes
   int       fd;         // file descriptor
@@ -19,7 +20,7 @@ error source_open_file(Source* src, Mem mem, const char* filename);
 error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len);
 error source_body_open(Source* src);
 error source_body_close(Source* src);
-error source_close(Source* src); // src can be reused with open after this call
+error source_close(Source* src, Mem mem); // src can be reused with open after this call
 void  source_checksum(Source* src); // populates src->sha256 <= sha256(src->body)
 
 ASSUME_NONNULL_END

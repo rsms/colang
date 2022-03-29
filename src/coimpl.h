@@ -1,4 +1,9 @@
-// This files contains definitions used across the entire codebase. Keep it lean.
+// co common implementation
+// This files contains definitions used across the entire codebase
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
 #ifndef CO_IMPL
 #define CO_IMPL
 
@@ -282,6 +287,10 @@ typedef unsigned long       usize;
   // turns into CMP + CMOV{L,G} on x86_64
   // turns into CMP + CSEL on arm64
 
+// XMAX & XMIN -- for use only with constant expressions
+#define XMAX(x,y) ((x)>(y)?(x):(y))
+#define XMIN(x,y) ((x)<(y)?(x):(y))
+
 // SET_FLAG(int flags, int flag, bool on)
 // equivalent to: if (on) flags |= flag; else flags &= ~flag
 #define SET_FLAG(flags, flag, on) (flags ^= (-(!!(on)) ^ (flags)) & (flag))
@@ -476,6 +485,78 @@ static inline WARN_UNUSED_RESULT usize array_size(usize a, usize b) {
 // END code adapted from Linux
 // —————————————————————————————————————————————————————————————————————————————————————
 
+// UNCONST_TYPEOF(v) yields __typeof__ without const qualifier (for basic types only)
+#define UNCONST_TYPEOF(x)                                     \
+  __typeof__(_Generic((x),                                    \
+    signed char:              ({ signed char        _; _; }), \
+    const signed char:        ({ signed char        _; _; }), \
+    unsigned char:            ({ unsigned char      _; _; }), \
+    const unsigned char:      ({ unsigned char      _; _; }), \
+    short:                    ({ short              _; _; }), \
+    const short:              ({ short              _; _; }), \
+    unsigned short:           ({ unsigned short     _; _; }), \
+    const unsigned short:     ({ unsigned short     _; _; }), \
+    int:                      ({ int                _; _; }), \
+    const int:                ({ int                _; _; }), \
+    unsigned:                 ({ unsigned           _; _; }), \
+    const unsigned:           ({ unsigned           _; _; }), \
+    long:                     ({ long               _; _; }), \
+    const long:               ({ long               _; _; }), \
+    unsigned long:            ({ unsigned long      _; _; }), \
+    const unsigned long:      ({ unsigned long      _; _; }), \
+    long long:                ({ long long          _; _; }), \
+    const long long:          ({ long long          _; _; }), \
+    unsigned long long:       ({ unsigned long long _; _; }), \
+    const unsigned long long: ({ unsigned long long _; _; }), \
+    float:                    ({ float              _; _; }), \
+    const float:              ({ float              _; _; }), \
+    double:                   ({ double             _; _; }), \
+    const double:             ({ double             _; _; }), \
+    long double:              ({ long double        _; _; }), \
+    const long double:        ({ long double        _; _; }), \
+    default: x \
+  ))
+
+#define CONST_TYPEOF(x)                                             \
+  __typeof__(_Generic((x),                                          \
+    signed char:              ({ const signed char        _; _; }), \
+    const signed char:        ({ const signed char        _; _; }), \
+    unsigned char:            ({ const unsigned char      _; _; }), \
+    const unsigned char:      ({ const unsigned char      _; _; }), \
+    short:                    ({ const short              _; _; }), \
+    const short:              ({ const short              _; _; }), \
+    unsigned short:           ({ const unsigned short     _; _; }), \
+    const unsigned short:     ({ const unsigned short     _; _; }), \
+    int:                      ({ const int                _; _; }), \
+    const int:                ({ const int                _; _; }), \
+    unsigned:                 ({ const unsigned           _; _; }), \
+    const unsigned:           ({ const unsigned           _; _; }), \
+    long:                     ({ const long               _; _; }), \
+    const long:               ({ const long               _; _; }), \
+    unsigned long:            ({ const unsigned long      _; _; }), \
+    const unsigned long:      ({ const unsigned long      _; _; }), \
+    long long:                ({ const long long          _; _; }), \
+    const long long:          ({ const long long          _; _; }), \
+    unsigned long long:       ({ const unsigned long long _; _; }), \
+    const unsigned long long: ({ const unsigned long long _; _; }), \
+    float:                    ({ const float              _; _; }), \
+    const float:              ({ const float              _; _; }), \
+    double:                   ({ const double             _; _; }), \
+    const double:             ({ const double             _; _; }), \
+    long double:              ({ const long double        _; _; }), \
+    const long double:        ({ const long double        _; _; }), \
+    default: x \
+  ))
+
+// ASSERT_U32SIZE checks that size is <= U32_MAX at compile time if possible,
+// or with a runtime assertion if size is not a constant expression.
+//#define ASSERT_U32SIZE(size) \
+//  ( __builtin_constant_p(size) ? \
+//    BUILD_BUG_ON_ZERO( XMIN((u64)(size), (u64)U32_MAX+1) == (u64)U32_MAX+1 ) : \
+//    assert((u64)(size) <= (u64)U32_MAX) )
+#define ASSERT_U32SIZE(size) \
+  assert((u64)(size) <= (u64)U32_MAX) // TODO: above constexpr
+
 #define BEGIN_INTERFACE \
   ASSUME_NONNULL_BEGIN \
   DIAGNOSTIC_IGNORE_PUSH("-Wunused-function")
@@ -486,6 +567,56 @@ static inline WARN_UNUSED_RESULT usize array_size(usize a, usize b) {
 
 // assume pointer types are "nonull"
 ASSUME_NONNULL_BEGIN
+
+// CO_LITTLE_ENDIAN=0|1
+#ifndef CO_LITTLE_ENDIAN
+  #if defined(__LITTLE_ENDIAN__) || \
+      (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+    #define CO_LITTLE_ENDIAN 1
+  #elif defined(__BIG_ENDIAN__) || defined(__ARMEB__) \
+        (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    #define CO_LITTLE_ENDIAN 0
+  #else
+    #error Can't determine endianness -- please define CO_LITTLE_ENDIAN=0|1
+  #endif
+#endif
+
+#if __has_builtin(__builtin_bswap32)
+  #define bswap32(x) __builtin_bswap32(x)
+#elif defined(_MSC_VER)
+  #define bswap32(x) _byteswap_ulong(x)
+#else
+  static inline u32 bswap32(u32 x) {
+    return ((( x & 0xff000000u ) >> 24 )
+          | (( x & 0x00ff0000u ) >> 8  )
+          | (( x & 0x0000ff00u ) << 8  )
+          | (( x & 0x000000ffu ) << 24 ));
+  }
+#endif
+
+#if __has_builtin(__builtin_bswap64)
+  #define bswap64(x) __builtin_bswap64(x)
+#elif defined(_MSC_VER)
+  #define bswap64(x) _byteswap_uint64(x)
+#else
+  static inline u64 bswap64(u64 x) {
+    u64 hi = bswap32((u32)x);
+    u32 lo = bswap32((u32)(x >> 32));
+    return (hi << 32) | lo;
+  }
+#endif
+
+#if CO_LITTLE_ENDIAN
+  #define htole32(n) (n)
+  #define htobe32(n) bswap32(n)
+  #define htole64(n) (n)
+  #define htobe64(n) bswap64(n)
+#else
+  #define htole32(n) bswap32(n)
+  #define htobe32(n) (n)
+  #define htole64(n) bswap64(n)
+  #define htobe64(n) (n)
+#endif
 
 // —————————————————————————————————————————————————————————————————————————————————————
 // error
@@ -561,10 +692,10 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   // or else certain applications of this macro are not expanded.
 
   #define assertf(cond, fmt, args...) \
-    if (UNLIKELY(!(cond))) _assertfail(fmt " (%s)", ##args, #cond)
+    (UNLIKELY(!(cond)) ? _assertfail(fmt " (%s)", ##args, #cond) : ((void)0))
 
   #define assert(cond) \
-    if (UNLIKELY(!(cond))) _assertfail("%s", #cond)
+    (UNLIKELY(!(cond)) ? _assertfail("%s", #cond) : ((void)0))
 
   #define assertop(a,op,b) ({                                               \
     __typeof__(a) A__ = a;                                                  \
@@ -621,10 +752,13 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #ifdef CO_SAFE
   #undef CO_SAFE
   #define CO_SAFE 1
-  #define _safefail(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
-  #define safecheckf(cond, fmt, args...) if UNLIKELY(!(cond)) _safefail(fmt, ##args)
+  #define _safefail(fmt, args...) \
+    _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
+  #define safecheckf(cond, fmt, args...) \
+    ( UNLIKELY(!(cond)) ? _safefail(fmt, ##args) : ((void)0) )
   #ifdef DEBUG
-    #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck (%s)", #cond)
+    #define safecheck(cond) \
+      (UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
     #define safecheckexpr(expr, expect) ({                                        \
       __typeof__(expr) val__ = (expr);                                            \
       safecheckf(val__ == expect, "unexpected value (%s != %s)", #expr, #expect); \
@@ -731,9 +865,53 @@ typedef int(*xqsort_cmp)(const void* x, const void* y, void* nullable ctx);
 void xqsort(void* base, usize nmemb, usize size, xqsort_cmp cmp, void* nullable ctx);
 
 // —————————————————————————————————————————————————————————————————————————————————————
+// slice
 
 typedef struct SSlice { const char* p; usize len; } SSlice; // TODO: rename to Str
 #define SSLICE(cstr) ((SSlice){ (cstr), strlen(cstr) })
+
+// —————————————————————————————————————————————————————————————————————————————————————
+// time
+
+// unixtime stores the number of seconds + nanoseconds since Jan 1 1970 00:00:00 UTC
+// at *sec and *nsec
+error unixtime(i64* sec, u64* nsec);
+
+// nanotime returns nanoseconds measured from an undefined point in time.
+// It uses the most high-resolution, low-latency clock available on the system.
+// u64 is enough to express 584 years in nanoseconds.
+u64 nanotime();
+
+// fmtduration appends human-readable time duration to buf, including a null terminator.
+// Returns number of bytes written, excluding the null terminator.
+usize fmtduration(char buf[25], u64 duration_ns);
+
+// microsleep sleeps for some number of microseconds.
+// Returns amount of time remaining if the thread was interrupted
+// or 0 if the thread slept for at least microseconds.
+u64 microsleep(u64 microseconds);
+
+// time_init initializes the time library
+error time_init();
+
+// logtime -- measure real time spent between two points of execution.
+//   TimeLabel logtime_start(const char* label)
+//   void      logtime_end(const TimeLabel)
+//   void      logtime_scope(const char* label)
+//
+typedef struct { const char* label; u64 ns; } TimeLabel;
+inline static TimeLabel logtime_start(const char* label) {
+  return (TimeLabel){label,nanotime()}; }
+#define logtime_end(t) _logtime_end(&(t))
+void _logtime_end(const TimeLabel* t);
+#if __has_attribute(__cleanup__)
+  #define logtime_scope(label)                                              \
+    UNUSED TimeLabel logtime__ __attribute__((__cleanup__(_logtime_end))) = \
+    logtime_start(label)
+#else
+  #define logtime_scope(label) _logtime_end(logtime_start(label))
+#endif
+
 
 // —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END

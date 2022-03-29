@@ -13,10 +13,9 @@
 
 static error source_init(Source* src, Mem mem, const char* filename) {
   memset(src, 0, sizeof(Source));
-  src->filename = str_make_cstr(mem, filename);
-  if (!src->filename)
+  src->filename = mem_strdup(mem, filename);
+  if UNLIKELY(!src->filename)
     return err_nomem;
-  assert(src->filename->len > 0);
   return 0;
 }
 
@@ -44,7 +43,7 @@ error source_open_file(Source* src, Mem mem, const char* filename) {
   #endif // CO_NO_LIBC
 }
 
-error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len) {
+error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len){
   error err = source_init(src, mem, filename);
   if (err)
     return err;
@@ -86,7 +85,7 @@ error source_body_close(Source* src) {
   return 0;
 }
 
-error source_close(Source* src) {
+error source_close(Source* src, Mem mem) {
   error err = source_body_close(src);
   if (src->fd > -1) {
     #ifdef CO_NO_LIBC
@@ -97,8 +96,7 @@ error source_close(Source* src) {
       src->fd = -1;
     #endif
   }
-  str_free(src->filename);
-  src->filename = NULL;
+  mem_free(mem, src->filename, strlen(src->filename) + 1);
   return err;
 }
 

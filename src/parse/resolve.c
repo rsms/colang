@@ -39,6 +39,9 @@ enum rflag {
   flEager            = 1 << 2,  // set when resolving eagerly
 } END_ENUM(rflag)
 
+#define FMTNODE(n,bufno) \
+  fmtnode(n, r->build->tmpbuf[bufno], sizeof(r->build->tmpbuf[bufno]))
+
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
   #ifdef CO_NO_LIBC
@@ -63,16 +66,17 @@ static Node* _resolve_type(R* r, rflag fl, Node* n);
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
   static Node* resolve_debug(R* r, rflag fl, Node* n) {
+    char tmpbuf[256];
     assert(n != NULL);
     dlog2("○ %s %s (%p%s%s%s%s%s)",
-      nodename(n), fmtnode(n),
+      nodename(n), FMTNODE(n,0),
       n,
 
       is_Expr(n) ? " type=" : "",
-      is_Expr(n) ? fmtnode(((Expr*)n)->type) : "",
+      is_Expr(n) ? FMTNODE(((Expr*)n)->type,1) : "",
 
       r->typecontext ? " typecontext=" : "",
-      r->typecontext ? fmtnode(r->typecontext) : "",
+      r->typecontext ? fmtnode(r->typecontext, tmpbuf, sizeof(tmpbuf)) : "",
 
       NodeIsRValue(n) ? " rvalue" : ""
     );
@@ -82,9 +86,9 @@ static Node* _resolve_type(R* r, rflag fl, Node* n);
     r->debug_depth--;
 
     if (n == n2) {
-      dlog2("● %s %s resolved", nodename(n), fmtnode(n));
+      dlog2("● %s %s resolved", nodename(n), FMTNODE(n,0));
     } else {
-      dlog2("● %s %s resolved => %s", nodename(n), fmtnode(n), fmtnode(n2));
+      dlog2("● %s %s resolved => %s", nodename(n), FMTNODE(n,0), FMTNODE(n2,1));
     }
     return n2;
   }
@@ -225,7 +229,7 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
     .build = build,
     .lookupscope = lookupscope,
   };
-  exprarray_init(&r.funstack, r.funstack_storage, sizeof(r.funstack_storage));
+  array_init(&r.funstack, r.funstack_storage, sizeof(r.funstack_storage));
 
   // always one slot so we can access the top of the stack without checks
   r.funstack_storage[0] = NULL;
@@ -237,7 +241,7 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
 
   n = resolve(&r, 0, n);
 
-  exprarray_free(&r.funstack, build->mem);
+  array_free(&r.funstack);
   asserteq(initial_kind, n->kind); // since we typecast the result (see header file)
   return n;
 }

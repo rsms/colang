@@ -24,10 +24,10 @@ typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 // forward decl of things defined in universe but referenced by ast.h
 extern Type* kType_type;
 
-DEF_ARRAY(NodeArray, Node*, nodearray)
-DEF_ARRAY(ExprArray, Expr*, exprarray)
-DEF_ARRAY(TypeArray, Type*, typearray)
-DEF_ARRAY(FieldArray, FieldNode*, fieldarray)
+typedef Array(Node*) NodeArray;
+typedef Array(Expr*) ExprArray;
+typedef Array(Type*) TypeArray;
+typedef Array(FieldNode*) FieldArray;
 
 #define as_NodeArray(n) _Generic((n), \
   const ExprArray*:(const NodeArray*)(n), ExprArray*:(NodeArray*)(n), \
@@ -405,39 +405,34 @@ inline static u32 NodeUnrefLocal(LocalNode* n) {
 // --------------------------------------------------------------------------------------
 // repr
 
-// NodeReprFlags changes behavior of NodeRepr
-typedef u32 NodeReprFlags; // changes behavior of NodeRepr
-
-enum NodeReprFlags {
-  NodeReprNoColor  = 1 << 0, // disable ANSI terminal styling
-  NodeReprColor    = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
-  NodeReprTypes    = 1 << 2, // include types in the output
-  NodeReprUseCount = 1 << 3, // include information about uses (ie for Local)
-  NodeReprRefs     = 1 << 4, // include "#N" reference indicators
-  NodeReprAttrs    = 1 << 5, // include "@attr" attributes
-} END_ENUM(NodeReprFlags)
+// NodeFmtFlag changes behavior of NodeRepr
+typedef u32 NodeFmtFlag;
+enum NodeFmtFlag {
+  NODE_FMT_NOCOLOR  = 1 << 0, // disable ANSI terminal styling
+  NODE_FMT_COLOR    = 1 << 1, // enable ANSI terminal styling (even if stderr is not a TTY)
+  NODE_FMT_TYPES    = 1 << 2, // include types in the output
+  NODE_FMT_USECOUNT = 1 << 3, // include information about uses (ie for Local)
+  NODE_FMT_REFS     = 1 << 4, // include "#N" reference indicators
+  NODE_FMT_ATTRS    = 1 << 5, // include "@attr" attributes
+} END_ENUM(NodeFmtFlag)
 
 // nodename returns a node's type name. E.g. "Tuple"
 // const char* nodename(const Node* n)
 #define nodename(n) NodeKindName(as_Node(assertnotnull(n))->kind)
 
-// NodeRepr formats an AST as a printable text representation
-#define NodeRepr(s,n,fl) _NodeStr((s),as_Node(n),(fl))
-Str _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl);
+// fmtnode returns a short representation of n to buf. Returns buf.
+#define fmtnode(n, buf, bufcap) _fmtnode(as_Node(n),(buf),(bufcap))
+char* _fmtnode(const Node* nullable n, char* buf, usize bufcap);
 
-// NodeStr appends a short representation of an AST node to s
-#define NodeStr(s,n) _NodeStr((s),as_Node(n))
-Str _NodeStr(Str s, const Node* nullable n);
-
-// fmtnode returns a short representation of n using NodeStr, suitable for error messages.
-// This function is not suitable for high-frequency use as it uses temporary buffers in TLS.
-#define fmtnode(n) _fmtnode(as_Node(n))
-const char* _fmtnode(const Node* n);
-
-// fmtast returns an exhaustive representation of n using NodeRepr.
-// This function is not suitable for high-frequency use as it uses temporary buffers in TLS.
-#define fmtast(n) _fmtast(as_Node(n))
-const char* _fmtast(const Node* nullable n);
+// fmtast writes an exhaustive representation of n to buf.
+// It writes at most bufcap-1 of the characters to the output buf (the bufcap'th
+// character then gets the terminating '\0'). If the return value is greater than or
+// equal to the bufcap argument, buf was too short and some of the characters were
+// discarded. The output is always null-terminated, unless size is 0.
+// Returns the number of characters that would have been printed if bufcap was
+// unlimited (not including the final `\0').
+#define fmtast(n, str, fl) _fmtast(as_Node(n),(str),(fl))
+bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl);
 
 // --------------------------------------------------------------------------------------
 

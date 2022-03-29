@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../sys.h"
+#include "../sys.c"
 #include "buildctx.h"
 #include "universe.h"
 #include "typeid.h"
@@ -27,13 +27,13 @@ void BuildCtxInit(
   ctx->diaglevel = DiagMAX;
   ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
   ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  diagarray_init(&ctx->diagarray, NULL, 0);
+  array_init(&ctx->diagarray, NULL, 0);
   symmap_init(&ctx->types, mem, 1);
-  posmap_init(&ctx->posmap, mem);
+  posmap_init(&ctx->posmap);
 }
 
 void BuildCtxDispose(BuildCtx* ctx) {
-  diagarray_free(&ctx->diagarray, ctx->mem);
+  array_free(&ctx->diagarray);
   symmap_free(&ctx->types);
   posmap_dispose(&ctx->posmap);
   #if DEBUG
@@ -42,9 +42,9 @@ void BuildCtxDispose(BuildCtx* ctx) {
 }
 
 static Diagnostic* b_mkdiag(BuildCtx* ctx) {
-  Diagnostic* d = mem_alloct(ctx->mem, Diagnostic);
+  Diagnostic* d = memalloct(Diagnostic);
   d->build = ctx;
-  diagarray_push(&ctx->diagarray, ctx->mem, d);
+  array_push(&ctx->diagarray, d);
   return d;
 }
 
@@ -181,7 +181,7 @@ PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
 Sym b_typeid_assign(BuildCtx* b, Type* t) {
   // Note: built-in types have predefined type ids (defined in universe)
   char buf[128];
-  u32 len = typeid_make(buf, sizeof(buf), t);
+  usize len = typeid_make(buf, sizeof(buf), t);
   if (LIKELY( len < sizeof(buf) ))
     return t->tid = symget(b->syms, buf, len);
   // didn't fit in stack buffer; resort to heap allocation

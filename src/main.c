@@ -7,29 +7,31 @@
 #include "time.h"
 #include "parse/parse.h"
 #include "parse/resolve.h"
-#include "sys.h"
+#include "sys.c"
 
+static char tmpbuf[4096];
 
 void cli_usage(const char* prog) {
   fprintf(stdout, "usage: %s <lua-file>\n", prog);
 }
 
 void on_diag(Diagnostic* d, void* userdata) {
-  Str* sp = str_tmp();
-  *sp = diag_fmt(d, *sp);
-  fwrite((*sp)->p, (*sp)->len, 1, stderr);
+  Str str = str_make(tmpbuf, sizeof(tmpbuf));
+  diag_fmt(d, &str);
+  fwrite(str.v, str.len, 1, stderr);
 }
 
 void print_src_checksum(Mem mem, const Source* src) {
-  Str s = str_make_hex_lc(mem, src->sha256, sizeof(src->sha256));
-  printf("%s %s\n", s->p, src->filename->p);
-  str_free(s);
+  ABuf s = abuf_make(tmpbuf, sizeof(tmpbuf));
+  abuf_reprhex(&s, src->sha256, sizeof(src->sha256));
+  abuf_terminate(&s);
+  printf("%s %s\n", tmpbuf, src->filename);
 }
 
 void scan_all(BuildCtx* build) {
   Scanner scanner = {0};
   for (Source* src = build->srclist; src != NULL; src = src->next) {
-    dlog("scan %s", src->filename->p);
+    dlog("scan %s", src->filename);
     error err = ScannerInit(&scanner, build, src, 0);
     if (err)
       panic("ScannerInit: %s", error_str(err));
@@ -40,9 +42,10 @@ void scan_all(BuildCtx* build) {
 }
 
 int main(int argc, const char** argv) {
+  time_init();
+  fastrand_seed(nanotime());
   if (co_test_main(argc, argv))
     return 1;
-  fastrand_seed(nanotime());
   universe_init();
 
   // select a memory allocator
@@ -53,6 +56,7 @@ int main(int argc, const char** argv) {
   #else
     Mem mem = mem_mkalloc_libc();
   #endif
+  mem_ctx_set(mem);
 
   // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
   // separately allocated data.
@@ -83,6 +87,7 @@ int main(int argc, const char** argv) {
 
   // parse
   Parser p = {0};
+  Str str = str_make(tmpbuf, sizeof(tmpbuf));
   auto pkgscope = ScopeNew(mem, universe_scope());
   for (Source* src = build.srclist; src != NULL; src = src->next) {
     auto t = logtime_start("parse");
@@ -91,14 +96,16 @@ int main(int argc, const char** argv) {
     if (err)
       panic("parse_tu: %s", error_str(err));
     logtime_end(t);
-    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n",
-      fmtast(result));
+    str.len = 0;
+    fmtast(result, &str, 0);
+    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", str.v);
 
     t = logtime_start("resolve");
     result = resolve_ast(&build, pkgscope, result);
     logtime_end(t);
-    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n",
-      fmtast(result));
+    str.len = 0;
+    fmtast(result, &str, 0);
+    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n", str.v);
   }
 
   return 0;

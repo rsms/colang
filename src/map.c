@@ -1,5 +1,7 @@
 // hash map
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 // Implemented with open addressing and linear probing.
 // This code has been written, tested and tuned for a balance between small (mc) code size,

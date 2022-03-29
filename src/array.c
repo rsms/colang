@@ -1,5 +1,7 @@
-// array -- dynamic array
+// dynamic array
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 #pragma once
 #ifndef CO_IMPL
@@ -10,55 +12,65 @@
 BEGIN_INTERFACE
 //———————————————————————————————————————————————————————————————————————————————————————
 
-typedef struct Array {
-  u8* nullable v; // u8 so we get -Wincompatible-pointer-types if we access .v directly
-  u32 len;        // number of valid entries at v
-  u32 cap : 31;   // capacity, in number of entries, of v
-  u32 ext : 1;    // 1 if v is external, 0 if originating in memory allocator
-} Array;
-#define DEF_ARRAY_TYPE(NAME, T) typedef struct NAME { T* nullable v; u32 len, cap; } NAME;
+#define Array(T) struct { \
+  T* nullable v; \
+  u32 len;      /* number of valid entries at v */ \
+  u32 cap : 31; /* capacity, in number of entries, of v */ \
+  u32 ext : 1;  /* 1 if v is in external storage */ \
+}
+#if API_DOC
 
-/* API
-  void array_init(TYPE, Array* a, void* storage, usize storagesize)
-    // initialize array a to use external storage
-  u32 array_at(TYPE, Array* a, u32 index);
-  u32 array_at_safe(TYPE, Array* a, u32 index);
-  TYPE* nullable array_push(TYPE, Array* a, Mem mem); // NULL on mem_alloc failure
-  void array_remove(TYPE, Array* a, u32 start, u32 len);
-  void array_move(TYPE, Array* a, u32 dst, u32 start, u32 end);
-    // moves the chunk [src,src+len) to dst
-  void array_free(TYPE, Array* a, Mem mem);
-  void array_reserve(TYPE, Array* a, Mem mem, u32 addl);
-*/
-#define array_init(T, a, storage, size)   _array_init((a),sizeof(T),(storage),(size))
-#define array_at(T, a, index)             (((T*)(a)->v) + (index))
-#define array_at_safe(T, a, i)            ({ safecheck((i)<(a)->len); array_at(T,(a),(i)); })
-#define array_push(T, a, m)               ((T*)_array_push((a),(m),sizeof(T)))
-#define array_remove(T, a, start, len)    _array_remove((a),sizeof(T),(start),(len))
-#define array_move(T, a, dst, start, end) _array_move(sizeof(T),(a)->v,(dst),(start),(end))
-#define array_reserve(T, a, m, addl)      _array_reserve((a),(m),(addl),sizeof(T))
-#define array_free(T, a, m)               _array_free((a),(m),sizeof(T))
+Array(T) array_make(Array(T), T* nullable storage, usize storagesize)
+  // Create and initialize a new array with optional initial caller-managed storage
 
-DEF_ARRAY_TYPE(U32Array, u32)
-static void u32array_init(U32Array* a, void* nullable storage, usize storagesize);
-static u32 u32array_at(U32Array* a, u32 index);
-static u32 u32array_at_safe(U32Array* a, u32 index);
-static bool u32array_push(U32Array* a, Mem mem, u32 value);
-static void u32array_remove(U32Array* a, u32 start, u32 len);
-static void u32array_move(U32Array* a, u32 dst, u32 start, u32 end);
-static void u32array_reserve(U32Array* a, Mem mem, u32 addl);
-static void u32array_free(U32Array* a, Mem mem);
+void array_init(Array(T)* a, T* nullable storage, usize storagesize)
+  // Initializes a with optional initial caller-managed storage
 
-DEF_ARRAY_TYPE(PtrArray, void*)
-static void ptrarray_init(PtrArray* a, void* nullable storage, usize storagesize);
-static void* ptrarray_at(PtrArray* a, u32 index);
-static void* ptrarray_at_safe(PtrArray* a, u32 index);
-static bool ptrarray_push(PtrArray* a, Mem mem, void* value);
-static void ptrarray_remove(PtrArray* a, u32 start, u32 len);
-static void ptrarray_move(PtrArray* a, u32 dst, u32 start, u32 end);
-static void ptrarray_reserve(PtrArray* a, Mem mem, u32 addl);
-static void ptrarray_free(PtrArray* a, Mem mem);
+void array_clear(Array(T)* a)
+  // sets len=0
 
+void array_free(Array(T)* a)
+  // If a->v is on the memory heap, calls memfree
+
+T array_at(Array(T)* a, u32 index)      // range assertion + a->v[index]
+T array_at_safe(Array(T)* a, u32 index) // range safecheck + a->v[index]
+
+bool array_push(Array(T)* a, T value)
+  // Appends one value to the end of a.
+  // Returns false on overflow or allocation failure.
+
+bool array_append(Array(T)* a, const T* src, u32 len)
+  // Appends len number of values to the end of a.
+  // Returns false on overflow or allocation failure.
+
+void array_remove(Array(T)* a, u32 start, u32 len)
+  // Removes the chunk [start,start+len)
+
+void array_move(Array(T)* a, u32 dst, u32 start, u32 end)
+  // Moves the chunk [start,end) to dst, pushing [dst,a->len) to the end.
+
+bool array_reserve(Array(T)* a, u32 addl)
+  // Ensures that there's at least addl available additional capacity.
+  // Returns false on overflow or allocation failure.
+
+bool array_fill(Array(T)* a, u32 start, const T fillvalue, u32 len)
+  // Sets a[start:len] to len copies of fillvalue
+  // If there's not enough room, dst grows; false is returned if allocation failed.
+
+bool array_splice(Array(T)* a, u32 start, u32 removelen,
+                  u32 insertlen, const T* nullable insertvals);
+  // Changes the contents of an array by removing or replacing existing elements
+  // and/or adding new elements.
+  // insertvals must not refer to contents of a (use array_move instead.)
+  // If insertvals is NULL and insertlen > 0, the corresponding region is zeroed.
+  // If you want to replace some elements with a repeat value that is not zero,
+  // use array_fill.
+
+#endif // API_DOC
+
+typedef Array(void)  VoidArray;
+typedef Array(void*) PtrArray;
+typedef Array(u32)   U32Array;
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal
@@ -68,23 +80,104 @@ static void ptrarray_free(PtrArray* a, Mem mem);
 // 2^31-1 = 2 147 483 647 = I32_MAX
 #define ARRAY_CAP_MAX 0x7fffffff
 
-bool _array_grow(Array* a, Mem, usize elemsize, u32 addl);
-bool _array_reserve(Array* a, Mem, u32 addl, usize elemsize);
-void _array_remove(Array* a, u32 elemsize, u32 start, u32 len);
-void _array_free(Array* a, Mem m, usize elemsize);
-void* nullable _array_push(Array* a, Mem m, usize elemsize);
+#define array_make(ARRAY, storage, storagesize) \
+  ( ASSERT_U32SIZE((storagesize)/_ARRAY_ESIZE((ARRAY*)0)), \
+    (ARRAY){ .v=(storage), .cap=(u32)((storagesize)/_ARRAY_ESIZE((ARRAY*)0)), .ext=true } )
 
-inline static void _array_init(
-  Array* a, u32 elemsize, void* nullable storage, usize storagesize)
+#define array_init(a, storage, storagesize) \
+  ( ASSERT_U32SIZE((storagesize)/_ARRAY_ESIZE(a)), \
+    (a)->v = (storage), (a)->cap = (u32)((storagesize)/_ARRAY_ESIZE(a)), (a)->ext=true )
+
+#define array_clear(a) ((a)->len = 0)
+
+#define array_free(a) \
+  ( ((a)->v && !(a)->ext) ? \
+    memfree((a)->v, (usize)(a)->cap * _ARRAY_ESIZE(a)) : ((void)0) )
+
+#define array_at(a, index)      (assert((index) < (a)->len), (a)->v[(index)])
+#define array_at_safe(a, index) (safecheck((index) < (a)->len), (a)->v[(index)])
+
+#define array_push(a, value) ( \
+  ( UNLIKELY((a)->len == (a)->cap) && \
+    UNLIKELY(!_array_grow((VoidArray*)(a), mem_ctx(), _ARRAY_ESIZE(a), 1)) ) ? false : \
+  ( ((a)->v[(a)->len++] = value), true ) )
+
+#define array_append(a, src, len) ({ \
+  const __typeof__(*(a)->v)* __srcv = (src); /* catch incompatible types */ \
+  _array_append((VoidArray*)(a), _ARRAY_ESIZE(a), __srcv, (len)); })
+
+#define array_remove(a, start, len) \
+  _array_remove((VoidArray*)(a), _ARRAY_ESIZE(a), (start), (len))
+
+#define array_move(a, dst, start, end) \
+  _array_move(_ARRAY_ESIZE(a), (a)->v, (dst), (start), (end))
+
+#define array_reserve(a, addl) \
+  _array_reserve((VoidArray*)(a), mem_ctx(), (addl), _ARRAY_ESIZE(a))
+
+#define array_fill(a, start, fillvalue, len) ({ \
+  const __typeof__(*(a)->v) __fillv = (fillvalue); \
+  _array_fill((VoidArray*)(a), _ARRAY_ESIZE(a), (start), &__fillv, (len)); })
+
+#define array_splice(a, start, removelen, insertlen, insertvals) ({ \
+  const __typeof__(*(a)->v)* __srcv = (insertvals); /* catch incompatible types */ \
+  _array_splice((VoidArray*)(a), _ARRAY_ESIZE(a), (start),(removelen),(insertlen), __srcv); \
+})
+
+
+// DEF_ARRAY_VENEER defines a bunch of inline functions on top of the array_* macros,
+// useful for better type feedback & IDE integration, at the expense of code complexity.
+#define DEF_ARRAY_VENEER(ARRAY, T, PREFIX) \
+  inline static ARRAY PREFIX##make(T* nullable storage, usize storagesize) { \
+    return array_make(ARRAY, storage, storagesize); } \
+  inline static void PREFIX##init(ARRAY* a, T* nullable storage, usize storagesize) { \
+    array_init(a, storage, storagesize); } \
+  inline static void PREFIX##clear(ARRAY* a) { \
+    array_clear(a); } \
+  inline static void PREFIX##free(ARRAY* a) { \
+    array_free(a); } \
+  inline static T PREFIX##at(ARRAY* a, u32 index) { \
+    return array_at(a, index); } \
+  inline static T PREFIX##at_safe(ARRAY* a, u32 index) { \
+    return array_at_safe(a, index); } \
+  inline static bool PREFIX##push(ARRAY* a, T value) { \
+    return array_push(a, value); } \
+  inline static bool PREFIX##append(ARRAY* a, const T* src, u32 len) { \
+    return array_append(a, src, len); } \
+  inline static void PREFIX##remove(ARRAY* a, u32 start, u32 len) { \
+    array_remove(a, start, len); } \
+  inline static void PREFIX##move(ARRAY* a, u32 dst, u32 start, u32 end) { \
+    array_move(a, dst, start, end); } \
+  inline static bool PREFIX##reserve(ARRAY* a, u32 addl) { \
+    return array_reserve(a, addl); } \
+  inline static bool PREFIX##fill(ARRAY* a, u32 start, const T fillvalue, u32 len) { \
+    return array_fill(a, start, fillvalue, len); } \
+  inline static bool PREFIX##splice( \
+    ARRAY* a, u32 start, u32 removelen, u32 insertlen, const T* nullable insertvals) { \
+    return array_splice(a, start, removelen, insertlen, insertvals); }
+
+
+// element size of array a
+#define _ARRAY_ESIZE(a) sizeof(*(a)->v)
+
+// implementation prototypes
+bool _array_grow(VoidArray* a, Mem, usize elemsize, u32 addl);
+bool _array_reserve(VoidArray* a, Mem, u32 addl, usize elemsize);
+void _array_remove(VoidArray* a, u32 elemsize, u32 start, u32 len);
+void _array_free(VoidArray* a, Mem, usize elemsize);
+void* nullable _array_push(VoidArray* a, Mem, usize elemsize);
+bool _array_append(VoidArray* a, usize elemsize, const void* restrict src, u32 len);
+bool _array_fill_memset(VoidArray* a, u32 start, int c, u32 len);
+bool _array_fill_memcpy(VoidArray* a, usize elemsize, u32 start, const void* p, u32 len);
+bool _array_splice(VoidArray *a, usize elemsize,
+  u32 start, u32 removelen, u32 insertlen, const void* restrict nullable insertvals);
+
+inline static bool _array_fill(
+  VoidArray* a, usize elemsize, u32 start, const void* fillvalp, u32 len)
 {
-  if (storagesize == 0) {
-    memset(a, 0, sizeof(Array));
-  } else {
-    assertnotnull(storage);
-    assert(storagesize/elemsize <= ARRAY_CAP_MAX);
-    assert(storagesize > 0);
-    *a = (Array){ .v=storage, .cap=storagesize/elemsize, .ext=true };
-  }
+  if (elemsize == 1)
+    return _array_fill_memset(a, start, *(const u8*)fillvalp, len);
+  return _array_fill_memcpy(a, elemsize, start, fillvalp, len);
 }
 
 // _array_move moves the chunk [src,src+len) to index dst. For example:
@@ -99,79 +192,27 @@ inline static void _array_init(
   ((start) > (dst)) ? (f)(args, (dst), (start), (end)) : \
   (f)(args, (start), (end), (dst)) )
 
-// arotate rotates the order of v in the range [first,last) in such a way
-// that the element pointed to by "mid" becomes the new "first" element.
-// Assumes first <= mid < last.
-#define arotate(elemsize, v, first, mid, last) (                          \
-  (elemsize) == 4 ? _arotate32((u32* const)(v), (first), (mid), (last)) : \
-  (elemsize) == 8 ? _arotate64((u64* const)(v), (first), (mid), (last)) : \
-  _arotatemem((elemsize), (v), (first), (mid), (last)) )
+// // arotate rotates the order of v in the range [first,last) in such a way
+// // that the element pointed to by "mid" becomes the new "first" element.
+// // Assumes first <= mid < last.
+// #define arotate(elemsize, v, first, mid, last) (                          \
+//   (elemsize) == 4 ? _arotate32((u32* const)(v), (first), (mid), (last)) : \
+//   (elemsize) == 8 ? _arotate64((u64* const)(v), (first), (mid), (last)) : \
+//   _arotatemem((elemsize), (v), (first), (mid), (last)) )
 void _arotatemem(u32 stride, void* v, u32 first, u32 mid, u32 last);
 void _arotate32(u32* const v, u32 first, u32 mid, u32 last);
 void _arotate64(u64* const v, u32 first, u32 mid, u32 last);
-
-//———————————————————————————————————————————————————————————————————————————————————————
-// typed array veneer
-
-#define DEF_ARRAY_IMPL(ARRAY, T, PREFIX) \
-  inline static void PREFIX##_init(ARRAY* a, void* nullable storage, usize size) { \
-    _array_init((Array*)a, sizeof(T), storage, size); \
-  } \
-  inline static void PREFIX##_free(ARRAY* a, Mem m) { \
-    _array_free((Array*)a, m, sizeof(T)); \
-  } \
-  inline static T PREFIX##_at(ARRAY* a, u32 index) { return a->v[index]; } \
-  inline static T PREFIX##_at_safe(ARRAY* a, u32 index) { \
-    safecheck(index < a->len); \
-    return a->v[index]; \
-  } \
-  inline static bool PREFIX##_push(ARRAY* a, Mem mem, T value) { \
-    if (a->len == a->cap && UNLIKELY(!_array_grow((Array*)a, mem, sizeof(T), 1))) \
-      return false; \
-    a->v[a->len++] = value; \
-    return true; \
-  } \
-  inline static void PREFIX##_remove(ARRAY* a, u32 start, u32 len) { \
-    return _array_remove((Array*)a, sizeof(T), start, len); \
-  } \
-  inline static void PREFIX##_move(ARRAY* a, u32 dst, u32 start, u32 end) { \
-    _array_move(sizeof(T), a->v, dst, start, end); \
-  } \
-  inline static void PREFIX##_reserve(ARRAY* a, Mem mem, u32 addl) { \
-    _array_reserve((Array*)a, mem, addl, sizeof(T)); \
-  } \
-// end DEF_ARRAY_IMPL
-
-#define DEF_ARRAY(ARRAY, T, PREFIX) \
-  DEF_ARRAY_TYPE(ARRAY, T) \
-  DEF_ARRAY_IMPL(ARRAY, T, PREFIX)
-
-DEF_ARRAY_IMPL(U32Array, u32, u32array)
-DEF_ARRAY_IMPL(PtrArray, void*, ptrarray)
 
 //———————————————————————————————————————————————————————————————————————————————————————
 END_INTERFACE
 #ifdef ARRAY_IMPLEMENTATION
 
 
-void _array_free(Array* a, Mem m, usize elemsize) {
-  if (a->v && a->ext == 0)
-    mem_free(m, a->v, (usize)a->cap * elemsize);
-}
-
-
-void* nullable _array_push(Array* a, Mem m, usize elemsize) {
-  if (a->len == a->cap && UNLIKELY(!_array_grow(a, m, elemsize, 1)))
-    return NULL;
-  return a->v + (u32)elemsize*(a->len++);
-}
-
-
-void _array_remove(Array* a, u32 elemsize, u32 start, u32 len) {
+void _array_remove(VoidArray* a, u32 elemsize, u32 start, u32 len) {
   if (len == 0)
     return;
-  safecheckf(start+len <= a->len, "end=%u > len=%u", start+len, a->len);
-  if (start+len < a->len) {
+  safecheckf(start + len <= a->len, "out of bounds (%u)", start + len);
+  if (start + len < a->len) {
     void* dst = a->v + elemsize*start;
     void* src = dst + elemsize*len;
     memmove(dst, src, elemsize*(a->len - start - len));
@@ -180,7 +221,7 @@ void _array_remove(Array* a, u32 elemsize, u32 start, u32 len) {
 }
 
 
-static u32 calc_initcap(Array* a, Mem m, usize elemsize, u32 addl) {
+static u32 calc_initcap(VoidArray* a, Mem m, usize elemsize, u32 addl) {
   const u32 min_init_cap = (u32)( sizeof(void*) * 8 / elemsize );
   if (addl > ARRAY_CAP_MAX)
     return U32_MAX;
@@ -188,7 +229,7 @@ static u32 calc_initcap(Array* a, Mem m, usize elemsize, u32 addl) {
 }
 
 
-static u32 calc_newcap(Array* a, Mem m, usize elemsize, u32 addl) {
+static u32 calc_newcap(VoidArray* a, Mem m, usize elemsize, u32 addl) {
   // growth scheme inspired by folly:
   //   https://github.com/facebook/folly/blob/5bbfb175cb8fc7edab442f06105d4681654732e9
   //   /folly/docs/FBVector.md#memory-handling
@@ -221,11 +262,8 @@ static usize calc_newsize(u32 newcap, usize elemsize) {
 }
 
 
-bool _array_grow(Array* a, Mem m, usize elemsize, u32 addl) {
+bool _array_grow(VoidArray* a, Mem m, usize elemsize, u32 addl) {
   assert(addl > 0);
-
-  dlog("grow array %p (addl %u)", a, addl);
-
   usize newsize;
   void* newp;
 
@@ -260,14 +298,95 @@ bool _array_grow(Array* a, Mem m, usize elemsize, u32 addl) {
   return true;
 }
 
-bool _array_reserve(Array* a, Mem m, u32 addl, usize elemsize) {
+
+void* nullable _array_push(VoidArray* a, Mem m, usize elemsize) {
+  if (a->len == a->cap && UNLIKELY(!_array_grow(a, m, elemsize, 1)))
+    return NULL;
+  return a->v + (u32)elemsize*(a->len++);
+}
+
+
+bool _array_reserve(VoidArray* a, Mem m, u32 addl, usize elemsize) {
   u32 len;
   if (check_add_overflow(a->len, addl, &len))
-    return false;
-  if (len >= a->cap && UNLIKELY(!_array_grow(a, m, elemsize, addl)))
-    return false;
+    return err_overflow;
+  if (len >= a->cap)
+    return _array_grow(a, m, elemsize, addl);
   return true;
 }
+
+
+bool _array_append(VoidArray* a, usize elemsize, const void* restrict src, u32 len) {
+  u32 avail = a->cap - a->len;
+  if (avail < len && UNLIKELY(!_array_grow(a, mem_ctx(), elemsize, len - avail)))
+    return false;
+  // src must not be part of a->v, or behavior of memcpy is undefined
+  assert(src < a->v || src >= a->v + a->cap * elemsize);
+  memcpy(a->v + (a->len * elemsize), src, len * elemsize);
+  a->len += len;
+  return true;
+}
+
+static bool _array_prepare_insert(VoidArray* a, usize elemsize, u32 start, u32 len) {
+  safecheckf(start == 0 || start <= a->len, "out of bounds (%u)", start);
+  u32 avail = a->cap - start;
+  return avail >= len || _array_grow(a, mem_ctx(), elemsize, len - avail);
+}
+
+bool _array_fill_memset(VoidArray* a, u32 start, int c, u32 len) {
+  if UNLIKELY(!_array_prepare_insert(a, 1, start, len))
+    return false;
+  memset(a->v + start, c, len);
+  a->len = MAX(a->len, start + len);
+  return true;
+}
+
+bool _array_fill_memcpy(VoidArray* a, usize elemsize, u32 start, const void* p, u32 len) {
+  if UNLIKELY(!_array_prepare_insert(a, elemsize, start, len))
+    return false;
+  void* dst = a->v + (start * elemsize);
+  void* end = a->v + ((start + len) * elemsize);
+  for (; dst < end; dst += elemsize)
+    memcpy(dst, p, elemsize);
+  a->len = MAX(a->len, start + len);
+  return true;
+}
+
+
+bool _array_splice(VoidArray *a, usize elemsize,
+  u32 start, u32 removelen, u32 insertlen, const void* nullable restrict insertvals)
+{
+  u32 removeend = start + removelen;
+  safecheckf(removeend <= a->len, "out of bounds (%u)", removelen);
+
+  if UNLIKELY(!_array_prepare_insert(a, elemsize, start, insertlen))
+    return false;
+
+  if (a->len > removeend) {
+    // move forward items which are past the removal range.
+    // e.g. splice([1 2 3 4 5], 1, 2): [1 2 3 4 5] => [1 _ _ 4 5] => [1 4 5 _ _]
+    void* dst = a->v + ((start + insertlen) * elemsize);
+    void* src = a->v + (removeend * elemsize);
+    usize nbytes = (a->len - removeend) * elemsize;
+    memmove(dst, src, nbytes);
+  }
+
+  if (insertlen) {
+    void* dst = a->v + (start * elemsize);
+    if (insertvals == NULL) {
+      memset(dst, 0, insertlen * elemsize);
+    } else {
+      // insertvals must not be part of a->v, or behavior of memcpy is undefined.
+      // Note: Use array_move to shuffle around items inside an array.
+      assert(insertvals < a->v || insertvals >= a->v + (a->cap * elemsize));
+      memcpy(dst, insertvals, insertlen * elemsize);
+    }
+  }
+
+  a->len += insertlen - removelen;
+  return true;
+}
+
 
 void _arotatemem(u32 stride, void* v, u32 first, u32 mid, u32 last) {
   assert(first <= mid); // if equal (zero length), do nothing
@@ -304,4 +423,6 @@ void _arotatemem(u32 stride, void* v, u32 first, u32 mid, u32 last) {
 DEF_AROTATE(_arotate32, u32)
 DEF_AROTATE(_arotate64, u64)
 
+
+//———————————————————————————————————————————————————————————————————————————————————————
 #endif // ARRAY_IMPLEMENTATION

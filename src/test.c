@@ -1,5 +1,7 @@
 // test -- lightweight unit testing
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 #pragma once
 #ifndef CO_IMPL
@@ -64,9 +66,7 @@ typedef struct CoTesting CoTesting;
 END_INTERFACE
 #if defined(TEST_IMPLEMENTATION) && CO_TESTING_ENABLED
 
-#include "str.h"
-#include "path.h"
-#include "time.h"
+#include "path.c"
 
 #ifndef CO_NO_LIBC
   #include <unistd.h>  // isatty

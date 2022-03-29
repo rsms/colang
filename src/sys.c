@@ -1,11 +1,84 @@
-#include "coimpl.h"
-#include "sys.h"
+// host system functions, like filesystem access
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
+#pragma once
+#ifndef CO_IMPL
+  #include "coimpl.h"
+  #define SYS_IMPLEMENTATION
+#endif
+BEGIN_INTERFACE
+//———————————————————————————————————————————————————————————————————————————————————————
+
+typedef uintptr         FSDir;        // file directory handle
+typedef struct FSDirEnt FSDirEnt;     // directory entry
+typedef u8              FSDirEntType; // type of directory entry
+
+struct FSDirEnt {
+  isize        ino;       // inode number
+  FSDirEntType type;      // type of file (not supported by all filesystems; 0 if unknown)
+  char         name[256]; // filename (null terminated)
+  u16          namlen;    // length of d_name (not including terminating null byte)
+};
+
+enum FSDirEntType {
+  FSDirEnt_UNKNOWN = 0,  // unknown
+  FSDirEnt_FIFO    = 1,  // named pipe or FIFO
+  FSDirEnt_CHR     = 2,  // character device
+  FSDirEnt_DIR     = 4,  // directory
+  FSDirEnt_BLK     = 6,  // block device
+  FSDirEnt_REG     = 8,  // regular file
+  FSDirEnt_LNK     = 10, // symbolic link
+  FSDirEnt_SOCK    = 12, // local-domain socket
+  FSDirEnt_WHT     = 14, // BSD whiteout
+} END_ENUM(FSDirEntType);
+
+// sys_getcwd populates buf with the current working directory including a nul terminator.
+// If bufsize is not enough, an error is returned.
+error sys_getcwd(char* buf, usize bufsize);
+
+error sys_dir_open(const char* filename, FSDir* result);
+error sys_dir_open_fd(int fd, FSDir* result);
+error sys_dir_read(FSDir, FSDirEnt* result); // returns 1 on success, 0 on EOF
+error sys_dir_close(FSDir);
+
+// sys_set_exepath sets the path of the current executable.
+// If the path is relative, it is resolved in relation to cwd.
+// Returns err_name_too_long if path is too long.
+error sys_set_exepath(const char* path);
+
+// sys_exepath returns the absolute path of the current executable
+const char* sys_exepath();
+
+#ifndef CO_NO_LIBC
+  // sys_stacktrace_fwrite writes a stacktrace (aka backtrace) to fp.
+  // offset: number of stack frames to skip (starting at the top.)
+  // limit: max number of stack frames to print.
+  // Returns the approximate number of lines written to fp.
+  int sys_stacktrace_fwrite(FILE* fp, int offset, int limit);
+#endif
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+END_INTERFACE
+#ifdef SYS_IMPLEMENTATION
+
+#include "path.c"
+#include "mem.c"
 
 #ifndef CO_NO_LIBC
   #include <errno.h>
   #include <dirent.h>
   #include <unistd.h>
+  #include <execinfo.h> // backtrace*
+  #include <stdlib.h> // free, realpath
+  #include <limits.h> // PATH_MAX
+  #if defined(__MACH__) && defined(__APPLE__)
+    #include <mach-o/dyld.h> // _NSGetExecutablePath
+  #endif
 #endif
+
 
 error sys_getcwd(char* buf, usize bufcap) {
   #ifdef CO_NO_LIBC
@@ -23,14 +96,47 @@ error sys_getcwd(char* buf, usize bufcap) {
   #endif
 }
 
+
+int sys_stacktrace_fwrite(FILE* fp, int offset, int limit) {
+  offset++; // always skip the top frame for this function
+
+  if (limit < 1)
+    return 0;
+
+  void* buf[128];
+  int framecount = backtrace(buf, countof(buf));
+  if (framecount < offset)
+    return 0;
+
+  char** strs = backtrace_symbols(buf, framecount);
+  if (strs == NULL) {
+    // Memory allocation failed;
+    // fall back to backtrace_symbols_fd, which doesn't respect offset.
+    // backtrace_symbols_fd writes entire backtrace to a file descriptor.
+    // Make sure anything buffered for fp is written before we write to its fd
+    fflush(fp);
+    backtrace_symbols_fd(buf, framecount, fileno(fp));
+    return 1;
+  }
+
+  limit = MIN(offset + limit, framecount);
+  for (int i = offset; i < limit; ++i) {
+    fwrite(strs[i], strlen(strs[i]), 1, fp);
+    fputc('\n', fp);
+  }
+
+  free(strs);
+  return framecount - offset;
+}
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
 // dirs
 #ifdef CO_NO_LIBC
-
 error sys_dir_open(const char* filename, FSDir* result) { return err_not_supported; }
 error sys_dir_open_fd(int fd, FSDir* result) { return err_not_supported; }
 error sys_dir_close(FSDir d) { return err_invalid; }
 error sys_dir_read(FSDir d, FSDirEnt* ent) { return err_invalid; }
-
 #else // defined(CO_NO_LIBC)
 
 error sys_dir_open(const char* filename, FSDir* result) {
@@ -89,3 +195,105 @@ error sys_dir_read(FSDir d, FSDirEnt* ent) {
 }
 
 #endif // !defined(CO_NO_LIBC)
+//———————————————————————————————————————————————————————————————————————————————————————
+// exepath
+
+static char exepath_buf[1024];
+static const char* exepath = NULL;
+
+
+error sys_set_exepath(const char* path) {
+  usize cwdlen = 0;
+
+  if (!path_isabs(path)) {
+    if (sys_getcwd(exepath_buf, sizeof(exepath_buf)) != 0)
+      return err_name_too_long;
+    cwdlen = strlen(exepath_buf);
+    exepath_buf[cwdlen++] = PATH_SEPARATOR;
+  }
+
+  usize pathlen = strlen(path);
+  if (pathlen + cwdlen > sizeof(exepath_buf)-1)
+    return err_name_too_long;
+
+  memcpy(&exepath_buf[cwdlen], path, pathlen);
+  exepath_buf[cwdlen + pathlen] = 0;
+  exepath = exepath_buf;
+  return 0;
+}
+
+#if !defined(CO_NO_LIBC) && defined(__MACH__) && defined(__APPLE__)
+  // [from man 3 dyld]
+  // _NSGetExecutablePath() copies the path of the main executable into the buffer buf.
+  // The bufsize parameter should initially be the size of the buffer.
+  // This function returns 0 if the path was successfully copied, and *bufsize is left
+  // unchanged. It returns -1 if the buffer is not large enough, and *bufsize is set to
+  // the size required.
+  // Note that _NSGetExecutablePath() will return "a path" to the executable not a
+  // "real path" to the executable.
+  // That is, the path may be a symbolic link and not the real file.
+  // With deep directories the total bufsize needed could be more than MAXPATHLEN.
+
+  const char* sys_exepath() {
+    if (exepath)
+      return exepath;
+    char* path = exepath_buf;
+    u32 len = sizeof(exepath_buf);
+
+    while (1) {
+      if (_NSGetExecutablePath(path, &len) == 0) {
+        path = realpath(path, NULL); // copies path with libc allocator
+        break;
+      }
+      if (len >= PATH_MAX) {
+        // Don't keep growing the buffer at this point.
+        // _NSGetExecutablePath may be failing for other reasons.
+        path[0] = '/';
+        path[1] = 0;
+        break;
+      }
+      // not enough space in path
+      if (path == exepath_buf) {
+        path = mem_alloc(mem_mkalloc_libc(), len*2);
+      } else {
+        u32 newlen;
+        if (check_mul_overflow(len, 2u, &newlen))
+          break;
+        path = mem_resize(mem_mkalloc_libc(), path, len, (usize)newlen);
+      }
+      len *= 2;
+    }
+
+    if (path == NULL || strlen(path) == 0)
+      path = "/";
+
+    if (exepath == NULL)
+      exepath = path;
+    return exepath;
+  }
+
+#else
+  // not implemented for current target
+  const char* sys_exepath() {
+    if (exepath)
+      return exepath;
+    #ifdef WIN32
+      return "C:\\";
+    #else
+      return "/";
+    #endif
+  }
+
+  // Linux: readlink /proc/self/exe
+  // FreeBSD: sysctl CTL_KERN KERN_PROC KERN_PROC_PATHNAME -1
+  // FreeBSD if it has procfs: readlink /proc/curproc/file (FreeBSD doesn't have procfs by default)
+  // NetBSD: readlink /proc/curproc/exe
+  // DragonFly BSD: readlink /proc/curproc/file
+  // Solaris: getexecname()
+  // Windows: GetModuleFileName() with hModule = NULL
+  // From https://stackoverflow.com/a/1024937
+#endif
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+#endif // SYS_IMPLEMENTATION

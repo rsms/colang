@@ -1,5 +1,7 @@
 // Unicode text
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 #pragma once
 #ifndef CO_IMPL
@@ -14,7 +16,7 @@ typedef i32 Rune;
 static const Rune RuneErr  = 0xFFFD; // Unicode replacement character
 static const Rune RuneSelf = 0x80;
   // characters below RuneSelf are represented as themselves in a single byte.
-static const u32 UTF8Max = 4; // Maximum number of bytes of a UTF8-encoded char.
+#define UTF8Max ((Rune)4) // Maximum number of bytes of a UTF8-encoded char.
 
 #define ascii_isalpha(c)    ( ((u32)(c) | 32) - 'a' < 26 )                  /* A-Za-z */
 #define ascii_isdigit(c)    ( ((u32)(c) - '0') < 10 )                       /* 0-9 */
@@ -31,7 +33,6 @@ Rune utf8_decode(const u8* src, usize srclen, u32* width_out);
 END_INTERFACE
 #ifdef UNICODE_IMPLEMENTATION
 
-#include "coimpl.h"
 #include "test.c"
 
 Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
@@ -43,23 +44,20 @@ Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
   if ((b >> 5) == 0x6) {
     *width_out = 2;
     return len < 2 ? RuneErr
-                   : ((b << 6) & 0x7ff) +
-                     ((buf[1]) & 0x3f);
-  } else if ((b >> 4) == 0xE) {
+                   : ((b << 6) & 0x7ff) + ((buf[1]) & 0x3f);
+  }
+  if ((b >> 4) == 0xE) {
     *width_out = 3;
     return len < 3 ? RuneErr
-                  : ((b << 12) & 0xffff) +
-                    ((buf[1] << 6) & 0xfff) +
-                    ((buf[2]) & 0x3f);
-  } else if ((b >> 3) == 0x1E) {
+                  : ((b << 12) & 0xffff) + ((buf[1] << 6) & 0xfff) + ((buf[2]) & 0x3f);
+  }
+  if ((b >> 3) == 0x1E) {
     *width_out = 4;
     return len < 4 ? RuneErr
-                   : ((b << 18) & 0x1fffff) +
-                     ((buf[1] << 12) & 0x3ffff) +
-                     ((buf[2] << 6) & 0xfff) +
-                     ((buf[3]) & 0x3f);
+                   : ((b << 18) & 0x1fffff) + ((buf[1] << 12) & 0x3ffff) +
+                     ((buf[2] << 6) & 0xfff) + ((buf[3]) & 0x3f);
   }
-  *width_out = 1;
+  *width_out = 1; // make naive caller advance in case it doesn't check error
   return RuneErr;
 }
 

@@ -107,6 +107,9 @@ typedef struct Unresolved {
 #define nexttok(p) ScannerNext((Scanner*)(p))
 #define currpos(p) ScannerPos((Scanner*)(p))
 
+#define FMTNODE(n,bufno) \
+  fmtnode(n, p->build->tmpbuf[bufno], sizeof(p->build->tmpbuf[bufno]))
+
 
 inline static Scanner pscan_state_save(const Parser* p) {
   return *(Scanner*)(p);
@@ -141,18 +144,11 @@ static const char* _node_type_name(Node* n) {
 // If n is not NULL, use source location of n instead of current location.
 //
 static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
-  Mem mem = p->build->mem;
   bool autopos = pos == NoPos;
   if (autopos)
     pos = currpos(p);
 
-  va_list ap;
-  va_start(ap, format);
-  Str msg = str_make(mem, 64);
-  if (strlen(format) > 0)
-    msg = str_appendfmtv(msg, format, ap);
-  va_end(ap);
-
+  // select token name
   const char* tokname;
   if (p->tok == TNone) {
     tokname = "end of input";
@@ -174,32 +170,48 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
     tokname = TokName(p->tok);
   }
 
-  Str stmp = NULL;
-  if (msg->len == 0) {
-    stmp = msg;
-    msg = str_make_fmt(mem, "unexpected %s", tokname);
-  } else if (str_hasprefix(msg, "expecting ")) {
-    stmp = msg;
-    const char* sep = (tokname[0] == ';' || tokname[0] == ',') ? " " : ", ";
-    msg = str_make_fmt(mem, "unexpected %s%s%s", tokname, sep, msg->p);
-  } else if (
-    str_hasprefix(msg, "after ") ||
-    str_hasprefix(msg, "in ") ||
-    str_hasprefix(msg, "at ")
-  ) {
-    stmp = msg;
-    msg = str_make_fmt(mem, "unexpected %s %s", tokname, msg->p);
-  }
-  if (stmp)
-    str_free(stmp);
+  // message buffer
+  char msgbuf[2048];
+  ABuf msg = abuf_make(msgbuf, sizeof(msgbuf));
 
-  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msg->p);
+  // add caller message
+  if (strlen(format) > 0) {
+    va_list ap;
+    va_start(ap, format);
+    abuf_fmtv(&msg, format, ap);
+    va_end(ap);
+  }
+
+  // add context message
+  usize formatlen = strlen(format);
+  va_list ap;
+  va_start(ap, format);
+  if (formatlen == 0) {
+    abuf_fmt(&msg, "unexpected %s", tokname);
+  } else {
+    if (
+      shasprefix(format, formatlen, "expecting ") ||
+      shasprefix(format, formatlen, "after ") ||
+      shasprefix(format, formatlen, "in ") ||
+      shasprefix(format, formatlen, "at ") )
+    {
+      const char* sep = (tokname[0] == ';' || tokname[0] == ',') ? " " : ", ";
+      abuf_fmt(&msg, "unexpected %s%s", tokname, sep);
+    }
+    abuf_fmtv(&msg, format, ap);
+  }
+  va_end(ap);
+  abuf_terminate(&msg);
+  if (msg.len == sizeof(msgbuf))
+    dlog("warning: msgbuf too small");
+
+  // report
+  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msgbuf);
 
   #ifdef DEBUG_PANIC_ON_PARSE_ERROR
-  panic("DEBUG_PANIC_ON_PARSE_ERROR %s", msg->p);
+  panic("DEBUG_PANIC_ON_PARSE_ERROR %s", msgbuf);
   #endif
 
-  str_free(msg);
   return pos;
 }
 
@@ -349,7 +361,7 @@ static void scopestackGrow(Parser* p) {
         Sym key = (Sym)p->scopestack.ptr[i];
         i--;
         Node* n = (Node*)p->scopestack.ptr[i];
-        fprintf(fp, "  %s => %s %s\n", key, nodename(n), fmtnode(n));
+        fprintf(fp, "  %s => %s %s\n", key, nodename(n), FMTNODE(n,0));
       }
     }
   }
@@ -365,7 +377,7 @@ static void scopestackCheckUnused(Parser* p) {
     Sym key = (Sym)p->scopestack.ptr[i];
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
-    //dlog(">>  %s => %s %s", key, nodename(n), fmtnode(n));
+    //dlog(">>  %s => %s %s", key, nodename(n), FMTNODE(n,0));
     if UNLIKELY(key != kSym__ && is_LocalNode(n) && ((LocalNode*)n)->nrefs == 0) {
       // TODO: combine the error message with that of package-level reporter
       LocalNode* local = (LocalNode*)n;
@@ -562,7 +574,7 @@ static Node* presolve_id(Parser* p, IdNode* id) {
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
       dlog("lookup \"%s\" => %s %s (%p)",
-        id->name, nodename(target), fmtnode(target), target);
+        id->name, nodename(target), FMTNODE(target,0), target);
     } else {
       dlog("lookup \"%s\" => (not found; unresolved)", id->name);
     }
@@ -585,7 +597,7 @@ static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
   #ifdef DEBUG_LOOKUPSYM
     if (target) {
       dlog("lookup type \"%s\" => %s %s (%p)",
-        tname->name, nodename(target), fmtnode(target), target);
+        tname->name, nodename(target), FMTNODE(target,0), target);
     } else {
       dlog("lookup type \"%s\" => (not found; unresolved)", tname->name);
     }
@@ -639,9 +651,9 @@ static Type* expectType(Parser* p, Node* nullable n) {
   if (LIKELY(n == NULL || is_Type(n)))
     return (Type*)n;
   #ifdef DEBUG
-    syntaxerrp(p, n->pos, "expected a type; got %s (N%s)", fmtnode(n), nodename(n));
+    syntaxerrp(p, n->pos, "expected a type; got %s (N%s)", FMTNODE(n,0), nodename(n));
   #else
-    syntaxerrp(p, n->pos, "expected a type; got %s", fmtnode(n));
+    syntaxerrp(p, n->pos, "expected a type; got %s", FMTNODE(n,0));
   #endif
   return (Type*)(n ? n : bad(p));
 }
@@ -749,7 +761,7 @@ static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
       // e.g. "x &Foo = a"  (fix: "x &Foo = &a")
       syntaxerrp(p, init->pos, "cannot initialize reference with value");
       b_notef(p->build, NodePosSpan(init),
-        "try referencing the value: &%s", fmtnode(init));
+        "try referencing the value: &%s", FMTNODE(init,0));
     }
     return;
   }
@@ -1045,7 +1057,7 @@ static Node* nullable PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left
     case NSelector: MUSTTAIL return pAssignToSelector(p, e, fl, left);
     case NIndex:    MUSTTAIL return pAssignToBase(p, e, fl, left);
     default:
-      b_errf(p->build, NodePosSpan(left), "cannot assign to %s", fmtnode(left));
+      b_errf(p->build, NodePosSpan(left), "cannot assign to %s", FMTNODE(left,0));
       Tok stoplist[] = { TSemi, 0 };
       advance(p, stoplist);
       return NULL;
@@ -1116,7 +1128,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
   // parse elements
   while (p->tok != TRBrack) {
     Expr* v = as_Expr(parse_next(p, PREC_LOWEST, fl));
-    exprarray_push(&n->a, p->build->mem, v);
+    array_push(&n->a, v);
     if (set_type && (!v->type || !b_typeeq(p->build, p->ctxtype, v->type)))
       set_type = false;
     switch (p->tok) {
@@ -1179,7 +1191,7 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   nexttok(p); // consume "["
 
   if (!is_Expr(left)) {
-    syntaxerr(p, "can not index %s (%s)", fmtnode(left), node_type_name(left));
+    syntaxerr(p, "can not index %s (%s)", FMTNODE(left,0), node_type_name(left));
     Tok stoplist[] = { TRBrack, 0 };
     advance(p, stoplist);
     want(p, TRBrack);
@@ -1281,7 +1293,7 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
       // not a ref type or a ref type of incompatible element type
       syntaxerrp(p, ref->pos,
         "cannot use expression of type %s&%s; expected type %s",
-        NodeIsConst(ref) ? "" : "mut", fmtnode(elemtype), fmtnode(p->ctxtype) );
+        NodeIsConst(ref) ? "" : "mut", FMTNODE(elemtype,0), FMTNODE(p->ctxtype,1) );
       return as_Node(ref);
     }
     // context type matches; can we use it?
@@ -1295,7 +1307,7 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
     // Target is a reference itself -- can't reference a reference!
     // Note: in C, the equivalent would be to take the address of a pointer, which in Co is
     // not a thing (even if it was, it would lead to too much confusion w/ eg "T&&" types.)
-    syntaxerrp(p, ref->pos, "cannot reference a reference (type %s)", fmtnode(elemtype));
+    syntaxerrp(p, ref->pos, "cannot reference a reference (type %s)", FMTNODE(elemtype,0));
     return as_Node(ref);
   }
 
@@ -1372,7 +1384,7 @@ parse_arg:
       goto err_pos_after_named;
   }
 
-  exprarray_push(&tuple->a, p->build->mem, arg);
+  array_push(&tuple->a, arg);
 
   switch (p->tok) {
     case TComma:
@@ -1540,7 +1552,7 @@ static Node* pStructType(Parser* p, PFlag fl, StructTypeNode* stype) {
     auto field = pField(p);
     NodeTransferUnresolved(stype, field);
     NodeTransferCustomInit(stype, field);
-    fieldarray_push(&stype->fields, p->build->mem, field);
+    array_push(&stype->fields, field);
 
     if (!got(p, TSemi))
       break;
@@ -1628,7 +1640,7 @@ static Expr* pBlock(Parser* p, PFlag fl) {
   Node* cn = NULL;
   while (p->tok != TNone && p->tok != TRBrace) {
     cn = parse_next_tuple(p, PREC_LOWEST, fl & ~PFlagRValue);
-    nodearray_push(&block->a, p->build->mem, cn);
+    array_push(&block->a, cn);
     NodeTransferUnresolved(block, cn);
     if (!got(p, TSemi))
       break;
@@ -1735,7 +1747,7 @@ static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 static Node* PIntLit(Parser* p, PFlag fl) {
   auto lit = mknode(p, IntLit);
   usize len = p->tokend - p->tokstart;
-  error err = strparse_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
+  error err = sparse_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
   if (err) {
     lit->ival = 0;
     if (err == err_overflow) {
@@ -1821,13 +1833,13 @@ static TupleNode* pParams(Parser* p) {
   // the case all args are just types e.g. "T1, T2, T3".
   Node* typeq_st[32];
   NodeArray typeq;
-  nodearray_init(&typeq, typeq_st, sizeof(typeq_st));
+  array_init(&typeq, typeq_st, sizeof(typeq_st));
 
   while (1) {
     auto local = mknode(p, Param);
     NodeSetConst(local);
     NodeSetUnused(local);
-    exprarray_push(&params->a, p->build->mem, as_Expr(local));
+    array_push(&params->a, as_Expr(local));
 
     if (p->tok == TId) {
       // name eg "x"
@@ -1838,7 +1850,7 @@ static TupleNode* pParams(Parser* p) {
         case TComma:
         case TSemi:
           // just a lone name, eg "x" in "(x, y)"
-          nodearray_push(&typeq, p->build->mem, as_Node(local));
+          array_push(&typeq, as_Node(local));
           break;
 
         default:
@@ -1911,7 +1923,7 @@ finish:
     NodeTransferUnresolved(params, param);
   }
 
-  nodearray_free(&typeq, p->build->mem);
+  array_free(&typeq);
   want(p, TRParen);
   return params;
 }
@@ -1937,7 +1949,7 @@ static TupleNode* templateParams(Parser* p) {
     }
     auto local = make_local(p, name, init, kType_nil);
     local->kind = NMacroParam;
-    exprarray_push(&params->a, p->build->mem, as_Expr(local));
+    array_push(&params->a, as_Expr(local));
   } while (got(p, TComma) && p->tok != TGt);
   want(p, TGt);
   set_endpos(p, params);
@@ -2212,18 +2224,18 @@ static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
       g = as_Node(tuple);
     }
 
-    nodearray_push(array, p->build->mem, left);
+    array_push(array, left);
     NodeTransferUnresolved(g, left);
     if (fl & PFlagRValue) {
       do {
         Node* cn = parse_next(p, precedence, fl);
-        nodearray_push(array, p->build->mem, cn);
+        array_push(array, cn);
         NodeTransferUnresolved(g, cn);
       } while (got(p, TComma));
     } else {
       do {
         Node* cn = parse_prefix(p, fl);
-        nodearray_push(array, p->build->mem, cn);
+        array_push(array, cn);
         NodeTransferUnresolved(g, cn);
       } while (got(p, TComma));
     }
@@ -2249,7 +2261,7 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
     // start a tuple
     auto g = mknode(p, fl & PFlagType ? NTupleType : NTuple);
     NodeArray* array = fl & PFlagType ? &g->t.tuple.a : &g->array.a;
-    nodearray_push(array, p->build->mem, left);
+    array_push(array, left);
     NodeTransferUnresolved(g, left);
     if (fl & PFlagRValue) {
       do {
@@ -2308,12 +2320,12 @@ error parse_tu(
   auto file = mknode(p, File);
   if (!file)
     return err_nomem;
-  file->name = src->filename->p;
+  file->name = src->filename;
 
   // do while have a valid token...
   while (p->tok != TNone && p->err == 0) {
     Node* n = parse_next_tuple(p, PREC_LOWEST, PFlagNone);
-    nodearray_push(&file->a, p->build->mem, n);
+    array_push(&file->a, n);
     NodeTransferUnresolved(file, n);
 
     // if we didn't end on EOF and we didn'd find a semicolon, report error

@@ -1,8 +1,7 @@
 #include "../coimpl.h"
 #include "../tstyle.h"
 #include "../array.c"
-#include "../str.h"
-#include "../sbuf.h"
+#include "../string.c"
 #include "../unicode.c"
 #include "../test.c"
 #include "ast.h"
@@ -14,186 +13,169 @@
 // INDENT_DEPTH is the number of spaces used for indentation
 #define INDENT_DEPTH 2
 
+static ABuf* _fmtnode1(const Node* nullable n, ABuf* s);
 
-static Str NodeStrArray(Str s, const NodeArray* na) {
+char* _fmtnode(const Node* nullable n, char* buf, usize bufcap) {
+  ABuf s = abuf_make(buf, bufcap);
+  _fmtnode1(n, &s);
+  abuf_terminate(&s);
+  return buf;
+}
+
+static ABuf* _fmtnodearray(const NodeArray* na, ABuf* s) {
   for (u32 i = 0; i < na->len; i++) {
-    if (i)
-      s = str_appendc(s, ' ');
-    s = _NodeStr(s, na->v[i]);
+    if (i) abuf_c(s, ' ');
+    _fmtnode1(na->v[i], s);
   }
   return s;
 }
 
-// appends a short representation of an AST node to s, suitable for use in error messages.
-Str _NodeStr(Str s, const Node* nullable n) {
+static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   // Note: Do not include type information.
   // Instead, in use sites, call fmtnode individually for n->type when needed.
 
-  #define NODE(s,n)      _NodeStr(s, (Node*)n)
-  #define NODEARRAY(s,a) NodeStrArray(s, as_NodeArray(a))
-  #define SPACE(s)       str_appendc(s, ' ')
-  #define STR(s,cstr)    str_appendcstr(s, cstr)
-  #define SYM(s,sym)     str_appendn(s, sym, symlen(sym))
+  #define NODE(s,n)      _fmtnode1(as_Node(n), s)
+  #define NODEARRAY(s,a) _fmtnodearray(as_NodeArray(a), s)
+  #define CH(s,c)        abuf_c(s, c)
+  #define STR(s,cstr)    abuf_cstr(s, cstr)
+  #define SYM(s,sym)     abuf_append(s, sym, symlen(sym))
 
   if (n == NULL)
-    return STR(s, "<null>");
+    return STR(s,"<null>");
 
   switch ((enum NodeKind)n->kind) {
 
   case NBad: // nil
-    return STR(s, "bad");
+    return STR(s,"bad");
   case NPkg: // package "foo"
-    s = STR(STR(s, "package \""), ((PkgNode*)n)->name);
-    return str_appendc(s, '"');
+    return CH(STR(STR(s, "package \""), ((PkgNode*)n)->name ), '"');
   case NFile: // file "foo"
-    s = STR(STR(s, "file \""), ((FileNode*)n)->name);
-    return str_appendc(s, '"');
+    return CH(STR(STR(s, "file \""), ((FileNode*)n)->name ), '"');
   case NField: // field foo T
-    s = SYM(STR(s, "field"), ((FieldNode*)n)->name);
+    SYM(STR(s, "field"), ((FieldNode*)n)->name);
     if (((FieldNode*)n)->type)
-      NodeStr(SPACE(s), ((FieldNode*)n)->type);
+      NODE(CH(s, ' '), ((FieldNode*)n)->type);
     return s;
-
   case NNil: // nil
     return STR(s, "nil");
   case NBoolLit: // true | false
     return STR(s, ((BoolLitNode*)n)->ival ? "true" : "false");
   case NIntLit: // 123
-    return str_appendu64(s, ((IntLitNode*)n)->ival, 10);
+    return abuf_u64(s, ((IntLitNode*)n)->ival, 10);
   case NFloatLit: // 12.3
-    return str_appendf64(s, ((FloatLitNode*)n)->fval, -1);
+    return abuf_f64(s, ((FloatLitNode*)n)->fval, -1);
   case NStrLit: // "lolcat"
-    s = str_appendc(s, '"');
-    s = str_appendrepr(s, ((StrLitNode*)n)->sp, ((StrLitNode*)n)->len);
-    return str_appendc(s, '"');
+    return CH(abuf_repr(CH(s, '"'), ((StrLitNode*)n)->sp, ((StrLitNode*)n)->len), '"');
   case NId: // foo
     return SYM(s, ((IdNode*)n)->name);
   case NBinOp: // foo + bar
-    s = NODE(s, ((BinOpNode*)n)->left);
-    s = STR(SPACE(s), TokName(((BinOpNode*)n)->op));
-    return NODE(SPACE(s), ((BinOpNode*)n)->right);
+    NODE(s, ((BinOpNode*)n)->left);
+    STR(CH(s,' '), TokName(((BinOpNode*)n)->op));
+    return NODE(CH(s,' '), ((BinOpNode*)n)->right);
   case NPostfixOp: // foo++
-    s = NODE(s, ((PostfixOpNode*)n)->expr);
+    NODE(s, ((PostfixOpNode*)n)->expr);
     return STR(s, TokName(((PostfixOpNode*)n)->op));
   case NPrefixOp: // -foo
-    s = STR(s, TokName(((PrefixOpNode*)n)->op));
+    STR(s, TokName(((PrefixOpNode*)n)->op));
     return NODE(s, ((PrefixOpNode*)n)->expr);
   case NAssign: // foo=
-    s = NODE(s, ((AssignNode*)n)->dst);
-    return str_appendc(s, '=');
+    return CH(NODE(s, ((AssignNode*)n)->dst), '=');
   case NNamedArg: // name=value
-    s = SYM(s, ((NamedArgNode*)n)->name);
-    s = str_appendc(s, '=');
-    return NodeStr(s, ((NamedArgNode*)n)->value);
+    CH(SYM(s, ((NamedArgNode*)n)->name), '=');
+    return NODE(s, ((NamedArgNode*)n)->value);
   case NReturn: // return foo
-    s = STR(s, "return ");
-    return NODE(s, ((ReturnNode*)n)->expr);
+    return NODE(STR(s, "return "), ((ReturnNode*)n)->expr);
   case NBlock: // block
     return STR(s, "block");
   case NArray: // array [one two 3]
-    s = NODEARRAY(STR(s, "array ["), &((ArrayNode*)n)->a);
-    return str_appendc(s, ']');
+    return CH(NODEARRAY(STR(s, "array ["), &((ArrayNode*)n)->a), ']');
   case NTuple: // tuple (one two 3)
-    s = NODEARRAY(STR(s, "tuple ("), &((TupleNode*)n)->a);
-    return str_appendc(s, ')');
+    return CH(NODEARRAY(STR(s, "tuple ("), &((TupleNode*)n)->a), ')');
   case NConst: // const x
-    s = STR(s, "const");
-    return SYM(SPACE(s), ((LocalNode*)n)->name);
+    return SYM(STR(s, "const "), ((LocalNode*)n)->name);
   case NVar: // var x
-    s = STR(s, "var");
-    return SYM(SPACE(s), ((LocalNode*)n)->name);
+    return SYM(STR(s, "var "), ((LocalNode*)n)->name);
   case NParam: // param x
-    s = STR(s, "param");
-    return SYM(SPACE(s), ((LocalNode*)n)->name);
+    return SYM(STR(s, "param "), ((LocalNode*)n)->name);
   case NMacroParam: // macroparam x
-    s = STR(s, "macroparam");
-    return SYM(SPACE(s), ((LocalNode*)n)->name);
+    return SYM(STR(s, "macroparam "), ((LocalNode*)n)->name);
   case NRef: // &x, mut&x
-    s = STR(s, NodeIsConst(n) ? "&" : "mut&");
-    return NODE(s, ((RefNode*)n)->target);
+    return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefNode*)n)->target);
   case NFun: // function foo
-    s = STR(s, "function");
-    if (((FunNode*)n)->name)
-      s = SYM(SPACE(s), ((FunNode*)n)->name);
+    STR(s, "function ");
+    if (((FunNode*)n)->name) { SYM(s, ((FunNode*)n)->name); }
+    else { CH(s, '_'); }
     return s;
   case NMacro: // macro foo
-    s = STR(s, "macro");
-    if (((MacroNode*)n)->name)
-      s = SYM(SPACE(s), ((MacroNode*)n)->name);
+    STR(s, "macro ");
+    if (((MacroNode*)n)->name) { SYM(s, ((MacroNode*)n)->name); }
+    else { CH(s,'_'); }
     return s;
   case NTypeCast: // typecast<int16>
-    s = NODE(STR(s, "typecast<"), ((TypeCastNode*)n)->expr);
-    return str_appendc(s, '>');
+    return CH(NODE(STR(s, "typecast<"), ((TypeCastNode*)n)->expr), '>');
   case NCall: // call foo
     return NODE(STR(s, "call "), ((CallNode*)n)->receiver);
   case NIf: // if
     return STR(s, "if");
   case NSelector: // expr.name | expr.selector
-    s = str_appendc(NODE(s, ((SelectorNode*)n)->operand), '.');
-    return SYM(s, ((SelectorNode*)n)->member);
+    return SYM(CH(NODE(s, ((SelectorNode*)n)->operand), '.'), ((SelectorNode*)n)->member);
   case NIndex: // foo[index]
-    s = NODE(s, ((IndexNode*)n)->operand);
-    s = str_appendc(s, '[');
-    s = NODE(s, ((IndexNode*)n)->indexexpr);
-    return str_appendc(s, ']');
+    CH(NODE(s, ((IndexNode*)n)->operand), '[');
+    CH(NODE(s, ((IndexNode*)n)->indexexpr), ']');
+    return s;
   case NSlice: { // [start?:end?]
-    auto slice = (SliceNode*)n;
-    s = NODE(s, slice->operand);
-    s = str_appendc(s, '[');
+    SliceNode* slice = (SliceNode*)n;
+    NODE(s, slice->operand);
+    CH(s, '[');
     if (slice->start)
-      s = NODE(s, slice->start);
-    s = str_appendc(s, ':');
+      NODE(s, slice->start);
+    CH(s, ':');
     if (slice->end)
-      s = NODE(s, slice->end);
-    return str_appendc(s, ']');
+      NODE(s, slice->end);
+    return CH(s, ']');
   }
 
   case NBasicType: // int
     return SYM(s, ((BasicTypeNode*)n)->name);
   case NRefType: // &T, mut&T
-    s = STR(s, NodeIsConst(n) ? "&" : "mut&");
-    return NODE(s, ((RefTypeNode*)n)->elem);
+    return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefTypeNode*)n)->elem);
   case NTypeType: // type
     return STR(s, "type");
   case NNamedType: // foo
     return SYM(s, ((NamedTypeNode*)n)->name);
   case NAliasType: // foo (alias of bar)
-    s = SYM(s, ((AliasTypeNode*)n)->name);
-    s = NODE(STR(s, " (alias of "), ((AliasTypeNode*)n)->type);
-    return str_appendc(s, ')');
+    STR(SYM(s, ((AliasTypeNode*)n)->name), " (alias of ");
+    return CH(NODE(s, ((AliasTypeNode*)n)->type), ')');
   case NFunType: // (int int)->bool
     if (((FunTypeNode*)n)->params == NULL) {
-      s = STR(s, "()");
+      STR(s, "()");
     } else {
       // TODO: include names?
-      s = NODE(s, ((FunTypeNode*)n)->params->type);
+      NODE(s, ((FunTypeNode*)n)->params->type);
     }
     return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
   case NTupleType: // (int bool Foo)
-    s = str_appendc(s, '(');
-    s = NODEARRAY(s, &((TupleTypeNode*)n)->a);
-    return str_appendc(s, ')');
-  case NArrayType: // [int 4]
-    s = str_appendc(s, '[');
-    s = NODE(s, ((ArrayTypeNode*)n)->elem);
+    return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
+  case NArrayType: // [int], [int 4]
+    NODE(CH(s, '['), ((ArrayTypeNode*)n)->elem);
     if (((ArrayTypeNode*)n)->size > 0)
-      s = str_appendu64(SPACE(s), ((ArrayTypeNode*)n)->size, 10);
-    return str_appendc(s, ']');
+      abuf_u64(CH(s,' '), ((ArrayTypeNode*)n)->size, 10);
+    return CH(s, ']');
   case NStructType: { // "struct Name" or "struct {foo float; y bool}"
-    auto st = (StructTypeNode*)n;
-    s = STR(s, "struct ");
+    StructTypeNode* st = (StructTypeNode*)n;
+    STR(s, "struct ");
     if (st->name)
       return SYM(s, st->name);
-    s = str_appendc(s, '{');
+    CH(s, '{');
     for (u32 i = 0; i < st->fields.len; i++) {
       auto field = st->fields.v[i];
       if (i)
-        s = STR(s, "; ");
-      s = SYM(s, field->name);
+        STR(s, "; ");
+      SYM(s, field->name);
       if (field->type)
-        NodeStr(SPACE(s), field->type);
+        NODE(CH(s,' '), field->type);
     }
-    return str_appendc(s, '}');
+    return CH(s, '}');
   }
 
   case NComment:
@@ -201,13 +183,13 @@ Str _NodeStr(Str s, const Node* nullable n) {
     break;
   }
 
+  return STR(s, "INVALID");
+
   #undef STR
   #undef SYM
   #undef SPACE
   #undef NODEARRAY
   #undef NODE
-
-  return str_appendcstr(s, "INVALID");
 }
 
 
@@ -217,12 +199,15 @@ Str _NodeStr(Str s, const Node* nullable n) {
 typedef struct Repr Repr;
 
 struct Repr {
-  SBuf  buf;
+  Str  dst;
+  bool dstok;
+
   usize indent;
   usize lnstart; // relative to buf.len
   usize wrapcol;
   usize stylelen; // buf.len-stylelen = nbytes written to buf excluding ANSI codes
 
+  NodeFmtFlag flags;
   TStyles     styles;
   TStyleStack stylestack;
   const char* lparen;
@@ -236,11 +221,12 @@ struct Repr {
 #define STYLE_TYPE  TS_DARKGREY_BG
 #define STYLE_META  TS_DIM
 
+
 // -- repr output writers
 
 static usize printable_len(Repr* r) {
   // nbytes written to buf excluding ANSI codes
-  return r->buf.len - r->stylelen;
+  return r->dst.len - r->stylelen;
 }
 
 static void write_push_style(Repr* r, TStyle style) {
@@ -249,7 +235,7 @@ static void write_push_style(Repr* r, TStyle style) {
   const char* s = tstyle_str(r->styles, tstyle_push(&r->stylestack, style));
   usize len = strlen(s);
   r->stylelen += len;
-  sbuf_append(&r->buf, s, len);
+  str_append(&r->dst, s, len);
 }
 
 static void write_pop_style(Repr* r) {
@@ -258,26 +244,25 @@ static void write_pop_style(Repr* r) {
   const char* s = tstyle_str(r->styles, tstyle_pop(&r->stylestack));
   usize len = strlen(s);
   r->stylelen += len;
-  sbuf_append(&r->buf, s, len);
+  str_append(&r->dst, s, len);
 }
 
 static void write_paren_start(Repr* r) {
-  sbuf_appendstr(&r->buf, r->lparen);
+  str_appendcstr(&r->dst, r->lparen);
   if (r->lparen[1])
     r->stylelen += strlen(r->lparen) - 1;
 }
 
 static void write_paren_end(Repr* r) {
-  sbuf_appendstr(&r->buf, r->rparen);
+  str_appendcstr(&r->dst, r->rparen);
   if (r->rparen[1])
     r->stylelen += strlen(r->rparen) - 1;
 }
 
 static void write_newline(Repr* r) {
-  SBuf* buf = &r->buf;
-  sbuf_appendc(buf, '\n');
+  str_push(&r->dst, '\n');
   r->lnstart = printable_len(r);
-  sbuf_appendfill(buf, ' ', r->indent);
+  str_appendfill(&r->dst, ' ', r->indent);
 }
 
 static void write_push_indent(Repr* r) {
@@ -296,23 +281,23 @@ struct Meta {
   usize startlen;
 };
 static Meta meta_begin(Repr* r) {
-  return (Meta){ .r = r, .startlen = r->buf.len };
+  return (Meta){ .r = r, .startlen = r->dst.len };
 }
 static void _meta_start(Meta* mp) {
-  if (mp->startlen == mp->r->buf.len) {
-    sbuf_appendc(&mp->r->buf, ' ');
+  if (mp->startlen == mp->r->dst.len) {
+    str_push(&mp->r->dst, ' ');
     write_push_style(mp->r, STYLE_META);
-    sbuf_appendc(&mp->r->buf, '[');
+    str_push(&mp->r->dst, '[');
   } else {
-    sbuf_appendc(&mp->r->buf, ' ');
+    str_push(&mp->r->dst, ' ');
   }
 }
 #define meta_write_entry_start(m) _meta_start(&(m))
-#define meta_write_entry(m,s) ({ _meta_start(&(m)); sbuf_appendstr(&(m).r->buf, (s)); })
+#define meta_write_entry(m,s)     ( _meta_start(&(m)), str_appendcstr(&(m).r->dst, (s)) )
 #define meta_end(m) _meta_end(&(m))
 static void _meta_end(Meta* m) {
-  if (m->startlen < m->r->buf.len) {
-    sbuf_appendc(&m->r->buf, ']');
+  if (m->startlen < m->r->dst.len) {
+    str_push(&m->r->dst, ']');
     write_pop_style(m->r);
   }
 }
@@ -321,18 +306,17 @@ static void _meta_end(Meta* m) {
 static void write_node_fields(Repr* r, const Node* n);
 static void _write_node1(Repr* r, const Node* nullable n);
 static void write_node(Repr* r, const Node* nullable n) {
-  SBuf* buf = &r->buf;
+  Str* dst = &r->dst;
 
   // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
-  char lastch = *(buf->p - MIN(buf->len, 1));
-  bool indent = buf->len > 0 && lastch != '<';
+  bool indent = dst->len && dst->v[dst->len - 1] != '<';
 
   if (indent) write_push_indent(r);
 
   if (n == NULL || n == (Node*)kExpr_nil) {
     // "nil"
     write_push_style(r, STYLE_LIT);
-    sbuf_appendstr(buf, "nil");
+    str_appendcstr(dst, "nil");
     write_pop_style(r);
   } else {
     if (is_Type(n)) write_push_style(r, STYLE_TYPE);
@@ -341,7 +325,7 @@ static void write_node(Repr* r, const Node* nullable n) {
       // "name" for BasicType (e.g. "int")
       write_push_style(r, STYLE_NODE);
       Sym name = ((BasicTypeNode*)n)->name;
-      sbuf_append(buf, name, symlen(name));
+      str_append(dst, name, symlen(name));
       write_pop_style(r);
     } else {
       // "(Node field1 field2 ...fieldN)" for everything else
@@ -359,26 +343,26 @@ static void write_node(Repr* r, const Node* nullable n) {
 #define write_node(r,n) write_node((r),as_Node(n))
 
 static void _write_node1(Repr* r, const Node* n) {
-  SBuf* buf = &r->buf;
+  Str* dst = &r->dst;
 
   // "<type>" of expressions
   if (is_Expr(n)) {
     auto typ = ((Expr*)n)->type;
     write_push_style(r, STYLE_TYPE);
-    sbuf_appendc(&r->buf, '<');
+    str_push(dst, '<');
     if (typ == NULL) {
-      sbuf_appendstr(&r->buf, "?");
+      str_appendcstr(dst, "?");
     } else {
       write_node(r, typ);
     }
-    sbuf_appendc(&r->buf, '>');
+    str_push(dst, '>');
     write_pop_style(r);
-    sbuf_appendc(&r->buf, ' ');
+    str_push(dst, ' ');
   }
 
   // "NodeName"
   write_push_style(r, STYLE_NODE);
-  sbuf_appendstr(buf, NodeKindName(n->kind));
+  str_appendcstr(dst, NodeKindName(n->kind));
   write_pop_style(r);
 
   // "[meta]"
@@ -399,8 +383,7 @@ static void _write_node1(Repr* r, const Node* n) {
 }
 
 static void write_array(Repr* r, const NodeArray* a) {
-  SBuf* buf = &r->buf;
-  sbuf_appendc(buf, ' ');
+  str_push(&r->dst, ' ');
   write_paren_start(r);
   for (u32 i = 0; i < a->len; i++)
     write_node(r, a->v[i]);
@@ -408,42 +391,40 @@ static void write_array(Repr* r, const NodeArray* a) {
 }
 
 static void write_str(Repr* r, const char* s) {
-  sbuf_appendc(&r->buf, ' ');
-  sbuf_appendstr(&r->buf, s);
+  str_push(&r->dst, ' ');
+  str_appendcstr(&r->dst, s);
 }
 
 static void write_qstr(Repr* r, const char* s, usize len) {
-  SBuf* buf = &r->buf;
   write_push_style(r, STYLE_LIT);
-  sbuf_appendstr(buf, " \"");
-  sbuf_appendrepr(buf, s, len);
-  sbuf_appendc(buf, '"');
+  str_appendcstr(&r->dst, " \"");
+  str_appendrepr(&r->dst, s, len);
+  str_push(&r->dst, '"');
   write_pop_style(r);
 }
 
 static void write_name(Repr* r, Sym s) {
-  sbuf_appendc(&r->buf, ' ');
+  str_push(&r->dst, ' ');
   write_push_style(r, STYLE_NAME);
-  sbuf_append(&r->buf, s, symlen(s));
+  str_append(&r->dst, s, symlen(s));
   write_pop_style(r);
 }
 
 #define write_TODO(r) _write_TODO(r, __FILE__, __LINE__)
 static void _write_TODO(Repr* r, const char* file, u32 line) {
-  sbuf_appendc(&r->buf, ' ');
+  str_push(&r->dst, ' ');
   write_push_style(r, TS_RED);
-  sbuf_appendstr(&r->buf, "[TODO ");
-  sbuf_appendstr(&r->buf, file);
-  sbuf_appendc(&r->buf, ':');
-  sbuf_appendu32(&r->buf, line, 10);
-  sbuf_appendc(&r->buf, ']');
+  str_appendcstr(&r->dst, "[TODO ");
+  str_appendcstr(&r->dst, file);
+  str_push(&r->dst, ':');
+  str_appendu32(&r->dst, line, 10);
+  str_push(&r->dst, ']');
   write_pop_style(r);
 }
 
 // -- visitor functions
 
 static void write_node_fields(Repr* r, const Node* np) {
-  SBuf* buf = &r->buf;
 
   #define _(NAME)             \
     return; } case N##NAME: { \
@@ -473,21 +454,21 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(Nil) UNREACHABLE; // handled by _write_node
 
   _(BoolLit)
-    sbuf_appendc(buf, ' ');
+    str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
-    sbuf_appendstr(buf, n->ival ? "true" : "false");
+    str_appendcstr(&r->dst, n->ival ? "true" : "false");
     write_pop_style(r);
 
   _(IntLit)
-    sbuf_appendc(buf, ' ');
+    str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
-    sbuf_appendu64(buf, n->ival, 10);
+    str_appendu64(&r->dst, n->ival, 10);
     write_pop_style(r);
 
   _(FloatLit)
-    sbuf_appendc(buf, ' ');
+    str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
-    sbuf_appendf64(buf, n->fval, 10);
+    str_appendf64(&r->dst, n->fval, -1);
     write_pop_style(r);
 
   _(StrLit)
@@ -559,14 +540,16 @@ static void write_node_fields(Repr* r, const Node* np) {
 }
 
 
-// -- NodeRepr entry
-
-Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
+bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl) {
   Repr r = {
+    .dst = *dst,
+    .dstok = true,
     .wrapcol = 30,
+    .flags = fl,
   };
+
   r.styles = TStylesForStderr();
-  if (TStylesIsNone(r.styles)) {
+  if ((fl & NODE_FMT_COLOR) == 0 && (TStylesIsNone(r.styles) || (fl & NODE_FMT_NOCOLOR))) {
     r.lparen = "(";
     r.rparen = ")";
   } else {
@@ -574,35 +557,13 @@ Str nullable _NodeRepr(Str s, const Node* nullable n, NodeReprFlags fl) {
     r.rparen = "\x1b[2m)\x1b[22m";
   }
 
-  Str s2 = str_makeroom(s, 4096);
-  if (s2)
-    s = s2;
+  write_node(&r, n);
+  *dst = r.dst;
 
-  while (1) {
-    sbuf_init(&r.buf, &s->p[s->len], str_avail(s));
-    write_node(&r, n);
-    sbuf_terminate(&r.buf);
-    if (r.buf.len < str_avail(s)) {
-      s->len += r.buf.len;
-      return s;
-    }
-    if (!(s2 = str_makeroom(s, r.buf.len)))
-      return s; // memalloc failure
-    s = s2;
+  if UNLIKELY(!str_push(dst, 0)) {
+    // was not able to allocate more memory
+    dst->v[dst->len-1] = 0;
+    return false;
   }
-}
-
-// ---------------------
-
-
-const char* _fmtnode(const Node* n) {
-  Str* sp = str_tmp();
-  *sp = _NodeStr(*sp, n);
-  return (*sp)->p;
-}
-
-const char* _fmtast(const Node* n) {
-  Str* sp = str_tmp();
-  *sp = _NodeRepr(*sp, n, 0);
-  return (*sp)->p;
+  return true;
 }

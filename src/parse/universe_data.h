@@ -189,33 +189,35 @@ __attribute__((used)) static const char* const debugSymCheck =
 // sym constant data generator
 
 #if RUN_GENERATOR || defined(DEBUG)
-  static Str gen_checksum(Str s) {
+  static usize gen_checksum(char* buf, usize bufcap) {
+    ABuf s = abuf_make(buf, bufcap);
 
-    #define _(tok, str) s = str_appendfmt(s, "kw:%s=%s ", #str, #tok);
+    #define _(tok, str) abuf_fmt(&s, "kw:%s=%s ", #str, #tok);
     DEF_TOKENS_KEYWORD(_)
     #undef _
 
-    #define _(name, ...) s = str_append(s, "tc:" #name " ");
+    #define _(name, ...) abuf_cstr(&s, "tc:" #name " ");
     DEF_TYPE_CODES_BASIC_PUB(_)
     DEF_TYPE_CODES_BASIC(_)
     DEF_TYPE_CODES_PUB(_)
     #undef _
 
-    #define _(name, ...) s = str_append(s, "sym:" #name " ");
+    #define _(name, ...) abuf_cstr(&s, "sym:" #name " ");
     DEF_SYMS_PUB(_)
     #undef _
 
     #define _(name, nkind, typecode_suffix, structinit) \
-      s = str_appendfmt(s, "const:%s,%s,%s=%s ", #name, #nkind, #typecode_suffix, structinit);
+      abuf_fmt(&s, "const:%s,%s,%s=%s ", #name, #nkind, #typecode_suffix, structinit);
     DEF_CONST_NODES_PUB(_)
     #undef _
 
-    if (s->len > 0) {
+    if (s.len > 0) {
       // trim trailing space
-      s->len--;
-      s->p[s->len] = 0;
+      s.len--;
+      s.p--;
     }
-    return s;
+
+    return abuf_terminate(&s);
   }
 #endif
 
@@ -394,7 +396,7 @@ static void gen_constants() {
 
   Mem mem = mem_libc_allocator();
 
-  Str tmpstr = str_make(mem, 512);
+  Str tmpstr = str_make(mem, 512); // TODO: convert to (array-backed) Str or ABuf
 
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
@@ -546,10 +548,9 @@ static void gen_constants() {
 #elif !defined(NDEBUG)
 
 __attribute__((constructor)) static void debug_check() {
-  u8 membuf[2048];
-  Mem mem = mem_mkalloc_buf(membuf, sizeof(membuf));
-  Str s = gen_checksum(str_make(mem, sizeof(membuf)/2));
-  if (strcmp(debugSymCheck, s->p) != 0) {
+  char buf[2048];
+  gen_checksum(buf, sizeof(buf));
+  if (strcmp(debugSymCheck, buf) != 0) {
     errlog(
       "——————————————————————————————————————————————————————————————————————\n"
       "                    WARNING: Keywords changed\n"
@@ -557,7 +558,7 @@ __attribute__((constructor)) static void debug_check() {
       "Define RUN_GENERATOR in %s to run code generator.\n"
       "\ndebugSymCheck:\n%s\n\ndetected:\n%s\n"
       "——————————————————————————————————————————————————————————————————————\n\n",
-      __FILE__, debugSymCheck, s->p);
+      __FILE__, debugSymCheck, buf);
   }
 }
 #endif

@@ -1,5 +1,5 @@
 #include "../coimpl.h"
-#include "../sbuf.h"
+#include "../string.c"
 #include "typeid.h"
 
 
@@ -38,48 +38,54 @@
 //
 
 
-static void typeid_append(SBuf* s, const Type* t) {
-  if (is_BasicTypeNode(t))
-    return sbuf_appendc(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
+static void typeid_append(ABuf* s, const Type* t) {
+  if (is_BasicTypeNode(t)) {
+    abuf_c(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
+    return;
+  }
 
   if (!t->tid) switch (t->kind) {
     case NAliasType:
       MUSTTAIL return typeid_append(s, as_AliasTypeNode(t)->type);
 
     case NRefType:
-      sbuf_appendc(s, TypeCodeEncoding(TC_ref));
+      abuf_c(s, TypeCodeEncoding(TC_ref));
       MUSTTAIL return typeid_append(s, assertnotnull(as_RefTypeNode(t)->elem));
 
     case NArrayType:
-      sbuf_appendc(s, TypeCodeEncoding(TC_array));
-      sbuf_appendu32(s, as_ArrayTypeNode(t)->size, 10);
-      sbuf_appendc(s, TypeCodeEncoding(TC_arrayEnd));
+      abuf_c(s, TypeCodeEncoding(TC_array));
+      abuf_u32(s, as_ArrayTypeNode(t)->size, 10);
+      abuf_c(s, TypeCodeEncoding(TC_arrayEnd));
       MUSTTAIL return typeid_append(s, assertnotnull(as_ArrayTypeNode(t)->elem));
 
     case NTupleType:
-      sbuf_appendc(s, TypeCodeEncoding(TC_tuple));
+      abuf_c(s, TypeCodeEncoding(TC_tuple));
       for (u32 i = 0; i < as_TupleTypeNode(t)->a.len; i++)
         typeid_append(s, as_TupleTypeNode(t)->a.v[i]);
-      return sbuf_appendc(s, TypeCodeEncoding(TC_tupleEnd));
+      abuf_c(s, TypeCodeEncoding(TC_tupleEnd));
+      return;
 
     case NStructType:
-      sbuf_appendc(s, TypeCodeEncoding(TC_struct));
+      abuf_c(s, TypeCodeEncoding(TC_struct));
       for (u32 i = 0; i < as_StructTypeNode(t)->fields.len; i++) {
         FieldNode* field = as_StructTypeNode(t)->fields.v[i];
         typeid_append(s, assertnotnull(field->type));
       }
-      return sbuf_appendc(s, TypeCodeEncoding(TC_structEnd));
+      abuf_c(s, TypeCodeEncoding(TC_structEnd));
+      return;
 
     case NFunType: {
       auto ft = as_FunTypeNode(t);
-      sbuf_appendc(s, TypeCodeEncoding(TC_fun));
+      abuf_c(s, TypeCodeEncoding(TC_fun));
       if (ft->params) {
         typeid_append(s, assertnotnull(ft->params->type));
       } else {
-        sbuf_appendc(s, TypeCodeEncoding(TC_nil));
+        abuf_c(s, TypeCodeEncoding(TC_nil));
       }
-      if (!ft->result)
-        return sbuf_appendc(s, TypeCodeEncoding(TC_nil));
+      if (!ft->result) {
+        abuf_c(s, TypeCodeEncoding(TC_nil));
+        return;
+      }
       MUSTTAIL return typeid_append(s, ft->result);
     }
 
@@ -88,12 +94,12 @@ static void typeid_append(SBuf* s, const Type* t) {
       break;
   }
 
-  return sbuf_append(s, t->tid, symlen(t->tid));
+  abuf_append(s, t->tid, symlen(t->tid));
 }
 
 
-u32 _typeid_make(char* buf, u32 bufsize, const Type* t) {
-  SBuf s = sbuf_make(buf, bufsize);
+usize _typeid_make(char* buf, usize bufsize, const Type* t) {
+  ABuf s = abuf_make(buf, bufsize);
   typeid_append(&s, t);
-  return sbuf_terminate(&s);
+  return abuf_terminate(&s);
 }

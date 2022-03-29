@@ -1,13 +1,13 @@
 #include "coimpl.h"
-#include "sbuf.h"
+#include "string.c"
 #include "test.c"
 
-DEF_TEST(sbuf_f64) {
+DEF_TEST(abuf_f64) {
   char buf[64];
   {
-    SBuf s = sbuf_make(buf, sizeof(buf));
-    sbuf_appendf64(&s, 123.456, -1);
-    sbuf_terminate(&s);
+    ABuf s = abuf_make(buf, sizeof(buf));
+    abuf_f64(&s, 123.456, -1);
+    abuf_terminate(&s);
     assertcstreq(buf, "123.456");
   }
   struct { f64 input; int ndec; const char* expect; } tests[] = {
@@ -25,49 +25,49 @@ DEF_TEST(sbuf_f64) {
     {123.456,  4, "123.4560"},
   };
   for (usize i = 0; i < countof(tests); i++) {
-    SBuf s = sbuf_make(buf, sizeof(buf));
-    sbuf_appendf64(&s, tests[i].input, tests[i].ndec);
-    sbuf_terminate(&s);
+    ABuf s = abuf_make(buf, sizeof(buf));
+    abuf_f64(&s, tests[i].input, tests[i].ndec);
+    abuf_terminate(&s);
     assertcstreq(buf, tests[i].expect);
   }
 }
 
-DEF_TEST(sbuf_zero) {
+DEF_TEST(abuf_zero) {
   {
-    // sbuf initialized using sbuf_make should handle zero-size buffer.
+    // abuf initialized using abuf_make should handle zero-size buffer.
     // It does this by using a temporary "static char" for p in the case size==0.
-    // Note that sbuf_init instead assert(size>0).
+    // Note that abuf_init instead assert(size>0).
     char c = 0x7f;
-    SBuf s = sbuf_make(&c, 0);
-    sbuf_appendc(&s, 'a');
-    sbuf_terminate(&s);
+    ABuf s = abuf_make(&c, 0);
+    abuf_c(&s, 'a');
+    abuf_terminate(&s);
     asserteq(s.len, 1);
     asserteq(c, 0x7f); // untouched
   }
 }
 
 
-DEF_TEST(sbuf_append) {
+DEF_TEST(abuf_append) {
   {
     char buf[6];
-    SBuf s = sbuf_make(buf, sizeof(buf));
-    sbuf_appendc(&s, 'a');
-    sbuf_appendc(&s, 'b');
-    sbuf_appendc(&s, 'c');
-    sbuf_terminate(&s);
+    ABuf s = abuf_make(buf, sizeof(buf));
+    abuf_c(&s, 'a');
+    abuf_c(&s, 'b');
+    abuf_c(&s, 'c');
+    abuf_terminate(&s);
     asserteq(s.len, 3);
     asserteq(strlen(buf), 3);
   }
   {
     char buf[3];
-    SBuf s = sbuf_make(buf, sizeof(buf));
-    sbuf_appendc(&s, 'a');
-    sbuf_appendc(&s, 'b');
-    sbuf_appendc(&s, 'c');
+    ABuf s = abuf_make(buf, sizeof(buf));
+    abuf_c(&s, 'a');
+    abuf_c(&s, 'b');
+    abuf_c(&s, 'c');
     asserteq(buf[2], 'c');
-    sbuf_appendc(&s, 'd');
+    abuf_c(&s, 'd');
     asserteq(buf[2], 'd');
-    sbuf_terminate(&s);
+    abuf_terminate(&s);
     asserteq(s.len, 4);
     asserteq(strlen(buf), 2);
     asserteq(buf[0], 'a');
@@ -76,21 +76,21 @@ DEF_TEST(sbuf_append) {
   }
   {
     char buf[6];
-    SBuf s = sbuf_make(buf, sizeof(buf));
-    sbuf_append(&s, "abcd", 4);
-    sbuf_append(&s, "efgh", 4);
-    sbuf_append(&s, "ijkl", 4);
-    sbuf_terminate(&s);
+    ABuf s = abuf_make(buf, sizeof(buf));
+    abuf_append(&s, "abcd", 4);
+    abuf_append(&s, "efgh", 4);
+    abuf_append(&s, "ijkl", 4);
+    abuf_terminate(&s);
     asserteq(s.len, 12);
     asserteq(strlen(buf), 5);
     assert(memcmp(buf, "abcde\0", 6) == 0);
   }
   { // overflow
     char buf[6];
-    SBuf s = sbuf_make(buf, sizeof(buf));
+    ABuf s = abuf_make(buf, sizeof(buf));
     s.len = USIZE_MAX - 1;
-    sbuf_append(&s, "abc", 3);
-    sbuf_terminate(&s);
+    abuf_append(&s, "abc", 3);
+    abuf_terminate(&s);
     asserteq(s.len, USIZE_MAX);
     asserteq(strlen(buf), 3);
     assert(memcmp(buf, "abc\0", 4) == 0);
@@ -98,11 +98,11 @@ DEF_TEST(sbuf_append) {
 }
 
 
-DEF_TEST(sbuf_appendrepr) {
+DEF_TEST(abuf_repr) {
   #define T(input, expect)                       \
-    SBuf s = sbuf_make(buf, sizeof(buf));     \
-    sbuf_appendrepr(&s, input, strlen(input));   \
-    sbuf_terminate(&s);                          \
+    ABuf s = abuf_make(buf, sizeof(buf));     \
+    abuf_repr(&s, input, strlen(input));   \
+    abuf_terminate(&s);                          \
     assertcstreq(expect, buf);
 
   {

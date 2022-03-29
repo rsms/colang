@@ -1,6 +1,6 @@
 #include "coimpl.h"
-#include "path.h"
-#include "sys.h"
+#include "path.c"
+#include "sys.c"
 
 #ifndef CO_NO_LIBC
   #include <stdio.h>

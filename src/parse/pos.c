@@ -2,16 +2,15 @@
 #include "../tstyle.h"
 #include "pos.h"
 
-void posmap_init(PosMap* pm, Mem mem) {
-  ptrarray_init(&pm->a, pm->a_storage, sizeof(pm->a_storage));
+void posmap_init(PosMap* pm) {
+  array_init(&pm->a, pm->a_storage, sizeof(pm->a_storage));
   // the first slot is used to return NULL in pos_source for unknown positions
-  pm->mem = mem;
   pm->a.v[0] = NULL;
   pm->a.len++;
 }
 
 void posmap_dispose(PosMap* pm) {
-  ptrarray_free(&pm->a, pm->mem);
+  array_free(&pm->a);
 }
 
 u32 posmap_origin(PosMap* pm, Source* source) {
@@ -21,7 +20,7 @@ u32 posmap_origin(PosMap* pm, Source* source) {
       return i;
   }
   u32 i = pm->a.len;
-  ptrarray_push(&pm->a, pm->mem, source);
+  array_push(&pm->a, source);
   return i;
 }
 
@@ -58,13 +57,13 @@ Pos pos_union(Pos a, Pos b) {
   return pos_make_unchecked(pos_origin(a), pos_line(a), c, w);
 }
 
-static u32* compute_line_offsets(Source* s, Mem mem, u32* nlinesp, usize* nbytesp) {
+static u32* compute_line_offsets(Source* s, u32* nlinesp, usize* nbytesp) {
   if (!s->body)
     source_body_open(s);
 
   usize cap = 256; // best guess for common line numbers, to allocate up-front
   usize nbytes = sizeof(u32) * cap;
-  u32* lineoffs = (u32*)mem_allocv(mem, sizeof(u32), cap);
+  u32* lineoffs = (u32*)memallocv(sizeof(u32), cap);
   if (!lineoffs)
     return NULL;
   lineoffs[0] = 0;
@@ -76,9 +75,9 @@ static u32* compute_line_offsets(Source* s, Mem mem, u32* nlinesp, usize* nbytes
       if (linecount == cap) {
         // more lines
         usize newsize = nbytes * 2; // TODO check_mul_overflow
-        u32* lineoffs2 = mem_resize(mem, lineoffs, nbytes, newsize);
+        u32* lineoffs2 = memresize(lineoffs, nbytes, newsize);
         if UNLIKELY(!lineoffs2) {
-          mem_free(mem, lineoffs, nbytes);
+          memfree(lineoffs, nbytes);
           return NULL;
         }
         nbytes *= 2;
@@ -93,7 +92,7 @@ static u32* compute_line_offsets(Source* s, Mem mem, u32* nlinesp, usize* nbytes
   return lineoffs;
 }
 
-static const u8* src_line_contents(Source* s, Mem mem, u32 line, u32* out_len) {
+static const u8* src_line_contents(Source* s, u32 line, u32* out_len) {
   //
   // TODO: this implementation is pretty terrible. We can do better.
   //
@@ -102,11 +101,11 @@ static const u8* src_line_contents(Source* s, Mem mem, u32 line, u32* out_len) {
 
   u32 nlines;
   usize nbytes;
-  u32* lineoffs = compute_line_offsets(s, mem, &nlines, &nbytes);
+  u32* lineoffs = compute_line_offsets(s, &nlines, &nbytes);
   if (!lineoffs)
     return NULL;
   if (line == 0 || line > nlines) {
-    mem_free(mem, lineoffs, nbytes);
+    memfree(lineoffs, nbytes);
     return NULL;
   }
 
@@ -119,24 +118,25 @@ static const u8* src_line_contents(Source* s, Mem mem, u32 line, u32* out_len) {
       *out_len = (s->body + s->len) - lineptr;
     }
   }
-  mem_free(mem, lineoffs, nbytes);
+  memfree(lineoffs, nbytes);
   return lineptr;
 }
 
-static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* src) {
+// returns false if memory allocation failed
+static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src) {
   Pos start = span.start;
   Pos end = span.end;
-  s = str_append(s, '\n');
+  str_push(s, '\n');
   u32 linelen = 0;
-  const u8* lineptr = src_line_contents(src, s->mem, pos_line(start), &linelen);
+  const u8* lineptr = src_line_contents(src, pos_line(start), &linelen);
   if (lineptr)
-    s = str_appendn(s, (const char*)lineptr, linelen);
-  s = str_append(s, '\n');
+    str_append(s, (const char*)lineptr, linelen);
+  str_push(s, '\n');
 
   // indentation
   u32 col = pos_col(start);
   if (col > 0)
-    s = str_appendfill(s, col - 1, ' '); // indentation
+    str_appendfill(s, col - 1, ' '); // indentation
 
   // squiggle "~~~" or arrow "^"
   u32 width = pos_width(start);
@@ -148,49 +148,43 @@ static Str pos_add_src_context(const PosMap* pm, PosSpan span, Str s, Source* sr
   } // else if (pos_isknown(end)) TODO: spans lines
 
   if (width > 0) {
-    s = str_appendfill(s, width, '~'); // squiggle
-    s = str_append(s, '\n');
-  } else {
-    s = str_append(s, "^\n");
+    str_appendfill(s, width, '~'); // squiggle
+    return str_push(s, '\n');
   }
 
-  return s;
+  return str_appendcstr(s, "^\n");
 }
 
 
-Str pos_fmtv(const PosMap* pm, PosSpan span, Str s, const char* fmt, va_list ap) {
-  TStyles style = TStylesForStderr();
-
-  // "file:line:col: message ..." <LF>
-  s = str_append(s, tstyle_str(style, TS_BOLD));
-  s = pos_str(pm, span.start, s);
-  s = str_append(s, ": ");
-  s = str_append(s, tstyle_str(style, TS_RESET));
-  s = str_appendfmtv(s, fmt, ap);
-
-  // include line contents
-  Source* src = (Source*)pos_source(pm, span.start);
-  if (src) {
-    s = pos_add_src_context(pm, span, s, src);
-  } else {
-    s = str_append(s, '\n');
-  }
-
-  return s;
-}
-
-Str pos_fmt(const PosMap* pm, PosSpan span, Str s, const char* fmt, ...) {
-  va_list ap;
-  va_start(ap, fmt);
-  s = pos_fmtv(pm, span, s, fmt, ap);
-  va_end(ap);
-  return s;
-}
-
-Str pos_str(const PosMap* pm, Pos p, Str s) {
+bool pos_str(const PosMap* pm, Pos p, Str* s) {
   const char* filename = "<input>";
   Source* src = (Source*)pos_source(pm, p);
   if (src)
-    filename = src->filename->p;
+    filename = src->filename;
   return str_appendfmt(s, "%s:%u:%u", filename, pos_line(p), pos_col(p));
+}
+
+bool pos_fmtv(const PosMap* pm, PosSpan span, Str* s, const char* fmt, va_list ap) {
+  TStyles style = TStylesForStderr();
+
+  // "file:line:col: message ..." <LF>
+  str_appendcstr(s, tstyle_str(style, TS_BOLD));
+  pos_str(pm, span.start, s);
+  str_appendcstr(s, ": ");
+  str_appendcstr(s, tstyle_str(style, TS_RESET));
+  str_appendfmtv(s, fmt, ap);
+
+  // include line contents
+  Source* src = (Source*)pos_source(pm, span.start);
+  if (src)
+    return pos_add_context(pm, span, s, src);
+  return str_push(s, '\n');
+}
+
+bool pos_fmt(const PosMap* pm, PosSpan span, Str* s, const char* fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  bool ok = pos_fmtv(pm, span, s, fmt, ap);
+  va_end(ap);
+  return ok;
 }

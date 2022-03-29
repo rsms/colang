@@ -1,7 +1,7 @@
 #pragma once
 #include "../mem.c"
 #include "../array.c"
-#include "../str.h"
+#include "../string.c"
 #include "../sym.c"
 #include "token.h"    // Tok { T* }
 #include "type.h"     // TypeCode { TC_* }, TypeFlags { TF_*}

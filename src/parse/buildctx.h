@@ -15,8 +15,6 @@ typedef u8                DiagLevel;  // diagnostic level (Error, Warn ...)
 // msg is a preformatted error message and is only valid until this function returns.
 typedef void(DiagHandler)(Diagnostic* d, void* userdata);
 
-DEF_ARRAY(DiagnosticArray, Diagnostic*, diagarray)
-
 enum DiagLevel {
   DiagError,
   DiagWarn,
@@ -30,6 +28,8 @@ struct Diagnostic {
   PosSpan     pos;
   const char* message;
 };
+
+typedef Array(Diagnostic*) DiagnosticArray;
 
 struct BuildCtx {
   bool     opt;       // optimize
@@ -53,6 +53,9 @@ struct BuildCtx {
   void* nullable        userdata;  // custom user data passed to error handler
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   u32                   errcount;  // total number of errors since last call to build_init
+
+  // temporary buffers for eg string formatting
+  char tmpbuf[2][256];
 };
 
 // BuildCtxInit initializes a BuildCtx structure
@@ -121,7 +124,7 @@ inline static bool b_typeeq(BuildCtx* b, Type* x, Type* y) {
 // ----
 
 // diag_fmt appends to dst a ready-to-print representation of a diagnostic message
-Str diag_fmt(const Diagnostic*, Str dst);
+bool diag_fmt(const Diagnostic* d, Str* s);
 
 // diag_free frees a diagnostics object.
 // It is useful when a ctx's mem is a shared allocator.

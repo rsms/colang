@@ -12,9 +12,8 @@ typedef struct PosMap  PosMap;  // maps Source to Pos indices
 typedef struct PosSpan PosSpan; // span in a Source
 
 struct PosMap {
-  Mem      mem; // used to allocate extra memory for a
-  PtrArray a;
-  void*    a_storage[32]; // slot 0 is always NULL
+  SourceArray a;
+  Source*     a_storage[32]; // slot 0 is always NULL
 };
 
 struct PosSpan {
@@ -27,7 +26,7 @@ struct PosSpan {
 static const Pos NoPos = 0;
 
 
-void posmap_init(PosMap* pm, Mem mem);
+void posmap_init(PosMap* pm);
 void posmap_dispose(PosMap* pm);
 
 // posmap_origin retrieves the origin for source, allocating one if needed.
@@ -70,12 +69,14 @@ static bool pos_isbefore(Pos p, Pos q);
 // For positions with different bases, ordering is by origin.
 static bool pos_isafter(Pos p, Pos q);
 
-// pos_str appends "file:line:col" to dst
-Str pos_str(const PosMap*, Pos, Str dst);
+// pos_str appends "file:line:col" to dst. Returns false if memory allocation failed
+bool pos_str(const PosMap*, Pos, Str* dst);
 
-// pos_fmt appends "file:line:col: format ..." to s, including source context
-Str pos_fmt(const PosMap*, PosSpan, Str s, const char* fmt, ...) ATTR_FORMAT(printf, 4, 5);
-Str pos_fmtv(const PosMap*, PosSpan, Str s, const char* fmt, va_list);
+// pos_fmt appends "file:line:col: format ..." to dst, including source context.
+// Returns false if memory allocation failed
+bool pos_fmt(const PosMap*, PosSpan, Str* dst, const char* fmt, ...)
+  ATTR_FORMAT(printf, 4, 5);
+bool pos_fmtv(const PosMap*, PosSpan, Str* dst, const char* fmt, va_list);
 
 // --- Pos inline implementations
 

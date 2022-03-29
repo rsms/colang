@@ -2,8 +2,7 @@
 #include "tstyle.h"
 
 #ifdef CO_TESTING_ENABLED
-  #include "sbuf.h"
-  #include "str.h"
+  #include "string.c"
   #include "test.c"
 #endif
 
@@ -379,7 +378,7 @@ DEF_TEST(tstyle_stack) {
   auto styles = TStyles256();
   TStyleStack stk = {0};
   char buf[512];
-  auto sbuf = sbuf_make(buf, sizeof(buf)); auto s = &sbuf;
+  ABuf abuf = abuf_make(buf, sizeof(buf)); ABuf* s = &abuf;
 
   // #define pushpoplog dlog
   #define pushpoplog(...) ((void)0)
@@ -399,50 +398,50 @@ DEF_TEST(tstyle_stack) {
     tstyle_str(styles, s__); \
   })
 
-  sbuf_appendstr(s, "default\n");
-  sbuf_appendstr(s, push(TS_ITALIC));
-    sbuf_appendstr(s, "+italic\n");
-    sbuf_appendstr(s, push(TS_DARKGREY_BG));
-      sbuf_appendstr(s, "+grey_bg\n");
-      sbuf_appendstr(s, push(TS_RED));
-        sbuf_appendstr(s, "+red\n");
-        sbuf_appendstr(s, push(TS_GREEN));
-          sbuf_appendstr(s, "+green\n");
-          sbuf_appendstr(s, push(TS_NOITALIC));
-            sbuf_appendstr(s, "+noitalic\n");
-          sbuf_appendstr(s, pop());
-          sbuf_appendstr(s, "-noitalic\n");
-          sbuf_appendstr(s, push(TS_DEFAULT_FG));
-            sbuf_appendstr(s, "+default_fg\n");
-          sbuf_appendstr(s, pop());
-          sbuf_appendstr(s, "-default_fg\n");
-          sbuf_appendstr(s, push(TS_DEFAULT_BG));
-            sbuf_appendstr(s, "+default_bg\n");
-          sbuf_appendstr(s, pop());
-          sbuf_appendstr(s, "-default_bg\n");
-        sbuf_appendstr(s, pop()); // TS_GREEN
-        sbuf_appendstr(s, "-green\n");
-      sbuf_appendstr(s, pop()); // TS_RED
-      sbuf_appendstr(s, "-red\n");
-    sbuf_appendstr(s, pop()); // TS_DARKGREY_BG
-    sbuf_appendstr(s, "-grey_bg\n");
-  sbuf_appendstr(s, pop()); // TS_ITALIC
-  sbuf_appendstr(s, "-italic\n");
+  abuf_cstr(s, "default\n");
+  abuf_cstr(s, push(TS_ITALIC));
+    abuf_cstr(s, "+italic\n");
+    abuf_cstr(s, push(TS_DARKGREY_BG));
+      abuf_cstr(s, "+grey_bg\n");
+      abuf_cstr(s, push(TS_RED));
+        abuf_cstr(s, "+red\n");
+        abuf_cstr(s, push(TS_GREEN));
+          abuf_cstr(s, "+green\n");
+          abuf_cstr(s, push(TS_NOITALIC));
+            abuf_cstr(s, "+noitalic\n");
+          abuf_cstr(s, pop());
+          abuf_cstr(s, "-noitalic\n");
+          abuf_cstr(s, push(TS_DEFAULT_FG));
+            abuf_cstr(s, "+default_fg\n");
+          abuf_cstr(s, pop());
+          abuf_cstr(s, "-default_fg\n");
+          abuf_cstr(s, push(TS_DEFAULT_BG));
+            abuf_cstr(s, "+default_bg\n");
+          abuf_cstr(s, pop());
+          abuf_cstr(s, "-default_bg\n");
+        abuf_cstr(s, pop()); // TS_GREEN
+        abuf_cstr(s, "-green\n");
+      abuf_cstr(s, pop()); // TS_RED
+      abuf_cstr(s, "-red\n");
+    abuf_cstr(s, pop()); // TS_DARKGREY_BG
+    abuf_cstr(s, "-grey_bg\n");
+  abuf_cstr(s, pop()); // TS_ITALIC
+  abuf_cstr(s, "-italic\n");
   asserteq(stk.depth, 0);
 
-  // sbuf = sbuf_make(buf, sizeof(buf));
-  // sbuf_appendstr(s, "default\n");
-  // sbuf_appendstr(s, push(TS_GREEN));
-  // sbuf_appendstr(s, "green\n");
-  // sbuf_appendstr(s, pop());
-  // sbuf_appendstr(s, "default\n");
-  // sbuf_appendstr(s, push(TS_GREEN));
-  // sbuf_appendstr(s, "green\n");
-  // sbuf_appendstr(s, pop());
-  // sbuf_appendstr(s, "default\n");
+  // abuf = abuf_make(buf, sizeof(buf));
+  // abuf_cstr(s, "default\n");
+  // abuf_cstr(s, push(TS_GREEN));
+  // abuf_cstr(s, "green\n");
+  // abuf_cstr(s, pop());
+  // abuf_cstr(s, "default\n");
+  // abuf_cstr(s, push(TS_GREEN));
+  // abuf_cstr(s, "green\n");
+  // abuf_cstr(s, pop());
+  // abuf_cstr(s, "default\n");
   // asserteq(stk.depth, 0);
 
-  // sbuf_terminate(s);
+  // abuf_terminate(s);
   // char tmp[sizeof(buf)*3];
   // strrepr(tmp, sizeof(tmp), buf, strlen(buf));
   // printf("\n%s\n\n%s\n", tmp, buf);

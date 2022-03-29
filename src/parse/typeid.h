@@ -9,6 +9,6 @@ ASSUME_NONNULL_BEGIN
 // equal to the bufsize argument, buf was too short and some of the characters were
 // discarded. The output is always null-terminated, unless size is 0.
 #define typeid_make(buf, bufsize, t) _typeid_make((buf),(bufsize),as_Type(t))
-u32 _typeid_make(char* buf, u32 bufsize, const Type* t);
+usize _typeid_make(char* buf, usize bufsize, const Type* t);
 
 ASSUME_NONNULL_END

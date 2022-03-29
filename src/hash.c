@@ -1,5 +1,7 @@
 // hash -- hashing and PRNG
+//
 // SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
 #ifndef _HASH_IMPL
 #define _HASH_IMPL
@@ -76,7 +78,7 @@ u32 fastrand() {
     fastrand_state += 0xa0761d6478bd642f;
     __uint128_t r =
       (__uint128_t)fastrand_state * (__uint128_t)(fastrand_state ^ 0xe7037ed1a0b428db);
-    #if RSM_LITTLE_ENDIAN
+    #if CO_LITTLE_ENDIAN
       u64 hi = ((u64*)&r)[0], lo = ((u64*)&r)[1];
     #else
       u64 hi = ((u64*)&r)[1], lo = ((u64*)&r)[0];
@@ -245,7 +247,7 @@ typedef unsigned long long du_int;
 typedef union {
   ti_int all;
   struct {
-  #if RSM_LITTLE_ENDIAN
+  #if CO_LITTLE_ENDIAN
     du_int low;
     di_int high;
   #else
