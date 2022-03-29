@@ -121,7 +121,7 @@ void b_add_source(BuildCtx* b, Source* src) {
 
 error b_add_file(BuildCtx* b, const char* filename) {
   Source* src = mem_alloczt(b->mem, Source);
-  error err = source_open_file(src, b->mem, filename);
+  error err = source_open_file(src, filename);
   if (err) {
     mem_free(b->mem, src, sizeof(Source));
     return err;

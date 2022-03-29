@@ -1,6 +1,42 @@
-#include "../coimpl.h"
-#include "../sha256.c"
-#include "source.h"
+// representations of source files
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
+#pragma once
+#ifndef CO_IMPL
+  #include "coimpl.h"
+  #define PARSE_SOURCE_IMPLEMENTATION
+#endif
+#include "array.c"
+BEGIN_INTERFACE
+//———————————————————————————————————————————————————————————————————————————————————————
+
+typedef struct Source Source; // an input source file
+typedef Array(Source*) SourceArray;
+
+struct Source {
+  Source*   next;       // list link
+  char*     filename;   // copy of filename given to source_open
+  const u8* body;       // file body (usually mmap'ed)
+  u32       len;        // size of body in bytes
+  int       fd;         // file descriptor
+  u8        sha256[32]; // SHA-256 checksum of body, set with source_checksum
+  bool      ismmap;     // true if the file is memory-mapped
+};
+
+error source_open_file(Source* src, const char* filename);
+error source_open_data(Source* src, const char* filename, const char* text, u32 len);
+error source_body_open(Source* src);
+error source_body_close(Source* src);
+error source_close(Source* src); // src can be reused with open after this call
+void  source_checksum(Source* src); // populates src->sha256 <= sha256(src->body)
+
+//———————————————————————————————————————————————————————————————————————————————————————
+END_INTERFACE
+#ifdef PARSE_SOURCE_IMPLEMENTATION
+
+#include "sha256.c"
 
 #ifndef CO_NO_LIBC
   #include <errno.h> // errno
@@ -11,19 +47,19 @@
 #endif
 
 
-static error source_init(Source* src, Mem mem, const char* filename) {
+static error source_init(Source* src, const char* filename) {
   memset(src, 0, sizeof(Source));
-  src->filename = mem_strdup(mem, filename);
+  src->filename = memstrdup(filename);
   if UNLIKELY(!src->filename)
     return err_nomem;
   return 0;
 }
 
-error source_open_file(Source* src, Mem mem, const char* filename) {
+error source_open_file(Source* src, const char* filename) {
   #ifdef CO_NO_LIBC
     return err_not_supported;
   #else
-    error err = source_init(src, mem, filename);
+    error err = source_init(src, filename);
     if (err)
       return err;
 
@@ -43,8 +79,8 @@ error source_open_file(Source* src, Mem mem, const char* filename) {
   #endif // CO_NO_LIBC
 }
 
-error source_open_data(Source* src, Mem mem, const char* filename, const char* text, u32 len){
-  error err = source_init(src, mem, filename);
+error source_open_data(Source* src, const char* filename, const char* text, u32 len){
+  error err = source_init(src, filename);
   if (err)
     return err;
   src->fd = -1;
@@ -85,7 +121,7 @@ error source_body_close(Source* src) {
   return 0;
 }
 
-error source_close(Source* src, Mem mem) {
+error source_close(Source* src) {
   error err = source_body_close(src);
   if (src->fd > -1) {
     #ifdef CO_NO_LIBC
@@ -96,7 +132,7 @@ error source_close(Source* src, Mem mem) {
       src->fd = -1;
     #endif
   }
-  mem_free(mem, src->filename, strlen(src->filename) + 1);
+  memfree(src->filename, strlen(src->filename) + 1);
   return err;
 }
 
@@ -113,3 +149,5 @@ void source_checksum(Source* src) {
   }
   sha256_close(&state);
 }
+
+#endif // PARSE_SOURCE_IMPLEMENTATION

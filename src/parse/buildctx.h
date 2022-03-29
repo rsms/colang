@@ -3,7 +3,7 @@
 #include "../array.c"
 #include "../sym.c"
 #include "type.h"
-#include "pos.h"
+#include "pos.c"
 #include "ast.h"
 ASSUME_NONNULL_BEGIN
 

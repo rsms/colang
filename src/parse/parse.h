@@ -1,12 +1,13 @@
 #pragma once
-#include "../mem.c"
-#include "../array.c"
-#include "../string.c"
-#include "../sym.c"
+#include "mem.c"
+#include "array.c"
+#include "string.c"
+#include "sym.c"
+
 #include "token.h"    // Tok { T* }
 #include "type.h"     // TypeCode { TC_* }, TypeFlags { TF_*}
-#include "source.h"   // Source, Pkg
-#include "pos.h"      // Pos, PosMap, PosSpan
+#include "source.c"   // Source, Pkg
+#include "pos.c"      // Pos, PosMap, PosSpan
 #include "ast.h"      // Scope, Node types, NodeKind { N* }, NodeFlags { NF_* }
 #include "buildctx.h" // BuildCtx, Diagnostic, DiagLevel
 #include "universe.h"

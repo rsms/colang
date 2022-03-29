@@ -1,11 +1,12 @@
 // AST nodes
 #pragma once
-#include "../array.c"
-#include "../map.c"
-#include "../sym.c"
+#include "array.c"
+#include "map.c"
+#include "sym.c"
+
 #include "token.h"
 #include "type.h"
-#include "pos.h"
+#include "pos.c"
 ASSUME_NONNULL_BEGIN
 
 typedef struct Scope     Scope;     // lexical namespace (may be chained)

@@ -73,7 +73,7 @@ int main(int argc, const char** argv) {
   // add a source file to the logical package
   Source src1 = {0};
   const char* filename = argv[1] ? argv[1] : "examples/hello.co";
-  error err = source_open_file(&src1, mem, filename);
+  error err = source_open_file(&src1, filename);
   if (err)
     panic("source_open_data: %s %s", filename, error_str(err));
   b_add_source(&build, &src1);

@@ -246,6 +246,7 @@ XFLAGS=(
   -Werror=implicit-function-declaration \
   -Werror=incompatible-pointer-types \
   -Werror=int-conversion \
+  "${XFLAGS[@]}" \
 )
 XFLAGS_HOST=()
 XFLAGS_WASM=(
