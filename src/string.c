@@ -480,32 +480,35 @@ bool abuf_endswith(const ABuf* s, const char* str, usize len) {
 // Str impl
 
 #define STR_USE_ABUF_BEGIN(initnbytes) \
-  for (usize nbytes = (initnbytes); ; ) { \
-    if UNLIKELY(!str_reserve(s, nbytes)) \
+  for (usize nbytes__ = (initnbytes); ; ) { \
+    if UNLIKELY(!str_reserve(s, nbytes__)) \
       return false; \
-    ABuf buf = abuf_make(&s->v[s->len], nbytes);
+    ABuf buf = abuf_make(&s->v[s->len], nbytes__);
 // use buf here
 #define STR_USE_ABUF_END() \
-    if LIKELY(buf.len < nbytes) { \
+    if LIKELY(buf.len < nbytes__) { \
       s->len += buf.len; \
       break; \
     } \
     /* we didn't have enough space; try again */ \
-    nbytes = buf.len + 1; \
+    nbytes__ = buf.len + 1; \
   }
 
 
 bool str_appendfmtv(Str* s, const char* fmt, va_list ap) {
+  va_list ap2;
   STR_USE_ABUF_BEGIN(strlen(fmt)*2)
-  abuf_fmtv(&buf, fmt, ap);
+    va_copy(ap2, ap); // copy va_list since we might read it twice
+    abuf_fmtv(&buf, fmt, ap2);
+    va_end(ap2);
   STR_USE_ABUF_END()
   return true;
 }
 
 bool str_appendfmt(Str* s, const char* fmt, ...) {
   va_list ap;
-  bool ok = str_appendfmtv(s, fmt, ap);
   va_start(ap, fmt);
+  bool ok = str_appendfmtv(s, fmt, ap);
   va_end(ap);
   return ok;
 }
