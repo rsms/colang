@@ -398,6 +398,7 @@ static void* nullable ba_alloc(
   BufAlloc* a = state;
   usize nz = newsize == NULL ? 0 : *newsize;
   if UNLIKELY(p != NULL) {
+    assertf((uintptr)p == ALIGN2((uintptr)p, sizeof(void*)), "bad address %p", p);
     oldsize = ALIGN2(oldsize, sizeof(void*));
     if LIKELY(nz == 0) {
       // free -- ba_alloc(s,p,>0,0)
