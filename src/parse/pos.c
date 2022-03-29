@@ -211,70 +211,6 @@ Pos pos_union(Pos a, Pos b) {
   return pos_make_unchecked(pos_origin(a), pos_line(a), c, w);
 }
 
-static u32* compute_line_offsets(Source* s, u32* nlinesp, usize* nbytesp) {
-  if (!s->body)
-    source_body_open(s);
-
-  usize cap = 256; // best guess for common line numbers, to allocate up-front
-  usize nbytes = sizeof(u32) * cap;
-  u32* lineoffs = (u32*)memallocv(sizeof(u32), cap);
-  if (!lineoffs)
-    return NULL;
-  lineoffs[0] = 0;
-
-  u32 linecount = 1;
-  u32 i = 0;
-  while (i < s->len) {
-    if (s->body[i++] == '\n') {
-      if (linecount == cap) {
-        // more lines
-        usize newsize = nbytes * 2; // TODO check_mul_overflow
-        u32* lineoffs2 = memresize(lineoffs, nbytes, newsize);
-        if UNLIKELY(!lineoffs2) {
-          memfree(lineoffs, nbytes);
-          return NULL;
-        }
-        nbytes *= 2;
-        lineoffs = lineoffs2;
-      }
-      lineoffs[linecount] = i;
-      linecount++;
-    }
-  }
-  *nlinesp = linecount;
-  *nbytesp = nbytes;
-  return lineoffs;
-}
-
-static const u8* src_line_contents(Source* s, u32 line, u32* out_len) {
-  //
-  // TODO: this implementation is pretty terrible. We can do better.
-  //
-  if (line == 0)
-    return NULL;
-
-  u32 nlines;
-  usize nbytes;
-  u32* lineoffs = compute_line_offsets(s, &nlines, &nbytes);
-  if (!lineoffs)
-    return NULL;
-  if (line == 0 || line > nlines) {
-    memfree(lineoffs, nbytes);
-    return NULL;
-  }
-
-  u32 start = lineoffs[line - 1];
-  const u8* lineptr = s->body + start;
-  if (out_len) {
-    if (line < nlines) {
-      *out_len = (lineoffs[line] - 1) - start;
-    } else {
-      *out_len = (s->body + s->len) - lineptr;
-    }
-  }
-  memfree(lineoffs, nbytes);
-  return lineptr;
-}
 
 // returns false if memory allocation failed
 static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src) {
@@ -282,7 +218,7 @@ static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src)
   Pos end = span.end;
   str_push(s, '\n');
   u32 linelen = 0;
-  const u8* lineptr = src_line_contents(src, pos_line(start), &linelen);
+  const u8* lineptr = source_line_bytes(src, pos_line(start), &linelen);
   if (lineptr)
     str_append(s, (const char*)lineptr, linelen);
   str_push(s, '\n');

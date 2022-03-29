@@ -86,7 +86,10 @@ typedef Array(u32)   U32Array;
 
 #define array_init(a, storage, storagesize) \
   ( ASSERT_U32SIZE((storagesize)/_ARRAY_ESIZE(a)), \
-    (a)->v = (storage), (a)->cap = (u32)((storagesize)/_ARRAY_ESIZE(a)), (a)->ext=true )
+    (a)->v = (storage), \
+    (a)->len = 0, \
+    (a)->cap = (u32)((storagesize)/_ARRAY_ESIZE(a)), \
+    (a)->ext=true )
 
 #define array_clear(a) ((a)->len = 0)
 

@@ -23,6 +23,7 @@ struct Source {
   int       fd;         // file descriptor
   u8        sha256[32]; // SHA-256 checksum of body, set with source_checksum
   bool      ismmap;     // true if the file is memory-mapped
+  U32Array  lineoffs;   // [lineno] => offset in body (populated by source_compute_lineoffs)
 };
 
 error source_open_file(Source* src, const char* filename);
@@ -31,6 +32,12 @@ error source_body_open(Source* src);
 error source_body_close(Source* src);
 error source_close(Source* src); // src can be reused with open after this call
 void  source_checksum(Source* src); // populates src->sha256 <= sha256(src->body)
+error source_compute_lineoffs(Source* src); // populates src->lineoffs if needed
+
+// source_line_bytes returns a pointer to line in src->body.
+// On success, *out_len is set to the line's length in bytes (excluding "\n").
+// Returns NULL if line is out of bounds or if source_compute_lineoffs fails.
+const u8* nullable source_line_bytes(Source* src, u32 line, u32* out_len);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 END_INTERFACE
@@ -133,6 +140,7 @@ error source_close(Source* src) {
     #endif
   }
   memfree(src->filename, strlen(src->filename) + 1);
+  array_free(&src->lineoffs);
   return err;
 }
 
@@ -149,5 +157,53 @@ void source_checksum(Source* src) {
   }
   sha256_close(&state);
 }
+
+
+error source_compute_lineoffs(Source* src) {
+  if (src->lineoffs.len > 0)
+    return 0;
+
+  if (!src->body)
+    source_body_open(src);
+
+  // estimate total number of lines.
+  // From analysis of the Co codebase, 30 columns is average
+  error err = array_reserve(&src->lineoffs, MAX(8, src->len / 30));
+  if (err)
+    return err;
+
+  // line 0 is invalid (Pos 0 is invalid)
+  array_push(&src->lineoffs, 0);
+
+  for (u32 i = 0; i < src->len;) {
+    if (src->body[i++] == '\n' && i < src->len)
+      array_push(&src->lineoffs, i);
+  }
+
+  return 0;
+}
+
+
+const u8* nullable source_line_bytes(Source* src, u32 line, u32* out_len) {
+  if (line == 0)
+    return NULL;
+
+  error err = source_compute_lineoffs(src);
+  if (err || src->lineoffs.len < line)
+    return NULL;
+
+  u32 start = array_at(&src->lineoffs, line - 1);
+  const u8* lineptr = src->body + start;
+
+  if (line < src->lineoffs.len) {
+    u32 next_start = array_at(&src->lineoffs, line) - 1;
+    *out_len = next_start - start;
+  } else {
+    *out_len = (src->body + src->len) - lineptr;
+  }
+
+  return lineptr;
+}
+
 
 #endif // PARSE_SOURCE_IMPLEMENTATION
