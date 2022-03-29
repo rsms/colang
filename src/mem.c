@@ -44,6 +44,9 @@ void* nullable mem_resizev(
   Mem m, void* nullable p, usize elemsize, usize oldcount, usize newcount)
   ATTR_MALLOC WARN_UNUSED_RESULT;
 
+// mem_strdup is like strdup but uses m
+char* nullable mem_strdup(Mem m, const char* cstr);
+
 //——— allocators
 
 // mem_mkalloc_libc returns the shared libc allocator (using malloc, realloc and free.)
@@ -65,6 +68,19 @@ static Mem mem_mkalloc_null();
 
 //——— contextual allocation
 
+static void* nullable memalloc(usize size);
+static void* nullable memresize(void* nullable p, usize oldsize, usize newsize);
+static           void memfree(void* p, usize size);
+static void* nullable memallocx(usize* size);
+static void* nullable memresizex(void* nullable p, usize oldsize, usize* newsize);
+#define memallocz(args...)  mem_allocz(mem_ctx(),args)
+#define memalloct(TYPE)     ((TYPE*)memalloc(sizeof(TYPE)))
+#define memalloczt(TYPE)    ((TYPE*)memallocz(sizeof(TYPE)))
+#define memallocv(args...)  mem_allocv(mem_ctx(),args)
+#define memalloczv(args...) mem_alloczv(mem_ctx(),args)
+#define memresizev(args...) mem_resizev(mem_ctx(),args)
+#define memstrdup(args...)  mem_strdup(mem_ctx(),args)
+
 static Mem mem_ctx();
 static Mem mem_ctx_set(Mem m);
 
@@ -76,7 +92,6 @@ static Mem mem_ctx_set(Mem m);
 //     mem_ctx_set_scope(m);
 //     // mem_ctx() is m here
 //   } // mem_ctx() is restored when leaving foo()
-//
 //   void foo() {
 //     // mem_ctx() is whatever it was when calling foo
 //     mem_ctx_scope(m) {
@@ -96,26 +111,11 @@ static Mem mem_ctx_set(Mem m);
   #warning compiler does not support cleanup attribute
 #endif
 
-static void* nullable memalloc(usize size);
-static void* nullable memresize(void* nullable p, usize oldsize, usize newsize);
-static void memfree(void* p, usize size);
-static void* nullable memallocx(usize* size);
-static void* nullable memresizex(void* nullable p, usize oldsize, usize* newsize);
-#define memallocz(args...) mem_allocz(mem_ctx(),args)
-#define memalloct(TYPE) ((TYPE*)memalloc(sizeof(TYPE)))
-#define memalloczt(TYPE) ((TYPE*)memallocz(sizeof(TYPE)))
-#define memallocv(args...) mem_allocv(mem_ctx(),args)
-#define memalloczv(args...) mem_alloczv(mem_ctx(),args)
-#define memresizev(args...) mem_resizev(mem_ctx(),args)
-
 //——— memory utility functions
 
 usize mem_pagesize(); // get virtual memory page size in bytes (usually 4096 bytes)
 void* nullable vmem_alloc(usize nbytes); // allocate virtual memory
 bool vmem_free(void* ptr, usize nbytes); // free virtual memory
-
-// mem_strdup is like strdup but uses m
-char* nullable mem_strdup(Mem m, const char* cstr);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal interface
@@ -513,7 +513,7 @@ void mem_freealloc_vm(Mem m) {
 _Thread_local Mem _mem_ctx = {&_mem_null_alloc, NULL};
 
 void _mem_ctx_scope_cleanup(Mem* prev) {
-  dlog("_mem_ctx_scope_cleanup prev->a=%p", prev->a);
+  // dlog("_mem_ctx_scope_cleanup prev->a=%p", prev->a);
   if (prev->a)
     mem_ctx_set(*prev);
 }

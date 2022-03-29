@@ -14,9 +14,10 @@ BEGIN_INTERFACE
 
 // sparse_TYPE parses a string as TYPE.
 // These functions return err_invalid if the input is not valid, or err_overflow.
-static error sparse_u64(const char* src, usize len, int base, u64* result);
-error sparse_i64(const char* src, usize len, int base, i64* result);
-error sparse_u32(const char* src, usize len, int base, u32* result);
+static error sparse_u64(const char* src, usize len, u32 base, u64* result);
+static error sparse_i64(const char* src, usize len, u32 base, i64* result);
+error sparse_u32(const char* src, usize len, u32 base, u32* result);
+error sparse_i32(const char* src, usize len, u32 base, i32* result);
 
 // sfmt_TYPE formats a value of TYPE, returning the number of bytes written.
 // These functions do NOT append a terminating '\0'.
@@ -36,26 +37,6 @@ static bool shasprefix(const char* s, usize len, const char* prefix_cstr);
 // that are appended independent of the buffer's limit.
 typedef struct ABuf ABuf;
 
-// Here is a template for functions that uses ABuf:
-//
-// // It writes at most bufcap-1 of the characters to the output buf (the bufcap'th
-// // character then gets the terminating '\0'). If the return value is greater than or
-// // equal to the bufcap argument, buf was too short and some of the characters were
-// // discarded. The output is always null-terminated, unless size is 0.
-// // Returns the number of characters that would have been printed if bufcap was
-// // unlimited (not including the final `\0').
-// usize myfmt(char* buf, usize bufcap, int somearg) {
-//   ABuf s = abuf_make(buf, bufcap);
-//   // call abuf_append functions here
-//   return abuf_terminate(&s);
-// }
-//
-extern char abuf_zeroc;
-#define abuf_make(p,size) ({ /* ABuf abuf_make(char* buf, usize bufcap)                   */\
-  usize z__ = (usize)(size); char* p__ = (p);                                               \
-  UNLIKELY(z__ == 0) ? (ABuf){ &abuf_zeroc, &abuf_zeroc, 0 } : (ABuf){ p__, p__+z__-1, 0 }; \
-})
-
 // append functions
 ABuf* abuf_append(ABuf* s, const char* p, usize len);
 // static ABuf* abuf_str(ABuf* s, Str str); // = abuf_append(s, str.p, str.len)
@@ -73,8 +54,27 @@ ABuf* abuf_fmtv(ABuf* s, const char* fmt, va_list);
 static usize abuf_terminate(ABuf* s); // sets last byte to \0 and returns s->len
 static usize abuf_avail(const ABuf* s); // number of bytes available to write
 bool abuf_endswith(const ABuf* s, const char* str, usize len);
-
 // TODO: trim
+
+// Here is a template for functions that uses ABuf:
+//
+// // It writes at most bufcap-1 of the characters to the output buf (the bufcap'th
+// // character then gets the terminating '\0'). If the return value is greater than or
+// // equal to the bufcap argument, buf was too short and some of the characters were
+// // discarded. The output is always null-terminated, unless size is 0.
+// // Returns the number of characters that would have been printed if bufcap was
+// // unlimited (not including the final `\0').
+// usize myfmt(char* buf, usize bufcap, int somearg) {
+//   ABuf s = abuf_make(buf, bufcap);
+//   // call abuf_append functions here
+//   return abuf_terminate(&s);
+// }
+//
+extern char abuf_zeroc;
+#define abuf_make(p,size) ({ /* ABuf abuf_make(char* buf, usize bufcap)               */\
+  usize z__ = (usize)(size); char* p__ = (p);                                           \
+  UNLIKELY(z__ == 0) ? (ABuf){&abuf_zeroc,&abuf_zeroc,0} : (ABuf){ p__, p__+z__-1, 0 }; \
+})
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // Str: mutable growable string
@@ -112,13 +112,14 @@ bool str_appendf64(Str*, f64 value, int ndecimals);
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal
 
-error _sparse_u64(const char* src, usize len, int base, u64* result, u64 cutoff);
-error _sparse_u64_base10(const char* src, usize len, u64* result);
+error _sparse_u64(const char* src, usize len, u32 base, u64* result, u64 cutoff);
+error _sparse_i64(const char* src, usize len, u32 base, i64* result, u64 cutoff);
 
-inline static error sparse_u64(const char* src, usize len, int base, u64* result) {
-  if (base == 10)
-    return _sparse_u64_base10(src, len, result);
+inline static error sparse_u64(const char* src, usize len, u32 base, u64* result) {
   return _sparse_u64(src, len, base, result, 0xFFFFFFFFFFFFFFFF);
+}
+inline static error sparse_i64(const char* src, usize len, u32 base, i64* result) {
+  return _sparse_i64(src, len, base, result, (u64)I64_MAX + 1);
 }
 
 inline static usize sfmt_u32(char buf[32], u32 v, u32 base) {
@@ -172,17 +173,8 @@ static const char* alphabet62 =
   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 static const char* hexchars = "0123456789abcdef";
 
-error _sparse_u64_base10(const char* src, usize srclen, u64* result) {
-  u64 n = 0;
-  const char* end = src + srclen;
-  while (src != end && ascii_isdigit(*src))
-    n = 10*n + (*src++ - '0');
-  *result = n;
-  return src == end ? 0 : err_invalid;
-}
 
-
-error _sparse_u64(const char* src, usize srclen, int base, u64* result, u64 cutoff) {
+error _sparse_u64(const char* src, usize srclen, u32 base, u64* result, u64 cutoff) {
   assert(base >= 2 && base <= 36);
   const char* s = src;
   const char* end = src + srclen;
@@ -200,7 +192,7 @@ error _sparse_u64(const char* src, usize srclen, int base, u64* result, u64 cuto
     } else {
       return err_invalid;
     }
-    if (c >= base)
+    if (c >= (int)base)
       return err_invalid;
     if (any < 0 || acc > cutoff || (acc == cutoff && (u64)c > cutlim)) {
       any = -1;
@@ -210,13 +202,58 @@ error _sparse_u64(const char* src, usize srclen, int base, u64* result, u64 cuto
       acc += c;
     }
   }
-  if (any < 0 || // more digits than what fits in acc
-      any == 0)
-  {
-    return err_overflow;
+  if UNLIKELY(any < 0 || any == 0) {
+    // more digits than what fits in acc, or empty input (srclen == 0)
+    return any ? err_overflow : err_invalid;
   }
   *result = acc;
   return 0;
+}
+
+
+error _sparse_i64(const char* src, usize z, u32 base, i64* result, u64 cutoff) {
+  assert(
+    cutoff == (u64)I64_MAX + 1 ||
+    cutoff == (u64)I32_MAX + 1 ||
+    cutoff == (u64)I16_MAX + 1 ||
+    cutoff == (u64)I8_MAX + 1 );
+
+  const char* start = src;
+  if (z > 0 && *src == '-') {
+    start++;
+    z--;
+  }
+
+  u64 uresult;
+  error err = _sparse_u64(start, z, base, &uresult, cutoff);
+  if (err)
+    return err;
+
+  if (*src == '-') {
+    *result = uresult == cutoff ? (i64)uresult : -(i64)uresult;
+  } else {
+    if UNLIKELY(uresult == cutoff)
+      return err_overflow;
+    *result = (i64)uresult;
+  }
+
+  return 0;
+}
+
+
+error sparse_u32(const char* src, usize srclen, u32 base, u32* result) {
+  u64 r;
+  error err = _sparse_u64(src, srclen, base, &r, 0xFFFFFFFF);
+  *result = (u32)r;
+  return err;
+}
+
+
+error sparse_i32(const char* src, usize srclen, u32 base, i32* result) {
+  i64 r;
+  error err = _sparse_i64(src, srclen, base, &r, (u64)I32_MAX + 1);
+  *result = (i32)r;
+  return err;
 }
 
 
@@ -481,16 +518,16 @@ bool str_appendrepr(Str* s, const void* p, usize size) {
 }
 
 bool str_appendu32(Str* s, u32 value, u32 base) {
-  STR_USE_ABUF_BEGIN(32)
-  abuf_u32(&buf, value, base);
-  STR_USE_ABUF_END()
+  if UNLIKELY(!str_reserve(s, 32))
+    return false;
+  s->len += sfmt_u32(s->v + s->len, value, base);
   return true;
 }
 
 bool str_appendu64(Str* s, u32 value, u32 base) {
-  STR_USE_ABUF_BEGIN(64)
-  abuf_u64(&buf, value, base);
-  STR_USE_ABUF_END()
+  if UNLIKELY(!str_reserve(s, 64))
+    return false;
+  s->len += sfmt_u64(s->v + s->len, value, base);
   return true;
 }
 

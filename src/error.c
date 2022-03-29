@@ -10,7 +10,7 @@ const char* error_str(error e) {
   CO_FOREACH_ERROR(_)
   #undef _
   }
-  return "(unknown error)";
+  return "unspecified error";
 }
 
 error error_from_errno(int e) {
@@ -20,151 +20,145 @@ error error_from_errno(int e) {
     switch (e) {
     case 0: return 0;
 
-    case EACCES:
+    case EACCES: // Permission denied
     case EPERM: // Operation not permitted
-    case EAUTH: // Authentication error
       return err_access;
 
-    case ENOENT:
-    case ESRCH:
-    case ENODEV:
+    case ENOENT: // No such file or directory
+    case ESRCH:  // No such process
+    case ENXIO:  // No such device or address
+    case ENODEV: // No such device
+    case ENOPROTOOPT: // Protocol not available
+    case EADDRNOTAVAIL: // Address not available
       return err_not_found;
 
-    case ENOTSUP:
-    case EOPNOTSUPP:
-    case EPROTONOSUPPORT:
-    case ESOCKTNOSUPPORT:
-    case EPFNOSUPPORT:
-    case EAFNOSUPPORT:
+    case ENOTSUP: // Not supported
+    case EOPNOTSUPP: // Operation not supported
+    case EPROTONOSUPPORT: // Protocol not supported
+    case ESOCKTNOSUPPORT: // Socket type not supported
+    case EPFNOSUPPORT: // Protocol family not supported
+    case EAFNOSUPPORT: // Address family not supported by protocol
       return err_not_supported;
 
-    case EOVERFLOW:
-    case ERANGE:
+    case EOVERFLOW: // Value too large for data type
+    case ERANGE: // Result not representable
       return err_overflow;
 
-    case EBADF: return err_badfd;
-    case ENOMEM: return err_nomem;
-    case EFAULT: return err_mfault;
-    case EEXIST: return err_exists;
-    case ENAMETOOLONG: return err_name_too_long;
-    case ECANCELED: return err_canceled;
-    // case EINVAL: return err_invalid; // default case
+    case EBADF: return err_badfd; // File descriptor in bad state
+    case ENOMEM: return err_nomem; // Out of memory
+    case ENOSPC: return err_nospace; // No space left on device
+    case EFAULT: return err_mfault; // Bad address
+    case EEXIST: return err_exists; // File exists
+    case ENAMETOOLONG: return err_name_too_long; // Filename too long
+    case ECANCELED: return err_canceled; // Operation canceled
+    case EINVAL: return err_invalid; // Invalid argument
 
-    // TODO:
-    // case ESRCH: return err_;
-    // case EINTR: return err_;
-    // case EIO: return err_;
-    // case ENXIO: return err_;
-    // case E2BIG: return err_;
-    // case ENOEXEC: return err_;
-    // case ECHILD: return err_;
-    // case EAGAIN: case EWOULDBLOCK: return err_;
-    // case ENOTBLK: return err_;
-    // case EBUSY: return err_;
-    // case EXDEV: return err_;
-    // case ENOTDIR: return err_;
-    // case EISDIR: return err_;
-    // case ENFILE: return err_;
-    // case EMFILE: return err_;
-    // case ENOTTY: return err_;
-    // case ETXTBSY: return err_;
-    // case EFBIG: return err_;
-    // case ENOSPC: return err_;
-    // case ESPIPE: return err_;
-    // case EROFS: return err_;
-    // case EMLINK: return err_;
-    // case EPIPE: return err_;
-    // case EDOM: return err_;
-    // case EDEADLK: case EDEADLOCK: return err_;
-    // case ENOLCK: return err_;
-    // case ENOSYS: return err_;
-    // case ENOTEMPTY: return err_;
-    // case ELOOP: return err_;
-    // case ENOMSG: return err_;
-    // case EIDRM: return err_;
-    // case ECHRNG: return err_;
-    // case EL2NSYNC: return err_;
-    // case EL3HLT: return err_;
-    // case EL3RST: return err_;
-    // case ELNRNG: return err_;
-    // case EUNATCH: return err_;
-    // case ENOCSI: return err_;
-    // case EL2HLT: return err_;
-    // case EBADE: return err_;
-    // case EBADR: return err_;
-    // case EXFULL: return err_;
-    // case ENOANO: return err_;
-    // case EBADRQC: return err_;
-    // case EBADSLT: return err_;
-    // case EBFONT: return err_;
-    // case ENOSTR: return err_;
-    // case ENODATA: return err_;
-    // case ETIME: return err_;
-    // case ENOSR: return err_;
-    // case ENONET: return err_;
-    // case ENOPKG: return err_;
-    // case EREMOTE: return err_;
-    // case ENOLINK: return err_;
-    // case EADV: return err_;
-    // case ESRMNT: return err_;
-    // case ECOMM: return err_;
-    // case EPROTO: return err_;
-    // case EMULTIHOP: return err_;
-    // case EDOTDOT: return err_;
-    // case EBADMSG: return err_;
-    // case ENOTUNIQ: return err_;
-    // case EBADFD: return err_;
-    // case EREMCHG: return err_;
-    // case ELIBACC: return err_;
-    // case ELIBBAD: return err_;
-    // case ELIBSCN: return err_;
-    // case ELIBMAX: return err_;
-    // case ELIBEXEC: return err_;
-    // case EILSEQ: return err_;
-    // case ERESTART: return err_;
-    // case ESTRPIPE: return err_;
-    // case EUSERS: return err_;
-    // case ENOTSOCK: return err_;
-    // case EDESTADDRREQ: return err_;
-    // case EMSGSIZE: return err_;
-    // case EPROTOTYPE: return err_;
-    // case ENOPROTOOPT: return err_;
-    // case EADDRINUSE: return err_;
-    // case EADDRNOTAVAIL: return err_;
-    // case ENETDOWN: return err_;
-    // case ENETUNREACH: return err_;
-    // case ENETRESET: return err_;
-    // case ECONNABORTED: return err_;
-    // case ECONNRESET: return err_;
-    // case ENOBUFS: return err_;
-    // case EISCONN: return err_;
-    // case ENOTCONN: return err_;
-    // case ESHUTDOWN: return err_;
-    // case ETOOMANYREFS: return err_;
-    // case ETIMEDOUT: return err_;
-    // case ECONNREFUSED: return err_;
-    // case EHOSTDOWN: return err_;
-    // case EHOSTUNREACH: return err_;
-    // case EALREADY: return err_;
-    // case EINPROGRESS: return err_;
-    // case ESTALE: return err_;
-    // case EUCLEAN: return err_;
-    // case ENOTNAM: return err_;
-    // case ENAVAIL: return err_;
-    // case EISNAM: return err_;
-    // case EREMOTEIO: return err_;
-    // case EDQUOT: return err_;
-    // case ENOMEDIUM: return err_;
-    // case EMEDIUMTYPE: return err_;
-    // case ENOKEY: return err_;
-    // case EKEYEXPIRED: return err_;
-    // case EKEYREVOKED: return err_;
-    // case EKEYREJECTED: return err_;
-    // case EOWNERDEAD: return err_;
-    // case ENOTRECOVERABLE: return err_;
-    // case ERFKILL: return err_;
-    // case EHWPOISON: return err_;
+    // TODO: rest of the error codes (listed below)
+
     default: return err_invalid;
   }
   #endif
 }
+
+
+/* errno strerror
+0                "No error information"
+
+EILSEQ           "Illegal byte sequence"
+EDOM             "Domain error"
+ERANGE           "Result not representable"
+
+ENOTTY           "Not a tty"
+EACCES           "Permission denied"
+EPERM            "Operation not permitted"
+ENOENT           "No such file or directory"
+ESRCH            "No such process"
+EEXIST           "File exists"
+
+EOVERFLOW        "Value too large for data type"
+ENOSPC           "No space left on device"
+ENOMEM           "Out of memory"
+
+EBUSY            "Resource busy"
+EINTR            "Interrupted system call"
+EAGAIN           "Resource temporarily unavailable"
+ESPIPE           "Invalid seek"
+
+EXDEV            "Cross-device link"
+EROFS            "Read-only file system"
+ENOTEMPTY        "Directory not empty"
+
+ECONNRESET       "Connection reset by peer"
+ETIMEDOUT        "Operation timed out"
+ECONNREFUSED     "Connection refused"
+EHOSTDOWN        "Host is down"
+EHOSTUNREACH     "Host is unreachable"
+EADDRINUSE       "Address in use"
+
+EPIPE            "Broken pipe"
+EIO              "I/O error"
+ENXIO            "No such device or address"
+ENOTBLK          "Block device required"
+ENODEV           "No such device"
+ENOTDIR          "Not a directory"
+EISDIR           "Is a directory"
+ETXTBSY          "Text file busy"
+ENOEXEC          "Exec format error"
+
+EINVAL           "Invalid argument"
+
+E2BIG            "Argument list too long"
+ELOOP            "Symbolic link loop"
+ENAMETOOLONG     "Filename too long"
+ENFILE           "Too many open files in system"
+EMFILE           "No file descriptors available"
+EBADF            "Bad file descriptor"
+ECHILD           "No child process"
+EFAULT           "Bad address"
+EFBIG            "File too large"
+EMLINK           "Too many links"
+ENOLCK           "No locks available"
+
+EDEADLK          "Resource deadlock would occur"
+ENOTRECOVERABLE  "State not recoverable"
+EOWNERDEAD       "Previous owner died"
+ECANCELED        "Operation canceled"
+ENOSYS           "Function not implemented"
+ENOMSG           "No message of desired type"
+EIDRM            "Identifier removed"
+ENOSTR           "Device not a stream"
+ENODATA          "No data available"
+ETIME            "Device timeout"
+ENOSR            "Out of streams resources"
+ENOLINK          "Link has been severed"
+EPROTO           "Protocol error"
+EBADMSG          "Bad message"
+EBADFD           "File descriptor in bad state"
+ENOTSOCK         "Not a socket"
+EDESTADDRREQ     "Destination address required"
+EMSGSIZE         "Message too large"
+EPROTOTYPE       "Protocol wrong type for socket"
+ENOPROTOOPT      "Protocol not available"
+EPROTONOSUPPORT  "Protocol not supported"
+ESOCKTNOSUPPORT  "Socket type not supported"
+ENOTSUP          "Not supported"
+EPFNOSUPPORT     "Protocol family not supported"
+EAFNOSUPPORT     "Address family not supported by protocol"
+EADDRNOTAVAIL    "Address not available"
+ENETDOWN         "Network is down"
+ENETUNREACH      "Network unreachable"
+ENETRESET        "Connection reset by network"
+ECONNABORTED     "Connection aborted"
+ENOBUFS          "No buffer space available"
+EISCONN          "Socket is connected"
+ENOTCONN         "Socket not connected"
+ESHUTDOWN        "Cannot send after socket shutdown"
+EALREADY         "Operation already in progress"
+EINPROGRESS      "Operation in progress"
+ESTALE           "Stale file handle"
+EREMOTEIO        "Remote I/O error"
+EDQUOT           "Quota exceeded"
+ENOMEDIUM        "No medium found"
+EMEDIUMTYPE      "Wrong medium type"
+EMULTIHOP        "Multihop attempted"
+*/

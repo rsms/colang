@@ -12,44 +12,74 @@
   #define true  ((bool)1)
   #define false ((bool)0)
 #endif
-typedef signed char         i8;
-typedef unsigned char       u8;
-typedef signed short        i16;
-typedef unsigned short      u16;
-typedef signed int          i32;
-typedef unsigned int        u32;
-typedef signed long long    i64;
-typedef unsigned long long  u64;
-typedef float               f32;
-typedef double              f64;
-typedef unsigned int        uint;
-typedef signed long         isize;
-typedef unsigned long       usize;
-#ifdef __INTPTR_TYPE__
-  typedef __INTPTR_TYPE__   intptr;
-  typedef __UINTPTR_TYPE__  uintptr;
+#ifdef __INT8_TYPE__
+  typedef __INT8_TYPE__       i8;
+  typedef __UINT8_TYPE__      u8;
 #else
-  typedef signed long       intptr;
-  typedef unsigned long     uintptr;
+  typedef signed char         i8;
+  typedef unsigned char       u8;
 #endif
+#ifdef __INT16_TYPE__
+  typedef __INT16_TYPE__      i16;
+  typedef __UINT16_TYPE__     u16;
+#else
+  typedef signed short        i16;
+  typedef unsigned short      u16;
+#endif
+#ifdef __INT32_TYPE__
+  typedef __INT32_TYPE__      i32;
+  typedef __UINT32_TYPE__     u32;
+#else
+  typedef signed int          i32;
+  typedef unsigned int        u32;
+#endif
+#ifdef __INT64_TYPE__
+  typedef __INT64_TYPE__      i64;
+  typedef __UINT64_TYPE__     u64;
+#else
+  typedef signed long long    i64;
+  typedef unsigned long long  u64;
+#endif
+#ifdef __SIZE_TYPE__
+  typedef __SIZE_TYPE__       usize;
+#else
+  typedef unsigned long       usize;
+#endif
+#ifdef __INTPTR_TYPE__
+  typedef __INTPTR_TYPE__     intptr;
+  typedef __UINTPTR_TYPE__    uintptr;
+#else
+  typedef signed long         intptr;
+  typedef unsigned long       uintptr;
+#endif
+typedef float  f32;
+typedef double f64;
 
 #define I8_MAX    0x7f
 #define I16_MAX   0x7fff
 #define I32_MAX   0x7fffffff
-#define I64_MAX   0x7fffffffffffffff
-#define ISIZE_MAX __LONG_MAX__
+#define I64_MAX   0x7fffffffffffffffLL
+#ifdef __SIZE_MAX__
+  #define ISIZE_MAX (__SIZE_MAX__ >> 1)
+#else
+  #define ISIZE_MAX __LONG_MAX__
+#endif
 
 #define I8_MIN    (-0x80)
 #define I16_MIN   (-0x8000)
 #define I32_MIN   (-0x80000000)
-#define I64_MIN   (-0x8000000000000000)
+#define I64_MIN   (-0x8000000000000000LL)
 #define ISIZE_MIN (-__LONG_MAX__ -1L)
 
-#define U8_MAX    0xff
-#define U16_MAX   0xffff
-#define U32_MAX   0xffffffff
-#define U64_MAX   0xffffffffffffffff
-#define USIZE_MAX (__LONG_MAX__ *2UL+1UL)
+#define U8_MAX    0xffU
+#define U16_MAX   0xffffU
+#define U32_MAX   0xffffffffU
+#define U64_MAX   0xffffffffffffffffULL
+#ifdef __SIZE_MAX__
+  #define USIZE_MAX __SIZE_MAX__
+#else
+  #define USIZE_MAX (__LONG_MAX__ *2UL+1UL)
+#endif
 
 #ifdef __INTPTR_MAX__
   #define INTPTR_MIN  (-__INTPTR_MAX__-1L)
@@ -59,6 +89,19 @@ typedef unsigned long       usize;
   #define INTPTR_MIN  ISIZE_MIN
   #define INTPTR_MAX  ISIZE_MAX
   #define UINTPTR_MAX USIZE_MAX
+#endif
+
+// isize
+#if USIZE_MAX == __LONG_MAX__
+typedef long isize;
+#elif USIZE_MAX >= 0xffffffffffffffff
+typedef i64 isize;
+#elif USIZE_MAX >= 0xffffffff
+typedef i32 isize;
+#elif USIZE_MAX >= 0xffff
+typedef i16 isize;
+#elif USIZE_MAX >= 0xff
+typedef i8 isize;
 #endif
 
 
@@ -635,6 +678,7 @@ typedef i32 error;
   _(exists        , "already exists") \
   _(access        , "permission denied") \
   _(nomem         , "cannot allocate memory") \
+  _(nospace       , "no space left") \
   _(mfault        , "bad memory address") \
   _(overflow      , "value too large") \
 // end CO_FOREACH_ERROR
