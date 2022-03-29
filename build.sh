@@ -281,6 +281,7 @@ if $CC_IS_CLANG; then
   XFLAGS+=(
     -Wcovered-switch-default \
     -Werror=format-insufficient-args \
+    -Werror=bitfield-constant-conversion \
     -Wno-pragma-once-outside-header \
   )
   [ -t 1 ] && XFLAGS+=( -fcolor-diagnostics )
