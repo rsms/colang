@@ -1,6 +1,4 @@
-#include "coimpl.h"
-#include "string.c"
-#include "test.c"
+#include "colib.h"
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // number parsing test cases

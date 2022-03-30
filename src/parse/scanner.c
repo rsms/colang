@@ -1,5 +1,3 @@
-#include "../coimpl.h"
-#include "../unicode.c"
 #include "parse.h"
 
 // Enable to dlog ">> TOKEN VALUE at SOURCELOC" on each call to SNext

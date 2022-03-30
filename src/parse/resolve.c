@@ -1,46 +1,9 @@
-// Semantic analysis and resolution.
-// Late symbol bindings, type resolution, simplifications.
-//
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
-//
-#pragma once
-#ifndef CO_IMPL
-  #include "coimpl.h"
-  #define PARSE_RESOLVE_IMPLEMENTATION
-#endif
-#include "ast.c"
-#include "buildctx.c"
-BEGIN_INTERFACE
-//———————————————————————————————————————————————————————————————————————————————————————
-
-// T* resolve_ast(BuildCtx*, Scope* lookupscope, T* n)
-// lookupscope is the outer scope to use for looking up unresolved identifiers.
-Node* resolve_ast(BuildCtx*, Scope* lookupscope, Node* n);
-#define resolve_ast(b, s, n) ( (__typeof__(n)) resolve_ast((b), (s), as_Node(n)) )
-
-// resolve_id resolves an identifier by setting id->target and id->type=TypeOfNode(target).
-//
-// This function may be called on an already-resolved id with NodeIsRValue(id)
-// to simplify the id, in which case the "target" argument is ignored and must be NULL.
-//
-// If target is NULL and the id has no existing target, the id is marked as "unresolved"
-// using NodeSetUnresolved(id).
-//
-// Returns id or a simplification e.g. (Id true -> (BoolLit true)) returns (BoolLit true).
-Node* resolve_id(IdNode* id, Node* nullable target);
-
-
-
-//———————————————————————————————————————————————————————————————————————————————————————
-END_INTERFACE
-#ifdef PARSE_RESOLVE_IMPLEMENTATION
-
-#include "universe.c"
+#include "parse.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
 #define CO_PARSE_RESOLVE_DEBUG
-
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_id impl
@@ -186,12 +149,7 @@ typedef struct R {
 #endif
 
 
-#define resolve_sym(r,fl,n)  _resolve_sym((r),(fl),as_Node(n))
-#define resolve_type(r,fl,n) _resolve_type((r),(fl),as_Node(n))
-
 static Node* _resolve(R* r, rflag fl, Node* n);
-static Node* _resolve_sym(R* r, rflag fl, Node* n);
-static Node* _resolve_type(R* r, rflag fl, Node* n);
 
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
@@ -227,7 +185,13 @@ static Node* _resolve_type(R* r, rflag fl, Node* n);
   #define resolve(r,fl,n) _resolve((r),(fl),as_Node(n))
 #endif
 
-// --------------------------------------------------------------------------------------
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// begin resolve_sym
+
+#define resolve_sym(r,fl,n)  _resolve_sym((r),(fl),as_Node(n))
+static Node* _resolve_sym(R* r, rflag fl, Node* n);
+
 
 static void resolve_sym_array(R* r, rflag fl, const NodeArray* a) {
   for (u32 i = 0; i < a->len; i++)
@@ -342,11 +306,21 @@ inline static Node* _resolve_sym(R* r, rflag fl, Node* np) {
   MUSTTAIL return _resolve_sym1(r, fl, np);
 }
 
+// end resolve_sym
+//———————————————————————————————————————————————————————————————————————————————————————
+// begin resolve_type
+
+#define resolve_type(r,fl,n) _resolve_type((r),(fl),as_Node(n))
+static Node* _resolve_type(R* r, rflag fl, Node* n);
 
 static Node* _resolve_type(R* r, rflag fl, Node* n) {
+  dlog("TODO _resolve_type");
   return n;
 }
 
+// end resolve_type
+//———————————————————————————————————————————————————————————————————————————————————————
+// begin resolve
 
 static Node* _resolve(R* r, rflag fl, Node* n) {
   n = resolve_sym(r, fl, n);
@@ -375,5 +349,3 @@ Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
   asserteq(initial_kind, n->kind); // since we typecast the result (see header file)
   return n;
 }
-
-#endif // PARSE_RESOLVE_IMPLEMENTATION

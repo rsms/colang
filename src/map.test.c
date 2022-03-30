@@ -1,17 +1,12 @@
-#include "coimpl.h"
-#include "test.c"
-#include "map.c"
-
-// #include <stdlib.h>
-// #include <stdio.h>
+#include "colib.h"
 
 // #define tlog dlog
 #define tlog(...) ((void)0)
-#define S SSLICE
+#define S strslice_make
 
 static u8 membuf[4096*2];
 
-static SSlice samples[] = {
+static StrSlice samples[] = {
   S("i32"), S("div"), S("cmpgt"), S("and"),
   S("add"), S("brz"), S("brnz"), S("cmpeq"),
   S("cmplt"), S("i1"), S("fun"), S("i16"),

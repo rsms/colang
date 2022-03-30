@@ -22,7 +22,7 @@ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 */
-#include "coimpl.h"
+#include "colib.h"
 
 #ifndef CO_NO_LIBC
   #include <string.h>

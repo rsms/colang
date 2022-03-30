@@ -1,11 +1,11 @@
-// co common implementation
-// This files contains definitions used across the entire codebase
+// co common library
 //
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 //
-#ifndef CO_IMPL
-#define CO_IMPL
+#ifndef CO_LIB
+#define CO_LIB
+#include "colib.h"
 
 #ifndef __cplusplus
   typedef _Bool bool;
@@ -560,37 +560,6 @@ static inline WARN_UNUSED_RESULT usize array_size(usize a, usize b) {
     default: x \
   ))
 
-#define CONST_TYPEOF(x)                                             \
-  __typeof__(_Generic((x),                                          \
-    signed char:              ({ const signed char        _; _; }), \
-    const signed char:        ({ const signed char        _; _; }), \
-    unsigned char:            ({ const unsigned char      _; _; }), \
-    const unsigned char:      ({ const unsigned char      _; _; }), \
-    short:                    ({ const short              _; _; }), \
-    const short:              ({ const short              _; _; }), \
-    unsigned short:           ({ const unsigned short     _; _; }), \
-    const unsigned short:     ({ const unsigned short     _; _; }), \
-    int:                      ({ const int                _; _; }), \
-    const int:                ({ const int                _; _; }), \
-    unsigned:                 ({ const unsigned           _; _; }), \
-    const unsigned:           ({ const unsigned           _; _; }), \
-    long:                     ({ const long               _; _; }), \
-    const long:               ({ const long               _; _; }), \
-    unsigned long:            ({ const unsigned long      _; _; }), \
-    const unsigned long:      ({ const unsigned long      _; _; }), \
-    long long:                ({ const long long          _; _; }), \
-    const long long:          ({ const long long          _; _; }), \
-    unsigned long long:       ({ const unsigned long long _; _; }), \
-    const unsigned long long: ({ const unsigned long long _; _; }), \
-    float:                    ({ const float              _; _; }), \
-    const float:              ({ const float              _; _; }), \
-    double:                   ({ const double             _; _; }), \
-    const double:             ({ const double             _; _; }), \
-    long double:              ({ const long double        _; _; }), \
-    const long double:        ({ const long double        _; _; }), \
-    default: x \
-  ))
-
 // ASSERT_U32SIZE checks that size is <= U32_MAX at compile time if possible,
 // or with a runtime assertion if size is not a constant expression.
 //#define ASSERT_U32SIZE(size) \
@@ -662,222 +631,7 @@ ASSUME_NONNULL_BEGIN
 #endif
 
 // —————————————————————————————————————————————————————————————————————————————————————
-// error
-
-typedef i32 error;
-#define CO_FOREACH_ERROR(_) \
-  _(ok            , "(no error)") \
-  _(invalid       , "invalid data or argument") \
-  _(sys_op        , "invalid syscall op or syscall op data") \
-  _(badfd         , "invalid file descriptor") \
-  _(bad_name      , "invalid or misformed name") \
-  _(not_found     , "not found") \
-  _(name_too_long , "name too long") \
-  _(canceled      , "operation canceled") \
-  _(not_supported , "not supported") \
-  _(exists        , "already exists") \
-  _(access        , "permission denied") \
-  _(nomem         , "cannot allocate memory") \
-  _(nospace       , "no space left") \
-  _(mfault        , "bad memory address") \
-  _(overflow      , "value too large") \
-// end CO_FOREACH_ERROR
-enum _co_error_tmp_ { // generate positive values
-  #define _(NAME, ...) _err_##NAME,
-  CO_FOREACH_ERROR(_)
-  #undef _
-};
-enum error { // canonical negative values
-  #define _(NAME, ...) err_##NAME = - _err_##NAME,
-  CO_FOREACH_ERROR(_)
-  #undef _
-} END_ENUM(error)
-
-error error_from_errno(int errno);
-const char* error_str(error);
-
-// —————————————————————————————————————————————————————————————————————————————————————
-// panic & assert
-
-// panic prints msg to stderr and calls abort()
-#define panic(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
-
-NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...)
-  ATTR_FORMAT(printf, 4, 5);
-
-// void log(const char* fmt, ...)
-#ifdef CO_NO_LIBC
-  #warning log not implemented for no-libc
-  #define log(format, ...) ((void)0)
-#else
-  ASSUME_NONNULL_END
-  #include <stdio.h>
-  ASSUME_NONNULL_BEGIN
-  #define log(format, args...) fprintf(stderr, format "\n", ##args)
-#endif
-
-// void errlog(const char* fmt, ...)
-#define errlog(format, args...) ({                              \
-  log("error: " format " (%s:%d)", ##args, __FILE__, __LINE__); \
-  fflush(stderr); })
-
-// void assert(expr condition)
-#undef assert
-#if defined(DEBUG) || !defined(NDEBUG)
-  #undef DEBUG
-  #undef NDEBUG
-  #undef CO_SAFE
-  #define DEBUG 1
-  #define CO_SAFE 1
-
-  #define _assertfail(fmt, args...) \
-    _panic(__FILE__, __LINE__, __FUNCTION__, "Assertion failed: " fmt, args)
-  // Note: we can't use ", ##args" above in either clang nor gcc for some reason,
-  // or else certain applications of this macro are not expanded.
-
-  #define assertf(cond, fmt, args...) \
-    (UNLIKELY(!(cond)) ? _assertfail(fmt " (%s)", ##args, #cond) : ((void)0))
-
-  #define assert(cond) \
-    (UNLIKELY(!(cond)) ? _assertfail("%s", #cond) : ((void)0))
-
-  #define assertop(a,op,b) ({                                               \
-    __typeof__(a) A__ = a;                                                  \
-    __typeof__(a) B__ = b; /* intentionally typeof(a) and not b for lits */ \
-    if (UNLIKELY(!(A__ op B__)))                                            \
-      _assertfail("%s %s %s (%s %s %s)",                                    \
-        #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
-  })
-
-  #define assertcstreq(cstr1, cstr2) ({                  \
-    const char* cstr1__ = (cstr1);                       \
-    const char* cstr2__ = (cstr2);                       \
-    if (UNLIKELY(strcmp(cstr1__, cstr2__) != 0))         \
-      _assertfail("\"%s\" != \"%s\"", cstr1__, cstr2__); \
-  })
-
-  #define asserteq(a,b)    assertop((a),==,(b))
-  #define assertne(a,b)    assertop((a),!=,(b))
-  #define assertlt(a,b)    assertop((a),<, (b))
-  #define assertgt(a,b)    assertop((a),>, (b))
-  #define assertnull(a)    assertop((a),==,NULL)
-
-  #define assertnotnull(a) ({                                         \
-    __typeof__(a) val__ = (a);                                        \
-    UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
-    if (UNLIKELY(val__ == NULL))                                      \
-      _assertfail("%s != NULL", #a);                                  \
-    val__; })
-
-#else /* !defined(NDEBUG) */
-  #undef DEBUG
-  #undef NDEBUG
-  #define NDEBUG 1
-  #define assert(cond)            ((void)0)
-  #define assertf(cond, fmt, ...) ((void)0)
-  #define assertop(a,op,b)        ((void)0)
-  #define assertcstreq(a,b)       ((void)0)
-  #define asserteq(a,b)           ((void)0)
-  #define assertne(a,b)           ((void)0)
-  #define assertlt(a,b)           ((void)0)
-  #define assertgt(a,b)           ((void)0)
-  #define assertnull(a)           ((void)0)
-  #define assertnotnull(a)        ({ a; }) /* note: (a) causes "unused" warnings */
-#endif /* !defined(NDEBUG) */
-
-
-// CO_SAFE -- checks enabled in "debug" and "safe" builds (but not in "fast" builds.)
-//
-// void safecheck(COND)                        -- elided from non-safe builds
-// void safecheckf(COND, const char* fmt, ...) -- elided from non-safe builds
-// EXPR safecheckexpr(EXPR, EXPECT)            -- included in non-safe builds (without check)
-// typeof(EXPR) safenotnull(EXPR)              -- included in non-safe builds (without check)
-//
-#ifdef CO_SAFE
-  #undef CO_SAFE
-  #define CO_SAFE 1
-  #define _safefail(fmt, args...) \
-    _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
-  #define safecheckf(cond, fmt, args...) \
-    ( UNLIKELY(!(cond)) ? _safefail(fmt, ##args) : ((void)0) )
-  #ifdef DEBUG
-    #define safecheck(cond) \
-      (UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
-    #define safecheckexpr(expr, expect) ({                                        \
-      __typeof__(expr) val__ = (expr);                                            \
-      safecheckf(val__ == expect, "unexpected value (%s != %s)", #expr, #expect); \
-      val__; })
-    #define safenotnull(a) ({                                           \
-      __typeof__(a) val__ = (a);                                        \
-      UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
-      safecheckf(val__ != NULL, "unexpected NULL (%s)", #a);            \
-      val__; })
-  #else
-    #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck")
-    #define safecheckexpr(expr, expect) ({ \
-      __typeof__(expr) val__ = (expr); safecheck(val__ == expect); val__; })
-    #define safenotnull(a) ({                                           \
-      __typeof__(a) val__ = (a);                                        \
-      UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
-      safecheckf(val__ != NULL, "NULL");                                \
-      val__; })
-  #endif
-#else
-  #define safecheckf(cond, fmt, args...) ((void)0)
-  #define safecheck(cond)                ((void)0)
-  #define safecheckexpr(expr, expect)    (expr) /* intentionally complain if not used */
-  #define safenotnull(a)                 ({ a; }) /* note: (a) causes "unused" warnings */
-#endif
-
-// void dlog(const char* fmt, ...)
-#ifdef DEBUG
-  // debug_quickfmt formats a value x and returns a temporary string for use in printing.
-  // The buffer argument should be a number in the inclusive range [0-5], determining which
-  // temporary buffer to use and return a pointer to.
-  #define debug_quickfmt(buffer, x) debug_tmpsprintf(buffer, _Generic((x), \
-    unsigned long long: "%llu", \
-    unsigned long:      "%lu", \
-    unsigned int:       "%u", \
-    unsigned short:     "%u", \
-    long long:          "%lld", \
-    long:               "%ld", \
-    int:                "%d", \
-    short:              "%d", \
-    char:               "%c", \
-    unsigned char:      "%C", \
-    const char*:        "%s", \
-    char*:              "%s", \
-    bool:               "%d", \
-    float:              "%f", \
-    double:             "%f", \
-    void*:              "%p", \
-    const void*:        "%p", \
-    default:            "%p" \
-  ), x)
-  // debug_tmpsprintf is like sprintf but uses a static buffer.
-  // The buffer argument determines which buffer to use (constraint: buffer<6)
-  const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
-    ATTR_FORMAT(printf, 2, 3);
-  #ifdef CO_NO_LIBC
-    #define dlog(format, args...) \
-      log("[D] " format " (%s:%d)", ##args, __FILE__, __LINE__)
-  #else
-    ASSUME_NONNULL_END
-    #include <unistd.h> // isatty
-    ASSUME_NONNULL_BEGIN
-    #define dlog(format, args...) ({                                 \
-      if (isatty(2)) log("\e[1;35m▍\e[0m" format " \e[2m%s:%d\e[0m", \
-                         ##args, __FILE__, __LINE__);                \
-      else           log("[D] " format " (%s:%d)",                   \
-                         ##args, __FILE__, __LINE__);                \
-      fflush(stderr); })
-  #endif
-#else
-  #define dlog(format, ...) ((void)0)
-#endif
-
-
-// —————————————————————————————————————————————————————————————————————————————————————
+// libc
 
 #define fabs   __builtin_fabs
 #define sinf   __builtin_sinf
@@ -904,59 +658,29 @@ typedef __builtin_va_list va_list;
 
 char* strstr(const char* haystack, const char* needle);
 
-// xqsort is qsort_r aka qsort_s
-typedef int(*xqsort_cmp)(const void* x, const void* y, void* nullable ctx);
-void xqsort(void* base, usize nmemb, usize size, xqsort_cmp cmp, void* nullable ctx);
-
-// —————————————————————————————————————————————————————————————————————————————————————
-// slice
-
-typedef struct SSlice { const char* p; usize len; } SSlice; // TODO: rename to Str
-#define SSLICE(cstr) ((SSlice){ (cstr), strlen(cstr) })
-
-// —————————————————————————————————————————————————————————————————————————————————————
-// time
-
-// unixtime stores the number of seconds + nanoseconds since Jan 1 1970 00:00:00 UTC
-// at *sec and *nsec
-error unixtime(i64* sec, u64* nsec);
-
-// nanotime returns nanoseconds measured from an undefined point in time.
-// It uses the most high-resolution, low-latency clock available on the system.
-// u64 is enough to express 584 years in nanoseconds.
-u64 nanotime();
-
-// fmtduration appends human-readable time duration to buf, including a null terminator.
-// Returns number of bytes written, excluding the null terminator.
-usize fmtduration(char buf[25], u64 duration_ns);
-
-// microsleep sleeps for some number of microseconds.
-// Returns amount of time remaining if the thread was interrupted
-// or 0 if the thread slept for at least microseconds.
-u64 microsleep(u64 microseconds);
-
-// time_init initializes the time library
-error time_init();
-
-// logtime -- measure real time spent between two points of execution.
-//   TimeLabel logtime_start(const char* label)
-//   void      logtime_end(const TimeLabel)
-//   void      logtime_scope(const char* label)
-//
-typedef struct { const char* label; u64 ns; } TimeLabel;
-inline static TimeLabel logtime_start(const char* label) {
-  return (TimeLabel){label,nanotime()}; }
-#define logtime_end(t) _logtime_end(&(t))
-void _logtime_end(const TimeLabel* t);
-#if __has_attribute(__cleanup__)
-  #define logtime_scope(label)                                              \
-    UNUSED TimeLabel logtime__ __attribute__((__cleanup__(_logtime_end))) = \
-    logtime_start(label)
-#else
-  #define logtime_scope(label) _logtime_end(logtime_start(label))
-#endif
-
-
 // —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END
-#endif // CO_IMPL
+
+#include "error.h"
+#include "debug.h"
+#include "test.h"
+
+#include "qsort.h"
+#include "mem.h"
+#include "time.h"
+
+#include "array.h"
+#include "string.h"
+#include "hash.h"
+#include "map.h"
+
+#include "sys.h"
+#include "path.h"
+
+#include "sym.h"
+#include "tstyle.h"
+#include "sha256.h"
+#include "unicode.h"
+
+// —————————————————————————————————————————————————————————————————————————————————————
+#endif // CO_LIB

@@ -1,5 +1,4 @@
-#include "coimpl.h"
-#include "string.c"
+#include "colib.h"
 
 #ifndef CO_NO_LIBC
   #include <errno.h>
@@ -9,6 +8,7 @@
     #include <mach/mach_time.h>
   #endif
 #endif
+
 
 #if defined(__APPLE__)
   // fraction to multiply a value in mach tick units with to convert it to nanoseconds

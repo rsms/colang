@@ -1,8 +1,4 @@
-#include "coimpl.h"
-#include "test.c"
-
-#include "ast.c"
-#include "universe.c"
+#include "parse.h"
 
 
 DEF_TEST(ast_typecast) {

@@ -1,12 +1,4 @@
-#include "coimpl.h"
-#include "tstyle.c"
-#include "array.c"
-#include "string.c"
-#include "unicode.c"
-#include "test.c"
-
-#include "ast.c"
-#include "universe.c"
+#include "parse.h"
 
 // DEBUG_INCLUDE_POINTERS: define to include node memory addresses in output
 //#define DEBUG_INCLUDE_POINTERS

@@ -1,4 +1,4 @@
-#include "coimpl.h"
+#include "colib.h"
 
 #ifndef CO_NO_LIBC
   #include <errno.h>

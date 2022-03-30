@@ -1,6 +1,5 @@
-#include "coimpl.h"
-#include "test.c"
-#include "array.c"
+#include "colib.h"
+#include "colib.h"
 
 #if __has_builtin(__builtin_alloca)
   #define alloca __builtin_alloca

@@ -146,8 +146,7 @@ outc = [generated_by_comment(outcfile)]
 outh.append('ASSUME_NONNULL_BEGIN')
 outh.append('')
 
-outc.append('#include "../coimpl.h"')
-outc.append('#include "ast.c"')
+outc.append('#include "parse.h"')
 outc.append('')
 
 # enum NodeKind

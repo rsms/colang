@@ -1,44 +1,37 @@
 #include <stdio.h>
 #include <err.h>
 
-#include "coimpl.h"
-#include "test.c"
-#include "hash.c"
-#include "time.h"
+#include "colib.h"
 #include "parse/parse.h"
-#include "sys.c"
 
 static char tmpbuf[4096];
 
-void cli_usage(const char* prog) {
-  fprintf(stdout, "usage: %s <lua-file>\n", prog);
-}
 
-void on_diag(Diagnostic* d, void* userdata) {
+// static void print_src_checksum(const Source* src) {
+//   ABuf s = abuf_make(tmpbuf, sizeof(tmpbuf));
+//   abuf_reprhex(&s, src->sha256, sizeof(src->sha256));
+//   abuf_terminate(&s);
+//   printf("%s %s\n", tmpbuf, src->filename);
+// }
+
+// static void scan_all(BuildCtx* build) {
+//   Scanner scanner = {0};
+//   for (Source* src = build->srclist; src != NULL; src = src->next) {
+//     dlog("scan %s", src->filename);
+//     error err = ScannerInit(&scanner, build, src, 0);
+//     if (err)
+//       panic("ScannerInit: %s", error_str(err));
+//     while (ScannerNext(&scanner) != TNone) {
+//       printf(">> %s\n", TokName(scanner.tok));
+//     }
+//   }
+// }
+
+static void on_diag(Diagnostic* d, void* userdata) {
   Str str = str_make(tmpbuf, sizeof(tmpbuf));
   assert(diag_fmt(d, &str));
   fwrite(str.v, str.len, 1, stderr);
   str_free(&str);
-}
-
-void print_src_checksum(Mem mem, const Source* src) {
-  ABuf s = abuf_make(tmpbuf, sizeof(tmpbuf));
-  abuf_reprhex(&s, src->sha256, sizeof(src->sha256));
-  abuf_terminate(&s);
-  printf("%s %s\n", tmpbuf, src->filename);
-}
-
-void scan_all(BuildCtx* build) {
-  Scanner scanner = {0};
-  for (Source* src = build->srclist; src != NULL; src = src->next) {
-    dlog("scan %s", src->filename);
-    error err = ScannerInit(&scanner, build, src, 0);
-    if (err)
-      panic("ScannerInit: %s", error_str(err));
-    while (ScannerNext(&scanner) != TNone) {
-      printf(">> %s\n", TokName(scanner.tok));
-    }
-  }
 }
 
 int main(int argc, const char** argv) {
@@ -80,9 +73,9 @@ int main(int argc, const char** argv) {
 
   // // compute and print source checksum
   // source_checksum(&src1);
-  // print_src_checksum(mem, &src1);
+  // print_src_checksum(&src1);
 
-  // scan all sources of the package
+  // // scan all sources of the package
   // scan_all(&build);
 
   // parse

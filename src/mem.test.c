@@ -1,6 +1,4 @@
-#include "coimpl.h"
-#include "test.c"
-#include "mem.c"
+#include "colib.h"
 
 #ifndef CO_NO_LIBC
 DEF_TEST(mem_libc_allocator) {

@@ -29,7 +29,7 @@
 //
 // For this reason we use qsort from musl (unless we are linking with a compatible libc)
 //
-#include "coimpl.h"
+#include "colib.h"
 #if !defined(CO_NO_LIBC) && defined(__linux__)
 #include <stdlib.h>
 void xqsort(void* base, usize nmemb, usize size, xqsort_cmp cmp, void* nullable ctx) {

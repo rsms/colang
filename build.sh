@@ -10,7 +10,7 @@ SRCDIR=src
 MAIN_EXE=co
 PP_PREFIX=CO_
 WASM_SYMS=etc/wasm.syms
-XFLAGS=( $XFLAGS "-I$SRCDIR" )
+XFLAGS=( $XFLAGS )
 CFLAGS=( $CFLAGS -fms-extensions -Wno-microsoft )
 CXXFLAGS=()
 NINJA=${NINJA:-ninja}
@@ -441,7 +441,7 @@ rule ast_gen
   generator = true
 
 
-build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.c | src/parse/ast_gen.py
+build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/parse/ast_gen.py
 
 _END
 
