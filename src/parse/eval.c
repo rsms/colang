@@ -8,6 +8,10 @@ typedef struct E {
 } E;
 
 
+#define FMTNODE(b,n,bufno) \
+  fmtnode(n, (b)->tmpbuf[bufno], sizeof((b)->tmpbuf[bufno]))
+
+
 static Expr* nullable _eval(E, Type* nullable targetType, Expr* nullable n);
 
 
@@ -22,8 +26,7 @@ Expr* nullable _NodeEval(BuildCtx* b, Expr* n, Type* nullable targetType, NodeEv
 static void _report_invalid_op(BuildCtx* b, Expr* n, Type* t) {
   b_errf(b, NodePosSpan(n),
     "unsupported compile-time operation %s on type %s",
-    fmtnode(n, b->tmpbuf[0], sizeof(b->tmpbuf[0])),
-    fmtnode(t, b->tmpbuf[1], sizeof(b->tmpbuf[1])));
+    FMTNODE(b,n,0), FMTNODE(b,t,1));
 }
 
 #define INTEGER_TYPES(_) \
@@ -223,8 +226,7 @@ static Expr* nullable _eval_binop(
   if (UNLIKELY( left->kind != right->kind || !b_typeeq(e.b, left->type, right->type) )) {
     // Note: This error is caught by resolve_type()
     if (e.fl & NodeEvalMustSucceed) {
-      b_errf(e.b, NodePosSpan(op), "mixed types in operation %s",
-        fmtnode(op, e.b->tmpbuf[0], sizeof(e.b->tmpbuf[0])));
+      b_errf(e.b, NodePosSpan(op), "mixed types in operation %s", FMTNODE(e.b,op,0));
     }
     return NULL;
   }
@@ -302,8 +304,7 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
 
     default:
       if (e.fl & NodeEvalMustSucceed) {
-        b_errf(e.b, NodePosSpan(n), "%s is not a compile-time expression",
-          fmtnode(n, e.b->tmpbuf[0], sizeof(e.b->tmpbuf[0])));
+        b_errf(e.b, NodePosSpan(n), "%s is not a compile-time expression", FMTNODE(e.b,n,0));
       }
       return NULL;
 

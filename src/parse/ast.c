@@ -84,7 +84,7 @@ PosSpan _NodePosSpan(const Node* n) {
 }
 
 
-Scope* ScopeNew(Mem mem, const Scope* parent) {
+Scope* ScopeNew(Mem mem, const Scope* nullable parent) {
   Scope* s = mem_alloczt(mem, Scope);
   if (!s)
     return NULL;

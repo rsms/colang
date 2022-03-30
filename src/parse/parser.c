@@ -275,7 +275,7 @@ static void advance(Parser* p, const Tok* nullable stoplist) {
   if (t) t->tflags = (TYPE_FLAGS);                                  \
   t; })
 
-inline static Node* nullable mknode1(Parser* p, NodeKind kind) {
+static Node* nullable mknode1(Parser* p, NodeKind kind) {
   Node* n = b_mknodex(p->build, kind);
   if (LIKELY(n != NULL))
     n->pos = currpos(p);

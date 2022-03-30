@@ -15,16 +15,15 @@ typedef struct Type      Type;      // AST type
 typedef struct FieldNode FieldNode; // AST struct field
 typedef struct TupleNode TupleNode;
 typedef struct LocalNode LocalNode; // Const | Var | Param
+typedef struct CUnitNode CUnitNode;
+typedef struct ListExprNode ListExprNode;
 
 typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
-// forward decl of things defined in universe but referenced by ast.h
-extern Type* kType_type;
-
-typedef Array(Node*) NodeArray;
-typedef Array(Expr*) ExprArray;
-typedef Array(Type*) TypeArray;
+typedef Array(Node*)      NodeArray;
+typedef Array(Expr*)      ExprArray;
+typedef Array(Type*)      TypeArray;
 typedef Array(FieldNode*) FieldArray;
 
 #define as_NodeArray(n) _Generic((n), \
@@ -59,8 +58,8 @@ struct CUnitNode { Stmt;
   NodeArray       a;            // array of nodes
   Node*           a_storage[4]; // in-struct storage for the first few entries of a
 };
-struct PkgNode { struct CUnitNode; };
-struct FileNode { struct CUnitNode; };
+struct PkgNode { CUnitNode; };
+struct FileNode { CUnitNode; };
 struct CommentNode { Stmt;
   u32       len;
   const u8* ptr;
@@ -108,8 +107,8 @@ struct ListExprNode { Expr;
   ExprArray a;            // array of nodes
   Expr*     a_storage[5]; // in-struct storage for the first few entries of a
 };
-struct TupleNode { struct ListExprNode; };
-struct ArrayNode { struct ListExprNode; };
+struct TupleNode { ListExprNode; };
+struct ArrayNode { ListExprNode; };
 struct BlockNode { Expr;
   NodeArray a;            // array of nodes
   Node*     a_storage[5]; // in-struct storage for the first few entries of a
@@ -219,9 +218,11 @@ struct FunTypeNode { Type;
 };
 
 
+// forward decl of things defined in universe but referenced by ast.h
+extern Type* kType_type;
+
 struct Scope {
-  const Scope* parent;
-  // bindings must be the last member as composing structs places initial storage after
+  const Scope* nullable parent;
   SymMap bindings;
 };
 static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(((Scope*)0)->bindings),
@@ -459,7 +460,7 @@ static Node* example(Node* np) {
     UNUSED auto n = (NAME##Node*)np;
   #define _G(NAME) return np; } case N##NAME##_BEG ... N##NAME##_END: { \
     UNUSED auto n = (struct NAME##Node*)np;
-  switch (np->kind) { case NBad: {
+  switch ((enum NodeKind)np->kind) { case NBad: {
 
   _(Field)      panic("TODO %s", nodename(n));
   _(Pkg)        panic("TODO %s", nodename(n));
