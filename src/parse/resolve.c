@@ -108,10 +108,13 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
 
 typedef u32 rflag;
 enum rflag {
-  flExplicitTypeCast = 1 << 0,
-  flResolveIdeal     = 1 << 1,  // set when resolving ideal types
-  flEager            = 1 << 2,  // set when resolving eagerly
-} END_ENUM(rflag)
+  RF_ExplicitTypeCast = 1 << 0,
+  RF_ResolveIdeal     = 1 << 1,  // set when resolving ideal types
+  RF_Eager            = 1 << 2,  // set when resolving eagerly
+
+  RF_INVALID          = 0xffffffff, // specific flags value that is invalid
+  _RF_UNUSED_         = 1 << 31,    // make sure we can never compose RF_INVALID
+};
 
 // resolver state
 typedef struct R {
@@ -174,6 +177,7 @@ inline static bool _check_memalloc(R* r, Node* n, bool ok) {
 
 // Node* resolve(R* r, Node* n)
 static Node* _resolve(R* r, Node* n);
+
 #ifdef CO_PARSE_RESOLVE_DEBUG
   static Node* resolve_debug(R* r, Node* n) {
     char tmpbuf[256];
@@ -212,14 +216,17 @@ static Node* _resolve(R* r, Node* n);
 // begin resolve_sym
 
 #define resolve_sym(r,n)  _resolve_sym((r),as_Node(n))
-static Node* _resolve_sym(R* r, Node* n);
-
+static Node* _resolve_sym1(R* r, Node* n);
+inline static Node* _resolve_sym(R* r, Node* np) {
+  if UNLIKELY(NodeIsUnresolved(np))
+    MUSTTAIL return _resolve_sym1(r, np);
+  return np;
+}
 
 static void resolve_sym_array(R* r, const NodeArray* a) {
   for (u32 i = 0; i < a->len; i++)
     a->v[i] = resolve_sym(r, a->v[i]);
 }
-
 
 static Node* _resolve_sym1(R* r, Node* np) {
   NodeClearUnresolved(np); // do this up front to allow tail calls
@@ -325,13 +332,6 @@ static Node* _resolve_sym1(R* r, Node* np) {
   UNREACHABLE;
 }
 
-
-inline static Node* _resolve_sym(R* r, Node* np) {
-  if (!NodeIsUnresolved(np))
-    return np;
-  MUSTTAIL return _resolve_sym1(r, np);
-}
-
 // end resolve_sym
 //———————————————————————————————————————————————————————————————————————————————————————
 // begin resolve_type
@@ -340,19 +340,50 @@ inline static Node* _resolve_sym(R* r, Node* np) {
 #define resolve_type(r,n) _resolve_type((r),as_Node(n))
 static Node* _resolve_type(R* r, Node* n);
 
+// // returns old type
+// static Type* nullable typecontext_set(R* r, Type* nullable newtype) {
+//   if (newtype) {
+//     assert(is_Type(newtype) || is_MacroParamNode(newtype));
+//     assertne(newtype, kType_ideal);
+//   }
+//   dlog2("typecontext_set %s", FMTNODE(newtype,0));
+//   auto oldtype = r->typecontext;
+//   r->typecontext = newtype;
+//   return oldtype;
+// }
 
-// returns old type
-static Type* nullable typecontext_set(R* r, Type* nullable newtype) {
-  if (newtype) {
-    assert(is_Type(newtype) || is_MacroParamNode(newtype));
-    assertne(newtype, kType_ideal);
+//static rflag addflag(R* r, rflag flag) { rflag f = r->flags; r->flags |= flag;  return f; }
+//static rflag rmflag(R* r, rflag flag)  { rflag f = r->flags; r->flags &= ~flag; return f; }
+//static rflag setflags(R* r, rflag flags) { rflag f = r->flags; r->flags = flags; return f;}
+#define flagscope(FLAGS) \
+  for (rflag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
+       r->flags = (FLAGS), tmp1__; \
+       tmp1__ = 0, r->flags = prevfl__)
+
+
+// mark_local_mutable marks any Var or Field n as being mutable
+#define mark_local_mutable(r,n) _mark_local_mutable((r),as_Node(n))
+static Node* _mark_local_mutable(R* r, Node* n) {
+  while (1) {
+    switch (n->kind) {
+      case NIndex:
+        n = as_Node(as_IndexNode(n)->operand);
+        break;
+      case NSelector:
+        n = as_Node(as_SelectorNode(n)->operand);
+        break;
+      case NId:
+        n = assertnotnull( ((IdNode*)n)->target );
+        break;
+      case NVar:
+      case NField:
+        NodeClearConst(n);
+        return n;
+      default:
+        return n;
+    }
   }
-  dlog2("typecontext_set %s", FMTNODE(newtype,0));
-  auto oldtype = r->typecontext;
-  r->typecontext = newtype;
-  return oldtype;
 }
-
 
 static bool is_type_complete(Type* np) {
   switch ((enum NodeKind)np->kind) { case NBad: { return false;
@@ -365,224 +396,277 @@ static bool is_type_complete(Type* np) {
   }}
 }
 
+//——————————————————————————————————————
+// node-specific type resolver functions
 
 static Node* restype_cunit(R* r, CUnitNode* n) {
   // File and Pkg are special in that types do not propagate
   // Note: Instead of setting n->type=Type_nil, leave as NULL and return early
   // to avoid check for null types.
   for (u32 i = 0; i < n->a.len; i++)
-    n->a.v[i] = resolve_type(r, n->a.v[i]);
+    n->a.v[i] = resolve(r, n->a.v[i]);
   return as_Node(n);
 }
+
 
 static Node* restype_fun(R* r, FunNode* n) {
   // Type* ft = NewNode(ctx->build->mem, NFunType); // TODO
   if (n->params)
-    n->params = as_TupleNode(resolve_type(r, n->params));
+    n->params = as_TupleNode(resolve(r, n->params));
 
   if (n->result)
-    n->result = as_Type(resolve_type(r, n->result));
+    n->result = as_Type(resolve(r, n->result));
 
   if (n->body)
-    n->body = as_Expr(resolve_type(r, n->body));
+    n->body = as_Expr(resolve(r, n->body));
 
   return as_Node(n);
 }
 
-static Node* restype_field(R* r, FieldNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_comment(R* r, CommentNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_nil(R* r, NilNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_boollit(R* r, BoolLitNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_intlit(R* r, IntLitNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_floatlit(R* r, FloatLitNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_strlit(R* r, StrLitNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_id(R* r, IdNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_binop(R* r, BinOpNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_prefixop(R* r, PrefixOpNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_postfixop(R* r, PostfixOpNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_return(R* r, ReturnNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
-
-static Node* restype_assign(R* r, AssignNode* n) {
-  panic("TODO");
-  return as_Node(n);
-}
 
 static Node* restype_tuple(R* r, TupleNode* n) {
   auto t = mknode(r, TupleType);
   if (!check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
     return as_Node(n);
   for (u32 i = 0; i < n->a.len; i++) {
-    n->a.v[i] = as_Expr(resolve_type(r, n->a.v[i]));
+    Node* cn = resolve(r, n->a.v[i]);
+    n->a.v[i] = as_Expr(cn);
     array_push(&t->a, n->a.v[i]->type);
   }
   n->type = as_Type(t);
   return as_Node(n);
 }
 
+
 static Node* restype_array(R* r, ArrayNode* n) {
   panic("TODO (impl probably almost identical to restype_tuple)");
   return as_Node(n);
 }
 
+
 static Node* restype_block(R* r, BlockNode* n) {
-  panic("TODO");
+  // The type of a block is the type of the last expression
+
+  if (n->a.len == 0) {
+    // empty block has no type (void)
+    n->type = kType_nil;
+    return as_Node(n);
+  }
+
+  // resolve all but the last expression without requiring ideal-type resolution
+  u32 lasti = n->a.len - 1;
+  for (u32 i = 0; i < lasti; i++)
+    n->a.v[i] = as_Expr(resolve(r, n->a.v[i]));
+
+  // Last node, in which case we set the flag to resolve literals so that implicit return
+  // values gets properly typed.
+  flagscope(r->flags | RF_ResolveIdeal)
+    n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
+
+  n->type = n->a.v[lasti]->type;
+
   return as_Node(n);
 }
 
+
+static Node* restype_field(R* r, FieldNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_comment(R* r, CommentNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_nil(R* r, NilNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_boollit(R* r, BoolLitNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_intlit(R* r, IntLitNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_floatlit(R* r, FloatLitNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_strlit(R* r, StrLitNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_id(R* r, IdNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_binop(R* r, BinOpNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_prefixop(R* r, PrefixOpNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_postfixop(R* r, PostfixOpNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+static Node* restype_return(R* r, ReturnNode* n) {
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  return as_Node(n);
+}
+
+
+static Node* restype_assign(R* r, AssignNode* n) {
+  // 1. resolve destination (lvalue) and
+  // 2. resolve value (rvalue) witin the type context of destination
+  flagscope(r->flags & ~RF_ResolveIdeal) {
+    auto typecontext = r->typecontext; // save typecontext
+    n->dst = as_Expr(resolve(r, n->dst));
+    r->typecontext = (n->dst->type != kType_ideal) ? n->dst->type : NULL;
+    n->val = as_Expr(resolve(r, n->val));
+    r->typecontext = typecontext; // restore typecontext
+  }
+
+  // clear n's NF_Const flag since storing to var upgrades it to mutable.
+  Node* leaf = mark_local_mutable(r, n->dst);
+  if UNLIKELY(leaf->kind == NConst) {
+    Sym name = as_ConstNode(leaf)->name;
+    b_errf(r->build, NodePosSpan(n->dst), "cannot store to constant %s", name);
+    if (leaf->pos != NoPos)
+      b_notef(r->build, NodePosSpan(leaf), "%s defined here", name);
+  }
+
+  // // storing to an array is not allowed
+  // if (lt->kind == NArrayType && rt->kind == NArrayType) {
+  //   build_errf(ctx->build, NodePosSpan(n),
+  //     "array type %s is not assignable", fmtnode(lt));
+  // }
+
+  return as_Node(n);
+}
+
+
 static Node* restype_macro(R* r, MacroNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_call(R* r, CallNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_typecast(R* r, TypeCastNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_const(R* r, ConstNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_var(R* r, VarNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_param(R* r, ParamNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_macroparam(R* r, MacroParamNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_ref(R* r, RefNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_namedarg(R* r, NamedArgNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_selector(R* r, SelectorNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_index(R* r, IndexNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_slice(R* r, SliceNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_if(R* r, IfNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_typetype(R* r, TypeTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_namedtype(R* r, NamedTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_aliastype(R* r, AliasTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_reftype(R* r, RefTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_basictype(R* r, BasicTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_arraytype(R* r, ArrayTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_tupletype(R* r, TupleTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_structtype(R* r, StructTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_funtype(R* r, FunTypeNode* n) {
-  panic("TODO");
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
@@ -592,18 +676,16 @@ static Node* _resolve_type(R* r, Node* np) {
   if (is_Type(np)) {
     if (is_type_complete((Type*)np))
       return np;
-  } else if (is_Expr(np)) {
+  } else if (is_Expr(np) && ((Expr*)np)->type) {
+    // Has type already. Constant literals might have ideal type.
     Expr* n = (Expr*)np;
-    if (n->type) {
-      // Has type already. Constant literals might have ideal type.
-      if (n->type == kType_ideal) {
-        dlog("TODO: ideally-typed node %s", nodename(n));
-      }
-      // make sure its type is resolved
-      if (!is_type_complete(n->type))
-        n->type = as_Type(resolve_type(r, n->type));
-      return np;
+    if (n->type == kType_ideal) {
+      dlog2("TODO: ideally-typed node %s", nodename(n));
     }
+    // make sure its type is resolved
+    if (!is_type_complete(n->type))
+      n->type = as_Type(resolve(r, n->type));
+    return np;
   }
 
   switch ((enum NodeKind)np->kind) { case NBad: {

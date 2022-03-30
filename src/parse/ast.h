@@ -110,8 +110,8 @@ struct ListExprNode { Expr;
 struct TupleNode { ListExprNode; };
 struct ArrayNode { ListExprNode; };
 struct BlockNode { Expr;
-  NodeArray a;            // array of nodes
-  Node*     a_storage[5]; // in-struct storage for the first few entries of a
+  ExprArray a;            // array of nodes
+  Expr*     a_storage[5]; // in-struct storage for the first few entries of a
 };
 struct FunNode { Expr;
   TupleNode* nullable params; // input params (NULL if none)

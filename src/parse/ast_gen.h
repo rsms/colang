@@ -240,106 +240,108 @@ typedef struct FunTypeNode FunTypeNode;
 #if defined(DEBUG)
   #define as_Node(n) ((Node*)(n))
   #define as_const_Node(n) ((const Node*)(n))
-  #define as_BadNode(n) ({ assert_is_BadNode(n); (BadNode*)(n); })
-  #define as_const_BadNode(n) ({ assert_is_BadNode(n); (const BadNode*)(n); })
-  #define as_FieldNode(n) ({ assert_is_FieldNode(n); (FieldNode*)(n); })
-  #define as_const_FieldNode(n) ({ assert_is_FieldNode(n); (const FieldNode*)(n); })
-  #define as_PkgNode(n) ({ assert_is_PkgNode(n); (PkgNode*)(n); })
-  #define as_const_PkgNode(n) ({ assert_is_PkgNode(n); (const PkgNode*)(n); })
-  #define as_FileNode(n) ({ assert_is_FileNode(n); (FileNode*)(n); })
-  #define as_const_FileNode(n) ({ assert_is_FileNode(n); (const FileNode*)(n); })
-  #define as_CommentNode(n) ({ assert_is_CommentNode(n); (CommentNode*)(n); })
-  #define as_const_CommentNode(n) ({ assert_is_CommentNode(n); (const CommentNode*)(n); })
-  #define as_NilNode(n) ({ assert_is_NilNode(n); (NilNode*)(n); })
-  #define as_const_NilNode(n) ({ assert_is_NilNode(n); (const NilNode*)(n); })
-  #define as_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (BoolLitNode*)(n); })
-  #define as_const_BoolLitNode(n) ({ assert_is_BoolLitNode(n); (const BoolLitNode*)(n); })
-  #define as_IntLitNode(n) ({ assert_is_IntLitNode(n); (IntLitNode*)(n); })
-  #define as_const_IntLitNode(n) ({ assert_is_IntLitNode(n); (const IntLitNode*)(n); })
-  #define as_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (FloatLitNode*)(n); })
-  #define as_const_FloatLitNode(n) ({ assert_is_FloatLitNode(n); (const FloatLitNode*)(n); })
-  #define as_StrLitNode(n) ({ assert_is_StrLitNode(n); (StrLitNode*)(n); })
-  #define as_const_StrLitNode(n) ({ assert_is_StrLitNode(n); (const StrLitNode*)(n); })
-  #define as_IdNode(n) ({ assert_is_IdNode(n); (IdNode*)(n); })
-  #define as_const_IdNode(n) ({ assert_is_IdNode(n); (const IdNode*)(n); })
-  #define as_BinOpNode(n) ({ assert_is_BinOpNode(n); (BinOpNode*)(n); })
-  #define as_const_BinOpNode(n) ({ assert_is_BinOpNode(n); (const BinOpNode*)(n); })
-  #define as_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (PrefixOpNode*)(n); })
-  #define as_const_PrefixOpNode(n) ({ assert_is_PrefixOpNode(n); (const PrefixOpNode*)(n); })
-  #define as_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (PostfixOpNode*)(n); })
-  #define as_const_PostfixOpNode(n) ({ assert_is_PostfixOpNode(n); (const PostfixOpNode*)(n); })
-  #define as_ReturnNode(n) ({ assert_is_ReturnNode(n); (ReturnNode*)(n); })
-  #define as_const_ReturnNode(n) ({ assert_is_ReturnNode(n); (const ReturnNode*)(n); })
-  #define as_AssignNode(n) ({ assert_is_AssignNode(n); (AssignNode*)(n); })
-  #define as_const_AssignNode(n) ({ assert_is_AssignNode(n); (const AssignNode*)(n); })
-  #define as_TupleNode(n) ({ assert_is_TupleNode(n); (TupleNode*)(n); })
-  #define as_const_TupleNode(n) ({ assert_is_TupleNode(n); (const TupleNode*)(n); })
-  #define as_ArrayNode(n) ({ assert_is_ArrayNode(n); (ArrayNode*)(n); })
-  #define as_const_ArrayNode(n) ({ assert_is_ArrayNode(n); (const ArrayNode*)(n); })
-  #define as_BlockNode(n) ({ assert_is_BlockNode(n); (BlockNode*)(n); })
-  #define as_const_BlockNode(n) ({ assert_is_BlockNode(n); (const BlockNode*)(n); })
-  #define as_FunNode(n) ({ assert_is_FunNode(n); (FunNode*)(n); })
-  #define as_const_FunNode(n) ({ assert_is_FunNode(n); (const FunNode*)(n); })
-  #define as_MacroNode(n) ({ assert_is_MacroNode(n); (MacroNode*)(n); })
-  #define as_const_MacroNode(n) ({ assert_is_MacroNode(n); (const MacroNode*)(n); })
-  #define as_CallNode(n) ({ assert_is_CallNode(n); (CallNode*)(n); })
-  #define as_const_CallNode(n) ({ assert_is_CallNode(n); (const CallNode*)(n); })
-  #define as_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (TypeCastNode*)(n); })
-  #define as_const_TypeCastNode(n) ({ assert_is_TypeCastNode(n); (const TypeCastNode*)(n); })
-  #define as_ConstNode(n) ({ assert_is_ConstNode(n); (ConstNode*)(n); })
-  #define as_const_ConstNode(n) ({ assert_is_ConstNode(n); (const ConstNode*)(n); })
-  #define as_VarNode(n) ({ assert_is_VarNode(n); (VarNode*)(n); })
-  #define as_const_VarNode(n) ({ assert_is_VarNode(n); (const VarNode*)(n); })
-  #define as_ParamNode(n) ({ assert_is_ParamNode(n); (ParamNode*)(n); })
-  #define as_const_ParamNode(n) ({ assert_is_ParamNode(n); (const ParamNode*)(n); })
-  #define as_MacroParamNode(n) ({ assert_is_MacroParamNode(n); (MacroParamNode*)(n); })
-  #define as_const_MacroParamNode(n) ({ assert_is_MacroParamNode(n); (const MacroParamNode*)(n); })
-  #define as_RefNode(n) ({ assert_is_RefNode(n); (RefNode*)(n); })
-  #define as_const_RefNode(n) ({ assert_is_RefNode(n); (const RefNode*)(n); })
-  #define as_NamedArgNode(n) ({ assert_is_NamedArgNode(n); (NamedArgNode*)(n); })
-  #define as_const_NamedArgNode(n) ({ assert_is_NamedArgNode(n); (const NamedArgNode*)(n); })
-  #define as_SelectorNode(n) ({ assert_is_SelectorNode(n); (SelectorNode*)(n); })
-  #define as_const_SelectorNode(n) ({ assert_is_SelectorNode(n); (const SelectorNode*)(n); })
-  #define as_IndexNode(n) ({ assert_is_IndexNode(n); (IndexNode*)(n); })
-  #define as_const_IndexNode(n) ({ assert_is_IndexNode(n); (const IndexNode*)(n); })
-  #define as_SliceNode(n) ({ assert_is_SliceNode(n); (SliceNode*)(n); })
-  #define as_const_SliceNode(n) ({ assert_is_SliceNode(n); (const SliceNode*)(n); })
-  #define as_IfNode(n) ({ assert_is_IfNode(n); (IfNode*)(n); })
-  #define as_const_IfNode(n) ({ assert_is_IfNode(n); (const IfNode*)(n); })
-  #define as_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (TypeTypeNode*)(n); })
-  #define as_const_TypeTypeNode(n) ({ assert_is_TypeTypeNode(n); (const TypeTypeNode*)(n); })
-  #define as_NamedTypeNode(n) ({ assert_is_NamedTypeNode(n); (NamedTypeNode*)(n); })
-  #define as_const_NamedTypeNode(n) ({ assert_is_NamedTypeNode(n); (const NamedTypeNode*)(n); })
-  #define as_AliasTypeNode(n) ({ assert_is_AliasTypeNode(n); (AliasTypeNode*)(n); })
-  #define as_const_AliasTypeNode(n) ({ assert_is_AliasTypeNode(n); (const AliasTypeNode*)(n); })
-  #define as_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (RefTypeNode*)(n); })
-  #define as_const_RefTypeNode(n) ({ assert_is_RefTypeNode(n); (const RefTypeNode*)(n); })
-  #define as_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (BasicTypeNode*)(n); })
-  #define as_const_BasicTypeNode(n) ({ assert_is_BasicTypeNode(n); (const BasicTypeNode*)(n); })
-  #define as_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (ArrayTypeNode*)(n); })
-  #define as_const_ArrayTypeNode(n) ({ assert_is_ArrayTypeNode(n); (const ArrayTypeNode*)(n); })
-  #define as_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (TupleTypeNode*)(n); })
-  #define as_const_TupleTypeNode(n) ({ assert_is_TupleTypeNode(n); (const TupleTypeNode*)(n); })
-  #define as_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (StructTypeNode*)(n); })
-  #define as_const_StructTypeNode(n) ({ assert_is_StructTypeNode(n); (const StructTypeNode*)(n); })
-  #define as_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (FunTypeNode*)(n); })
-  #define as_const_FunTypeNode(n) ({ assert_is_FunTypeNode(n); (const FunTypeNode*)(n); })
+  #define as_BadNode(n) ({__typeof__(n) n__=(n);assert_is_BadNode(n__),(BadNode*)(n__);})
+  #define as_const_BadNode(n) ({__typeof__(n) n__=(n);assert_is_BadNode(n__),(const BadNode*)(n__);})
+  #define as_FieldNode(n) ({__typeof__(n) n__=(n);assert_is_FieldNode(n__),(FieldNode*)(n__);})
+  #define as_const_FieldNode(n) ({__typeof__(n) n__=(n);assert_is_FieldNode(n__),(const FieldNode*)(n__);})
+  #define as_PkgNode(n) ({__typeof__(n) n__=(n);assert_is_PkgNode(n__),(PkgNode*)(n__);})
+  #define as_const_PkgNode(n) ({__typeof__(n) n__=(n);assert_is_PkgNode(n__),(const PkgNode*)(n__);})
+  #define as_FileNode(n) ({__typeof__(n) n__=(n);assert_is_FileNode(n__),(FileNode*)(n__);})
+  #define as_const_FileNode(n) ({__typeof__(n) n__=(n);assert_is_FileNode(n__),(const FileNode*)(n__);})
+  #define as_CommentNode(n) ({__typeof__(n) n__=(n);assert_is_CommentNode(n__),(CommentNode*)(n__);})
+  #define as_const_CommentNode(n) ({__typeof__(n) n__=(n);assert_is_CommentNode(n__),(const CommentNode*)(n__);})
+  #define as_NilNode(n) ({__typeof__(n) n__=(n);assert_is_NilNode(n__),(NilNode*)(n__);})
+  #define as_const_NilNode(n) ({__typeof__(n) n__=(n);assert_is_NilNode(n__),(const NilNode*)(n__);})
+  #define as_BoolLitNode(n) ({__typeof__(n) n__=(n);assert_is_BoolLitNode(n__),(BoolLitNode*)(n__);})
+  #define as_const_BoolLitNode(n) ({__typeof__(n) n__=(n);assert_is_BoolLitNode(n__),(const BoolLitNode*)(n__);})
+  #define as_IntLitNode(n) ({__typeof__(n) n__=(n);assert_is_IntLitNode(n__),(IntLitNode*)(n__);})
+  #define as_const_IntLitNode(n) ({__typeof__(n) n__=(n);assert_is_IntLitNode(n__),(const IntLitNode*)(n__);})
+  #define as_FloatLitNode(n) ({__typeof__(n) n__=(n);assert_is_FloatLitNode(n__),(FloatLitNode*)(n__);})
+  #define as_const_FloatLitNode(n) ({__typeof__(n) n__=(n);assert_is_FloatLitNode(n__),(const FloatLitNode*)(n__);})
+  #define as_StrLitNode(n) ({__typeof__(n) n__=(n);assert_is_StrLitNode(n__),(StrLitNode*)(n__);})
+  #define as_const_StrLitNode(n) ({__typeof__(n) n__=(n);assert_is_StrLitNode(n__),(const StrLitNode*)(n__);})
+  #define as_IdNode(n) ({__typeof__(n) n__=(n);assert_is_IdNode(n__),(IdNode*)(n__);})
+  #define as_const_IdNode(n) ({__typeof__(n) n__=(n);assert_is_IdNode(n__),(const IdNode*)(n__);})
+  #define as_BinOpNode(n) ({__typeof__(n) n__=(n);assert_is_BinOpNode(n__),(BinOpNode*)(n__);})
+  #define as_const_BinOpNode(n) ({__typeof__(n) n__=(n);assert_is_BinOpNode(n__),(const BinOpNode*)(n__);})
+  #define as_PrefixOpNode(n) ({__typeof__(n) n__=(n);assert_is_PrefixOpNode(n__),(PrefixOpNode*)(n__);})
+  #define as_const_PrefixOpNode(n) ({__typeof__(n) n__=(n);assert_is_PrefixOpNode(n__),(const PrefixOpNode*)(n__);})
+  #define as_PostfixOpNode(n) ({__typeof__(n) n__=(n);assert_is_PostfixOpNode(n__),(PostfixOpNode*)(n__);})
+  #define as_const_PostfixOpNode(n) ({__typeof__(n) n__=(n);assert_is_PostfixOpNode(n__),(const PostfixOpNode*)(n__);})
+  #define as_ReturnNode(n) ({__typeof__(n) n__=(n);assert_is_ReturnNode(n__),(ReturnNode*)(n__);})
+  #define as_const_ReturnNode(n) ({__typeof__(n) n__=(n);assert_is_ReturnNode(n__),(const ReturnNode*)(n__);})
+  #define as_AssignNode(n) ({__typeof__(n) n__=(n);assert_is_AssignNode(n__),(AssignNode*)(n__);})
+  #define as_const_AssignNode(n) ({__typeof__(n) n__=(n);assert_is_AssignNode(n__),(const AssignNode*)(n__);})
+  #define as_TupleNode(n) ({__typeof__(n) n__=(n);assert_is_TupleNode(n__),(TupleNode*)(n__);})
+  #define as_const_TupleNode(n) ({__typeof__(n) n__=(n);assert_is_TupleNode(n__),(const TupleNode*)(n__);})
+  #define as_ArrayNode(n) ({__typeof__(n) n__=(n);assert_is_ArrayNode(n__),(ArrayNode*)(n__);})
+  #define as_const_ArrayNode(n) ({__typeof__(n) n__=(n);assert_is_ArrayNode(n__),(const ArrayNode*)(n__);})
+  #define as_BlockNode(n) ({__typeof__(n) n__=(n);assert_is_BlockNode(n__),(BlockNode*)(n__);})
+  #define as_const_BlockNode(n) ({__typeof__(n) n__=(n);assert_is_BlockNode(n__),(const BlockNode*)(n__);})
+  #define as_FunNode(n) ({__typeof__(n) n__=(n);assert_is_FunNode(n__),(FunNode*)(n__);})
+  #define as_const_FunNode(n) ({__typeof__(n) n__=(n);assert_is_FunNode(n__),(const FunNode*)(n__);})
+  #define as_MacroNode(n) ({__typeof__(n) n__=(n);assert_is_MacroNode(n__),(MacroNode*)(n__);})
+  #define as_const_MacroNode(n) ({__typeof__(n) n__=(n);assert_is_MacroNode(n__),(const MacroNode*)(n__);})
+  #define as_CallNode(n) ({__typeof__(n) n__=(n);assert_is_CallNode(n__),(CallNode*)(n__);})
+  #define as_const_CallNode(n) ({__typeof__(n) n__=(n);assert_is_CallNode(n__),(const CallNode*)(n__);})
+  #define as_TypeCastNode(n) ({__typeof__(n) n__=(n);assert_is_TypeCastNode(n__),(TypeCastNode*)(n__);})
+  #define as_const_TypeCastNode(n) ({__typeof__(n) n__=(n);assert_is_TypeCastNode(n__),(const TypeCastNode*)(n__);})
+  #define as_ConstNode(n) ({__typeof__(n) n__=(n);assert_is_ConstNode(n__),(ConstNode*)(n__);})
+  #define as_const_ConstNode(n) ({__typeof__(n) n__=(n);assert_is_ConstNode(n__),(const ConstNode*)(n__);})
+  #define as_VarNode(n) ({__typeof__(n) n__=(n);assert_is_VarNode(n__),(VarNode*)(n__);})
+  #define as_const_VarNode(n) ({__typeof__(n) n__=(n);assert_is_VarNode(n__),(const VarNode*)(n__);})
+  #define as_ParamNode(n) ({__typeof__(n) n__=(n);assert_is_ParamNode(n__),(ParamNode*)(n__);})
+  #define as_const_ParamNode(n) ({__typeof__(n) n__=(n);assert_is_ParamNode(n__),(const ParamNode*)(n__);})
+  #define as_MacroParamNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamNode(n__),(MacroParamNode*)(n__);})
+  #define as_const_MacroParamNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamNode(n__),(const MacroParamNode*)(n__);})
+  #define as_RefNode(n) ({__typeof__(n) n__=(n);assert_is_RefNode(n__),(RefNode*)(n__);})
+  #define as_const_RefNode(n) ({__typeof__(n) n__=(n);assert_is_RefNode(n__),(const RefNode*)(n__);})
+  #define as_NamedArgNode(n) ({__typeof__(n) n__=(n);assert_is_NamedArgNode(n__),(NamedArgNode*)(n__);})
+  #define as_const_NamedArgNode(n) ({__typeof__(n) n__=(n);assert_is_NamedArgNode(n__),(const NamedArgNode*)(n__);})
+  #define as_SelectorNode(n) ({__typeof__(n) n__=(n);assert_is_SelectorNode(n__),(SelectorNode*)(n__);})
+  #define as_const_SelectorNode(n) ({__typeof__(n) n__=(n);assert_is_SelectorNode(n__),(const SelectorNode*)(n__);})
+  #define as_IndexNode(n) ({__typeof__(n) n__=(n);assert_is_IndexNode(n__),(IndexNode*)(n__);})
+  #define as_const_IndexNode(n) ({__typeof__(n) n__=(n);assert_is_IndexNode(n__),(const IndexNode*)(n__);})
+  #define as_SliceNode(n) ({__typeof__(n) n__=(n);assert_is_SliceNode(n__),(SliceNode*)(n__);})
+  #define as_const_SliceNode(n) ({__typeof__(n) n__=(n);assert_is_SliceNode(n__),(const SliceNode*)(n__);})
+  #define as_IfNode(n) ({__typeof__(n) n__=(n);assert_is_IfNode(n__),(IfNode*)(n__);})
+  #define as_const_IfNode(n) ({__typeof__(n) n__=(n);assert_is_IfNode(n__),(const IfNode*)(n__);})
+  #define as_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(TypeTypeNode*)(n__);})
+  #define as_const_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(const TypeTypeNode*)(n__);})
+  #define as_NamedTypeNode(n) ({__typeof__(n) n__=(n);assert_is_NamedTypeNode(n__),(NamedTypeNode*)(n__);})
+  #define as_const_NamedTypeNode(n) ({__typeof__(n) n__=(n);assert_is_NamedTypeNode(n__),(const NamedTypeNode*)(n__);})
+  #define as_AliasTypeNode(n) ({__typeof__(n) n__=(n);assert_is_AliasTypeNode(n__),(AliasTypeNode*)(n__);})
+  #define as_const_AliasTypeNode(n) ({__typeof__(n) n__=(n);assert_is_AliasTypeNode(n__),(const AliasTypeNode*)(n__);})
+  #define as_RefTypeNode(n) ({__typeof__(n) n__=(n);assert_is_RefTypeNode(n__),(RefTypeNode*)(n__);})
+  #define as_const_RefTypeNode(n) ({__typeof__(n) n__=(n);assert_is_RefTypeNode(n__),(const RefTypeNode*)(n__);})
+  #define as_BasicTypeNode(n) ({__typeof__(n) n__=(n);assert_is_BasicTypeNode(n__),(BasicTypeNode*)(n__);})
+  #define as_const_BasicTypeNode(n) ({__typeof__(n) n__=(n);assert_is_BasicTypeNode(n__),(const BasicTypeNode*)(n__);})
+  #define as_ArrayTypeNode(n) ({__typeof__(n) n__=(n);assert_is_ArrayTypeNode(n__),(ArrayTypeNode*)(n__);})
+  #define as_const_ArrayTypeNode(n) ({__typeof__(n) n__=(n);assert_is_ArrayTypeNode(n__),(const ArrayTypeNode*)(n__);})
+  #define as_TupleTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TupleTypeNode(n__),(TupleTypeNode*)(n__);})
+  #define as_const_TupleTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TupleTypeNode(n__),(const TupleTypeNode*)(n__);})
+  #define as_StructTypeNode(n) ({__typeof__(n) n__=(n);assert_is_StructTypeNode(n__),(StructTypeNode*)(n__);})
+  #define as_const_StructTypeNode(n) ({__typeof__(n) n__=(n);assert_is_StructTypeNode(n__),(const StructTypeNode*)(n__);})
+  #define as_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(FunTypeNode*)(n__);})
+  #define as_const_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(const FunTypeNode*)(n__);})
   #define as_Stmt(n) _Generic((n), PkgNode*:(Stmt*)(n), FileNode*:(Stmt*)(n), \
     struct CUnitNode*:(Stmt*)(n), CommentNode*:(Stmt*)(n), Stmt*:(Stmt*)(n), \
-    Node*: ({ assert_is_Stmt(n); (Stmt*)(n); }))
+    Node*: ({__typeof__(n) n__=(n);assert_is_Stmt(n__),(Stmt*)(n__);}))
   #define as_const_Stmt(n) _Generic((n), const PkgNode*:(const Stmt*)(n), \
     const FileNode*:(const Stmt*)(n), const struct CUnitNode*:(const Stmt*)(n), \
     const CommentNode*:(const Stmt*)(n), const Stmt*:(const Stmt*)(n), \
-    const Node*: ({ assert_is_Stmt(n); (const Stmt*)(n); }))
+    const Node*: ({__typeof__(n) n__=(n);assert_is_Stmt(n__),(const Stmt*)(n__);}))
 
   #define as_CUnitNode(n) _Generic((n), PkgNode*:(struct CUnitNode*)(n), \
     FileNode*:(struct CUnitNode*)(n), struct CUnitNode*:(struct CUnitNode*)(n), \
-    Node*: ({ assert_is_CUnitNode(n); (struct CUnitNode*)(n); }))
+    Stmt*: ({__typeof__(n) n__=(n);assert_is_CUnitNode(n__),(struct CUnitNode*)(n__);}), \
+    Node*: ({__typeof__(n) n__=(n);assert_is_CUnitNode(n__),(struct CUnitNode*)(n__);}))
   #define as_const_CUnitNode(n) _Generic((n), \
     const PkgNode*:(const struct CUnitNode*)(n), \
     const FileNode*:(const struct CUnitNode*)(n), \
     const struct CUnitNode*:(const struct CUnitNode*)(n), \
-    const Node*: ({ assert_is_CUnitNode(n); (const struct CUnitNode*)(n); }))
+    const Stmt*: ({__typeof__(n) n__=(n);assert_is_CUnitNode(n__),(const struct CUnitNode*)(n__);}), \
+    const Node*: ({__typeof__(n) n__=(n);assert_is_CUnitNode(n__),(const struct CUnitNode*)(n__);}))
 
   #define as_Expr(n) _Generic((n), NilNode*:(Expr*)(n), BoolLitNode*:(Expr*)(n), \
     IntLitNode*:(Expr*)(n), FloatLitNode*:(Expr*)(n), StrLitNode*:(Expr*)(n), \
@@ -352,7 +354,7 @@ typedef struct FunTypeNode FunTypeNode;
     ParamNode*:(Expr*)(n), MacroParamNode*:(Expr*)(n), struct LocalNode*:(Expr*)(n), \
     RefNode*:(Expr*)(n), NamedArgNode*:(Expr*)(n), SelectorNode*:(Expr*)(n), \
     IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), IfNode*:(Expr*)(n), Expr*:(Expr*)(n), \
-    Node*: ({ assert_is_Expr(n); (Expr*)(n); }))
+    Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(Expr*)(n__);}))
   #define as_const_Expr(n) _Generic((n), const NilNode*:(const Expr*)(n), \
     const BoolLitNode*:(const Expr*)(n), const IntLitNode*:(const Expr*)(n), \
     const FloatLitNode*:(const Expr*)(n), const StrLitNode*:(const Expr*)(n), \
@@ -370,65 +372,73 @@ typedef struct FunTypeNode FunTypeNode;
     const NamedArgNode*:(const Expr*)(n), const SelectorNode*:(const Expr*)(n), \
     const IndexNode*:(const Expr*)(n), const SliceNode*:(const Expr*)(n), \
     const IfNode*:(const Expr*)(n), const Expr*:(const Expr*)(n), \
-    const Node*: ({ assert_is_Expr(n); (const Expr*)(n); }))
+    const Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(const Expr*)(n__);}))
 
   #define as_LitExpr(n) _Generic((n), NilNode*:(struct LitExpr*)(n), \
     BoolLitNode*:(struct LitExpr*)(n), IntLitNode*:(struct LitExpr*)(n), \
     FloatLitNode*:(struct LitExpr*)(n), StrLitNode*:(struct LitExpr*)(n), \
     struct LitExpr*:(struct LitExpr*)(n), \
-    Node*: ({ assert_is_LitExpr(n); (struct LitExpr*)(n); }))
+    Expr*: ({__typeof__(n) n__=(n);assert_is_LitExpr(n__),(struct LitExpr*)(n__);}), \
+    Node*: ({__typeof__(n) n__=(n);assert_is_LitExpr(n__),(struct LitExpr*)(n__);}))
   #define as_const_LitExpr(n) _Generic((n), const NilNode*:(const struct LitExpr*)(n), \
     const BoolLitNode*:(const struct LitExpr*)(n), \
     const IntLitNode*:(const struct LitExpr*)(n), \
     const FloatLitNode*:(const struct LitExpr*)(n), \
     const StrLitNode*:(const struct LitExpr*)(n), \
     const struct LitExpr*:(const struct LitExpr*)(n), \
-    const Node*: ({ assert_is_LitExpr(n); (const struct LitExpr*)(n); }))
+    const Expr*: ({__typeof__(n) n__=(n);assert_is_LitExpr(n__),(const struct LitExpr*)(n__);}), \
+    const Node*: ({__typeof__(n) n__=(n);assert_is_LitExpr(n__),(const struct LitExpr*)(n__);}))
 
   #define as_UnaryOpNode(n) _Generic((n), PrefixOpNode*:(struct UnaryOpNode*)(n), \
     PostfixOpNode*:(struct UnaryOpNode*)(n), \
     struct UnaryOpNode*:(struct UnaryOpNode*)(n), \
-    Node*: ({ assert_is_UnaryOpNode(n); (struct UnaryOpNode*)(n); }))
+    Expr*: ({__typeof__(n) n__=(n);assert_is_UnaryOpNode(n__),(struct UnaryOpNode*)(n__);}), \
+    Node*: ({__typeof__(n) n__=(n);assert_is_UnaryOpNode(n__),(struct UnaryOpNode*)(n__);}))
   #define as_const_UnaryOpNode(n) _Generic((n), \
     const PrefixOpNode*:(const struct UnaryOpNode*)(n), \
     const PostfixOpNode*:(const struct UnaryOpNode*)(n), \
     const struct UnaryOpNode*:(const struct UnaryOpNode*)(n), \
-    const Node*: ({ assert_is_UnaryOpNode(n); (const struct UnaryOpNode*)(n); }))
+    const Expr*: ({__typeof__(n) n__=(n);assert_is_UnaryOpNode(n__),(const struct UnaryOpNode*)(n__);}), \
+    const Node*: ({__typeof__(n) n__=(n);assert_is_UnaryOpNode(n__),(const struct UnaryOpNode*)(n__);}))
 
   #define as_ListExprNode(n) _Generic((n), TupleNode*:(struct ListExprNode*)(n), \
     ArrayNode*:(struct ListExprNode*)(n), \
     struct ListExprNode*:(struct ListExprNode*)(n), \
-    Node*: ({ assert_is_ListExprNode(n); (struct ListExprNode*)(n); }))
+    Expr*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(struct ListExprNode*)(n__);}), \
+    Node*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(struct ListExprNode*)(n__);}))
   #define as_const_ListExprNode(n) _Generic((n), \
     const TupleNode*:(const struct ListExprNode*)(n), \
     const ArrayNode*:(const struct ListExprNode*)(n), \
     const struct ListExprNode*:(const struct ListExprNode*)(n), \
-    const Node*: ({ assert_is_ListExprNode(n); (const struct ListExprNode*)(n); }))
+    const Expr*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(const struct ListExprNode*)(n__);}), \
+    const Node*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(const struct ListExprNode*)(n__);}))
 
   #define as_LocalNode(n) _Generic((n), ConstNode*:(struct LocalNode*)(n), \
     VarNode*:(struct LocalNode*)(n), ParamNode*:(struct LocalNode*)(n), \
     MacroParamNode*:(struct LocalNode*)(n), struct LocalNode*:(struct LocalNode*)(n), \
-    Node*: ({ assert_is_LocalNode(n); (struct LocalNode*)(n); }))
+    Expr*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(struct LocalNode*)(n__);}), \
+    Node*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(struct LocalNode*)(n__);}))
   #define as_const_LocalNode(n) _Generic((n), \
     const ConstNode*:(const struct LocalNode*)(n), \
     const VarNode*:(const struct LocalNode*)(n), \
     const ParamNode*:(const struct LocalNode*)(n), \
     const MacroParamNode*:(const struct LocalNode*)(n), \
     const struct LocalNode*:(const struct LocalNode*)(n), \
-    const Node*: ({ assert_is_LocalNode(n); (const struct LocalNode*)(n); }))
+    const Expr*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(const struct LocalNode*)(n__);}), \
+    const Node*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(const struct LocalNode*)(n__);}))
 
   #define as_Type(n) _Generic((n), TypeTypeNode*:(Type*)(n), NamedTypeNode*:(Type*)(n), \
     AliasTypeNode*:(Type*)(n), RefTypeNode*:(Type*)(n), BasicTypeNode*:(Type*)(n), \
     ArrayTypeNode*:(Type*)(n), TupleTypeNode*:(Type*)(n), StructTypeNode*:(Type*)(n), \
     FunTypeNode*:(Type*)(n), Type*:(Type*)(n), \
-    Node*: ({ assert_is_Type(n); (Type*)(n); }))
+    Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(Type*)(n__);}))
   #define as_const_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
     const NamedTypeNode*:(const Type*)(n), const AliasTypeNode*:(const Type*)(n), \
     const RefTypeNode*:(const Type*)(n), const BasicTypeNode*:(const Type*)(n), \
     const ArrayTypeNode*:(const Type*)(n), const TupleTypeNode*:(const Type*)(n), \
     const StructTypeNode*:(const Type*)(n), const FunTypeNode*:(const Type*)(n), \
     const Type*:(const Type*)(n), \
-    const Node*: ({ assert_is_Type(n); (const Type*)(n); }))
+    const Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(const Type*)(n__);}))
 
 #else // !defined(DEBUG)
   #define as_Node(n) ((Node*)(n))
@@ -537,56 +547,56 @@ typedef struct FunTypeNode FunTypeNode;
 
 // <type>* nullable maybe_<type>(Node* n)
 // const <type>* nullable maybe_<type>(const Node* n)
-#define maybe_BadNode(n) (is_BadNode(n)?(BadNode*)(n):NULL)
-#define maybe_FieldNode(n) (is_FieldNode(n)?(FieldNode*)(n):NULL)
-#define maybe_Stmt(n) (is_Stmt(n)?as_Stmt(n):NULL)
-#define maybe_CUnitNode(n) (is_CUnitNode(n)?as_CUnitNode(n):NULL)
-#define maybe_PkgNode(n) (is_PkgNode(n)?(PkgNode*)(n):NULL)
-#define maybe_FileNode(n) (is_FileNode(n)?(FileNode*)(n):NULL)
-#define maybe_CommentNode(n) (is_CommentNode(n)?(CommentNode*)(n):NULL)
-#define maybe_Expr(n) (is_Expr(n)?as_Expr(n):NULL)
-#define maybe_LitExpr(n) (is_LitExpr(n)?as_LitExpr(n):NULL)
-#define maybe_NilNode(n) (is_NilNode(n)?(NilNode*)(n):NULL)
-#define maybe_BoolLitNode(n) (is_BoolLitNode(n)?(BoolLitNode*)(n):NULL)
-#define maybe_IntLitNode(n) (is_IntLitNode(n)?(IntLitNode*)(n):NULL)
-#define maybe_FloatLitNode(n) (is_FloatLitNode(n)?(FloatLitNode*)(n):NULL)
-#define maybe_StrLitNode(n) (is_StrLitNode(n)?(StrLitNode*)(n):NULL)
-#define maybe_IdNode(n) (is_IdNode(n)?(IdNode*)(n):NULL)
-#define maybe_BinOpNode(n) (is_BinOpNode(n)?(BinOpNode*)(n):NULL)
-#define maybe_UnaryOpNode(n) (is_UnaryOpNode(n)?as_UnaryOpNode(n):NULL)
-#define maybe_PrefixOpNode(n) (is_PrefixOpNode(n)?(PrefixOpNode*)(n):NULL)
-#define maybe_PostfixOpNode(n) (is_PostfixOpNode(n)?(PostfixOpNode*)(n):NULL)
-#define maybe_ReturnNode(n) (is_ReturnNode(n)?(ReturnNode*)(n):NULL)
-#define maybe_AssignNode(n) (is_AssignNode(n)?(AssignNode*)(n):NULL)
-#define maybe_ListExprNode(n) (is_ListExprNode(n)?as_ListExprNode(n):NULL)
-#define maybe_TupleNode(n) (is_TupleNode(n)?(TupleNode*)(n):NULL)
-#define maybe_ArrayNode(n) (is_ArrayNode(n)?(ArrayNode*)(n):NULL)
-#define maybe_BlockNode(n) (is_BlockNode(n)?(BlockNode*)(n):NULL)
-#define maybe_FunNode(n) (is_FunNode(n)?(FunNode*)(n):NULL)
-#define maybe_MacroNode(n) (is_MacroNode(n)?(MacroNode*)(n):NULL)
-#define maybe_CallNode(n) (is_CallNode(n)?(CallNode*)(n):NULL)
-#define maybe_TypeCastNode(n) (is_TypeCastNode(n)?(TypeCastNode*)(n):NULL)
-#define maybe_LocalNode(n) (is_LocalNode(n)?as_LocalNode(n):NULL)
-#define maybe_ConstNode(n) (is_ConstNode(n)?(ConstNode*)(n):NULL)
-#define maybe_VarNode(n) (is_VarNode(n)?(VarNode*)(n):NULL)
-#define maybe_ParamNode(n) (is_ParamNode(n)?(ParamNode*)(n):NULL)
-#define maybe_MacroParamNode(n) (is_MacroParamNode(n)?(MacroParamNode*)(n):NULL)
-#define maybe_RefNode(n) (is_RefNode(n)?(RefNode*)(n):NULL)
-#define maybe_NamedArgNode(n) (is_NamedArgNode(n)?(NamedArgNode*)(n):NULL)
-#define maybe_SelectorNode(n) (is_SelectorNode(n)?(SelectorNode*)(n):NULL)
-#define maybe_IndexNode(n) (is_IndexNode(n)?(IndexNode*)(n):NULL)
-#define maybe_SliceNode(n) (is_SliceNode(n)?(SliceNode*)(n):NULL)
-#define maybe_IfNode(n) (is_IfNode(n)?(IfNode*)(n):NULL)
-#define maybe_Type(n) (is_Type(n)?as_Type(n):NULL)
-#define maybe_TypeTypeNode(n) (is_TypeTypeNode(n)?(TypeTypeNode*)(n):NULL)
-#define maybe_NamedTypeNode(n) (is_NamedTypeNode(n)?(NamedTypeNode*)(n):NULL)
-#define maybe_AliasTypeNode(n) (is_AliasTypeNode(n)?(AliasTypeNode*)(n):NULL)
-#define maybe_RefTypeNode(n) (is_RefTypeNode(n)?(RefTypeNode*)(n):NULL)
-#define maybe_BasicTypeNode(n) (is_BasicTypeNode(n)?(BasicTypeNode*)(n):NULL)
-#define maybe_ArrayTypeNode(n) (is_ArrayTypeNode(n)?(ArrayTypeNode*)(n):NULL)
-#define maybe_TupleTypeNode(n) (is_TupleTypeNode(n)?(TupleTypeNode*)(n):NULL)
-#define maybe_StructTypeNode(n) (is_StructTypeNode(n)?(StructTypeNode*)(n):NULL)
-#define maybe_FunTypeNode(n) (is_FunTypeNode(n)?(FunTypeNode*)(n):NULL)
+#define maybe_BadNode(n) ({__typeof__(n) n__=(n);is_BadNode(n__)?(BadNode*)(n__):NULL;})
+#define maybe_FieldNode(n) ({__typeof__(n) n__=(n);is_FieldNode(n__)?(FieldNode*)(n__):NULL;})
+#define maybe_Stmt(n) ({__typeof__(n) n__=(n);is_Stmt(n__)?as_Stmt(n__):NULL;})
+#define maybe_CUnitNode(n) ({__typeof__(n) n__=(n);is_CUnitNode(n__)?as_CUnitNode(n__):NULL;})
+#define maybe_PkgNode(n) ({__typeof__(n) n__=(n);is_PkgNode(n__)?(PkgNode*)(n__):NULL;})
+#define maybe_FileNode(n) ({__typeof__(n) n__=(n);is_FileNode(n__)?(FileNode*)(n__):NULL;})
+#define maybe_CommentNode(n) ({__typeof__(n) n__=(n);is_CommentNode(n__)?(CommentNode*)(n__):NULL;})
+#define maybe_Expr(n) ({__typeof__(n) n__=(n);is_Expr(n__)?as_Expr(n__):NULL;})
+#define maybe_LitExpr(n) ({__typeof__(n) n__=(n);is_LitExpr(n__)?as_LitExpr(n__):NULL;})
+#define maybe_NilNode(n) ({__typeof__(n) n__=(n);is_NilNode(n__)?(NilNode*)(n__):NULL;})
+#define maybe_BoolLitNode(n) ({__typeof__(n) n__=(n);is_BoolLitNode(n__)?(BoolLitNode*)(n__):NULL;})
+#define maybe_IntLitNode(n) ({__typeof__(n) n__=(n);is_IntLitNode(n__)?(IntLitNode*)(n__):NULL;})
+#define maybe_FloatLitNode(n) ({__typeof__(n) n__=(n);is_FloatLitNode(n__)?(FloatLitNode*)(n__):NULL;})
+#define maybe_StrLitNode(n) ({__typeof__(n) n__=(n);is_StrLitNode(n__)?(StrLitNode*)(n__):NULL;})
+#define maybe_IdNode(n) ({__typeof__(n) n__=(n);is_IdNode(n__)?(IdNode*)(n__):NULL;})
+#define maybe_BinOpNode(n) ({__typeof__(n) n__=(n);is_BinOpNode(n__)?(BinOpNode*)(n__):NULL;})
+#define maybe_UnaryOpNode(n) ({__typeof__(n) n__=(n);is_UnaryOpNode(n__)?as_UnaryOpNode(n__):NULL;})
+#define maybe_PrefixOpNode(n) ({__typeof__(n) n__=(n);is_PrefixOpNode(n__)?(PrefixOpNode*)(n__):NULL;})
+#define maybe_PostfixOpNode(n) ({__typeof__(n) n__=(n);is_PostfixOpNode(n__)?(PostfixOpNode*)(n__):NULL;})
+#define maybe_ReturnNode(n) ({__typeof__(n) n__=(n);is_ReturnNode(n__)?(ReturnNode*)(n__):NULL;})
+#define maybe_AssignNode(n) ({__typeof__(n) n__=(n);is_AssignNode(n__)?(AssignNode*)(n__):NULL;})
+#define maybe_ListExprNode(n) ({__typeof__(n) n__=(n);is_ListExprNode(n__)?as_ListExprNode(n__):NULL;})
+#define maybe_TupleNode(n) ({__typeof__(n) n__=(n);is_TupleNode(n__)?(TupleNode*)(n__):NULL;})
+#define maybe_ArrayNode(n) ({__typeof__(n) n__=(n);is_ArrayNode(n__)?(ArrayNode*)(n__):NULL;})
+#define maybe_BlockNode(n) ({__typeof__(n) n__=(n);is_BlockNode(n__)?(BlockNode*)(n__):NULL;})
+#define maybe_FunNode(n) ({__typeof__(n) n__=(n);is_FunNode(n__)?(FunNode*)(n__):NULL;})
+#define maybe_MacroNode(n) ({__typeof__(n) n__=(n);is_MacroNode(n__)?(MacroNode*)(n__):NULL;})
+#define maybe_CallNode(n) ({__typeof__(n) n__=(n);is_CallNode(n__)?(CallNode*)(n__):NULL;})
+#define maybe_TypeCastNode(n) ({__typeof__(n) n__=(n);is_TypeCastNode(n__)?(TypeCastNode*)(n__):NULL;})
+#define maybe_LocalNode(n) ({__typeof__(n) n__=(n);is_LocalNode(n__)?as_LocalNode(n__):NULL;})
+#define maybe_ConstNode(n) ({__typeof__(n) n__=(n);is_ConstNode(n__)?(ConstNode*)(n__):NULL;})
+#define maybe_VarNode(n) ({__typeof__(n) n__=(n);is_VarNode(n__)?(VarNode*)(n__):NULL;})
+#define maybe_ParamNode(n) ({__typeof__(n) n__=(n);is_ParamNode(n__)?(ParamNode*)(n__):NULL;})
+#define maybe_MacroParamNode(n) ({__typeof__(n) n__=(n);is_MacroParamNode(n__)?(MacroParamNode*)(n__):NULL;})
+#define maybe_RefNode(n) ({__typeof__(n) n__=(n);is_RefNode(n__)?(RefNode*)(n__):NULL;})
+#define maybe_NamedArgNode(n) ({__typeof__(n) n__=(n);is_NamedArgNode(n__)?(NamedArgNode*)(n__):NULL;})
+#define maybe_SelectorNode(n) ({__typeof__(n) n__=(n);is_SelectorNode(n__)?(SelectorNode*)(n__):NULL;})
+#define maybe_IndexNode(n) ({__typeof__(n) n__=(n);is_IndexNode(n__)?(IndexNode*)(n__):NULL;})
+#define maybe_SliceNode(n) ({__typeof__(n) n__=(n);is_SliceNode(n__)?(SliceNode*)(n__):NULL;})
+#define maybe_IfNode(n) ({__typeof__(n) n__=(n);is_IfNode(n__)?(IfNode*)(n__):NULL;})
+#define maybe_Type(n) ({__typeof__(n) n__=(n);is_Type(n__)?as_Type(n__):NULL;})
+#define maybe_TypeTypeNode(n) ({__typeof__(n) n__=(n);is_TypeTypeNode(n__)?(TypeTypeNode*)(n__):NULL;})
+#define maybe_NamedTypeNode(n) ({__typeof__(n) n__=(n);is_NamedTypeNode(n__)?(NamedTypeNode*)(n__):NULL;})
+#define maybe_AliasTypeNode(n) ({__typeof__(n) n__=(n);is_AliasTypeNode(n__)?(AliasTypeNode*)(n__):NULL;})
+#define maybe_RefTypeNode(n) ({__typeof__(n) n__=(n);is_RefTypeNode(n__)?(RefTypeNode*)(n__):NULL;})
+#define maybe_BasicTypeNode(n) ({__typeof__(n) n__=(n);is_BasicTypeNode(n__)?(BasicTypeNode*)(n__):NULL;})
+#define maybe_ArrayTypeNode(n) ({__typeof__(n) n__=(n);is_ArrayTypeNode(n__)?(ArrayTypeNode*)(n__):NULL;})
+#define maybe_TupleTypeNode(n) ({__typeof__(n) n__=(n);is_TupleTypeNode(n__)?(TupleTypeNode*)(n__):NULL;})
+#define maybe_StructTypeNode(n) ({__typeof__(n) n__=(n);is_StructTypeNode(n__)?(StructTypeNode*)(n__):NULL;})
+#define maybe_FunTypeNode(n) ({__typeof__(n) n__=(n);is_FunTypeNode(n__)?(FunTypeNode*)(n__):NULL;})
 
 // Type* nullable TypeOfNode(Node* n)
 // Type* TypeOfNode(Type* n)
@@ -640,9 +650,10 @@ typedef struct FunTypeNode FunTypeNode;
   IfNode*:((Expr*)(n))->type, const Expr*:(const Type*)((Expr*)(n))->type, \
   Expr*:((Expr*)(n))->type, BadNode*:NULL, FieldNode*:NULL, Stmt*:NULL, \
   struct CUnitNode*:NULL, PkgNode*:NULL, FileNode*:NULL, CommentNode*:NULL, \
-  const Node*: ( is_Type(n) ? (const Type*)kType_type : \
-   is_Expr(n) ? (const Type*)((Expr*)(n))->type : NULL ), \
-  Node*:( is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))
+  const Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (const Type*)kType_type \
+   : is_Expr(n__) ? (const Type*)((Expr*)n__)->type : NULL; }), \
+  Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (Type*)kType_type \
+   : is_Expr(n__) ? ((Expr*)n__)->type : NULL; }))
 
 union NodeUnion {
 BadNode _0; FieldNode _1; PkgNode _2; FileNode _3; CommentNode _4; NilNode _5;

@@ -291,8 +291,8 @@ static Node* parse_next(Parser* p, int precedence, PFlag fl);
 static Node* parse_prefix(Parser* p, PFlag fl);
 static Node* parse_infix(Parser* p, int precedence, PFlag fl, Node* left);
 
-// parse_next_tuple = Tuple | Node
-static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl);
+// parse_next_tuple = Tuple | Expr
+static Expr* parse_next_tuple(Parser* p, int precedence, PFlag fl);
 
 static const char* local_kind_name(LocalNode* n) {
   switch (n->kind) {
@@ -602,37 +602,6 @@ static Type* presolve_type(Parser* p, NamedTypeNode* tname) {
 }
 
 
-// use_as_rvalue is used to lazily resolve identifiers which are used in rvalue position
-// that is unknown ahead of time. Returns expr or its effective value.
-// For example:
-//   fun foo(x, y int) int {
-//     x
-//     ~ might be the beginning of a local definition
-// Scenario 1:
-//   fun foo(x, y int) int {
-//     x = 4
-//     ~~~~~ lvalue in a local definition; defining not resolving.
-// Scenario 2:
-//   fun foo(x, y int) int {
-//     x + y
-//     ~~~~~  Used as an rvalue in an op; call use_as_rvalue(x)
-//
-#define use_as_rvalue(p, n) _use_as_rvalue((p),as_Node(n))
-static Node* use_id_as_rvalue(Parser* p, IdNode* id) {
-  NodeSetRValue(id);
-  return resolve_id(id, id->target ? NULL : lookupsym(p, id->name));
-}
-static Node* _use_as_rvalue(Parser* p, Node* n) {
-  switch (n->kind) {
-    case NId:        return use_id_as_rvalue(p, as_IdNode(n));
-    case NBasicType: return n; // immutable memory, allocated by universe
-    default:
-      NodeSetRValue(n);
-      return n;
-  }
-}
-
-
 static Type* nullable set_ctxtype(Parser* p, Type* nullable ctxtype) {
   Type* prev = p->ctxtype;
   p->ctxtype = ctxtype != kType_ideal ? ctxtype : NULL;
@@ -651,10 +620,38 @@ static Type* expectType(Parser* p, Node* nullable n) {
 }
 
 static Expr* expectExpr(Parser* p, Node* nullable n) {
-  if (LIKELY(n == NULL || is_Expr(n)))
+  if (LIKELY(is_Expr(n) || n == NULL))
     return (Expr*)n;
   syntaxerrp(p, n->pos, "expected an expression");
   return (Expr*)(n ? n : bad(p));
+}
+
+
+// use_as_rvalue is used to lazily resolve identifiers which are used in rvalue position
+// that is unknown ahead of time. Returns expr or its effective value.
+// For example:
+//   fun foo(x, y int) int {
+//     x
+//     ~ might be the beginning of a local definition
+// Scenario 1:
+//   fun foo(x, y int) int {
+//     x = 4
+//     ~~~~~ lvalue in a local definition; defining not resolving.
+// Scenario 2:
+//   fun foo(x, y int) int {
+//     x + y
+//     ~~~~~  Used as an rvalue in an op; call use_as_rvalue(x)
+//
+#define use_as_rvalue(p, n) _use_as_rvalue((p),as_Expr(n))
+static Expr* _use_as_rvalue(Parser* p, Expr* n) {
+  if (!NodeIsRValue(n)) // avoid mutating global constants from universe
+    NodeSetRValue(n);
+  if (n->kind == NId) {
+    IdNode* id = as_IdNode(n);
+    Node* target = id->target ? NULL : lookupsym(p, id->name);
+    n = expectExpr(p, resolve_id(id, target));
+  }
+  return n;
 }
 
 
@@ -728,7 +725,7 @@ static Node* PId(Parser* p, PFlag fl) {
 
 
 static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
-  init = expectExpr(p, use_as_rvalue(p, init));
+  init = use_as_rvalue(p, init);
   NodeTransferUnresolved(n, init);
   SetLocalInitField(n, init);
 
@@ -979,12 +976,10 @@ static Node* pAssignToSelector(Parser* p, const Parselet* e, PFlag fl, Node* dst
 
 // parse assignment of any right-hand-side expression
 static Node* pAssignToBase(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
-  auto dst = as_Expr(dstn);
   auto n = mknode(p, Assign);
   nexttok(p); // consume '='
-  Node* right = parse_next_tuple(p, e->prec, fl | PFlagRValue);
-  n->dst = dst;
-  n->val = as_Expr(right);
+  n->dst = as_Expr(dstn);
+  n->val = parse_next_tuple(p, e->prec, fl | PFlagRValue);
 
   NodeTransferUnresolved2(n, n->dst, n->val);
 
@@ -1062,9 +1057,9 @@ static Node* nullable PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left
 //!PrefixParselet TLParen
 static Node* PGroup(Parser* p, PFlag fl) {
   nexttok(p); // consume "("
-  Node* n = parse_next_tuple(p, PREC_LOWEST, fl);
+  Expr* n = parse_next_tuple(p, PREC_LOWEST, fl);
   want(p, TRParen);
-  return n;
+  return as_Node(n);
 }
 
 
@@ -1191,7 +1186,7 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   }
 
   n->index = 0xffffffff; // not a compile-time constant (for now)
-  n->operand = as_Expr(use_as_rvalue(p, left));
+  n->operand = use_as_rvalue(p, left);
   NodeTransferUnresolved(n, n->operand);
 
   if (p->tok == TRBrack) { // "[]"
@@ -1411,7 +1406,8 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   nexttok(p); // consume "("
 
   // receiver
-  receiver = use_as_rvalue(p, receiver);
+  if (is_Expr(receiver))
+    receiver = as_Node(use_as_rvalue(p, receiver));
   NodeTransferUnresolved(call, receiver);
   call->receiver = receiver;
 
@@ -1629,7 +1625,7 @@ static Expr* pBlock(Parser* p, PFlag fl) {
   auto block = mknode(p, Block);
   nexttok(p); // consume "{"
 
-  Node* cn = NULL;
+  Expr* cn = NULL;
   while (p->tok != TNone && p->tok != TRBrace) {
     cn = parse_next_tuple(p, PREC_LOWEST, fl & ~PFlagRValue);
     array_push(&block->a, cn);
@@ -1652,7 +1648,7 @@ static Expr* pBlock(Parser* p, PFlag fl) {
 
   // simplify a block with a single expression to just that expression
   if (block->a.len == 1 && is_Expr(block->a.v[0]))
-    return as_Expr(block->a.v[0]);
+    return block->a.v[0];
 
   return as_Expr(block);
 }
@@ -1665,9 +1661,9 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   if (fl & PFlagType)
     return pStructType(p, fl, mktype(p, StructType, TF_KindStruct));
   pushScope(p);
-  Expr* expr = pBlock(p, fl);
+  Expr* block_or_single_expr = pBlock(p, fl);
   popScopeAndCheckUnused(p);
-  return as_Node(expr);
+  return as_Node(block_or_single_expr);
 }
 
 // PrefixOp = ( "+" | "-" | "!" | "*" ) Expr
@@ -1695,7 +1691,7 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto op = mknode(p, BinOp);
   op->op = p->tok;
   nexttok(p); // consume "+"
-  op->left = expectExpr(p, use_as_rvalue(p, left));
+  op->left = use_as_rvalue(p, left);
   Type* ctxtype = set_ctxtype(p, op->left->type);
   op->right = pExpr(p, e->prec, fl | PFlagRValue);
   p->ctxtype = ctxtype; // restore ctxtype
@@ -1709,7 +1705,7 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
   auto op = mknode(p, PostfixOp);
   op->op = p->tok;
   nexttok(p); // consume "++"
-  op->expr = expectExpr(p, use_as_rvalue(p, operand));
+  op->expr = use_as_rvalue(p, operand);
   NodeTransferUnresolved(op, op->expr);
   return as_Node(op);
 }
@@ -1719,7 +1715,7 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
 static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   auto sel = mknode(p, Selector);
   nexttok(p); // consume "."
-  sel->operand = expectExpr(p, use_as_rvalue(p, left));
+  sel->operand = use_as_rvalue(p, left);
 
   // member is a name
   if (UNLIKELY(p->tok != TId)) {
@@ -1783,7 +1779,7 @@ static Node* PReturn(Parser* p, PFlag fl) {
   nexttok(p);
   if (p->tok != TSemi && p->tok != TRBrace) {
     // parse_next_tuple to allow "return 1, 2, 3" in addition to "return (1, 2, 3)"
-    ret->expr = expectExpr(p, parse_next_tuple(p, PREC_LOWEST, fl | PFlagRValue));
+    ret->expr = parse_next_tuple(p, PREC_LOWEST, fl | PFlagRValue);
     NodeTransferUnresolved(ret, ret->expr);
   }
   return as_Node(ret);
@@ -2034,7 +2030,7 @@ static Node* PFun(Parser* p, PFlag fl) {
     assert((fl & PFlagType) == 0); // needed for PBlockOrStructType
     fn->body = pBlock(p, bodyfl);
   } else if (got(p, TRArr)) {
-    fn->body = expectExpr(p, parse_next_tuple(p, PREC_LOWEST, bodyfl));
+    fn->body = parse_next_tuple(p, PREC_LOWEST, bodyfl);
   }
   p->fnest--;
 
@@ -2199,7 +2195,7 @@ static Node* parse_next(Parser* p, int precedence, PFlag fl) {
 //     • calls parse_prefix => b
 //   • PFlagRValue=ON see no more comma; ends the tuple => (a (+ b c) d)
 //
-static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
+static Expr* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
   Node* left = (fl & PFlagRValue) ? parse_next(p, precedence, fl)
                                   : parse_prefix(p, fl);
   if (got(p, TComma)) {
@@ -2236,10 +2232,10 @@ static Node* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
   }
 
   if (fl & PFlagRValue)
-    return left;
+    return expectExpr(p, left);
 
   // wrap in possible infix expression, e.g. "left + right"
-  return parse_infix(p, precedence, fl, left);
+  return expectExpr(p, parse_infix(p, precedence, fl, left));
 }
 
 
@@ -2316,7 +2312,7 @@ error parse_tu(
 
   // do while have a valid token...
   while (p->tok != TNone && p->err == 0) {
-    Node* n = parse_next_tuple(p, PREC_LOWEST, PFlagNone);
+    Node* n = as_Node(parse_next_tuple(p, PREC_LOWEST, PFlagNone));
     array_push(&file->a, n);
     NodeTransferUnresolved(file, n);
 

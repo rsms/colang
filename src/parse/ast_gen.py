@@ -35,16 +35,18 @@ with open(outcfile, "r") as f:
 
 # find all node struct definitions
 typemap = OrderedDict()
+parentmap = dict()  # sub_type_name => parent_type_name
 for m in node_struct_re.finditer(inhsource):
   name = m.group(1)
   parent_name = m.group(2)
-
   m = typemap.setdefault(name, OrderedDict())
   parent_m = typemap.setdefault(parent_name, OrderedDict())
   parent_m[name] = m
+  pm = parentmap[name] = parent_name
 
-# print("typemap:", prettyrepr(typemap))
 Node = typemap["Node"]
+# print("typemap:", prettyrepr(typemap))
+# print("parentmap:", prettyrepr(parentmap))
 # print(prettyrepr(Node))
 
 
@@ -224,6 +226,31 @@ for name, subtypes in typemap.items():
       name, shortname))
 outh.append('')
 
+def iter_parent_names(name):
+  if name == "" or name == "Node":
+    return
+  parent_name = parentmap[name]
+  while True:
+    yield parent_name
+    if parent_name == "Node":
+      break
+    parent_name = parentmap[parent_name]
+
+
+def fmt_assert_cast(name, stname):
+  return '({__typeof__(n) n__=(n);assert_is_%s(n__),(%s*)(n__);})' % (name, stname)
+
+def fmt_assert_const_cast(name, stname):
+  return '({__typeof__(n) n__=(n);assert_is_%s(n__),(const %s*)(n__);})' % (name, stname)
+
+
+def gen_as_assert(out, name, stname):
+  out.append('  #define as_%s(n) %s' % (name, fmt_assert_cast(name, stname)))
+
+def gen_as_const_assert(out, name, stname):
+  out.append('  #define as_const_%s(n) %s' % (name, fmt_assert_const_cast(name, stname)))
+
+
 # as_*
 # mode = "assert" | "generic" | "none"
 def gen_as_TYPE(out, mode, name, subtypes):
@@ -232,34 +259,36 @@ def gen_as_TYPE(out, mode, name, subtypes):
     out.append('  #define as_%s(n) ((%s*)(n))' % (name, stname))
     out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, stname))
   elif mode == "assert":
-    out.append('  #define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (name, name, stname))
-    out.append('  #define as_const_%s(n) ({ assert_is_%s(n); (const %s*)(n); })' % (
-      name, name, stname))
+    gen_as_assert(out, name, stname)
+    gen_as_const_assert(out, name, stname)
   else: # mode == "generic"
-    def visit(out, qual, name, subtypes):
+    DBG = name == "LocalNode"
+    ind = "  "
+    def visit(out, qual, name, subtypes, ind):
+      if DBG:
+        print("%svisit %r %r" % (ind, name, subtypes))
+        ind = ind + "  "
       for name2, subtypes2 in subtypes.items():
-        visit(out, qual, name2, subtypes2)
+        visit(out, qual, name2, subtypes2, ind)
       if mode == "generic":
         #out.append('const %s*:(const %s*)(n),' % (structname(name, subtypes), stname))
         out.append('%s%s*:(%s%s*)(n),' % (qual, structname(name, subtypes), qual, stname))
 
     tmp = []
     tmp.append('  #define as_%s(n) _Generic((n),' % (name))
-    visit(tmp, "", name, subtypes)
-    if strip_node_suffix(name) != '':
-      #tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
-      tmp.append('Node*: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
-      # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    visit(tmp, "", name, subtypes, ind)
+    for parent_name in iter_parent_names(name):
+      tmp.append('%s*: %s,' % (parent_name, fmt_assert_cast(name, stname)))
     tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
     output_compact_macro(out, tmp, indent=2)
 
+    DBG = False
+
     tmp = []
     tmp.append('  #define as_const_%s(n) _Generic((n),' % (name))
-    visit(tmp, "const ", name, subtypes)
-    if strip_node_suffix(name) != '':
-      #tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }),' % (name, stname))
-      tmp.append('const Node*: ({ assert_is_%s(n); (const %s*)(n); }))' % (name, stname))
-      # tmp.append('default: ({ assert_is_%s(n); (%s*)(n); }))' % (name, stname))
+    visit(tmp, "const ", name, subtypes, ind)
+    for parent_name in iter_parent_names(name):
+      tmp.append('const %s*: %s,' % (parent_name, fmt_assert_const_cast(name, stname)))
     tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
     output_compact_macro(out, tmp, indent=2)
 
@@ -279,9 +308,11 @@ def gen_as_TYPE_leafs(out, mode):
       out.append('  #define as_%s(n) ((%s*)(n))' % (name, name))
       out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, name))
     else: # mode == "assert" or mode == "generic"
-      out.append('  #define as_%s(n) ({ assert_is_%s(n); (%s*)(n); })' % (name, name, name))
-      out.append('  #define as_const_%s(n) ({ assert_is_%s(n); (const %s*)(n); })' % (
-        name, name, name))
+      gen_as_assert(out, name, name)
+      gen_as_const_assert(out, name, name)
+      # out.append('  #define as_%s(n) (assert_is_%s(n), (%s*)(n))' % (name, name, name))
+      # out.append('  #define as_const_%s(n) (assert_is_%s(n), (const %s*)(n))' % (
+      #   name, name, name))
 
 # as_Node
 outh.append('// T* as_T(Node* n)')
@@ -311,9 +342,13 @@ for name, subtypes in typemap.items():
   if shortname == '':
     continue # skip root type
   if len(subtypes) == 0:
-    outh.append('#define maybe_%s(n) (is_%s(n)?(%s*)(n):NULL)' % (name, name, name))
+    outh.append(
+      '#define maybe_%s(n) ({__typeof__(n) n__=(n);is_%s(n__)?(%s*)(n__):NULL;})' % (
+        name, name, name))
   else:
-    outh.append('#define maybe_%s(n) (is_%s(n)?as_%s(n):NULL)' % (name, name, name))
+    outh.append(
+      '#define maybe_%s(n) ({__typeof__(n) n__=(n);is_%s(n__)?as_%s(n__):NULL;})' % (
+        name, name, name))
 outh.append('')
 
 
@@ -340,9 +375,11 @@ for name, subtypes in typemap.items():
     tmp.append('%s*:NULL,' % structname(name, subtypes))
 # inspect "Node*" at runtime
 tmp += [
-  'const Node*: ( is_Type(n) ? (const Type*)kType_type :',
-  ' is_Expr(n) ? (const Type*)((Expr*)(n))->type : NULL ),',
-  'Node*:( is_Type(n) ? kType_type : is_Expr(n) ? ((Expr*)(n))->type : NULL))',
+  'const Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (const Type*)kType_type',
+  ' : is_Expr(n__) ? (const Type*)((Expr*)n__)->type : NULL; }),',
+
+  'Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (Type*)kType_type',
+  ' : is_Expr(n__) ? ((Expr*)n__)->type : NULL; }))',
 ]
 output_compact_macro(outh, tmp)
 outh.append('')

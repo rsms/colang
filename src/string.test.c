@@ -85,7 +85,7 @@ fmt_f64_tests[] = {
 //———————————————————————————————————————————————————————————————————————————————————————
 // test functions
 
-DEF_TEST(sparse) {
+DEF_TEST(string_parse) {
   #define CHECK_SPARSE(SPARSE_FUN, RESULT_T, STRFMT, t) { \
     RESULT_T result = 0; \
     error err = SPARSE_FUN((t).input, strlen((t).input), (t).base, &result); \
