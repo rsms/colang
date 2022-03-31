@@ -19,11 +19,18 @@ usize sfmt_u64(char buf[64], u64 value, u32 base);
 static usize sfmt_u32(char buf[32], u32 value, u32 base);
 static usize sfmt_u8(char buf[8], u8 value, u32 base);
 
+// sfmt_repr writes data to buf in a safely printable form, e.g. "hello\nworld\0".
+// Returns the number of bytes that would be written if bufcap was infinite (ABuf.)
+usize sfmt_repr(char* buf, usize bufcap, const void* data, usize len);
+
 // sreverse reverses s in place; returns s.
 char* sreverse(char* s, usize len);
 
 // shasprefix returns true if s starts with prefix_cstr
 static bool shasprefix(const char* s, usize len, const char* prefix_cstr);
+static bool shassuffix(const char* s, usize len, const char* suffix_cstr);
+bool shasprefixn(const char* s, usize len, const char* prefix, usize prefix_len);
+bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // StrSlice is an immutable view into string data stored elsewhere
@@ -135,7 +142,10 @@ inline static usize sfmt_u8(char buf[8], u8 v, u32 base) {
 }
 
 inline static bool shasprefix(const char* s, usize len, const char* prefix_cstr) {
-  return len >= strlen(prefix_cstr) && memcmp(s, prefix_cstr, strlen(prefix_cstr)) == 0;
+  return shasprefixn(s, len, prefix_cstr, strlen(prefix_cstr));
+}
+inline static bool shassuffix(const char* s, usize len, const char* suffix_cstr) {
+  return shassuffixn(s, len, suffix_cstr, strlen(suffix_cstr));
 }
 
 //————

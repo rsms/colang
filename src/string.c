@@ -106,6 +106,13 @@ usize sfmt_u64(char buf[64], u64 v, u32 base) {
 }
 
 
+usize sfmt_repr(char* buf, usize bufcap, const void* data, usize len) {
+  ABuf s = abuf_make(buf, bufcap);
+  abuf_repr(&s, data, len);
+  return abuf_terminate(&s);
+}
+
+
 char* sreverse(char* s, usize len) {
   for (usize i = 0, j = len - 1; i < j; i++, j--) {
     char tmp = s[i];
@@ -113,6 +120,15 @@ char* sreverse(char* s, usize len) {
     s[j] = tmp;
   }
   return s;
+}
+
+
+bool shasprefixn(const char* s, usize len, const char* prefix, usize prefix_len) {
+  return len >= prefix_len && memcmp(s, prefix, prefix_len) == 0;
+}
+
+bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len) {
+  return len >= suffix_len && memcmp(s + len - suffix_len, suffix, suffix_len) == 0;
 }
 
 
