@@ -77,6 +77,14 @@ static void typeid_append(ABuf* s, const Type* t) {
     case NFunType: {
       auto ft = as_FunTypeNode(t);
       abuf_c(s, TypeCodeEncoding(TC_fun));
+      // if (ft->params.len > 0) {
+      //   abuf_c(s, TypeCodeEncoding(TC_struct));
+      //   for (u32 i = 0; i < ft->params.len; i++) {
+      //     FieldNode* field = ft->params.v[i];
+      //     typeid_append(s, assertnotnull(field->type));
+      //   }
+      //   abuf_c(s, TypeCodeEncoding(TC_structEnd));
+      //   // typeid_append(s, assertnotnull(ft->params->type));
       if (ft->params) {
         typeid_append(s, assertnotnull(ft->params->type));
       } else {

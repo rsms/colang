@@ -214,9 +214,14 @@ struct StructTypeNode { Type;
   FieldNode*   fields_storage[4]; // in-struct storage for the first few fields
 };
 struct FunTypeNode { Type;
-  TupleNode* nullable params; // Tuple (of Local) or null if no params
-  Type* nullable      result; // TupleType of types or single type
+  TupleNode* nullable params; // == FunNode.params
+  Type* nullable      result; // == FunNode.result (TupleType or single type)
 };
+// struct FunTypeNode { Type;
+//   FieldArray     params;            // FieldNode[]
+//   FieldNode*     params_storage[4]; // in-struct storage for the first few parameters
+//   Type* nullable result;            // TupleType or single type
+// };
 
 
 // forward decl of things defined in universe but referenced by ast.h

@@ -542,7 +542,10 @@ static void write_node_fields(Repr* r, const Node* np) {
       write_array(r, as_NodeArray(&n->a));
 
   _(StructType) write_TODO(r);
-  _(FunType)    write_TODO(r);
+
+  _(FunType)
+    write_node(r, n->params->type);
+    write_node(r, n->result);
   }}
   #undef _
 }

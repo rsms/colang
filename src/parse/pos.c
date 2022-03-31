@@ -66,8 +66,9 @@ static bool pos_add_context(const PosMap* pm, PosSpan span, Str* s, Source* src)
 
   const u8* lineptr;
   u32 linelen;
-  if (source_line_bytes(src, pos_line(start), &lineptr, &linelen) != 0)
-    return false;
+  error err = source_line_bytes(src, pos_line(start), &lineptr, &linelen);
+  if (err != 0)
+    return err != err_nomem;
 
   str_append(s, (const char*)lineptr, linelen);
   str_appendc(s, '\n');

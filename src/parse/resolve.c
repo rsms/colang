@@ -347,10 +347,17 @@ static Node* _resolve_type(R* r, Node* n);
 //static rflag addflag(R* r, rflag flag) { rflag f = r->flags; r->flags |= flag;  return f; }
 //static rflag rmflag(R* r, rflag flag)  { rflag f = r->flags; r->flags &= ~flag; return f; }
 //static rflag setflags(R* r, rflag flags) { rflag f = r->flags; r->flags = flags; return f;}
-#define flagscope(FLAGS) \
+#define flags_scope(FLAGS) \
   for (rflag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
        r->flags = (FLAGS), tmp1__; \
        tmp1__ = 0, r->flags = prevfl__)
+
+#define typecontext_scope(TYPECONTEXT) \
+  for (  Type* new__ = (TYPECONTEXT), \
+         *prev__ = (assert(new__ != kType_ideal), r->typecontext), \
+         *tmp1__ = kType_nil; \
+       r->typecontext = new__, tmp1__; \
+       tmp1__ = NULL, r->typecontext = prev__)
 
 
 // mark_local_mutable marks any Var or Field n as being mutable
@@ -402,15 +409,36 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 
 
 static Node* restype_fun(R* r, FunNode* n) {
-  // Type* ft = NewNode(ctx->build->mem, NFunType); // TODO
-  if (n->params)
+  auto t = mknode(r, FunType);
+  if UNLIKELY(t == NULL)
+    return as_Node(n);
+  n->type = as_Type(t);
+
+  if (n->params) {
     n->params = as_TupleNode(resolve(r, n->params));
+    t->params = n->params;
+  }
 
-  if (n->result)
+  if (n->result) {
     n->result = as_Type(resolve(r, n->result));
+    t->result = n->result;
+  }
 
-  if (n->body)
-    n->body = as_Expr(resolve(r, n->body));
+  if (n->body) {
+    typecontext_scope(n->result) {
+      n->body = as_Expr(resolve(r, n->body));
+    }
+    if UNLIKELY(
+      n->result && n->result != kType_nil &&
+      !b_typeeq(r->build, n->result, n->body->type) )
+    {
+      // TODO: focus the message on the first return expression of n->body
+      // which is of a different type than n->result
+      b_errf(r->build, NodePosSpan(n->body),
+        "incompatible result type %s for function returning %s",
+        FMTNODE(n->body->type,0), FMTNODE(n->result,1));
+    }
+  }
 
   return as_Node(n);
 }
@@ -418,7 +446,7 @@ static Node* restype_fun(R* r, FunNode* n) {
 
 static Node* restype_tuple(R* r, TupleNode* n) {
   auto t = mknode(r, TupleType);
-  if (!check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
+  if (UNLIKELY(t == NULL) || !check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
     return as_Node(n);
   for (u32 i = 0; i < n->a.len; i++) {
     Node* cn = resolve(r, n->a.v[i]);
@@ -452,7 +480,7 @@ static Node* restype_block(R* r, BlockNode* n) {
 
   // Last node, in which case we set the flag to resolve literals so that implicit return
   // values gets properly typed.
-  flagscope(r->flags | RF_ResolveIdeal)
+  flags_scope(r->flags | RF_ResolveIdeal)
     n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
 
   n->type = n->a.v[lasti]->type;
@@ -525,7 +553,7 @@ static Node* restype_return(R* r, ReturnNode* n) {
 static Node* restype_assign(R* r, AssignNode* n) {
   // 1. resolve destination (lvalue) and
   // 2. resolve value (rvalue) witin the type context of destination
-  flagscope(r->flags & ~RF_ResolveIdeal) {
+  flags_scope(r->flags & ~RF_ResolveIdeal) {
     auto typecontext = r->typecontext; // save typecontext
     n->dst = as_Expr(resolve(r, n->dst));
     r->typecontext = (n->dst->type != kType_ideal) ? n->dst->type : NULL;
@@ -542,16 +570,18 @@ static Node* restype_assign(R* r, AssignNode* n) {
       b_notef(r->build, NodePosSpan(leaf), "%s defined here", name);
   }
 
-  // // storing to an array is not allowed
-  // if (lt->kind == NArrayType && rt->kind == NArrayType) {
-  //   build_errf(ctx->build, NodePosSpan(n),
-  //     "array type %s is not assignable", fmtnode(lt));
-  // }
-
-  if (!b_typeeq(r->build, n->dst->type, n->val->type))
-    n->val = ctypecast_implicit(r->build, n->val, n->dst->type, NULL, n);
-
+  // the type of the assignment expression is the type of the destination (var/field)
   n->type = n->dst->type;
+
+  // check & convert rvalue type
+  if UNLIKELY(n->type->kind == NArrayType) {
+    // storing to a local or field of array type is not allowed
+    b_errf(r->build, NodePosSpan(n), "array type %s is not assignable", FMTNODE(n->type,0));
+  } else {
+    // convert rvalue (if it's a different type than dst)
+    n->val = ctypecast_implicit(r->build, n->val, n->type, NULL, n);
+  }
+
   return as_Node(n);
 }
 

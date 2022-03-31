@@ -158,8 +158,10 @@ end:
 
 Node* nullable b_mknodex(BuildCtx* b, NodeKind kind) {
   Node* n = NodeAlloc(b->mem);
-  if UNLIKELY(n == NULL)
+  if UNLIKELY(n == NULL) {
+    b_errf(b, (PosSpan){NoPos,NoPos}, "failed to allocate memory");
     return NULL;
+  }
   memset(n, 0, sizeof(union NodeUnion));
   return NodeInit(n, kind);
 }

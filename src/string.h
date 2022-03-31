@@ -143,7 +143,7 @@ inline static bool shasprefix(const char* s, usize len, const char* prefix_cstr)
 DEF_ARRAY_VENEER(Str, char, str_)
 
 inline static bool str_appendcstr(Str* s, const char* cstr) {
-  return str_append(s, cstr, strlen(cstr)) == 0;
+  return str_append(s, cstr, strlen(cstr));
 }
 
 //————

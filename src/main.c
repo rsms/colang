@@ -29,7 +29,7 @@ static char tmpbuf[4096];
 
 static void on_diag(Diagnostic* d, void* userdata) {
   Str str = str_make(tmpbuf, sizeof(tmpbuf));
-  assert(diag_fmt(d, &str));
+  assertf(diag_fmt(d, &str), "failed to allocate memory");
   fwrite(str.v, str.len, 1, stderr);
   str_free(&str);
 }
