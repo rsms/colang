@@ -141,7 +141,7 @@ error source_compute_lineoffs(Source* src) {
   array_push(&src->lineoffs, 0);
 
   for (u32 i = 0; i < src->len;) {
-    if (src->body[i++] == '\n' && i < src->len)
+    if (src->body[i++] == '\n')
       array_push(&src->lineoffs, i);
   }
 
