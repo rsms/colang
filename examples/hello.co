@@ -1,2 +1,5 @@
 fun hello(x int) int
   x * 3
+
+fun foo() int
+  z * 4

@@ -3,6 +3,8 @@ set -e
 cd "$(dirname "$0")"
 SCRIPT_FILE=$PWD/"$(basename "$0")"
 
+eval $(grep '^OUTDIR=' build.sh | head -n1)
+
 # directory to house dependencies
 DEPS=deps
 DEPS_ABS=$PWD/$DEPS
@@ -200,7 +202,7 @@ done
 
 # ---------- test compiler ----------
 if ! [ -f $DEPS/cc-tested ]; then
-  CC_TEST_DIR=out/cc-test
+  CC_TEST_DIR=$OUTDIR/cc-test
   rm -rf $CC_TEST_DIR
   mkdir -p $CC_TEST_DIR
   pushd $CC_TEST_DIR >/dev/null
@@ -281,20 +283,6 @@ _END_
   echo "To re-run tests: rm $DEPS/cc-tested && $0"
   touch $DEPS/cc-tested
 fi
-
-# -----------------------------------------------------------------------
-
-
-echo "---------- luajit ----------"
-LUAJIT_REV=v2.1.0-beta3  # See https://repo.or.cz/luajit-2.0.git/tags
-if _git_dep $DEPS/luajit https://luajit.org/git/luajit.git $LUAJIT_REV; then
-  # macOS x86_64: must build with LUAJIT_ENABLE_GC64 or luaL_newstate will fail
-  ( cd $DEPS/luajit &&
-    make clean &&
-    MACOSX_DEPLOYMENT_TARGET=10.15 CFLAGS="-DLUAJIT_ENABLE_GC64" make -j$(nproc) )
-fi
-echo "ready: $DEPS/luajit (git $LUAJIT_REV)"
-
 
 
 touch $DEPS/configured

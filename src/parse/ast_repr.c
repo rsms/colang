@@ -554,7 +554,7 @@ static void write_node_fields(Repr* r, const Node* np) {
   _(StructType) write_TODO(r);
 
   _(FunType)
-    write_node(r, n->params->type);
+    write_node(r, n->params ? n->params->type : NULL);
     write_node(r, n->result);
   }}
   #undef _
