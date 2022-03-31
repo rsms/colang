@@ -191,6 +191,9 @@ static Node* _resolve(R* r, Node* n);
     Node* n2 = _resolve(r, n);
     r->debug_depth--;
 
+    if (is_Expr(n))
+      assertf(((Expr*)n)->type != NULL, "did not assign type to %s", nodename(n));
+
     if (n == n2) {
       dlog2("● %s %s resolved", nodename(n), FMTNODE(n,0));
     } else {
@@ -490,7 +493,7 @@ static Node* restype_block(R* r, BlockNode* n) {
 
 
 static Node* restype_field(R* r, FieldNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -500,52 +503,81 @@ static Node* restype_comment(R* r, CommentNode* n) {
 }
 
 static Node* restype_nil(R* r, NilNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_boollit(R* r, BoolLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_intlit(R* r, IntLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_floatlit(R* r, FloatLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_strlit(R* r, StrLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_id(R* r, IdNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
+
 
 static Node* restype_binop(R* r, BinOpNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  Expr* x = n->left;
+  Expr* y = n->right;
+  bool prefer_y = false;
+
+  typecontext_scope(NULL) {
+    if (x->type && x->type != kType_ideal) {
+      r->typecontext = x->type;
+    } else if (y->type && y->type != kType_ideal) {
+      r->typecontext = y->type;
+      prefer_y = true;
+    }
+    x = as_Expr(resolve(r, x));
+    y = as_Expr(resolve(r, y));
+  }
+
+  // if the types differ, attempt an implicit cast
+  if UNLIKELY(x->type != y->type) {
+    // note: ctypecast_implicit does a full b_typeeq check before attempting cast
+    Expr** xp = prefer_y ? &y : &x;
+    Expr** yp = prefer_y ? &x : &y;
+    *yp = ctypecast_implicit(r->build, *xp, (*yp)->type, NULL, n);
+  }
+
+  n->left = x;
+  n->right = y;
+  n->type = x->type;
+
   return as_Node(n);
 }
 
+
 static Node* restype_prefixop(R* r, PrefixOpNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_postfixop(R* r, PostfixOpNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_return(R* r, ReturnNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  n->expr = as_Expr(resolve(r, n->expr));
+  n->type = n->expr->type;
   return as_Node(n);
 }
 
@@ -587,67 +619,67 @@ static Node* restype_assign(R* r, AssignNode* n) {
 
 
 static Node* restype_macro(R* r, MacroNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_call(R* r, CallNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_typecast(R* r, TypeCastNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_const(R* r, ConstNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_var(R* r, VarNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_param(R* r, ParamNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_macroparam(R* r, MacroParamNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_ref(R* r, RefNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_namedarg(R* r, NamedArgNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_selector(R* r, SelectorNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_index(R* r, IndexNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_slice(R* r, SliceNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_if(R* r, IfNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -708,13 +740,15 @@ static Node* _resolve_type(R* r, Node* np) {
   } else if (is_Expr(np) && ((Expr*)np)->type) {
     // Has type already. Constant literals might have ideal type.
     Expr* n = (Expr*)np;
-    if (n->type == kType_ideal) {
-      dlog2("TODO: ideally-typed node %s", nodename(n));
+    if (n->type == kType_ideal && (r->flags & RF_ResolveIdeal)) {
+      dlog2("resolving ideally-typed node %s", nodename(n));
+      // continue
+    } else {
+      // make sure its type is resolved
+      if (!is_type_complete(n->type))
+        n->type = as_Type(resolve(r, n->type));
+      return np;
     }
-    // make sure its type is resolved
-    if (!is_type_complete(n->type))
-      n->type = as_Type(resolve(r, n->type));
-    return np;
   }
 
   switch ((enum NodeKind)np->kind) { case NBad: {

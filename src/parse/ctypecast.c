@@ -34,14 +34,15 @@ static const IntvalRange intval_range_tab[TC_NUM_END] = {
 
 
 static void report_result(C* c, Expr* n, Type* totype, Node* usernode) {
+  char buf2[128];
   switch ((enum CTypecastResult)*c->resultp) {
     case CTypecastUnchanged: // no conversion needed
     case CTypecastConverted: // successfully converted to type
       break;
     case CTypecastErrCompat:
       b_errf(c->build, NodePosSpan(usernode),
-        "expression %s is incompatible with type %s",
-        FMTNODE(n,0), FMTNODE(totype,1));
+        "%s (%s) is incompatible with type %s",
+        FMTNODE(n,0), FMTNODE(n->type,1), fmtnode(totype, buf2, sizeof(buf2)) );
       break;
     case CTypecastErrRangeOver:
       b_errf(c->build, NodePosSpan(usernode),
