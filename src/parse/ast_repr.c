@@ -194,6 +194,7 @@ typedef struct Repr Repr;
 struct Repr {
   Str  dst;
   bool dstok;
+  bool intypeof; // true while inside <...> (typeof)
 
   usize indent;
   usize lnstart; // relative to buf.len
@@ -260,13 +261,20 @@ static void write_newline(Repr* r) {
 }
 
 static void write_push_indent(Repr* r) {
-  r->indent += INDENT_DEPTH;
-  write_newline(r);
+  if (r->intypeof) {
+    if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+      str_push(&r->dst, ' ');
+  } else {
+    r->indent += INDENT_DEPTH;
+    write_newline(r);
+  }
 }
 
 static void write_pop_indent(Repr* r) {
-  assertf(r->indent > 1, "write_pop_indent without matching write_push_indent");
-  r->indent -= 2;
+  if (!r->intypeof) {
+    assertf(r->indent > 1, "write_pop_indent without matching write_push_indent");
+    r->indent -= 2;
+  }
 }
 
 typedef struct Meta Meta;
@@ -304,7 +312,6 @@ static void write_node(Repr* r, const Node* nullable n) {
 
   // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
   bool indent = dst->len && dst->v[dst->len - 1] != '<';
-
   if (indent) write_push_indent(r);
 
   if (n == NULL || n == (Node*)kExpr_nil) {
@@ -340,7 +347,7 @@ static void _write_node1(Repr* r, const Node* n) {
   Str* dst = &r->dst;
 
   // "<type>" of expressions
-  if (is_Expr(n)) {
+  if (is_Expr(n) && !r->intypeof) {
     auto typ = ((Expr*)n)->type;
     write_push_style(r, STYLE_TYPE);
     if (typ == NULL) {
@@ -349,7 +356,9 @@ static void _write_node1(Repr* r, const Node* n) {
       write_pop_style(r);
     } else {
       str_push(dst, '<');
+      r->intypeof = true;
       write_node(r, typ);
+      r->intypeof = false;
       str_push(dst, '>');
     }
     write_pop_style(r);
@@ -487,7 +496,8 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_pop_style(r);
     write_node(r, n->expr);
 
-  _(Return) write_TODO(r);
+  _(Return)
+    write_node(r, n->expr);
 
   _(Assign)
     write_node(r, n->dst);
