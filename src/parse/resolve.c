@@ -87,7 +87,7 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
     id->type = TypeOfNode(tn);
   }
 
-  // if the target is a pimitive constant, use that instead of the id node
+  // if the target is a primitive constant, use that instead of the id node
   switch (id->target->kind) {
     case NNil:
     case NBasicType:
@@ -152,14 +152,6 @@ inline static bool _check_memalloc(R* r, Node* n, bool ok) {
     b_errf(r->build, NodePosSpan(n), "failed to allocate memory");
   return ok;
 }
-
-
-#define NCASE(NAME)  break; } case N##NAME: { \
-  UNUSED auto n = (NAME##Node*)np;
-#define GNCASE(NAME) break; } case N##NAME##_BEG ... N##NAME##_END: { \
-  UNUSED auto n = (struct NAME##Node*)np;
-#define NDEFAULTCASE break; } default: { \
-  UNUSED auto n = np;
 
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
@@ -390,9 +382,9 @@ static bool is_type_complete(Type* np) {
     NCASE(ArrayType)
       return (n->sizeexpr == NULL || n->size > 0) && is_type_complete(n->elem);
     NCASE(StructType)
-      return (n->flags & NF_CustomInit) == 0;
+      return (n->flags & (NF_CustomInit | NF_PartialType)) == 0;
     NDEFAULTCASE
-      return true;
+      return (n->flags & NF_PartialType) == 0;
   }}
 }
 
@@ -556,6 +548,10 @@ static Node* restype_assign(R* r, AssignNode* n) {
   //     "array type %s is not assignable", fmtnode(lt));
   // }
 
+  if (!b_typeeq(r->build, n->dst->type, n->val->type))
+    n->val = ctypecast_implicit(r->build, n->val, n->dst->type, NULL, n);
+
+  n->type = n->dst->type;
   return as_Node(n);
 }
 
@@ -676,6 +672,9 @@ static Node* _resolve_type(R* r, Node* np) {
   if (is_Type(np)) {
     if (is_type_complete((Type*)np))
       return np;
+  } else if (np->flags & NF_PartialType) {
+    np->flags &= ~NF_PartialType;
+    // continue
   } else if (is_Expr(np) && ((Expr*)np)->type) {
     // Has type already. Constant literals might have ideal type.
     Expr* n = (Expr*)np;

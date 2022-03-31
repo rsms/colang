@@ -65,10 +65,10 @@ typedef double f64;
   #define ISIZE_MAX __LONG_MAX__
 #endif
 
-#define I8_MIN    (-0x80)
-#define I16_MIN   (-0x8000)
-#define I32_MIN   (-0x80000000)
-#define I64_MIN   (-0x8000000000000000LL)
+#define I8_MIN    (-1-0x7f)
+#define I16_MIN   (-1-0x7fff)
+#define I32_MIN   (-1-0x7fffffff)
+#define I64_MIN   (-1-0x7fffffffffffffff)
 #define ISIZE_MIN (-__LONG_MAX__ -1L)
 
 #define U8_MAX    0xffU

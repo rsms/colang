@@ -13,11 +13,18 @@ typedef u32 CTypecastResult;
 // On failure, a diagnostic error message is emitted in the build context.
 // If res is non-null, a result code is stored to *res.
 // Returns n or a replacement node allocated in the provided build context.
-#define ctypecast(b, expr, t, resp, fl) _ctypecast((b),as_Expr(expr),as_Type(t),(resp),(fl))
-#define ctypecast_implicit(bctx,n,t,resp) ctypecast((bctx),(n),(t),(resp),0)
-#define ctypecast_explicit(bctx,n,t,resp) ctypecast((bctx),(n),(t),(resp),CTypecastFExplicit)
+#define ctypecast(b, expr, t, resp, usernode, fl) \
+  _ctypecast((b),as_Expr(expr),as_Type(t),(resp),as_Node(usernode),(fl))
 
-Expr* _ctypecast(BuildCtx*, Expr*, Type*, CTypecastResult* nullable resp, CTypecastFlags);
+#define ctypecast_implicit(b, expr, t, resp, usernode) \
+  _ctypecast((b),as_Expr(expr),as_Type(t),(resp),as_Node(usernode),0)
+
+#define ctypecast_explicit(b, expr, t, resp, usernode) \
+  _ctypecast((b),as_Expr(expr),as_Type(t),(resp),as_Node(usernode),CTypecastFExplicit)
+
+Expr* _ctypecast(
+  BuildCtx*, Expr*, Type*,
+  CTypecastResult* nullable resp, Node* nullable report_usernode, CTypecastFlags);
 
 enum CTypecastFlags {
   CTypecastFImplicit = 0,      // implicit conversion
@@ -25,11 +32,13 @@ enum CTypecastFlags {
 } END_ENUM(CTypecastFlags)
 
 enum CTypecastResult {
-  CTypecastUnchanged = 0, // no conversion needed
-  CTypecastConverted = 1, // type was successfully converted
+  CTypecastUnchanged, // no conversion needed
+  CTypecastConverted, // type was successfully converted
   // conversion failed because...
-  CTypecastErrCompat = -0x80, // ...type of value is not convertible to destination type
-  CTypecastErrOverflow,       // ...the value would overflow the destination type
+  CTypecastErrCompat, // ...type of value is not convertible to destination type
+  CTypecastErrRangeOver,      // ...the value is too large for the destination type
+  CTypecastErrRangeUnder,     // ...the value is too small for the destination type
+  CTypecastErrNoMem,          // ...memory allocation for node copy failed
 } END_ENUM(CTypecastResult)
 
 

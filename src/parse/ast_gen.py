@@ -262,7 +262,7 @@ def gen_as_TYPE(out, mode, name, subtypes):
     gen_as_assert(out, name, stname)
     gen_as_const_assert(out, name, stname)
   else: # mode == "generic"
-    DBG = name == "LocalNode"
+    DBG = False # name == "LocalNode"
     ind = "  "
     def visit(out, qual, name, subtypes, ind):
       if DBG:

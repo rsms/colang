@@ -211,8 +211,9 @@ struct Repr {
 #define STYLE_LIT   TS_LIGHTGREEN
 #define STYLE_NAME  TS_LIGHTBLUE   // symbolic names like Id, NamedType, etc.
 #define STYLE_OP    TS_LIGHTORANGE
-#define STYLE_TYPE  TS_DARKGREY_BG
+#define STYLE_TYPE  TS_BLACK_BG
 #define STYLE_META  TS_DIM
+#define STYLE_ERR   TS_RED
 
 
 // -- repr output writers
@@ -342,13 +343,15 @@ static void _write_node1(Repr* r, const Node* n) {
   if (is_Expr(n)) {
     auto typ = ((Expr*)n)->type;
     write_push_style(r, STYLE_TYPE);
-    str_push(dst, '<');
     if (typ == NULL) {
-      str_appendcstr(dst, "?");
+      write_push_style(r, STYLE_ERR);
+      str_appendcstr(dst, "<?>");
+      write_pop_style(r);
     } else {
+      str_push(dst, '<');
       write_node(r, typ);
+      str_push(dst, '>');
     }
-    str_push(dst, '>');
     write_pop_style(r);
     str_push(dst, ' ');
   }
@@ -478,8 +481,12 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->left);
     write_node(r, n->right);
 
-  _(PrefixOp) write_TODO(r);
-  _(PostfixOp) write_TODO(r);
+  _G(UnaryOp)
+    write_push_style(r, STYLE_OP);
+    write_str(r, TokName(n->op));
+    write_pop_style(r);
+    write_node(r, n->expr);
+
   _(Return) write_TODO(r);
 
   _(Assign)
@@ -506,7 +513,11 @@ static void write_node_fields(Repr* r, const Node* np) {
 
   _(Macro)    write_TODO(r);
   _(Call)     write_TODO(r);
-  _(TypeCast) write_TODO(r);
+
+  _(TypeCast)
+    write_node(r, n->type);
+    write_node(r, n->expr);
+
   _(Ref)      write_TODO(r);
   _(NamedArg) write_TODO(r);
   _(Selector) write_TODO(r);
@@ -525,7 +536,11 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->type);
 
   _(ArrayType)  write_TODO(r);
-  _(TupleType)  write_TODO(r);
+
+  _(TupleType)
+    if (n->a.len > 0)
+      write_array(r, as_NodeArray(&n->a));
+
   _(StructType) write_TODO(r);
   _(FunType)    write_TODO(r);
   }}

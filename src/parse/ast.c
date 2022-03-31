@@ -3,68 +3,74 @@
 #include "parse.h"
 
 
-Node* NodeInit(Node* n, NodeKind kind) {
-  n->kind = kind;
-  switch (kind) {
-    case NPkg:
-    case NFile: {
-      auto N = as_CUnitNode(n);
-      array_init(&N->a, N->a_storage, sizeof(N->a_storage));
-      break;
-    }
-    case NBlock: {
-      auto N = (BlockNode*)n;
-      array_init(&N->a, N->a_storage, sizeof(N->a_storage));
-      break;
-    }
-    case NArray:
-    case NTuple: {
-      auto N = as_ListExprNode(n);
-      array_init(&N->a, N->a_storage, sizeof(N->a_storage));
-      break;
-    }
-    case NSelector: {
-      auto N = (SelectorNode*)n;
-      array_init(&N->indices, N->indices_storage, sizeof(N->indices_storage));
-      break;
-    }
-    case NTupleType: {
-      auto N = (TupleTypeNode*)n;
-      array_init(&N->a, N->a_storage, sizeof(N->a_storage));
-      break;
-    }
-    case NStructType: {
-      auto N = (StructTypeNode*)n;
-      array_init(&N->fields, N->fields_storage, sizeof(N->fields_storage));
-      break;
-    }
-    default:
-      break;
-  }
-  return n;
+Node* NodeInit(Node* np, NodeKind kind) {
+  np->kind = kind;
+  switch ((enum NodeKind)kind) { case NBad: {
+  GNCASE(CUnit)
+    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
+  NCASE(Block)
+    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
+  GNCASE(ListExpr)
+    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
+  NCASE(Selector)
+    array_init(&n->indices, n->indices_storage, sizeof(n->indices_storage));
+  NCASE(TupleType)
+    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
+  NCASE(StructType)
+    array_init(&n->fields, n->fields_storage, sizeof(n->fields_storage));
+  NDEFAULTCASE
+    break;
+  }}
+  return np;
+}
+
+#define COPY_ARRAY(dst, src) \
+  if UNLIKELY(!array_append((dst), (src)->v, (src)->len)) \
+    return NULL
+
+Node* nullable NodeCopy(Node* np, const Node* src) {
+  memcpy(np, src, sizeof(union NodeUnion));
+  NodeInit(np, np->kind);
+  switch ((enum NodeKind)np->kind) { case NBad: {
+  GNCASE(CUnit)
+    COPY_ARRAY(&n->a, &((CUnitNode*)src)->a);
+  NCASE(Block)
+    COPY_ARRAY(&n->a, &((BlockNode*)src)->a);
+  GNCASE(ListExpr)
+    COPY_ARRAY(&n->a, &((ListExprNode*)src)->a);
+  NCASE(Selector)
+    COPY_ARRAY(&n->indices, &((SelectorNode*)src)->indices);
+  NCASE(TupleType)
+    COPY_ARRAY(&n->a, &((TupleTypeNode*)src)->a);
+  NCASE(StructType)
+    COPY_ARRAY(&n->fields, &((StructTypeNode*)src)->fields);
+  NDEFAULTCASE
+    break;
+  }}
+  return np;
 }
 
 
-PosSpan _NodePosSpan(const Node* n) {
-  assertnotnull(n);
-  PosSpan span = { n->pos, n->endpos };
+PosSpan _NodePosSpan(const Node* np) {
+  assertnotnull(np);
+  PosSpan span = { np->pos, np->endpos };
   // dlog("-- NodePosSpan %s %u:%u",
-  //   NodeKindName(n->kind), pos_line(n->endpos), pos_col(n->endpos));
+  //   NodeKindName(np->kind), pos_line(np->endpos), pos_col(np->endpos));
   if (!pos_isknown(span.end))
     span.end = span.start;
 
-  switch (n->kind) {
+  switch (np->kind) {
     case NBinOp: {
-      auto op = (BinOpNode*)n;
-      span.start = op->left->pos;
-      span.end = op->right->pos;
+      auto n = (BinOpNode*)np;
+      span.start = n->left->pos;
+      span.end = n->right->pos;
       break;
     }
     case NCall: {
-      auto call = (CallNode*)n;
-      span.start = NodePosSpan(call->receiver).start;
-      if (call->args)
-        span.end = NodePosSpan(call->args).end;
+      auto n = (CallNode*)np;
+      span.start = NodePosSpan(n->receiver).start;
+      if (n->args)
+        span.end = NodePosSpan(n->args).end;
       break;
     }
     case NTuple: {
@@ -72,10 +78,17 @@ PosSpan _NodePosSpan(const Node* n) {
       break;
     }
     case NNamedArg: {
-      auto namedarg = (NamedArgNode*)n;
-      span.end = NodePosSpan(namedarg->value).end;
+      auto n = (NamedArgNode*)np;
+      span.end = NodePosSpan(n->value).end;
       break;
     }
+    // case NAssign: {
+    //   // NOTE: for this to work, we would need to stop using simplify_id
+    //   auto n = (AssignNode*)np;
+    //   span.start = n->dst->pos;
+    //   span.end = n->val->pos;
+    //   break;
+    // }
     default:
       break;
   }

@@ -920,16 +920,22 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
   // assign to existing local and make sure the target is marked as variable
   NodeClearConst(targetlocal);
   NodeRefLocal(targetlocal);
+
   auto n = mknode(p, Assign);
   nexttok(p); // consume '='
-  Expr* right = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
   n->dst = as_Expr(targetlocal); // store target instead of NId to simplify IR generation
-  n->val = right;
-  NodeTransferUnresolved(n, right);
-  if (dst->type && dst->type == right->type) {
-    NodeTransferPartialType2(n, dst, right);
-    n->type = dst->type;
+
+  Type* ctxtype = set_ctxtype(p, n->dst->type);
+  n->val = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
+  p->ctxtype = ctxtype;
+
+  NodeTransferUnresolved(n, n->val);
+
+  if (n->dst->type && n->val->type && b_typeeq(p->build, n->dst->type, n->val->type)) {
+    NodeTransferPartialType2(n, n->dst, n->val);
+    n->type = n->dst->type;
   }
+
   return as_Node(n);
 }
 
@@ -1415,15 +1421,24 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     return as_Node(call);
 
   // args
-  Type* ctxtype = p->ctxtype; // save
   if (is_BasicTypeNode(receiver)) {
     // fast path for primitive types e.g. "i16(123)".
-    set_ctxtype(p, (Type*)receiver);
     // convert Call to TypeCast
     auto tcast = (TypeCastNode*)call;
     tcast->kind = NTypeCast;
     tcast->type = (Type*)receiver;
+
+    // save & alter ctxtype
+    bool is_explicit_ctxtype = p->is_explicit_ctxtype;
+    p->is_explicit_ctxtype = true;
+    Type* ctxtype = set_ctxtype(p, (Type*)receiver);
+
     tcast->expr = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
+
+    // restore ctxtype
+    p->is_explicit_ctxtype = is_explicit_ctxtype;
+    p->ctxtype = ctxtype;
+
     if (tcast->type == tcast->expr->type) {
       // short circuit e.g. "x = i64(3)"
       // TODO: expand pos & endpos to include "type(3)"
@@ -1437,7 +1452,6 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     }
   }
 
-  p->ctxtype = ctxtype; // restore ctxtype
   want(p, TRParen);
   return as_Node(call);
 }
@@ -1666,6 +1680,7 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   return as_Node(block_or_single_expr);
 }
 
+
 // PrefixOp = ( "+" | "-" | "!" | "*" ) Expr
 //!PrefixParselet TPlus TMinus TExcalm TStar
 static Node* PPrefixOp(Parser* p, PFlag fl) {
@@ -1676,6 +1691,7 @@ static Node* PPrefixOp(Parser* p, PFlag fl) {
   NodeTransferUnresolved(op, op->expr);
   return as_Node(op);
 }
+
 
 // InfixOp = Expr ( "+" | "-" | "*" | "/" ) Expr
 //!Parselet (TPipePipe LOGICAL_OR)
@@ -1699,6 +1715,7 @@ static Node* PInfixOp(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   return as_Node(op);
 }
 
+
 // PostfixOp = Expr ( "++" | "--" )
 //!Parselet (TPlusPlus UNARY_POSTFIX) (TMinusMinus UNARY_POSTFIX)
 static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
@@ -1709,6 +1726,7 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
   NodeTransferUnresolved(op, op->expr);
   return as_Node(op);
 }
+
 
 // Selector = Expr "." Id
 //!Parselet (TDot MEMBER)
@@ -1730,26 +1748,29 @@ static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   return as_Node(sel);
 }
 
+
 // IntLit = [0-9]+
 //!PrefixParselet TIntLit
 static Node* PIntLit(Parser* p, PFlag fl) {
   auto lit = mknode(p, IntLit);
   usize len = p->tokend - p->tokstart;
+
   error err = sparse_u64((const char*)p->tokstart, len, /*base*/10, &lit->ival);
-  if (err) {
-    lit->ival = 0;
-    if (err == err_overflow) {
-      syntaxerrp(p, lit->pos, "integer literal too large");
-    } else {
-      syntaxerrp(p, lit->pos, "invalid integer literal");
-    }
+  if UNLIKELY(err) {
+    syntaxerrp(p, lit->pos,
+      (err == err_overflow) ? "integer literal too large" : "invalid integer literal");
   }
+
   nexttok(p);
+
   lit->type = kType_ideal;
-  if (p->ctxtype)
-    return as_Node(ctypecast_implicit(p->build, lit, p->ctxtype, NULL));
-  return as_Node(lit);
+  if (!p->ctxtype)
+    return as_Node(lit);
+
+  CTypecastFlags tcfl = p->is_explicit_ctxtype ? CTypecastFExplicit : 0;
+  return as_Node(ctypecast(p->build, lit, p->ctxtype, NULL, NULL, tcfl));
 }
+
 
 // If = "if" Expr Expr
 //!PrefixParselet TIf
@@ -1767,6 +1788,7 @@ static Node* PIf(Parser* p, PFlag fl) {
   }
   return as_Node(ifn);
 }
+
 
 // Return = "return" Expr?
 //!PrefixParselet TReturn
@@ -2291,6 +2313,7 @@ error parse_tu(
   p->build = b;
   p->pkgscope = pkgscope;
   p->fnest = 0;
+  p->is_explicit_ctxtype = false;
 
   // initialize or reset scopestack
   if (p->scopestack.ptr == NULL) {

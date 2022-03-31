@@ -21,6 +21,7 @@ struct Parser {
 
   // ctxtype is non-null when the parser is confident about the type context
   Type* nullable ctxtype;
+  bool is_explicit_ctxtype;
 
   // scopestack is used for tracking identifiers during parsing.
   // This is a simple stack which we do a linear search on when looking up identifiers.

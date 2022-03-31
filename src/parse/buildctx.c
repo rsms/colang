@@ -158,11 +158,18 @@ end:
 
 Node* nullable b_mknodex(BuildCtx* b, NodeKind kind) {
   Node* n = NodeAlloc(b->mem);
-  if (LIKELY(n != NULL)) {
-    memset(n, 0, sizeof(union NodeUnion));
-    NodeInit(n, kind);
-  }
-  return n;
+  if UNLIKELY(n == NULL)
+    return NULL;
+  memset(n, 0, sizeof(union NodeUnion));
+  return NodeInit(n, kind);
+}
+
+
+Node* nullable _b_clonenode(BuildCtx* b, const Node* src) {
+  Node* n = NodeAlloc(b->mem);
+  if UNLIKELY(n == NULL)
+    return NULL;
+  return NodeCopy(n, src);
 }
 
 

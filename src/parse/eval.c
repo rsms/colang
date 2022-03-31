@@ -317,7 +317,7 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
   n->endpos = n_orig->endpos;
 
   if (targetType)
-    return ctypecast_implicit(e.b, n, targetType, NULL);
+    return ctypecast_implicit(e.b, n, targetType, NULL, NULL);
 
   return n;
 }

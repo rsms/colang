@@ -17,6 +17,7 @@ typedef struct TupleNode TupleNode;
 typedef struct LocalNode LocalNode; // Const | Var | Param
 typedef struct CUnitNode CUnitNode;
 typedef struct ListExprNode ListExprNode;
+typedef struct UnaryOpNode UnaryOpNode;
 
 typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
@@ -94,8 +95,8 @@ struct UnaryOpNode { Expr;
   Tok   op;
   Expr* expr;
 };
-struct PrefixOpNode { struct UnaryOpNode; };
-struct PostfixOpNode { struct UnaryOpNode; };
+struct PrefixOpNode { UnaryOpNode; };
+struct PostfixOpNode { UnaryOpNode; };
 struct ReturnNode { Expr;
   Expr* expr;
 };
@@ -383,10 +384,8 @@ Node* NodeInit(Node* n, NodeKind kind);
 #define NodePosSpan(n) _NodePosSpan(as_Node(n))
 PosSpan _NodePosSpan(const Node* n);
 
-inline static Node* NodeCopy(Node* dst, const Node* src) {
-  memcpy(dst, src, sizeof(union NodeUnion));
-  return dst;
-}
+// returns NULL if copying an array caused memory allocation to fail
+Node* nullable NodeCopy(Node* dst, const Node* src);
 
 // NodeRefLocal increments the reference counter of a Local node.
 // Returns n as a convenience.
@@ -452,63 +451,67 @@ error ScopeAssign(Scope* s, Sym key, Node* n, Mem) WARN_UNUSED_RESULT;
 // }
 
 
+// --------------------------------------------------------------------------------------
+// node switch
+
+#define NCASE(NAME)  break; } case N##NAME: { \
+  UNUSED auto n = (NAME##Node*)np;
+#define GNCASE(NAME) break; } case N##NAME##_BEG ... N##NAME##_END: { \
+  UNUSED auto n = (struct NAME##Node*)np;
+#define NDEFAULTCASE break; } default: { \
+  UNUSED auto n = np;
+
 /*
 switch template:
 
 static Node* example(Node* np) {
-  #define _(NAME)  return np; } case N##NAME: { \
-    UNUSED auto n = (NAME##Node*)np;
-  #define _G(NAME) return np; } case N##NAME##_BEG ... N##NAME##_END: { \
-    UNUSED auto n = (struct NAME##Node*)np;
   switch ((enum NodeKind)np->kind) { case NBad: {
 
-  _(Field)      panic("TODO %s", nodename(n));
-  _(Pkg)        panic("TODO %s", nodename(n));
-  _(File)       panic("TODO %s", nodename(n));
-  _(Comment)    panic("TODO %s", nodename(n));
+  NCASE(Field)      panic("TODO %s", nodename(n));
+  NCASE(Pkg)        panic("TODO %s", nodename(n));
+  NCASE(File)       panic("TODO %s", nodename(n));
+  NCASE(Comment)    panic("TODO %s", nodename(n));
 
-  _(Nil)        panic("TODO %s", nodename(n));
-  _(BoolLit)    panic("TODO %s", nodename(n));
-  _(IntLit)     panic("TODO %s", nodename(n));
-  _(FloatLit)   panic("TODO %s", nodename(n));
-  _(StrLit)     panic("TODO %s", nodename(n));
-  _(Id)         panic("TODO %s", nodename(n));
-  _(BinOp)      panic("TODO %s", nodename(n));
-  _(PrefixOp)   panic("TODO %s", nodename(n));
-  _(PostfixOp)  panic("TODO %s", nodename(n));
-  _(Return)     panic("TODO %s", nodename(n));
-  _(Assign)     panic("TODO %s", nodename(n));
-  _(Tuple)      panic("TODO %s", nodename(n));
-  _(Array)      panic("TODO %s", nodename(n));
-  _(Block)      panic("TODO %s", nodename(n));
-  _(Fun)        panic("TODO %s", nodename(n));
-  _(Macro)      panic("TODO %s", nodename(n));
-  _(Call)       panic("TODO %s", nodename(n));
-  _(TypeCast)   panic("TODO %s", nodename(n));
-  _(Const)      panic("TODO %s", nodename(n));
-  _(Var)        panic("TODO %s", nodename(n));
-  _(Param)      panic("TODO %s", nodename(n));
-  _(MacroParam) panic("TODO %s", nodename(n));
-  _(Ref)        panic("TODO %s", nodename(n));
-  _(NamedArg)   panic("TODO %s", nodename(n));
-  _(Selector)   panic("TODO %s", nodename(n));
-  _(Index)      panic("TODO %s", nodename(n));
-  _(Slice)      panic("TODO %s", nodename(n));
-  _(If)         panic("TODO %s", nodename(n));
+  NCASE(Nil)        panic("TODO %s", nodename(n));
+  NCASE(BoolLit)    panic("TODO %s", nodename(n));
+  NCASE(IntLit)     panic("TODO %s", nodename(n));
+  NCASE(FloatLit)   panic("TODO %s", nodename(n));
+  NCASE(StrLit)     panic("TODO %s", nodename(n));
+  NCASE(Id)         panic("TODO %s", nodename(n));
+  NCASE(BinOp)      panic("TODO %s", nodename(n));
+  NCASE(PrefixOp)   panic("TODO %s", nodename(n));
+  NCASE(PostfixOp)  panic("TODO %s", nodename(n));
+  NCASE(Return)     panic("TODO %s", nodename(n));
+  NCASE(Assign)     panic("TODO %s", nodename(n));
+  NCASE(Tuple)      panic("TODO %s", nodename(n));
+  NCASE(Array)      panic("TODO %s", nodename(n));
+  NCASE(Block)      panic("TODO %s", nodename(n));
+  NCASE(Fun)        panic("TODO %s", nodename(n));
+  NCASE(Macro)      panic("TODO %s", nodename(n));
+  NCASE(Call)       panic("TODO %s", nodename(n));
+  NCASE(TypeCast)   panic("TODO %s", nodename(n));
+  NCASE(Const)      panic("TODO %s", nodename(n));
+  NCASE(Var)        panic("TODO %s", nodename(n));
+  NCASE(Param)      panic("TODO %s", nodename(n));
+  NCASE(MacroParam) panic("TODO %s", nodename(n));
+  NCASE(Ref)        panic("TODO %s", nodename(n));
+  NCASE(NamedArg)   panic("TODO %s", nodename(n));
+  NCASE(Selector)   panic("TODO %s", nodename(n));
+  NCASE(Index)      panic("TODO %s", nodename(n));
+  NCASE(Slice)      panic("TODO %s", nodename(n));
+  NCASE(If)         panic("TODO %s", nodename(n));
 
-  _(TypeType)   panic("TODO %s", nodename(n));
-  _(NamedType)  panic("TODO %s", nodename(n));
-  _(AliasType)  panic("TODO %s", nodename(n));
-  _(RefType)    panic("TODO %s", nodename(n));
-  _(BasicType)  panic("TODO %s", nodename(n));
-  _(ArrayType)  panic("TODO %s", nodename(n));
-  _(TupleType)  panic("TODO %s", nodename(n));
-  _(StructType) panic("TODO %s", nodename(n));
-  _(FunType)    panic("TODO %s", nodename(n));
+  NCASE(TypeType)   panic("TODO %s", nodename(n));
+  NCASE(NamedType)  panic("TODO %s", nodename(n));
+  NCASE(AliasType)  panic("TODO %s", nodename(n));
+  NCASE(RefType)    panic("TODO %s", nodename(n));
+  NCASE(BasicType)  panic("TODO %s", nodename(n));
+  NCASE(ArrayType)  panic("TODO %s", nodename(n));
+  NCASE(TupleType)  panic("TODO %s", nodename(n));
+  NCASE(StructType) panic("TODO %s", nodename(n));
+  NCASE(FunType)    panic("TODO %s", nodename(n));
 
   }}
-  #undef _
-  #undef _G
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
   UNREACHABLE;
 }

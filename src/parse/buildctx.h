@@ -98,8 +98,12 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
 // b_mknode allocates and initializes a AST node, e.g. b_mknode(b,Id) => IdNode*
 #define b_mknode(b, KIND) ((KIND##Node* nullable)b_mknodex((b),N##KIND))
 
+// b_clonenode allocates and initializes a AST node that is a copy of another node
+#define b_clonenode(b, src) ((__typeof__(src) nullable)_b_clonenode((b),as_Node(src)))
+
 // b_mknodex is like b_mknode but not typed
 Node* nullable b_mknodex(BuildCtx* b, NodeKind kind);
+Node* nullable _b_clonenode(BuildCtx* b, const Node* src);
 
 // b_mkpkgnode creates a package node for b, setting
 // pkg->name = b->pkgid
