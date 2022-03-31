@@ -1,0 +1,3 @@
+*.co linguist-language=Go
+src/parse/ast_gen.h linguist-generated=true
+src/parse/ast_gen.c linguist-generated=true

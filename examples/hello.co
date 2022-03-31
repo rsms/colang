@@ -1,0 +1,2 @@
+fun hello(x int) int
+  x * 3
