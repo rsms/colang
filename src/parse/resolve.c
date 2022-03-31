@@ -254,7 +254,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     Node* target = ScopeLookup(r->lookupscope, n->name);
     if UNLIKELY(target == NULL) {
       dlog2("LOOKUP %s FAILED", n->name);
-      b_errf(r->build, NodePosSpan(n), "undefined symbol %s", n->name);
+      b_errf(r->build, NodePosSpan(n), "undefined identifier %s", n->name);
       n->target = kNode_bad;
       return np;
     }
