@@ -806,7 +806,17 @@ static Node* _resolve_type(R* r, Node* np) {
 // begin resolve
 
 static Node* _resolve(R* r, Node* n) {
+  // resolve identifiers
   n = resolve_sym(r, n);
+
+  if UNLIKELY(r->build->errcount != 0) {
+    // if we encountered an error, for example undefined identifier,
+    // don't bother with type resolution as it is likely going to yield
+    // confusing error messages as a cascading issue of prior errors.
+    return n;
+  }
+
+  // resolve types
   return resolve_type(r, n);
 }
 
