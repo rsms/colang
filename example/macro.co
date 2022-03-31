@@ -1,9 +1,0 @@
-fun add<T, R=T>(x, y T) R {
-  x + y
-}
-
-fun main {
-  x = 4 as u32
-  y = 6 as u32
-  add(x, y)
-}

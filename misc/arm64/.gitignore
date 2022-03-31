@@ -1,4 +1,0 @@
-*.qcow2
-qemu-arm64.sh
-README.md
-QEMU_EFI.fd

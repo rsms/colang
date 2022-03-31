@@ -1,8 +1,0 @@
-x = 4
-
-/*!AST types usecount attrs
-(var x @const @unused @pub
-  (0 refs)
-  (IntLit 4 <ideal>)
-  <?>)
-*/
