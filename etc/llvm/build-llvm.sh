@@ -213,6 +213,61 @@ then
 fi
 
 # -------------------------------------------------------------------------
+# libxml2 (required by xar)
+
+LIBXML2_VERSION=2.9.13
+LIBXML2_CHECKSUM=7dced00d88181d559ee76c6d8ef4571eb1bd0b26
+LIBXML2_DESTDIR=$DESTDIR/libxml2
+
+if [ ! -f "$LIBXML2_DESTDIR/lib/libxml2.a" ] ||
+   [ "$(cat "$LIBXML2_DESTDIR/version" 2>/dev/null)" != "$LIBXML2_VERSION" ]
+then
+  _download_pushsrc \
+    https://download.gnome.org/sources/libxml2/${LIBXML2_VERSION%.*}/libxml2-$LIBXML2_VERSION.tar.xz \
+    $LIBXML2_CHECKSUM
+
+  # setup.py is generated
+  rm python/setup.py
+
+  # We don't build libxml2 with icu.
+  rm test/icu_parse_test.xml
+
+  # note: need to use --prefix instead of DESTDIR during install
+  # for xml2-config to function properly
+  ./configure \
+    "--prefix=$LIBXML2_DESTDIR" \
+    --enable-static \
+    --disable-shared \
+    --disable-dependency-tracking \
+    \
+    --without-catalog      \
+    --without-debug        \
+    --without-docbook      \
+    --without-ftp          \
+    --without-http         \
+    --without-html         \
+    --without-html-dir     \
+    --without-html-subdir  \
+    --without-iconv        \
+    --without-history      \
+    --without-legacy       \
+    --without-python       \
+    --without-readline     \
+    --without-modules      \
+    "--with-lzma=$XC_DESTDIR" \
+    "--with-zlib=$ZLIB_DESTDIR" \
+
+  make -j$(nproc)
+
+  rm -rf "$LIBXML2_DESTDIR"
+  mkdir -p "$LIBXML2_DESTDIR"
+  make install
+
+  echo "$LIBXML2_VERSION" > "$LIBXML2_DESTDIR/version"
+  _popsrc
+fi
+
+# -------------------------------------------------------------------------
 # xar (required by lld's mach-o linker, liblldMachO2.a)
 
 XAR_SRCDIR=deps/xar-src
@@ -222,10 +277,16 @@ if [ ! -f "$XAR_DESTDIR/lib/libxar.a" ] ||
 then
   _pushd deps/xar-src
 
-  CFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$XC_DESTDIR/include" \
-  CPPFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$XC_DESTDIR/include" \
-  LDFLAGS="-L$OPENSSL_DESTDIR/lib -L$ZLIB_DESTDIR/lib -L$XC_DESTDIR/lib" \
-  ./configure --enable-static --disable-shared --prefix=
+  CFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$LIBXML2_DESTDIR/include" \
+  CPPFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$LIBXML2_DESTDIR/include" \
+  LDFLAGS="-L$OPENSSL_DESTDIR/lib -L$ZLIB_DESTDIR/lib -L$LIBXML2_DESTDIR/lib" \
+  ./configure \
+    --prefix= \
+    --enable-static \
+    --disable-shared \
+    --with-lzma=$XC_DESTDIR \
+    --with-xml2-config=$LIBXML2_DESTDIR/bin/xml2-config \
+    --without-bzip2
 
   make -j$(nproc)
 
