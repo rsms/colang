@@ -83,22 +83,22 @@ bool LLVMWriteArchive(const char *archive_name, const char **file_names, size_t 
 // bool link(llvm::ArrayRef<const char *> args, llvm::raw_ostream &stdoutOS,
 //           llvm::raw_ostream &stderrOS, bool exitEarly, bool disableOutput);
 
-int LLDLinkCOFF(int argc, const char **argv, bool can_exit_early) {
+bool LLDLinkCOFF(int argc, const char **argv, bool can_exit_early) {
 	std::vector<const char *> args(argv, argv + argc);
 	return lld::coff::link(args, llvm::outs(), llvm::errs(), can_exit_early, false);
 }
 
-int LLDLinkELF(int argc, const char **argv, bool can_exit_early) {
+bool LLDLinkELF(int argc, const char **argv, bool can_exit_early) {
 	std::vector<const char *> args(argv, argv + argc);
 	return lld::elf::link(args, llvm::outs(), llvm::errs(), can_exit_early, false);
 }
 
-int LLDLinkMachO(int argc, const char **argv, bool can_exit_early) {
+bool LLDLinkMachO(int argc, const char **argv, bool can_exit_early) {
 	std::vector<const char *> args(argv, argv + argc);
 	return lld::macho::link(args, llvm::outs(), llvm::errs(), can_exit_early, false);
 }
 
-int LLDLinkWasm(int argc, const char **argv, bool can_exit_early) {
+bool LLDLinkWasm(int argc, const char **argv, bool can_exit_early) {
 	std::vector<const char *> args(argv, argv + argc);
 	return lld::wasm::link(args, llvm::outs(), llvm::errs(), can_exit_early, false);
 }

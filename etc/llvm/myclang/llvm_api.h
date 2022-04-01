@@ -55,7 +55,7 @@ EXTERN_C OSType LLVMGetHostOSType();
 EXTERN_C bool LLVMWriteArchive(
   const char *archive_name, const char** infiles, size_t infilec, OSType os);
 
-EXTERN_C int LLDLinkCOFF(int argc, const char** argv, bool can_exit_early);
-EXTERN_C int LLDLinkELF(int argc, const char** argv, bool can_exit_early);
-EXTERN_C int LLDLinkMachO(int argc, const char** argv, bool can_exit_early);
-EXTERN_C int LLDLinkWasm(int argc, const char** argv, bool can_exit_early);
+EXTERN_C bool LLDLinkCOFF(int argc, const char** argv, bool can_exit_early);
+EXTERN_C bool LLDLinkELF(int argc, const char** argv, bool can_exit_early);
+EXTERN_C bool LLDLinkMachO(int argc, const char** argv, bool can_exit_early);
+EXTERN_C bool LLDLinkWasm(int argc, const char** argv, bool can_exit_early);

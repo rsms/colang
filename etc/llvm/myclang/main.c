@@ -8,7 +8,7 @@ OSType host_os;
 
 extern int clang_main(int c, const char** v);
 
-OSType OSTypeParse(const char* name) {
+static OSType OSTypeParse(const char* name) {
   if (strcmp(name, "darwin") == 0)  return OSDarwin;
   if (strcmp(name, "freebsd") == 0) return OSFreeBSD;
   if (strcmp(name, "ios") == 0)     return OSIOS;
@@ -19,7 +19,7 @@ OSType OSTypeParse(const char* name) {
   return OSUnknown;
 }
 
-void usage_main(FILE* f) {
+static void usage_main(FILE* f) {
   const char* host_os_typename = LLVMGetOSTypeName(host_os);
   fprintf(f,
     "usage: %s <command> [args ...]\n"
@@ -37,7 +37,7 @@ void usage_main(FILE* f) {
     host_os_typename);
 }
 
-int ar_main(int argc, const char* argv[argc+1]) {
+static int ar_main(int argc, const char** argv) {
   OSType os = host_os;
   // TODO: accept --target triple (where we really only parse the os)
 
@@ -62,85 +62,100 @@ int ar_main(int argc, const char* argv[argc+1]) {
 }
 
 
-int main(int argc, const char* argv[argc+1]) {
-  prog = argv[0];
-  host_os = LLVMGetHostOSType();
-  if (argc > 1) {
-    argc--;
-    argv = &argv[1];
-    const char* cmd = argv[0];
-    size_t cmdlen = strlen(cmd);
-    #define ISCMD(s) (cmdlen == strlen(s) && memcmp(cmd, (s), cmdlen) == 0)
+static int ld_main(int argc, const char** argv) {
+  switch (host_os) {
+    case OSDarwin:
+    case OSMacOSX:
+    case OSIOS:
+    case OSTvOS:
+    case OSWatchOS:
+      return LLDLinkMachO(argc, argv, true) ? 0 : 1;
+    case OSWin32:
+      return LLDLinkCOFF(argc, argv, true) ? 0 : 1;
+    case OSWASI:
+    case OSEmscripten:
+      return LLDLinkWasm(argc, argv, true) ? 0 : 1;
+    // assume the rest uses ELF (this is probably not correct)
+    case OSAnanas:
+    case OSCloudABI:
+    case OSDragonFly:
+    case OSFreeBSD:
+    case OSFuchsia:
+    case OSKFreeBSD:
+    case OSLinux:
+    case OSLv2:
+    case OSNetBSD:
+    case OSOpenBSD:
+    case OSSolaris:
+    case OSHaiku:
+    case OSMinix:
+    case OSRTEMS:
+    case OSNaCl:
+    case OSCNK:
+    case OSAIX:
+    case OSCUDA:
+    case OSNVCL:
+    case OSAMDHSA:
+    case OSPS4:
+    case OSELFIAMCU:
+    case OSMesa3D:
+    case OSContiki:
+    case OSAMDPAL:
+    case OSHermitCore:
+    case OSHurd:
+      return LLDLinkELF(argc, argv, true) ? 0 : 1;
+    default:
+      fprintf(stderr, "%s ld: unsupported host OS %s\n", prog, LLVMGetOSTypeName(host_os));
+      return 1;
+  }
+}
 
-    if ISCMD("cc")
-      return clang_main(argc, argv);
-    if ISCMD("as") {
-      argv[1] = "-cc1as";
-      return clang_main(argc, argv);
-    }
-    if ISCMD("ar")
-      return ar_main(argc, argv);
-    if ISCMD("ld-macho")
-      return LLDLinkMachO(argc, argv, true);
-    if ISCMD("ld-elf")
-      return LLDLinkELF(argc, argv, true);
-    if ISCMD("ld-coff")
-      return LLDLinkCOFF(argc, argv, true);
-    if ISCMD("ld-wasm")
-      return LLDLinkWasm(argc, argv, true);
-    if ISCMD("ld") {
-      // TODO host
-      switch (host_os) {
-        case OSDarwin:
-        case OSMacOSX:
-        case OSIOS:
-        case OSTvOS:
-        case OSWatchOS:
-          return LLDLinkMachO(argc, argv, true);
-        case OSWin32:
-          return LLDLinkCOFF(argc, argv, true);
-        case OSWASI:
-        case OSEmscripten:
-          return LLDLinkWasm(argc, argv, true);
-        // assume the rest uses ELF (this is probably not correct)
-        case OSAnanas:
-        case OSCloudABI:
-        case OSDragonFly:
-        case OSFreeBSD:
-        case OSFuchsia:
-        case OSKFreeBSD:
-        case OSLinux:
-        case OSLv2:
-        case OSNetBSD:
-        case OSOpenBSD:
-        case OSSolaris:
-        case OSHaiku:
-        case OSMinix:
-        case OSRTEMS:
-        case OSNaCl:
-        case OSCNK:
-        case OSAIX:
-        case OSCUDA:
-        case OSNVCL:
-        case OSAMDHSA:
-        case OSPS4:
-        case OSELFIAMCU:
-        case OSMesa3D:
-        case OSContiki:
-        case OSAMDPAL:
-        case OSHermitCore:
-        case OSHurd:
-          return LLDLinkELF(argc, argv, true);
-        default:
-          fprintf(stderr, "%s ld: unsupported host OS %s\n", prog, LLVMGetOSTypeName(host_os));
-          return 1;
-      }
-    }
-    if (strstr(cmd, "-h") || strstr(cmd, "help")) {
-      usage_main(stdout);
-      return 0;
-    }
-  } // argc > 1
-  usage_main(stderr);
+
+int main(int argc, const char** argv) {
+  prog = argv[0];
+
+  const char* progname = strrchr(prog, '/');
+  progname = progname ? progname + 1 : prog;
+  bool is_multicall = strcmp(progname, "myclang") != 0;
+  const char* cmd = is_multicall ? progname : argv[1] ? argv[1] : "";
+  size_t cmdlen = strlen(cmd);
+  host_os = LLVMGetHostOSType();
+
+  #define ISCMD(s) (cmdlen == strlen(s) && memcmp(cmd, (s), cmdlen) == 0)
+
+  // clang "cc" may spawn itself in a new process
+  if (ISCMD("-cc1") || ISCMD("-cc1as"))
+    return clang_main(argc, argv);
+
+  if ISCMD("as") {
+    argv[1] = "-cc1as";
+    return clang_main(argc, argv);
+  }
+
+  // shave away "prog" from argv when not a multicall
+  if (!is_multicall) {
+    argc--;
+    argv++;
+  }
+
+  if ISCMD("cc")       return clang_main(argc, argv);
+  if ISCMD("ar")       return ar_main(argc, argv);
+  if ISCMD("ld")       return ld_main(argc, argv);
+  if ISCMD("ld-macho") return LLDLinkMachO(argc, argv, true) ? 0 : 1;
+  if ISCMD("ld-elf")   return LLDLinkELF(argc, argv, true) ? 0 : 1;
+  if ISCMD("ld-coff")  return LLDLinkCOFF(argc, argv, true) ? 0 : 1;
+  if ISCMD("ld-wasm")  return LLDLinkWasm(argc, argv, true) ? 0 : 1;
+
+  if (cmdlen == 0) {
+    fprintf(stderr, "%s: missing command\n", prog);
+    return 1;
+  }
+
+  if (strstr(cmd, "-h") || strstr(cmd, "help")) {
+    usage_main(stdout);
+    return 0;
+  }
+
+  fprintf(stderr, "%s: unknown command \"%s\"\n", prog, cmd);
   return 1;
 }
