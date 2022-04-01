@@ -5,8 +5,9 @@ SCRIPT_FILE=$PWD/"$(basename "$0")"
 
 eval $(grep '^OUTDIR=' build.sh | head -n1)
 
-# directory to house dependencies
-DEPS=deps
+DEPS=deps  # directory to house dependencies
+WITH_LLVM=true  # build LLVM
+
 DEPS_ABS=$PWD/$DEPS
 HOST_SYS=$(uname -s)
 HOST_ARCH=$(uname -m)
@@ -120,84 +121,90 @@ mkdir -p $DEPS
 
 
 echo "---------- llvm with clang & lld ----------"
-LLVM_VERSION=13.0.0
-
-if [ "$(cat $DEPS/llvm-version 2>/dev/null)" != $LLVM_VERSION ] ||
-   [ ! -x $DEPS/llvm/bin/clang ]
-then
-  if [ "$HOST_SYS" = "Darwin" ]; then
-    # macos release 13.0.0 from github.com/llvm/llvm-project/releases is broken,
-    # it's not able to find libc on macOS. Instead we use llvm from Homebrew.
-    LLVM_DID_INSTALL=
-    while true; do
-      SEARHDIRS=
-      SEARHDIRS="$SEARHDIRS /opt/homebrew/opt/llvm"
-      SEARHDIRS="$SEARHDIRS /usr/local/opt/llvm"
-      rm -rf $DEPS/llvm
-      for dir in $SEARHDIRS; do
-        echo "try $dir/bin/clang"
-        if [ -f "$dir/bin/clang" ] &&
-           "$dir/bin/clang" --version >&2 >/dev/null
-        then
-          dir2="$("$dir/bin/clang" -print-search-dirs \
-            | grep programs: | cut -d= -f2 | cut -d: -f1)"
-          echo "$dir2/llvm-objcopy"
-          if [ "$dir2" != "" ] && [ -f "$dir2/llvm-objcopy" ]; then
-            ln -s "$(dirname "$dir2")" $DEPS/llvm
-            break
-          else
-            echo "warning: skip candidate LLVM=$dir: no llvm-objcopy" >&2
-          fi
-        fi
-      done
-      if [ -x $DEPS/llvm/bin/clang ]; then
-        break
-      fi
-      if [ -z $LLVM_DID_INSTALL ] && _hascmd brew; then
-        echo "Did not find llvm in Homebrew directory; installing..."
-        echo "brew install llvm"
-              brew install llvm
-        LLVM_DID_INSTALL=1
-      else
-        _err "llvm not found (tried: $SEARHDIRS). Install with: brew install llvm"
-      fi
-    done
-  else # OS != macOS
-    # fetch official prebuilt package from llvm-project
-    LLVM_URL=https://github.com/llvm/llvm-project/releases/download
-    LLVM_URL=$LLVM_URL/llvmorg-$LLVM_VERSION/clang+llvm-$LLVM_VERSION
-    case "$HOST_SYS $HOST_ARCH $HOST_OS" in
-    "Linux x86_64 ubuntu-20")
-      LLVM_URL=$LLVM_URL-x86_64-linux-gnu-ubuntu-20.04.tar.xz
-      LLVM_SHA256=2c2fb857af97f41a5032e9ecadf7f78d3eff389a5cd3c9ec620d24f134ceb3c8
-      ;;
-    "Linux x86_64 ubuntu-16")
-      LLVM_URL=$LLVM_URL-x86_64-linux-gnu-ubuntu-16.04.tar.xz
-      LLVM_SHA256=76d0bf002ede7a893f69d9ad2c4e101d15a8f4186fbfe24e74856c8449acd7c1
-      ;;
-    *)
-      _err "Don't know how or where to get LLVM for $HOST_SYS $HOST_ARCH ($HOST_OS)"
-      ;;
-    esac
-    _download "$LLVM_URL" $LLVM_SHA256
-    _extract_tar "$(_downloaded_file "$LLVM_URL")" $DEPS/llvm
-  fi
-  echo $LLVM_VERSION > $DEPS/llvm-version
-  rm -f $DEPS/cc-tested # needs testing
-fi
-echo "ready: $DEPS/llvm ($($DEPS/llvm/bin/clang --version | head -n1))"
-echo "export PATH=$DEPS_ABS/llvm/bin:\$PATH"
-
 export PATH=$DEPS_ABS/llvm/bin:$PATH
 export CC=clang
 export CXX=clang++
 
-for cmd in clang clang++ llvm-objcopy llvm-ar lld; do
-  if ! _hascmd $cmd; then
-    rm -f $DEPS/llvm-version  # make next run update llvm
-    _err "$cmd missing in PATH; LLVM installation broken"
+if $WITH_LLVM; then
+  # build LLVM from source
+  echo $SHELL etc/llvm/build-llvm.sh
+       $SHELL etc/llvm/build-llvm.sh
+else
+  # use LLVM/clang from system
+  LLVM_VERSION=13.0.0
+  if [ "$(cat $DEPS/llvm-version 2>/dev/null)" != $LLVM_VERSION ] ||
+     [ ! -x $DEPS/llvm/bin/clang ]
+  then
+    if [ "$HOST_SYS" = "Darwin" ]; then
+      # macos release 13.0.0 from github.com/llvm/llvm-project/releases is broken,
+      # it's not able to find libc on macOS. Instead we use llvm from Homebrew.
+      LLVM_DID_INSTALL=
+      while true; do
+        SEARHDIRS=
+        SEARHDIRS="$SEARHDIRS /opt/homebrew/opt/llvm"
+        SEARHDIRS="$SEARHDIRS /usr/local/opt/llvm"
+        rm -rf $DEPS/llvm
+        for dir in $SEARHDIRS; do
+          echo "try $dir/bin/clang"
+          if [ -f "$dir/bin/clang" ] &&
+             "$dir/bin/clang" --version >&2 >/dev/null
+          then
+            dir2="$("$dir/bin/clang" -print-search-dirs \
+              | grep programs: | cut -d= -f2 | cut -d: -f1)"
+            echo "$dir2/llvm-objcopy"
+            if [ "$dir2" != "" ] && [ -f "$dir2/llvm-objcopy" ]; then
+              ln -s "$(dirname "$dir2")" $DEPS/llvm
+              break
+            else
+              echo "warning: skip candidate LLVM=$dir: no llvm-objcopy" >&2
+            fi
+          fi
+        done
+        if [ -x $DEPS/llvm/bin/clang ]; then
+          break
+        fi
+        if [ -z $LLVM_DID_INSTALL ] && _hascmd brew; then
+          echo "Did not find llvm in Homebrew directory; installing..."
+          echo "brew install llvm"
+                brew install llvm
+          LLVM_DID_INSTALL=1
+        else
+          _err "llvm not found (tried: $SEARHDIRS). Install with: brew install llvm"
+        fi
+      done
+    else # OS != macOS
+      # fetch official prebuilt package from llvm-project
+      LLVM_URL=https://github.com/llvm/llvm-project/releases/download
+      LLVM_URL=$LLVM_URL/llvmorg-$LLVM_VERSION/clang+llvm-$LLVM_VERSION
+      case "$HOST_SYS $HOST_ARCH $HOST_OS" in
+      "Linux x86_64 ubuntu-20")
+        LLVM_URL=$LLVM_URL-x86_64-linux-gnu-ubuntu-20.04.tar.xz
+        LLVM_SHA256=2c2fb857af97f41a5032e9ecadf7f78d3eff389a5cd3c9ec620d24f134ceb3c8
+        ;;
+      "Linux x86_64 ubuntu-16")
+        LLVM_URL=$LLVM_URL-x86_64-linux-gnu-ubuntu-16.04.tar.xz
+        LLVM_SHA256=76d0bf002ede7a893f69d9ad2c4e101d15a8f4186fbfe24e74856c8449acd7c1
+        ;;
+      *)
+        _err "Don't know how or where to get LLVM for $HOST_SYS $HOST_ARCH ($HOST_OS)"
+        ;;
+      esac
+      _download "$LLVM_URL" $LLVM_SHA256
+      _extract_tar "$(_downloaded_file "$LLVM_URL")" $DEPS/llvm
+    fi
+    echo $LLVM_VERSION > $DEPS/llvm-version
+    rm -f $DEPS/cc-tested # needs testing
   fi
-done
+  echo "ready: $DEPS/llvm ($($DEPS/llvm/bin/clang --version | head -n1))"
+  echo "export PATH=$DEPS_ABS/llvm/bin:\$PATH"
+
+  for cmd in clang clang++ llvm-objcopy llvm-ar lld; do
+    if ! _hascmd $cmd; then
+      rm -f $DEPS/llvm-version  # make next run update llvm
+      _err "$cmd missing in PATH; LLVM installation broken"
+    fi
+  done
+fi
 
 
 # ---------- test compiler ----------
