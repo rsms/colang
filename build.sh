@@ -55,6 +55,69 @@ BUILD_DIR=$OUTDIR/$BUILD_MODE
 [ "$BUILD_MODE" = "debug" ] && DEBUG=true
 
 #————————————————————————————————————————————————————————————————————————————————————————
+# setup environment (select compiler, clear $OUTDIR if compiler changed)
+
+CC_IS_CLANG=false
+CC_IS_GCC=false
+
+if [ -z "$CC" ]; then
+  # use clang from known preferred location, if available
+  if [ -x "$PWD"/deps/llvm/bin/clang ]; then
+    export PATH="$PWD"/deps/llvm/bin:$PATH
+    CC=clang
+    CXX=clang++
+    CC_IS_CLANG=true
+  elif [ -x /usr/local/opt/llvm/bin/clang ]; then
+    export PATH=/usr/local/opt/llvm/bin:$PATH
+    CC=clang
+    CXX=clang++
+    CC_IS_CLANG=true
+  elif [ -x /opt/homebrew/opt/llvm/bin/clang ]; then
+    export PATH=/opt/homebrew/opt/llvm/bin:$PATH
+    CC=clang
+    CXX=clang++
+    CC_IS_CLANG=true
+  elif command -v clang >/dev/null; then
+    CC=clang
+    CXX=clang++
+    CC_IS_CLANG=true
+  elif command -v gcc >/dev/null; then
+    export PATH=$(dirname "$(command -v gcc)"):$PATH
+    CC=gcc
+    CXX=g++
+    CC_IS_GCC=true
+  else
+    CC=cc
+    CXX=c++
+  fi
+  export CC
+  export CXX
+fi
+
+CC_PATH=$(command -v "$CC" || true)
+[ -f "$CC_PATH" ] || _err "CC (\"$CC\") not found"
+
+if ! $CC_IS_CLANG && ! $CC_IS_GCC; then
+  CC_VERSION=$($CC --version 2>/dev/null | head -n1)
+  case "$CC_VERSION" in
+    "clang "*|*" clang "*) CC_IS_CLANG=true ;;
+    "gcc "*|*" gcc "*)     CC_IS_GCC=true ;;
+  esac
+fi
+
+$VERBOSE && { echo "CC=$CC"; echo "CXX=$CXX"; }
+
+# check compiler and clear $OUTDIR if compiler changed
+CCONFIG_FILE=$OUTDIR/cconfig.txt
+CCONFIG="$CC_PATH: $(_checksum "$CC_PATH")"
+if [ "$(cat "$CCONFIG_FILE" 2>/dev/null)" != "$CCONFIG" ]; then
+  [ -f "$CCONFIG_FILE" ] && echo "compiler config changed"
+  rm -rf "$OUTDIR"
+  mkdir -p "$OUTDIR"
+  echo "$CCONFIG" > "$CCONFIG_FILE"
+fi
+
+#————————————————————————————————————————————————————————————————————————————————————————
 # watch (if enabled, execution of script forks here)
 
 if [ -n "$WATCH" ]; then
@@ -159,64 +222,6 @@ if [ -n "$WATCH" ]; then
     _watch_source_files
   done
   exit 0
-fi
-
-#————————————————————————————————————————————————————————————————————————————————————————
-# setup environment (select compiler, clear $OUTDIR if compiler changed)
-
-CC_IS_CLANG=false
-CC_IS_GCC=false
-
-if [ -z "$CC" ]; then
-  # use clang from known preferred location, if available
-  if [ -x /usr/local/opt/llvm/bin/clang ]; then
-    CC=clang
-    CXX=clang++
-    CC_IS_CLANG=true
-    export PATH=/usr/local/opt/llvm/bin:$PATH
-  elif [ -x /opt/homebrew/opt/llvm/bin/clang ]; then
-    CC=clang
-    CXX=clang++
-    CC_IS_CLANG=true
-    export PATH=/opt/homebrew/opt/llvm/bin:$PATH
-  elif command -v clang >/dev/null; then
-    CC=clang
-    CXX=clang++
-    CC_IS_CLANG=true
-  elif command -v gcc >/dev/null; then
-    CC=gcc
-    CXX=g++
-    export PATH=$(dirname "$(command -v gcc)"):$PATH
-    CC_IS_GCC=true
-  else
-    CC=cc
-    CXX=c++
-  fi
-  export CC
-  export CXX
-fi
-
-CC_PATH=$(command -v "$CC" || true)
-[ -f "$CC_PATH" ] || _err "CC (\"$CC\") not found"
-
-if ! $CC_IS_CLANG && ! $CC_IS_GCC; then
-  CC_VERSION=$($CC --version 2>/dev/null | head -n1)
-  case "$CC_VERSION" in
-    "clang "*|*" clang "*) CC_IS_CLANG=true ;;
-    "gcc "*|*" gcc "*)     CC_IS_GCC=true ;;
-  esac
-fi
-
-$VERBOSE && { echo "CC=$CC"; echo "CXX=$CXX"; }
-
-# check compiler and clear $OUTDIR if compiler changed
-CCONFIG_FILE=$OUTDIR/cconfig.txt
-CCONFIG="$CC_PATH: $(_checksum "$CC_PATH")"
-if [ "$(cat "$CCONFIG_FILE" 2>/dev/null)" != "$CCONFIG" ]; then
-  [ -f "$CCONFIG_FILE" ] && echo "compiler config changed"
-  rm -rf "$OUTDIR"
-  mkdir -p "$OUTDIR"
-  echo "$CCONFIG" > "$CCONFIG_FILE"
 fi
 
 #————————————————————————————————————————————————————————————————————————————————————————
