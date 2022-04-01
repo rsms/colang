@@ -1,7 +1,7 @@
 #include "colib.h"
-#include "colib.h"
 
 #if __has_builtin(__builtin_alloca)
+  #undef alloca
   #define alloca __builtin_alloca
 #elif !defined(CO_NO_LIBC)
   #include <alloca.h>

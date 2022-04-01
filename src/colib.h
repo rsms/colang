@@ -81,14 +81,16 @@ typedef double f64;
   #define USIZE_MAX (__LONG_MAX__ *2UL+1UL)
 #endif
 
-#ifdef __INTPTR_MAX__
-  #define INTPTR_MIN  (-__INTPTR_MAX__-1L)
-  #define INTPTR_MAX  __INTPTR_MAX__
-  #define UINTPTR_MAX __UINTPTR_MAX__
-#else
-  #define INTPTR_MIN  ISIZE_MIN
-  #define INTPTR_MAX  ISIZE_MAX
-  #define UINTPTR_MAX USIZE_MAX
+#ifndef INTPTR_MIN
+  #ifdef __INTPTR_MAX__
+    #define INTPTR_MIN  (-__INTPTR_MAX__-1L)
+    #define INTPTR_MAX  __INTPTR_MAX__
+    #define UINTPTR_MAX __UINTPTR_MAX__
+  #else
+    #define INTPTR_MIN  ISIZE_MIN
+    #define INTPTR_MAX  ISIZE_MAX
+    #define UINTPTR_MAX USIZE_MAX
+  #endif
 #endif
 
 // isize
@@ -261,7 +263,7 @@ typedef i8 isize;
 
 // _Noreturn abort()
 #ifndef CO_NO_LIBC
-  void abort(void); // stdlib.h
+  #include <stdlib.h> // void abort(void)
 #elif __has_builtin(__builtin_trap)
   #define abort __builtin_trap
 #elif __has_builtin(__builtin_unreachable)
@@ -660,6 +662,7 @@ char* strstr(const char* haystack, const char* needle);
 
 // —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END
+#ifndef __cplusplus
 
 #include "error.h"
 #include "debug.h"
@@ -682,5 +685,6 @@ ASSUME_NONNULL_END
 #include "sha256.h"
 #include "unicode.h"
 
+#endif // !defined(__cplusplus)
 // —————————————————————————————————————————————————————————————————————————————————————
 #endif // CO_LIB

@@ -9,6 +9,7 @@ BEGIN_INTERFACE
 typedef struct BuildCtx   BuildCtx;
 typedef struct Diagnostic Diagnostic; // diagnostic message
 typedef u8                DiagLevel;  // diagnostic level (Error, Warn ...)
+typedef u8                OptLevel;   // optimization level
 
 // DiagHandler callback type.
 // msg is a preformatted error message and is only valid until this function returns.
@@ -21,6 +22,12 @@ enum DiagLevel {
   DiagMAX = DiagNote,
 } END_ENUM(DiagLevel)
 
+enum OptLevel {
+  OptNone,  // like cc -O0
+  OptSpeed, // like cc -O3
+  OptSize,  // like cc -Os
+} END_ENUM(OptLevel)
+
 struct Diagnostic {
   BuildCtx*   build;
   DiagLevel   level;
@@ -31,7 +38,7 @@ struct Diagnostic {
 typedef Array(Diagnostic*) DiagnosticArray;
 
 struct BuildCtx {
-  bool     opt;       // optimize
+  OptLevel opt;       // optimization level
   bool     debug;     // include debug information
   bool     safe;      // enable boundary checks and memory ref checks
   TypeCode sint_type; // concrete type of "int"

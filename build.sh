@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 ORIG_PWD=$PWD
+PROG=$0
 cd "$(dirname "$0")"
-_err() { echo -e "$0:" "$@" >&2 ; exit 1; }
+_err() { echo "$PROG:" "$@" >&2 ; exit 1; }
 _checksum() { sha256sum "$@" | cut -d' ' -f1; }
 
 OUTDIR=build
@@ -10,9 +11,11 @@ SRCDIR=src
 MAIN_EXE=co
 PP_PREFIX=CO_
 WASM_SYMS=etc/wasm.syms
+WITH_LLVM=true
 XFLAGS=( $XFLAGS )
 CFLAGS=( $CFLAGS -fms-extensions -Wno-microsoft )
 CXXFLAGS=()
+DEPSDIR=$PWD/deps
 NINJA=${NINJA:-ninja}
 WATCHFILES=( $SRCDIR $(basename "$0") examples )
 
@@ -25,16 +28,8 @@ TESTING_ENABLED=false
 VERBOSE=false
 
 while [[ $# -gt 0 ]]; do case "$1" in
-  -w)      WATCH=1; shift ;;
-  -_w_)    _WATCHED=1; shift ;;
-  -v)      VERBOSE=true; NINJA_ARGS+=(-v); shift ;;
-  -run=*)  RUN=${1:5}; shift ;;
-  -debug)  BUILD_MODE=debug; TESTING_ENABLED=true; shift ;;
-  -safe)   BUILD_MODE=safe; TESTING_ENABLED=false; shift ;;
-  -fast)   BUILD_MODE=fast; TESTING_ENABLED=false; shift ;;
-  -config) ONLY_CONFIGURE=true; shift ;;
   -h|-help|--help) cat << _END
-usage: $0 [options] [<target> ...]
+usage: $0 [options] [--] [<target-or-arg-to-ninja> ...]
 options:
   -safe      Enable optimizations and safe checks (default)
   -fast      Enable optimizations without any safe checks
@@ -42,11 +37,21 @@ options:
   -w         Rebuild as sources change
   -run=<cmd> Run <cmd> after successful build
   -config    Just configure, don't build
+  -no-llvm   Disable use of LLVM and features relying on LLVM
   -v         Verbose; log more details
   -help      Show help on stdout and exit
 _END
     exit ;;
-  --) break ;;
+  -safe)    BUILD_MODE=safe; TESTING_ENABLED=false; shift ;;
+  -fast)    BUILD_MODE=fast; TESTING_ENABLED=false; shift ;;
+  -debug)   BUILD_MODE=debug; TESTING_ENABLED=true; shift ;;
+  -w)       WATCH=1; shift ;;
+  -_w_)     _WATCHED=1; shift ;;
+  -run=*)   RUN=${1:5}; shift ;;
+  -config)  ONLY_CONFIGURE=true; shift ;;
+  -no-llvm) WITH_LLVM=false; shift ;;
+  -v)       VERBOSE=true; NINJA_ARGS+=(-v); shift ;;
+  --) shift; break ;;
   -*) _err "unknown option: $1" ;;
   *) break ;;
 esac; done
@@ -92,6 +97,8 @@ if [ -z "$CC" ]; then
   fi
   export CC
   export CXX
+  export CC_IS_CLANG=$CC_IS_CLANG
+  export CC_IS_GCC=$CC_IS_GCC
 fi
 
 CC_PATH=$(command -v "$CC" || true)
@@ -239,7 +246,7 @@ fi
 #   LDFLAGS            linker flags common to all targets
 #     LDFLAGS_HOST     linker flags specific to native host target (cc suite's ld)
 #     LDFLAGS_WASM     linker flags specific to WASM target (llvm's wasm-ld)
-#
+#————————————————————————————
 XFLAGS=(
   -g \
   -feliminate-unused-debug-types \
@@ -260,17 +267,24 @@ XFLAGS_WASM=(
   --no-standard-libraries \
   -fvisibility=hidden \
 )
+#————————————————————————————
 CFLAGS=(
   -std=c11 \
   "${CFLAGS[@]}" \
 )
+CFLAGS_HOST=()
+CFLAGS_WASM=()
+#————————————————————————————
 CXXFLAGS=(
   -std=c++14 \
   -fvisibility-inlines-hidden \
   -fno-exceptions \
   -fno-rtti \
-  "${CFLAGS[@]}" \
+  "${CXXFLAGS[@]}" \
 )
+CXXFLAGS_HOST=()
+CXXFLAGS_WASM=()
+#————————————————————————————
 LDFLAGS_HOST=(
   $LDFLAGS \
 )
@@ -281,7 +295,7 @@ LDFLAGS_WASM=(
   --import-memory \
   $LDFLAGS_WASM \
 )
-
+#————————————————————————————
 # compiler-specific flags
 if $CC_IS_CLANG; then
   XFLAGS+=(
@@ -314,7 +328,7 @@ if $DEBUG; then
       -fno-optimize-sibling-calls \
       -fmacro-backtrace-limit=0 \
     )
-    LDFLAGS_HOST+=( -fsanitize=address,undefined )
+    LDFLAGS_HOST+=( -fsanitize=address,undefined -static-libsan )
   fi
 else
   XFLAGS+=( -DNDEBUG )
@@ -329,7 +343,7 @@ else
   fi
   if $CC_IS_CLANG; then
     XFLAGS+=( -flto )
-    LDFLAGS_HOST+=( -flto )
+    LDFLAGS_HOST+=( -flto -Wl,-no_pie )
   fi
 fi
 
@@ -340,6 +354,37 @@ $TESTING_ENABLED &&
 # has WASM_SYMS file?
 [ -f "$WASM_SYMS" ] &&
   LDFLAGS_WASM+=( -allow-undefined-file "$WASM_SYMS" )
+
+# llvm?
+if $WITH_LLVM; then
+  XFLAGS_HOST+=(
+    -I$DEPSDIR/llvm/include \
+    -I$DEPSDIR/zlib/include \
+    -I$DEPSDIR/openssl/include \
+    -I$DEPSDIR/xc/include \
+    -I$DEPSDIR/libxml2/include \
+    -I$DEPSDIR/xar/include \
+  )
+  CFLAGS_HOST+=(
+    "$($DEPSDIR/llvm/bin/llvm-config --cflags)" \
+  )
+  CXXFLAGS_HOST+=(
+    -nostdinc++ -I$DEPSDIR/llvm/include/c++/v1 -stdlib=libc++ \
+    "$($DEPSDIR/llvm/bin/llvm-config --cxxflags)" \
+  )
+  LDFLAGS_HOST+=(
+    -L$DEPSDIR/llvm/lib \
+    -L$DEPSDIR/zlib/lib \
+    -L$DEPSDIR/openssl/lib \
+    -L$DEPSDIR/xc/lib \
+    -L$DEPSDIR/libxml2/lib \
+    -L$DEPSDIR/xar/lib \
+    "$($DEPSDIR/llvm/bin/llvm-config --system-libs)" \
+    "$($DEPSDIR/llvm/bin/llvm-config --link-static --libs)" \
+    "$DEPSDIR/llvm/lib/libc++.a" \
+    "$DEPSDIR/llvm/lib/libc++abi.a" \
+  )
+fi
 
 #————————————————————————————————————————————————————————————————————————————————————————
 # find source files
@@ -386,6 +431,7 @@ fi
 NF=$BUILD_DIR/new-build.ninja     # temporary file
 NINJAFILE=$BUILD_DIR/build.ninja  # actual build file
 NINJA_ARGS+=( -f "$NINJAFILE" )
+LINKER=$CC  #; $WITH_LLVM && LINKER=$CXX
 
 mkdir -p "$BUILD_DIR/obj"
 
@@ -399,44 +445,44 @@ xflags_host = \$xflags ${XFLAGS_HOST[@]}
 xflags_wasm = \$xflags ${XFLAGS_WASM[@]}
 
 cflags = ${CFLAGS[@]}
-cflags_host = \$xflags_host \$cflags ${CFLAGS_HOST[@]}
-cflags_wasm = \$xflags_wasm \$cflags ${CFLAGS_WASM[@]}
+cflags_host = \$xflags_host ${CFLAGS_HOST[@]}
+cflags_wasm = \$xflags_wasm ${CFLAGS_WASM[@]}
 
 cxxflags = ${CXXFLAGS[@]}
-cxxflags_host = \$xflags_host \$cxxflags ${CXXFLAGS_HOST[@]}
-cxxflags_wasm = \$xflags_wasm \$cxxflags ${CXXFLAGS_WASM[@]}
+cxxflags_host = \$xflags_host ${CXXFLAGS_HOST[@]}
+cxxflags_wasm = \$xflags_wasm ${CXXFLAGS_WASM[@]}
 
 ldflags_host = ${LDFLAGS_HOST[@]}
 ldflags_wasm = ${LDFLAGS_WASM[@]}
 
 
 rule link
-  command = $CC \$ldflags_host -o \$out \$in
+  command = $LINKER \$ldflags_host \$FLAGS -o \$out \$in
   description = link \$out
 
 rule link_wasm
-  command = wasm-ld \$ldflags_wasm \$in -o \$out
+  command = wasm-ld \$ldflags_wasm \$FLAGS \$in -o \$out
   description = link \$out
 
 
 rule cc
-  command = $CC -MMD -MF \$out.d \$cflags_host -c \$in -o \$out
+  command = $CC -MMD -MF \$out.d \$cflags \$cflags_host \$FLAGS -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
 rule cxx
-  command = $CXX -MMD -MF \$out.d \$cxxflags_host -c \$in -o \$out
+  command = $CXX -MMD -MF \$out.d \$cxxflags \$cxxflags_host \$FLAGS -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
 
 rule cc_wasm
-  command = $CC -MMD -MF \$out.d \$cflags_wasm -c \$in -o \$out
+  command = $CC -MMD -MF \$out.d \$cflags \$cflags_wasm \$FLAGS -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
 rule cxx_wasm
-  command = $CXX -MMD -MF \$out.d \$cxxflags_wasm -c \$in -o \$out
+  command = $CXX -MMD -MF \$out.d \$cxxflags \$cxxflags_wasm \$FLAGS -c \$in -o \$out
   depfile = \$out.d
   description = compile \$in
 
@@ -445,10 +491,21 @@ rule ast_gen
   command = python3 src/parse/ast_gen.py \$in \$out
   generator = true
 
+rule cxx_pch_gen
+  command = $CXX \$cxxflags \$cxxflags_host \$FLAGS -x c++-header \$in -o \$out
+  #clang -cc1 -emit-pch -x c++-header \$in -o \$out
+  generator = true
+
+rule cxx_pch_obj
+  command = $CXX -c \$in -o \$out
 
 build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/parse/ast_gen.py
 
 _END
+
+if $WITH_LLVM; then
+  echo "build \$objdir/llvm-includes.pch: cxx_pch_gen src/llvm/llvm-includes.hh" >> $NF
+fi
 
 
 _objfile() { echo \$objdir/${1//\//.}.o; }
@@ -464,8 +521,16 @@ _gen_obj_build_rules() {
   for SOURCE in "$@"; do
     OBJECT=$(_objfile "$TARGET-$SOURCE")
     case "$SOURCE" in
-      *.c|*.m)
+      *.c)
         echo "build $OBJECT: $CC_RULE $SOURCE" >> $NF
+        ;;
+      */llvm/*.cc)
+        $WITH_LLVM || continue
+        echo "build $OBJECT: $CXX_RULE $SOURCE | \$objdir/llvm-includes.pch" >> $NF
+        echo "  FLAGS = -include-pch \$objdir/llvm-includes.pch" >> $NF
+        ;;
+      *.cc)
+        echo "build $OBJECT: $CXX_RULE $SOURCE" >> $NF
         ;;
       *) _err "don't know how to compile this file type ($SOURCE)"
     esac
