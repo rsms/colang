@@ -261,14 +261,14 @@ _git_pull_if_needed() {
   if [ -d "$gitdir" ]; then
     _pushd "$gitdir"
 
-    _log git fetch origin
-         git fetch origin
-
     if _git_HEAD_is "$githash"; then
       echo "git source is up to date (at $githash)"
       _popd
       return 1  # up to date
     fi
+
+    _log git fetch origin
+         git fetch origin
 
     if _git_is_dirty; then
       _log "git pull aborted: there are local uncommitted changes in $PWD"

@@ -14,13 +14,28 @@ MYCLANG_DIR=$ETC_LLVM_DIR/myclang
 mkdir -p "$DESTDIR"
 
 # what git ref to build (commit, tag or branch)
-LLVM_GIT_BRANCH=llvmorg-14.0.0
-LLVM_VERSION=${LLVM_GIT_BRANCH#*-}
+LLVM_GIT_REV=llvmorg-14.0.0
+LLVM_VERSION=${LLVM_GIT_REV#*-}
 LLVM_DESTDIR=$DESTDIR/llvm
 LLVM_GIT_URL=https://github.com/llvm/llvm-project.git
 LLVM_SRCDIR=$DEPS_DIR/llvm-src
 LLVM_BUILD_MODE=MinSizeRel
 LLVM_ENABLE_ASSERTIONS=On
+# LLVM components (libraries) to include. See deps/llvm/bin/llvm-config --components
+# windowsmanifest: needed for lld COFF
+LLVM_COMPONENTS=(
+  engine \
+  option \
+  passes \
+  all-targets \
+  libdriver \
+  lto \
+  linker \
+  debuginfopdb \
+  debuginfodwarf \
+  windowsmanifest \
+  orcjit \
+)
 
 ZLIB_VERSION=1.2.12
 ZLIB_CHECKSUM=207ba741d387e2c1607104cf0bd8cff27deb2605
@@ -115,6 +130,8 @@ export ASM=${HOST_ASM}
 # We use ninja, so we need that too.
 # Oh, and openssl needs perl to build, lol.
 
+DEPS_CHANGED=false
+
 # -------------------------------------------------------------------------
 # zlib (required by llvm)
 
@@ -134,6 +151,7 @@ then
 
   echo "$ZLIB_VERSION" > "$ZLIB_DESTDIR/version"
   _popsrc
+  DEPS_CHANGED=true
 fi
 
 # -------------------------------------------------------------------------
@@ -171,6 +189,7 @@ then
 
   echo "$XC_VERSION" > "$XC_DESTDIR/version"
   _popsrc
+  DEPS_CHANGED=true
 fi
 
 # -------------------------------------------------------------------------
@@ -210,6 +229,7 @@ then
 
   echo "$OPENSSL_VERSION" > "$OPENSSL_DESTDIR/version"
   _popsrc
+  DEPS_CHANGED=true
 fi
 
 # -------------------------------------------------------------------------
@@ -219,7 +239,7 @@ LIBXML2_VERSION=2.9.13
 LIBXML2_CHECKSUM=7dced00d88181d559ee76c6d8ef4571eb1bd0b26
 LIBXML2_DESTDIR=$DESTDIR/libxml2
 
-if [ ! -f "$LIBXML2_DESTDIR/lib/libxml2.a" ] ||
+if $DEPS_CHANGED || [ ! -f "$LIBXML2_DESTDIR/lib/libxml2.a" ] ||
    [ "$(cat "$LIBXML2_DESTDIR/version" 2>/dev/null)" != "$LIBXML2_VERSION" ]
 then
   _download_pushsrc \
@@ -265,17 +285,18 @@ then
 
   echo "$LIBXML2_VERSION" > "$LIBXML2_DESTDIR/version"
   _popsrc
+  DEPS_CHANGED=true
 fi
 
 # -------------------------------------------------------------------------
 # xar (required by lld's mach-o linker, liblldMachO2.a)
 
-XAR_SRCDIR=deps/xar-src
+XAR_SRCDIR=$ETC_LLVM_DIR/xar
 XAR_VERSION=$(cat "$XAR_SRCDIR/version")
-if [ ! -f "$XAR_DESTDIR/lib/libxar.a" ] ||
+if $DEPS_CHANGED || [ ! -f "$XAR_DESTDIR/lib/libxar.a" ] ||
    [ "$(cat "$XAR_DESTDIR/version" 2>/dev/null)" != "$XAR_VERSION" ]
 then
-  _pushd deps/xar-src
+  _pushd "$XAR_SRCDIR"
 
   CFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$LIBXML2_DESTDIR/include" \
   CPPFLAGS="-I$OPENSSL_DESTDIR/include -I$ZLIB_DESTDIR/include -I$LIBXML2_DESTDIR/include" \
@@ -297,25 +318,23 @@ then
 
   echo "$XAR_VERSION" > "$XAR_DESTDIR/version"
   _popd
+  DEPS_CHANGED=true
 fi
 
 # -------------------------------------------------------------------------
 # llvm & clang
 
-# fetch or update llvm sources
-SOURCE_CHANGED=false
-if _git_pull_if_needed "$LLVM_GIT_URL" "$LLVM_SRCDIR" "$LLVM_GIT_BRANCH"; then
-  SOURCE_CHANGED=true
-fi
+LLVM_BUILD_DIR=$LLVM_SRCDIR/build-$LLVM_BUILD_MODE
 
 # _llvm_build <build-type> [args to cmake ...]
 _llvm_build() {
   local build_type=$1 ;shift  # Debug | Release | RelWithDebInfo | MinSizeRel
-  local build_dir=build-$build_type
+  local build_dir=$(basename "$LLVM_BUILD_DIR")
   _pushd "$LLVM_SRCDIR"
-  ! $SOURCE_CHANGED || rm -rf $build_dir
+  # $SOURCE_CHANGED && rm -rf $build_dir
   mkdir -p $build_dir
   _pushd $build_dir
+  rm -rf co-objx
 
   local EXTRA_CMAKE_ARGS=()
   if command -v xcrun >/dev/null; then
@@ -438,9 +457,121 @@ _update_myclang() {
 }
 
 
-if $FORCE || $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
+_mk_dlib_macos() {
+  local DLIB_FILE=$LLVM_DESTDIR/lib/libco-llvm-bundle-d.dylib
+  local LIB_VERSION=0.0.1        # used for mach-o dylib
+  local LIB_VERSION_COMPAT=0.0.1 # used for mach-o dylib
+  local LIBFILES=(
+    $("$LLVM_DESTDIR/bin/llvm-config" --link-static --libfiles "${LLVM_COMPONENTS[@]}") \
+    $ZLIB_DESTDIR/lib/libz.a \
+  )
+  local MACOS_FRAMEWORKS=()
+  local EXTRA_LDFLAGS=( -lc++ )
+
+  local OBJXDIR=$LLVM_BUILD_DIR/co-objx
+  local OBJFILES=()
+  # rm -rf "$OBJXDIR"
+  mkdir -p "$OBJXDIR"
+  _pushd "$OBJXDIR"
+  local f name
+  for f in "${LIBFILES[@]}"; do
+    name=$(basename "$f")
+    if ! [ -d "$name" -a "$name" -nt "$f" ]; then
+      mkdir "$name"
+      cd "$name"
+      echo "extract $name"
+      $LLVM_DESTDIR/bin/llvm-ar x "$f"
+      cd ..
+    fi
+    OBJFILES+=( $PWD/$name/*.o )
+  done
+  _popd
+  echo "${#OBJFILES[@]} OBJFILES"
+
+  local SYMS_FILE=$WORK_DIR/libco-llvm-bundle.syms
+  cat << _END_ > "$SYMS_FILE"
+# this first explicit symbol acts as a test:
+# if it is not found, building the dylib will fail with an error.
+#_wgpuRenderPassEncoderEndPass
+
+# all symbols with the prefix "wgpu" are made public
+_llvm*
+
+# the rest of the symbols are made local/internal
+_END_
+  # EXTRA_LDFLAGS+=( -exported_symbols_list "$SYMS_FILE" )
+
+  echo "create ${DLIB_FILE##$PWD/}"
+
+  ld64.lld -dylib \
+    -o $DLIB_FILE \
+    --color-diagnostics \
+    --lto-O3 \
+    -install_name "@rpath/$(basename "$DLIB_FILE")" \
+    -current_version "$LIB_VERSION" \
+    -compatibility_version "$LIB_VERSION_COMPAT" \
+    -cache_path_lto "$WORK_DIR/llvm-dylib-lto.cache" \
+    -arch $(uname -m) \
+    -ObjC \
+    -platform_version macos 10.15 10.15 \
+    \
+    -lSystem.B \
+    "${EXTRA_LDFLAGS[@]}" \
+    "${OBJFILES[@]}" \
+    "${MACOS_FRAMEWORKS[@]}"
+}
+
+
+_mk_alib_macos() {
+  local OUTFILE=$LLVM_DESTDIR/lib/libco-llvm-bundle.a
+  local MRIFILE=$WORK_DIR/$(basename "$OUTFILE").mri
+  local LIBFILES=(
+    $("$LLVM_DESTDIR/bin/llvm-config" --link-static --libfiles "${LLVM_COMPONENTS[@]}") \
+    $ZLIB_DESTDIR/lib/libz.a \
+  )
+    # $XC_DESTDIR/lib/liblzma.a \
+    # $OPENSSL_DESTDIR/lib/libcrypto.a \
+    # $XAR_DESTDIR/lib/libxar.a \
+
+  echo "create ${OUTFILE##$PWD/}"
+  # lld (llvm 13) does not yet support prelinking, so we produce an archive instead
+
+  mkdir -p "$(dirname "$MRIFILE")"
+  echo "create $OUTFILE" > "$MRIFILE"
+  for f in "${LIBFILES[@]}"; do
+    echo "addlib $f" >> "$MRIFILE"
+  done
+  echo "save" >> "$MRIFILE"
+  echo "end" >> "$MRIFILE"
+  # cat "$MRIFILE"
+  llvm-ar -M < "$MRIFILE"
+  llvm-ranlib "$OUTFILE"
+}
+
+_mk_lib_bundles() {
+  case "$(uname -s)" in
+    Darwin)
+      _mk_alib_macos
+      _mk_dlib_macos
+      ;;
+    *)
+      _err "lib bundling not implemented for $(uname -s)"
+      ;;
+  esac
+}
+
+
+# fetch or update llvm sources
+SOURCE_CHANGED=false
+if _git_pull_if_needed "$LLVM_GIT_URL" "$LLVM_SRCDIR" "$LLVM_GIT_REV"; then
+  SOURCE_CHANGED=true
+fi
+if $FORCE || $DEPS_CHANGED || $SOURCE_CHANGED ||
+   [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]
+ then
   _llvm_build $LLVM_BUILD_MODE -DLLVM_ENABLE_ASSERTIONS=$LLVM_ENABLE_ASSERTIONS
   _update_myclang
+  _mk_lib_bundles
 
   # # copy clang C headers to lib/clang
   # echo "copy lib sources: llvm/lib/clang/*/include -> lib/clang"
@@ -452,11 +583,11 @@ if $FORCE || $SOURCE_CHANGED || [ ! -f "$LLVM_DESTDIR/lib/libLLVMCore.a" ]; then
   # TODO: this moved to build-libcxx.sh but we may want to separate the source file
   #       copying from the actual build step, so consider breaking build-libcxx.sh apart
   #       into two separate steps ("copy sources" and "build libs".)
+
 else
   REBUILD_ARGS=( "$@" -force )
   _log "$(_relpath "$LLVM_DESTDIR") is up to date. To rebuild: $0 ${REBUILD_ARGS[@]}"
 fi
-
 
 #—— END —————————————————————————————————————————————————————————————————————————————————
 #

@@ -11,7 +11,7 @@ SRCDIR=src
 MAIN_EXE=co
 PP_PREFIX=CO_
 WASM_SYMS=etc/wasm.syms
-WITH_LLVM=true
+WITH_LLVM=
 XFLAGS=( $XFLAGS )
 CFLAGS=( $CFLAGS -fms-extensions -Wno-microsoft )
 CXXFLAGS=()
@@ -31,15 +31,15 @@ while [[ $# -gt 0 ]]; do case "$1" in
   -h|-help|--help) cat << _END
 usage: $0 [options] [--] [<target-or-arg-to-ninja> ...]
 options:
-  -safe      Enable optimizations and safe checks (default)
-  -fast      Enable optimizations without any safe checks
-  -debug     No optimizations, checks and assertions enabled
-  -w         Rebuild as sources change
-  -run=<cmd> Run <cmd> after successful build
-  -config    Just configure, don't build
-  -no-llvm   Disable use of LLVM and features relying on LLVM
-  -v         Verbose; log more details
-  -help      Show help on stdout and exit
+  -safe        Enable optimizations and safe checks (default)
+  -fast        Enable optimizations without any safe checks
+  -debug       No optimizations, checks and assertions enabled
+  -w           Rebuild as sources change
+  -run=<cmd>   Run <cmd> after successful build
+  -config      Just configure, don't build
+  -llvm=<how>  off | static (default) | shared (default for debug)
+  -v           Verbose; log more details
+  -help        Show help on stdout and exit
 _END
     exit ;;
   -safe)    BUILD_MODE=safe; TESTING_ENABLED=false; shift ;;
@@ -49,7 +49,7 @@ _END
   -_w_)     _WATCHED=1; shift ;;
   -run=*)   RUN=${1:5}; shift ;;
   -config)  ONLY_CONFIGURE=true; shift ;;
-  -no-llvm) WITH_LLVM=false; shift ;;
+  -llvm=*)  WITH_LLVM=${1:6}; shift ;;
   -v)       VERBOSE=true; NINJA_ARGS+=(-v); shift ;;
   --) shift; break ;;
   -*) _err "unknown option: $1" ;;
@@ -58,6 +58,13 @@ esac; done
 
 BUILD_DIR=$OUTDIR/$BUILD_MODE
 [ "$BUILD_MODE" = "debug" ] && DEBUG=true
+
+case "$WITH_LLVM" in
+  "") WITH_LLVM=static ; $DEBUG && WITH_LLVM=shared ;;
+  static|shared) ;;  # as is
+  off) WITH_LLVM= ;;
+  *)   _err "invalid value \"$WITH_LLVM\" for -llvm option" ;;
+esac
 
 #————————————————————————————————————————————————————————————————————————————————————————
 # setup environment (select compiler, clear $OUTDIR if compiler changed)
@@ -305,6 +312,15 @@ if $CC_IS_CLANG; then
     -Wno-pragma-once-outside-header \
   )
   [ -t 1 ] && XFLAGS+=( -fcolor-diagnostics )
+  if [ "$(uname -s)" = "Darwin" ]; then
+    # Use lld to avoid incompatible outdated macOS system linker.
+    # If the system linker is outdated, it would fail with an error like this:
+    # "ld: could not parse object file ... Unknown attribute kind ..."
+    LDFLAGS_HOST+=(
+      -fuse-ld="$(dirname "$CC_PATH")/ld64.lld" \
+      -Wl,-platform_version,macos,10.15,10.15 \
+    )
+  fi
 elif $CC_IS_GCC; then
   [ -t 1 ] && XFLAGS+=( -fdiagnostics-color=always )
 fi
@@ -356,34 +372,33 @@ $TESTING_ENABLED &&
   LDFLAGS_WASM+=( -allow-undefined-file "$WASM_SYMS" )
 
 # llvm?
-if $WITH_LLVM; then
-  XFLAGS_HOST+=(
+LLVM_CFLAGS=()
+LLVM_CXXFLAGS=()
+if [ -n "$WITH_LLVM" ]; then
+  LLVM_CFLAGS=(
     -I$DEPSDIR/llvm/include \
-    -I$DEPSDIR/zlib/include \
-    -I$DEPSDIR/openssl/include \
-    -I$DEPSDIR/xc/include \
-    -I$DEPSDIR/libxml2/include \
-    -I$DEPSDIR/xar/include \
+    $($DEPSDIR/llvm/bin/llvm-config --cflags) \
   )
-  CFLAGS_HOST+=(
-    "$($DEPSDIR/llvm/bin/llvm-config --cflags)" \
-  )
-  CXXFLAGS_HOST+=(
+  LLVM_CXXFLAGS=(
+    -I$DEPSDIR/llvm/include \
     -nostdinc++ -I$DEPSDIR/llvm/include/c++/v1 -stdlib=libc++ \
-    "$($DEPSDIR/llvm/bin/llvm-config --cxxflags)" \
+    $($DEPSDIR/llvm/bin/llvm-config --cxxflags) \
   )
   LDFLAGS_HOST+=(
-    -L$DEPSDIR/llvm/lib \
-    -L$DEPSDIR/zlib/lib \
-    -L$DEPSDIR/openssl/lib \
-    -L$DEPSDIR/xc/lib \
-    -L$DEPSDIR/libxml2/lib \
-    -L$DEPSDIR/xar/lib \
-    "$($DEPSDIR/llvm/bin/llvm-config --system-libs)" \
-    "$($DEPSDIR/llvm/bin/llvm-config --link-static --libs)" \
-    "$DEPSDIR/llvm/lib/libc++.a" \
-    "$DEPSDIR/llvm/lib/libc++abi.a" \
+    -lm \
   )
+  if [ "$WITH_LLVM" = shared ]; then
+    LDFLAGS_HOST+=(
+      "-L$DEPSDIR/llvm/lib" -lc++ \
+      "-Wl,-rpath,$DEPSDIR/llvm/lib" \
+      "$DEPSDIR/llvm/lib/libco-llvm-bundle-d.dylib" \
+    )
+  else
+    LDFLAGS_HOST+=(
+      "$DEPSDIR/llvm/lib/libco-llvm-bundle.a" \
+      "$DEPSDIR/llvm/lib/libc++.a" \
+    )
+  fi
 fi
 
 #————————————————————————————————————————————————————————————————————————————————————————
@@ -401,7 +416,7 @@ TEST_SOURCES=()
 HOST_ARCH=$(uname -m)
 for f in $(find "$SRCDIR" -name '*.c' -or -name '*.cc'); do
   case "$f" in
-    *.test.c|*.test.cc)             TEST_SOURCES+=( "$f" ) ;;
+    */test.c|*.test.c|*.test.cc)    TEST_SOURCES+=( "$f" ) ;;
     *.$HOST_ARCH.c|*.$HOST_ARCH.cc) HOST_SOURCES+=( "$f" ) ;;
     *.wasm.c|*.wasm.cc)             WASM_SOURCES+=( "$f" ) ;;
     *)                              COMMON_SOURCES+=( "$f" ) ;;
@@ -431,7 +446,7 @@ fi
 NF=$BUILD_DIR/new-build.ninja     # temporary file
 NINJAFILE=$BUILD_DIR/build.ninja  # actual build file
 NINJA_ARGS+=( -f "$NINJAFILE" )
-LINKER=$CC  #; $WITH_LLVM && LINKER=$CXX
+LINKER=$CC
 
 mkdir -p "$BUILD_DIR/obj"
 
@@ -503,7 +518,7 @@ build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/par
 
 _END
 
-if $WITH_LLVM; then
+if [ -n "$WITH_LLVM" ]; then
   echo "build \$objdir/llvm-includes.pch: cxx_pch_gen src/llvm/llvm-includes.hh" >> $NF
 fi
 
@@ -521,13 +536,18 @@ _gen_obj_build_rules() {
   for SOURCE in "$@"; do
     OBJECT=$(_objfile "$TARGET-$SOURCE")
     case "$SOURCE" in
-      *.c)
+      */llvm/*.c)
+        [ -z "$WITH_LLVM" ] && continue
         echo "build $OBJECT: $CC_RULE $SOURCE" >> $NF
+        echo "  FLAGS = ${LLVM_CFLAGS[@]}" >> $NF
         ;;
       */llvm/*.cc)
-        $WITH_LLVM || continue
+        [ -z "$WITH_LLVM" ] && continue
         echo "build $OBJECT: $CXX_RULE $SOURCE | \$objdir/llvm-includes.pch" >> $NF
-        echo "  FLAGS = -include-pch \$objdir/llvm-includes.pch" >> $NF
+        echo "  FLAGS = -include-pch \$objdir/llvm-includes.pch ${LLVM_CXXFLAGS[@]}" >> $NF
+        ;;
+      *.c)
+        echo "build $OBJECT: $CC_RULE $SOURCE" >> $NF
         ;;
       *.cc)
         echo "build $OBJECT: $CXX_RULE $SOURCE" >> $NF
