@@ -103,26 +103,31 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
 #ifdef CO_SAFE
   #undef CO_SAFE
   #define CO_SAFE 1
+
   #define _safefail(fmt, args...) \
     _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
+
   #define safecheckf(cond, fmt, args...) \
     ( UNLIKELY(!(cond)) ? _safefail(fmt, ##args) : ((void)0) )
+
+  #define safecheck(cond) \
+    (UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
+
   #ifdef DEBUG
-    #define safecheck(cond) \
-      (UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
     #define safecheckexpr(expr, expect) ({                                        \
       __typeof__(expr) val__ = (expr);                                            \
       safecheckf(val__ == expect, "unexpected value (%s != %s)", #expr, #expect); \
       val__; })
+
     #define safenotnull(a) ({                                           \
       __typeof__(a) val__ = (a);                                        \
       UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
       safecheckf(val__ != NULL, "unexpected NULL (%s)", #a);            \
       val__; })
   #else
-    #define safecheck(cond) if UNLIKELY(!(cond)) _safefail("safecheck")
     #define safecheckexpr(expr, expect) ({ \
       __typeof__(expr) val__ = (expr); safecheck(val__ == expect); val__; })
+
     #define safenotnull(a) ({                                           \
       __typeof__(a) val__ = (a);                                        \
       UNUSED const void* valp__ = val__; /* build bug on non-pointer */ \
