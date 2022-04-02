@@ -24,7 +24,7 @@ static void universe_init_scope() {
   static void* g_scope_storage[2048/sizeof(void*)];
   // size = map_bucketsize(kSymMapType, kUniverseScopeLen*2, kFixBufAllocatorOverhead)
 
-  usize memcap = sizeof(g_scope_storage) - MEM_BUFALLOC_OVERHEAD;
+  UNUSED usize memcap = sizeof(g_scope_storage) - MEM_BUFALLOC_OVERHEAD;
   Mem mem = mem_mkalloc_buf(g_scope_storage, sizeof(g_scope_storage));
 
   SymMap* h = symmap_init(&g_scope.bindings, mem, kUniverseScopeLen);
