@@ -1,14 +1,5 @@
-#include "../colib.h"
-#include "../parse/parse.h"
-// #include "../util/rtimer.h"
-// #include "../util/ptrmap.h"
-// #include "../util/stk_array.h"
 #include "llvmimpl.h"
-
-#include <llvm-c/Transforms/AggressiveInstCombine.h>
-#include <llvm-c/Transforms/Scalar.h>
-#include <llvm-c/LLJIT.h>
-#include <llvm-c/OrcEE.h>
+#include "../parse/parse.h"
 
 
 static LLVMTargetRef select_target(const char* triple) {
@@ -74,16 +65,32 @@ static LLVMTargetMachineRef select_target_machine(
 }
 
 
-bool llvm_build_and_emit(BuildCtx* build, const char* triple) {
+// defined in build.c
+error llvm_build_module(BuildCtx* build, LLVMModuleRef mod);
+
+
+error llvm_build_and_emit(BuildCtx* build, const char* triple) {
   dlog("llvm_build_and_emit");
-  bool ok = false;
+  error err;
 
   LLVMContextRef ctx = LLVMContextCreate();
   LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(build->pkg.name, ctx);
 
-  // ...
+  err = llvm_build_module(build, mod);
+  if (err)
+    goto done;
 
+  // TODO:
+  // - select target and emit machine code
+  // - verify, optimize and target-fit module
+  // - emit machine code (object)
+  // - emit machine assembly (for debugging)
+  // - emit LLVM IR bitcode (for debugging)
+  // - emit LLVM IR text code (for debugging)
+  // - link executable (objects -> elf/mach-o/coff)
+
+done:
   LLVMDisposeModule(mod);
   LLVMContextDispose(ctx);
-  return ok;
+  return err;
 }

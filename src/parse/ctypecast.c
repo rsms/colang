@@ -67,8 +67,14 @@ static Expr* cast_from_intlit(C* c, IntLitNode* n, Type* totype1) {
     RETURN_RES(n, CTypecastErrCompat);
   BasicTypeNode* totype = (BasicTypeNode*)totype1;
 
-  assertf(totype->typecode < TC_NUM_END, "%d", totype->typecode);
-  IntvalRange range = intval_range_tab[totype->typecode];
+
+  TypeCode dst_tc = totype->typecode;
+  switch (dst_tc) {
+    case TC_int:  dst_tc = c->build->sint_type; break;
+    case TC_uint: dst_tc = c->build->uint_type; break;
+  }
+  assertf(dst_tc < TC_NUM_END, "%d", dst_tc);
+  IntvalRange range = intval_range_tab[dst_tc];
 
   BasicTypeNode* fromtype = totype;
   if (n->type && n->type != kType_ideal)

@@ -1,6 +1,9 @@
 #pragma once
 #include "../colib.h"
 
+// typedefs instead of included headers since this file may be included in C++ files
+typedef struct BuildCtx BuildCtx;
+
 ASSUME_NONNULL_BEGIN
 
 #ifdef __cplusplus
@@ -172,14 +175,9 @@ typedef enum CoLLVMObjectFormat {
 // CoLLVMVersionTuple represents a version. -1 is used to indicate "not applicable."
 typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMVersionTuple;
 
-// llvm_build_and_emit
-typedef struct BuildCtx BuildCtx;
-EXTERN_C bool llvm_build_and_emit(BuildCtx*, const char* target_triple);
-EXTERN_C int llvm_jit(BuildCtx*);
 
-// llvm_init_targets initializes target info and returns the default target triplet.
-// Safe to call multiple times. (Returns a cached value on subsequent calls.)
-EXTERN_C const char* llvm_init_targets();
+EXTERN_C bool llvm_init(); // false on error
+EXTERN_C const char* llvm_host_triple(); // default target triplet
 
 // llvm_triple_info returns structured information about a target triple
 EXTERN_C void llvm_triple_info(
@@ -204,6 +202,11 @@ EXTERN_C const char* CoLLVMVendor_name(CoLLVMVendor); // canonical name
 EXTERN_C const char* CoLLVMEnvironment_name(CoLLVMEnvironment); // canonical name
 
 
+// llvm_build_and_emit
+EXTERN_C error llvm_build_and_emit(BuildCtx*, const char* target_triple);
+EXTERN_C int llvm_jit(BuildCtx*);
+
+
 // llvm_write_archive creates an archive (like the ar tool) at arhivefile with filesv.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
 EXTERN_C bool llvm_write_archive(
@@ -212,6 +215,7 @@ EXTERN_C bool llvm_write_archive(
   u32          filesc,
   CoLLVMOS     os,
   char**       errmsg);
+
 
 // CoLLDOptions specifies options for an invocation of lld_link
 typedef struct CoLLDOptions {

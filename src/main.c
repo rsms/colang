@@ -8,6 +8,10 @@
   #include "llvm/llvm.h"
 #endif
 
+#define CHECKERR(expr) \
+  ({ error err__ = (expr); \
+     err__ != 0 ? panic(#expr ": %s", error_str(err__)) : ((void)0); })
+
 static char tmpbuf[4096];
 
 
@@ -92,39 +96,34 @@ int main(int argc, const char** argv) {
 
   // setup a build context for the package (can be reused)
   BuildCtx build = {0};
-  if (( err = begin_pkg(&build, "example") ))
-    panic("begin_pkg: %s", error_str(err));
+  CHECKERR( begin_pkg(&build, "example") );
 
   // configure build mode
   build.opt   = OptNone;
   build.safe  = true;
   build.debug = true;
 
-  // add a source file to the logical package
+  // add a source file to the package
   Source src1 = {0};
   const char* filename = argv[1] ? argv[1] : "examples/hello.co";
   if (( err = source_open_file(&src1, filename) ))
-    panic("source_open_data: %s %s", filename, error_str(err));
+    panic("%s: %s", filename, error_str(err));
   b_add_source(&build, &src1);
 
   // // compute and print source checksum
   // source_checksum(&src1);
   // print_src_checksum(&src1);
 
-  // // scan all sources of the package
-  // scan_all(&build);
-
   // parse
-  if (( err = parse_pkg(&build) ))
-    panic("parse_pkg: %s", error_str(err));
+  CHECKERR( parse_pkg(&build) );
   if (build.errcount)
     return 1;
 
   // codegen
   #ifdef WITH_LLVM
-  const char* host_triple = llvm_init_targets();
-  if (( err = llvm_build_and_emit(&build, host_triple) ))
-    panic("llvm_build_and_emit: %s", error_str(err));
+  if (!llvm_init())
+    panic("llvm_init");
+  CHECKERR( llvm_build_and_emit(&build, llvm_host_triple()) );
   #endif
 
   return 0;

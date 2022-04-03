@@ -662,9 +662,11 @@ char* strstr(const char* haystack, const char* needle);
 
 // —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END
-#ifndef __cplusplus
 
 #include "error.h"
+
+#ifndef __cplusplus
+
 #include "debug.h"
 #include "test.h"
 

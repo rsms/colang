@@ -1,12 +1,17 @@
+// Interfaces internal to source files in this directory, not included by outside sources.
+// The llvm.h file contains interfaces "exported" to outside users.
 #pragma once
 
 #include <llvm-c/Core.h>
 #include <llvm-c/Analysis.h>
-#include <llvm-c/Target.h>
 #include <llvm-c/Initialization.h>
+#include <llvm-c/LLJIT.h>
+#include <llvm-c/OrcEE.h>
+#include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
+#include <llvm-c/Transforms/AggressiveInstCombine.h>
+#include <llvm-c/Transforms/Scalar.h>
 
-#include "../colib.h"
 #include "llvm.h"
 
 ASSUME_NONNULL_BEGIN

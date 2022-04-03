@@ -4,17 +4,11 @@
 using namespace llvm;
 
 
-static bool llvm_error_to_errmsg(llvm::Error err, char** errmsg) {
-  assert(err);
-  std::string errstr = toString(std::move(err));
-  *errmsg = LLVMCreateMessage(errstr.c_str());
-  return false;
-}
+static char* g_default_target_triple = "";
 
 
-const char* llvm_init_targets() {
+bool llvm_init() {
   static std::once_flag once;
-  static char* hostTriple;
   std::call_once(once, [](){
     #if 1
       // Initialize ALL targets (this causes a lot of llvm code to be included in this program)
@@ -40,22 +34,35 @@ const char* llvm_init_targets() {
       #undef _
     #endif
 
-    hostTriple = LLVMGetDefaultTargetTriple();
-    // Note: if we ever make this non-static, LLVMDisposeMessage(hostTriple) when done.
+    g_default_target_triple = LLVMGetDefaultTargetTriple();
+    // Note: if we ever make this non-static, LLVMDisposeMessage(str) when done.
   });
-  return hostTriple;
+  return true;
+}
+
+
+const char* llvm_host_triple() {
+  return g_default_target_triple;
+}
+
+
+static bool llvm_error_to_errmsg(llvm::Error err, char** errmsg) {
+  assert(err);
+  std::string errstr = toString(std::move(err));
+  *errmsg = LLVMCreateMessage(errstr.c_str());
+  return false;
 }
 
 
 void llvm_triple_info(
-  const char*         triplestr,
+  const char*         triple_input,
   CoLLVMArch*         arch_type,
   CoLLVMVendor*       vendor_type,
   CoLLVMOS*           os_type,
   CoLLVMEnvironment*  environ_type,
   CoLLVMObjectFormat* oformat)
 {
-  Triple triple(Triple::normalize(triplestr));
+  Triple triple(Triple::normalize(triple_input));
   // Triple triple(hostTriple);
   *arch_type    = (CoLLVMArch)triple.getArch();
   *vendor_type  = (CoLLVMVendor)triple.getVendor();
@@ -63,6 +70,7 @@ void llvm_triple_info(
   *environ_type = (CoLLVMEnvironment)triple.getEnvironment();
   *oformat      = (CoLLVMObjectFormat)triple.getObjectFormat();
 }
+
 
 void llvm_triple_min_version(const char* triple, CoLLVMVersionTuple* r) {
   Triple t(Triple::normalize(triple));

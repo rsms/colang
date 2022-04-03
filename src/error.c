@@ -5,7 +5,7 @@
 #endif
 
 const char* error_str(error e) {
-  switch ((enum error)e) {
+  switch ((enum _co_error)e) {
   #define _(NAME, DESCR) case err_##NAME: return DESCR;
   CO_FOREACH_ERROR(_)
   #undef _

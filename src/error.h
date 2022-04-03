@@ -24,18 +24,20 @@ typedef i32 error;
   _(mfault        , "bad memory address") \
   _(overflow      , "value too large") \
 // end CO_FOREACH_ERROR
+
 enum _co_error_tmp_ { // generate positive values
   #define _(NAME, ...) _err_##NAME,
   CO_FOREACH_ERROR(_)
   #undef _
 };
-enum error { // canonical negative values
+enum _co_error { // canonical negative values
   #define _(NAME, ...) err_##NAME = - _err_##NAME,
   CO_FOREACH_ERROR(_)
   #undef _
-} END_ENUM(error)
+};
+// note: this file is included by llvm/*.cc, so enum names must differ from typedef
 
-error error_from_errno(int errno);
-const char* error_str(error);
+EXTERN_C error error_from_errno(int errno);
+EXTERN_C const char* error_str(error);
 
 END_INTERFACE
