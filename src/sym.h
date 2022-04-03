@@ -95,8 +95,9 @@ inline static void symmap_free(SymMap* m) {
 inline static void** nullable symmap_assign(SymMap* m, Sym key) {
   return (void**)pmap_assign(m, key);
 }
-inline static void** nullable symmap_find(const SymMap* m, Sym key) {
-  return (void**)pmap_find(m, key);
+inline static void* nullable symmap_find(const SymMap* m, Sym key) {
+  uintptr* vp = pmap_find(m, key);
+  return vp ? *(void**)vp : NULL;
 }
 
 //———————————————————————————————————————————————————————————————————————————————————————

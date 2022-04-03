@@ -135,11 +135,9 @@ Node* ScopeLookup(const Scope* nullable scope, Sym s) {
   Node* n = NULL;
   while (scope) {
     //dlog("[lookup] %s in scope %p(len=%zu)", s, scope, map_len(&scope->bindings));
-    void** vp = symmap_find(&scope->bindings, s);
-    if (vp != NULL) {
-      n = *vp;
+    n = symmap_find(&scope->bindings, s);
+    if (n)
       break;
-    }
     scope = scope->parent;
   }
   #ifdef DEBUG_LOOKUP

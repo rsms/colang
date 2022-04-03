@@ -11,7 +11,8 @@ bool llvm_init() {
   static std::once_flag once;
   std::call_once(once, [](){
     #if 1
-      // Initialize ALL targets (this causes a lot of llvm code to be included in this program)
+      // Initialize ALL targets
+      // (this causes a lot of llvm code to be included in this program)
       // Note: lld (liblldCOFF.a) requires all targets
       InitializeAllTargetInfos();
       InitializeAllTargets();

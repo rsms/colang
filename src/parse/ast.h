@@ -115,7 +115,7 @@ struct BlockNode { Expr;
   Expr*     a_storage[5]; // in-struct storage for the first few entries of a
 };
 struct FunNode { Expr;
-  TupleNode* nullable params; // input params (NULL if none)
+  TupleNode* nullable params; // ParamNode[] -- input params (NULL if none)
   Type* nullable      result; // output results (TupleType for multiple results)
   Sym   nullable      name;   // NULL for lambda
   Expr* nullable      body;   // NULL for fun-declaration
