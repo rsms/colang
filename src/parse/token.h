@@ -112,6 +112,9 @@ static_assert(TKeywordsEnd - TKeywordsStart < 32, "too many keywords");
 // TokName returns a printable name for a token (second part in TOKENS definition)
 const char* TokName(Tok);
 
+// tok_is_cmp returns true for all comparison tokens (eg. "==", "<=", ...)
+inline static bool tok_is_cmp(Tok t) { return TEq <= t && t <= TGEq; }
+
 // langtok returns the Tok representing this sym in the language syntax.
 // Either returns a keyword token or TId if sym is not a keyword.
 inline static Tok langtok(Sym s) {

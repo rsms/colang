@@ -97,7 +97,7 @@ enum TypeKind {
 } END_ENUM(TypeKind)
 
 enum TypeFlags {
-  // implicitly includes TF_Kind* (enum TypeKind)
+  // implicitly includes TF_Kind… (enum TypeKind)
 
   // size in bytes
   TF_Size_BITOFFS = TF_Kind_NBIT,

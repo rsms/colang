@@ -5,21 +5,6 @@
 #define DEBUG_BUILD_EXPR
 
 
-#define assert_llvm_type_iskind(llvmtype, expect_typekind) \
-  asserteq(LLVMGetTypeKind(llvmtype), (expect_typekind))
-
-#define assert_llvm_type_isptrkind(llvmtype, expect_typekind) do { \
-  asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind); \
-  asserteq(LLVMGetTypeKind(LLVMGetElementType(llvmtype)), (expect_typekind)); \
-} while(0)
-
-#define assert_llvm_type_isptr(llvmtype) \
-  asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind)
-
-// we check for so many null values in this file that a shorthand increases legibility
-#define notnull assertnotnull_debug
-
-
 // make the code more readable by using short name aliases
 typedef LLVMValueRef      Val;
 typedef LLVMTypeRef       Typ;
@@ -107,6 +92,94 @@ static char kSpaces[256];
 #endif
 
 
+// table mapping signed integer binary operators
+static const u32 kOpTableSInt[T_PRIM_OPS_END] = {
+  // op is LLVMOpcode
+  [TPlus]    = LLVMAdd,    // +
+  [TMinus]   = LLVMSub,    // -
+  [TStar]    = LLVMMul,    // *
+  [TSlash]   = LLVMSDiv,   // /
+  [TPercent] = LLVMSRem,   // %
+  [TShl]     = LLVMShl,    // <<
+  // The shift operators implement arithmetic shifts if the left operand
+  // is a signed integer and logical shifts if it is an unsigned integer.
+  [TShr]     = LLVMAShr,   // >>
+  [TAnd]     = LLVMAnd,    // &
+  [TPipe]    = LLVMOr,     // |
+  [THat]     = LLVMXor,    // ^
+  // op is LLVMIntPredicate
+  [TEq]      = LLVMIntEQ,  // ==
+  [TNEq]     = LLVMIntNE,  // !=
+  [TLt]      = LLVMIntSLT, // <
+  [TLEq]     = LLVMIntSLE, // <=
+  [TGt]      = LLVMIntSGT, // >
+  [TGEq]     = LLVMIntSGE, // >=
+};
+
+// table mapping unsigned integer binary operators
+static const u32 kOpTableUInt[T_PRIM_OPS_END] = {
+  // op is LLVMOpcode
+  [TPlus]    = LLVMAdd,    // +
+  [TMinus]   = LLVMSub,    // -
+  [TStar]    = LLVMMul,    // *
+  [TSlash]   = LLVMUDiv,   // /
+  [TPercent] = LLVMURem,   // %
+  [TShl]     = LLVMShl,    // <<
+  [TShr]     = LLVMLShr,   // >>
+  [TAnd]     = LLVMAnd,    // &
+  [TPipe]    = LLVMOr,     // |
+  [THat]     = LLVMXor,    // ^
+  // op is LLVMIntPredicate
+  [TEq]      = LLVMIntEQ,  // ==
+  [TNEq]     = LLVMIntNE,  // !=
+  [TLt]      = LLVMIntULT, // <
+  [TLEq]     = LLVMIntULE, // <=
+  [TGt]      = LLVMIntUGT, // >
+  [TGEq]     = LLVMIntUGE, // >=
+};
+
+// table mapping floating-point number binary operators
+static const u32 kOpTableFloat[T_PRIM_OPS_END] = {
+  // op is LLVMOpcode
+  [TPlus]    = LLVMFAdd,  // +
+  [TMinus]   = LLVMFSub,  // -
+  [TStar]    = LLVMFMul,  // *
+  [TSlash]   = LLVMFDiv,  // /
+  [TPercent] = LLVMFRem,  // %
+  // op is LLVMRealPredicate
+  [TEq]      = LLVMRealOEQ, // ==
+  [TNEq]     = LLVMRealUNE, // != (true if unordered or not equal)
+  [TLt]      = LLVMRealOLT, // <
+  [TLEq]     = LLVMRealOLE, // <=
+  [TGt]      = LLVMRealOGT, // >
+  [TGEq]     = LLVMRealOGE, // >=
+};
+
+// make sure table values fit the storage type
+static_assert(sizeof(LLVMOpcode) <= sizeof(u32), "");
+static_assert(sizeof(LLVMIntPredicate) <= sizeof(u32), "");
+static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
+
+
+#define assert_llvm_type_iskind(llvmtype, expect_typekind) \
+  asserteq(LLVMGetTypeKind(llvmtype), (expect_typekind))
+
+#define assert_llvm_type_isptrkind(llvmtype, expect_typekind) do { \
+  asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind); \
+  asserteq(LLVMGetTypeKind(LLVMGetElementType(llvmtype)), (expect_typekind)); \
+} while(0)
+
+#define assert_llvm_type_isptr(llvmtype) \
+  asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind)
+
+// we check for so many null values in this file that a shorthand increases legibility
+#define notnull assertnotnull_debug
+
+
+#define FMTNODE(n,bufno) \
+  fmtnode(n, b->build->tmpbuf[bufno], sizeof(b->build->tmpbuf[bufno]))
+
+
 #define CHECKNOMEM(expr) \
   ( UNLIKELY(expr) ? (b_errf(b->build, (PosSpan){0}, "out of memory"), true) : false )
 
@@ -124,11 +197,6 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
     .mod = mod,
     .builder = LLVMCreateBuilderInContext(ctx),
     .prettyIR = true,
-
-    // FPM: Apply per-function optimizations. Set to NULL to disable.
-    // Really only useful for JIT; for assembly to asm, obj or bc we apply module-wide opt.
-    // .FPM = LLVMCreateFunctionPassManagerForModule(mod),
-    .FPM = NULL,
 
     // constants
     // note: no disposal needed of built-in types
@@ -153,6 +221,10 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
   b->t_i32ptr = LLVMPointerType(b->t_i32, 0);
   b->v_i32_0 = LLVMConstInt(b->t_i32, 0, /*signext*/false);
   b->v_int_0 = LLVMConstInt(b->t_int, 0, /*signext*/false);
+
+  // FPM: Apply per-function optimizations. (NULL to disable.)
+  // Really only useful for JIT; for offline compilation we use module-wide passes.
+  //b->FPM = LLVMCreateFunctionPassManagerForModule(mod);
 
   // initialize containers
   if (symmap_init(&b->internedTypes, build->mem, 16) == NULL) {
@@ -210,12 +282,22 @@ inline static Val get_current_fun(B* b) {
 }
 
 
+#define noload_scope() \
+  for (bool prev__ = b->noload, tmp1__ = true; \
+       b->noload = true, tmp1__; \
+       tmp1__ = false, b->noload = prev__)
+
+#define doload_scope() \
+  for (bool prev__ = b->noload, tmp1__ = true; \
+       b->noload = false, tmp1__; \
+       tmp1__ = false, b->noload = prev__)
+
+
 //———————————————————————————————————————————————————————————————————————————————————————
 // begin type functions
 
 
 #if DEBUG
-  __attribute__((used))
   static const char* fmttyp(Typ t) {
     if (!t)
       return "(null)";
@@ -228,6 +310,40 @@ inline static Val get_current_fun(B* b) {
       LLVMDisposeMessage(p[i]);
     p[i] = LLVMPrintTypeToString(t);
     return p[i];
+  }
+
+  static const char* fmtval(Val v) {
+    if (!v)
+      return "(null)";
+    static char* p[5] = {NULL};
+    static u32 index = 0;
+
+    u32 i = index++;
+    if (index == countof(p))
+      index = 0;
+
+    char* s = p[i];
+    if (s)
+      LLVMDisposeMessage(s);
+
+    // avoid printing entire function bodies (just use its type)
+    Typ ty = LLVMTypeOf(v);
+    LLVMTypeKind tk = LLVMGetTypeKind(ty);
+    while (tk == LLVMPointerTypeKind) {
+      ty = LLVMGetElementType(ty);
+      tk = LLVMGetTypeKind(ty);
+    }
+    if (tk == LLVMFunctionTypeKind) {
+      s = LLVMPrintTypeToString(ty);
+    } else {
+      s = LLVMPrintValueToString(v);
+    }
+
+    // trim leading space
+    while (*s == ' ')
+      s++;
+
+    return s;
   }
 #endif
 
@@ -332,8 +448,24 @@ static Typ nullable _get_type(B* b, Type* np) {
 // begin value build functions
 
 
+static Val build_expr(B* b, Expr* n, const char* vname);
+
+inline static Val build_expr_noload(B* b, Expr* n, const char* vname) {
+  bool noload = b->noload; b->noload = true;
+  Val v = build_expr(b, n, vname);
+  b->noload = noload;
+  return v;
+}
+
+inline static Val build_expr_doload(B* b, Expr* n, const char* vname) {
+  bool noload = b->noload; b->noload = false;
+  Val v = build_expr(b, n, vname);
+  b->noload = noload;
+  return v;
+}
+
+
 static Val build_store(B* b, Val dst, Val val) {
-  // really just LLVMBuildStore with assertions enabled in DEBUG builds
   #if DEBUG
   Typ dst_type = LLVMTypeOf(dst);
   asserteq(LLVMGetTypeKind(dst_type), LLVMPointerTypeKind);
@@ -346,9 +478,16 @@ static Val build_store(B* b, Val dst, Val val) {
 }
 
 
-static Val build_expr(B* b, Expr* n, const char* vname) {
-  dlog("TODO");
-  return b->v_int_0;
+static Val build_load(B* b, Typ elem_ty, Val src, const char* vname) {
+  #if DEBUG
+  Typ src_type = LLVMTypeOf(src);
+  asserteq(LLVMGetTypeKind(src_type), LLVMPointerTypeKind);
+  if (elem_ty != LLVMGetElementType(src_type)) {
+    panic("load destination type %s != source type %s",
+      fmttyp(elem_ty), fmttyp(LLVMGetElementType(src_type)));
+  }
+  #endif
+  return LLVMBuildLoad2(b->builder, elem_ty, src, vname);
 }
 
 
@@ -457,6 +596,10 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   }
   b->fnest--;
 
+  // run optimization passes if enabled
+  if (b->FPM)
+    LLVMRunFunctionPassManager(b->FPM, fn);
+
   return fn;
 }
 
@@ -502,8 +645,251 @@ static void build_pkg(B* b, PkgNode* n) {
   }
 }
 
+
+static Val build_nil(B* b, NilNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_boollit(B* b, BoolLitNode* n, const char* vname) {
+  return n->irval = LLVMConstInt(b->t_bool, n->ival, false);
+}
+
+
+static Val build_intlit(B* b, IntLitNode* n, const char* vname) {
+  bool sign_extend = n->type->tflags & TF_Signed;
+  return n->irval = LLVMConstInt(get_type(b, n->type), n->ival, sign_extend);
+}
+
+
+static Val build_floatlit(B* b, FloatLitNode* n, const char* vname) {
+  return n->irval = LLVMConstReal(get_type(b, n->type), n->fval);
+}
+
+
+static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_id(B* b, IdNode* n, const char* vname) {
+  assertnotnull(n->target); // must be resolved
+  return build_expr(b, as_Expr(n->target), n->name);
+}
+
+
+static Val build_binop(B* b, BinOpNode* n, const char* vname) {
+  BasicTypeNode* tn = as_BasicTypeNode(n->type);
+  assert(tn->typecode < TC_NUM_END);
+
+  Val left = build_expr(b, n->left, "");
+  Val right = build_expr(b, n->right, "");
+  assert(LLVMTypeOf(left) == LLVMTypeOf(right));
+
+  u32 op = 0;
+  bool isfloat = false;
+  assert(n->op < T_PRIM_OPS_END);
+  switch (tn->typecode) {
+    case TC_bool:
+      // the boolean type has just two operators defined
+      switch (n->op) {
+        case TEq:  op = LLVMIntEQ; break; // ==
+        case TNEq: op = LLVMIntNE; break; // !=
+      }
+      break;
+    case TC_i8: case TC_i16: case TC_i32: case TC_i64: case TC_int:
+      op = kOpTableSInt[n->op];
+      break;
+    case TC_u8: case TC_u16: case TC_u32: case TC_u64: case TC_uint:
+      op = kOpTableUInt[n->op];
+      break;
+    case TC_f32: case TC_f64:
+      isfloat = true;
+      op = kOpTableFloat[n->op];
+      break;
+    default:
+      break;
+  }
+
+  if UNLIKELY(op == 0) {
+    b_errf(b->build, NodePosSpan(n), "invalid operand type %s", FMTNODE(tn,0));
+    return NULL;
+  }
+
+  if (tok_is_cmp(n->op)) {
+    // See how Go compares values: https://golang.org/ref/spec#Comparison_operators
+    if (isfloat)
+      return LLVMBuildFCmp(b->builder, (LLVMRealPredicate)op, left, right, vname);
+    return LLVMBuildICmp(b->builder, (LLVMIntPredicate)op, left, right, vname);
+  }
+  return LLVMBuildBinOp(b->builder, (LLVMOpcode)op, left, right, vname);
+}
+
+
+static Val build_prefixop(B* b, PrefixOpNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_postfixop(B* b, PostfixOpNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_return(B* b, ReturnNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_const(B* b, ConstNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_var(B* b, VarNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_param(B* b, ParamNode* n, const char* vname) {
+  Val paramval = assertnotnull(n->irval); // note: irval set by build_fun
+  if (NodeIsConst(n) || b->noload)
+    return paramval;
+  assert_llvm_type_isptr(LLVMTypeOf(paramval));
+  Typ elem_type = LLVMGetElementType(LLVMTypeOf(paramval));
+  return build_load(b, elem_type, paramval, vname);
+}
+
+
+static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
+  LocalNode* dstn = as_LocalNode(n->dst);
+  Val dst = build_expr_noload(b, n->dst, dstn->name);
+  Val val = build_expr(b, n->val, "");
+  build_store(b, dst, val);
+  return val;
+}
+
+
+static Val build_assign_tuple(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_assign_index(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_assign_selector(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_assign(B* b, AssignNode* n, const char* vname) {
+  switch (assertnotnull(n->dst)->kind) {
+    case NLocal_BEG ... NLocal_END: return build_assign_local(b, n, vname);
+    case NTuple:                    return build_assign_tuple(b, n, vname);
+    case NIndex:                    return build_assign_index(b, n, vname);
+    case NSelector:                 return build_assign_selector(b, n, vname);
+  }
+  assertf(0,"invalid assignment destination %s", nodename(n->dst));
+  return NULL;
+}
+
+
+static Val build_tuple(B* b, TupleNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_array(B* b, ArrayNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_block(B* b, BlockNode* n, const char* vname) {
+  assertf(n->a.len > 0, "empty block");
+  u32 i = 0;
+  for (; i < n->a.len - 1; i++)
+     build_expr(b, n->a.v[i], "");
+  // last expr of block is its value
+  return build_expr(b, n->a.v[i], "");
+}
+
+
+static Val build_macro(B* b, MacroNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_call(B* b, CallNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_ref(B* b, RefNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_namedarg(B* b, NamedArgNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_selector(B* b, SelectorNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_index(B* b, IndexNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_slice(B* b, SliceNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+static Val build_if(B* b, IfNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_expr(B* b, Expr* np, const char* vname) {
+  switch ((enum NodeKind)np->kind) { case NBad: {
+  NCASE(Nil)        return build_nil(b, n, vname);
+  NCASE(BoolLit)    return build_boollit(b, n, vname);
+  NCASE(IntLit)     return build_intlit(b, n, vname);
+  NCASE(FloatLit)   return build_floatlit(b, n, vname);
+  NCASE(StrLit)     return build_strlit(b, n, vname);
+  NCASE(Id)         return build_id(b, n, vname);
+  NCASE(BinOp)      return build_binop(b, n, vname);
+  NCASE(PrefixOp)   return build_prefixop(b, n, vname);
+  NCASE(PostfixOp)  return build_postfixop(b, n, vname);
+  NCASE(Return)     return build_return(b, n, vname);
+  NCASE(Assign)     return build_assign(b, n, vname);
+  NCASE(Tuple)      return build_tuple(b, n, vname);
+  NCASE(Array)      return build_array(b, n, vname);
+  NCASE(Block)      return build_block(b, n, vname);
+  NCASE(Fun)        return build_fun(b, n, vname);
+  NCASE(Macro)      return build_macro(b, n, vname);
+  NCASE(Call)       return build_call(b, n, vname);
+  NCASE(TypeCast)   return build_typecast(b, n, vname);
+  NCASE(Const)      return build_const(b, n, vname);
+  NCASE(Var)        return build_var(b, n, vname);
+  NCASE(Param)      return build_param(b, n, vname);
+  NCASE(MacroParam) return build_macroparam(b, n, vname);
+  NCASE(Ref)        return build_ref(b, n, vname);
+  NCASE(NamedArg)   return build_namedarg(b, n, vname);
+  NCASE(Selector)   return build_selector(b, n, vname);
+  NCASE(Index)      return build_index(b, n, vname);
+  NCASE(Slice)      return build_slice(b, n, vname);
+  NCASE(If)         return build_if(b, n, vname);
+  NDEFAULTCASE      break;
+  }}
+  assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
+  return NULL;
+}
+
+
 // end build functions
 //———————————————————————————————————————————————————————————————————————————————————————
+
 
 error llvm_build_module(BuildCtx* build, LLVMModuleRef mod) {
   // initialize builder
