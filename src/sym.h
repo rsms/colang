@@ -83,17 +83,20 @@ static u8 symflags(Sym);
 
 typedef HMap SymMap;
 
-inline static SymMap* nullable symmap_init(SymMap* h, Mem mem, usize hint) {
-  return (SymMap*)pmap_init(h, mem, hint, MAPLF_2);
+inline static SymMap* nullable symmap_init(SymMap* m, Mem mem, usize hint) {
+  return (SymMap*)pmap_init(m, mem, hint, MAPLF_2);
 }
-inline static void** nullable symmap_assign(SymMap* h, Sym key) {
-  return (void**)pmap_assign(h, key);
+inline static void symmap_clear(SymMap* m) {
+  hmap_clear(m);
 }
-inline static void** nullable symmap_find(const SymMap* h, Sym key) {
-  return (void**)pmap_find(h, key);
+inline static void symmap_free(SymMap* m) {
+  hmap_dispose(m);
 }
-inline static void symmap_free(SymMap* h) {
-  hmap_dispose(h);
+inline static void** nullable symmap_assign(SymMap* m, Sym key) {
+  return (void**)pmap_assign(m, key);
+}
+inline static void** nullable symmap_find(const SymMap* m, Sym key) {
+  return (void**)pmap_find(m, key);
 }
 
 //———————————————————————————————————————————————————————————————————————————————————————

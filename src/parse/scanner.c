@@ -245,7 +245,7 @@ static void snameuni(Scanner* s) {
     }
   }
   s->tokend = s->inp;
-  s->name = symget(s->build->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
+  s->name = symget(&s->build->syms, (const char*)s->tokstart, s->tokend - s->tokstart);
   s->tok = langtok(s->name); // TId or a T* keyword
 }
 
@@ -262,7 +262,7 @@ static void sname(Scanner* s) {
 
   s->tokend = s->inp;
   usize len = (usize)(uintptr)(s->tokend - s->tokstart);
-  s->name = symget(s->build->syms, (const char*)s->tokstart, len);
+  s->name = symget(&s->build->syms, (const char*)s->tokstart, len);
   s->tok = langtok(s->name); // TId or a T* keyword
 }
 

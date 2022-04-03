@@ -120,7 +120,7 @@ enum rflag {
 typedef struct R {
   BuildCtx* build;
   rflag     flags;
-  Scope*    lookupscope; // scope to look up undefined symbols in
+  Scope*    lookupscope; // for looking up undefined symbols (initially build->pkg.scope)
 
   // typecontext is the "expected" type, if any.
   // E.g. the type of a var while resolving its rvalue.
@@ -821,10 +821,10 @@ static Node* _resolve(R* r, Node* n) {
 }
 
 
-Node* resolve_ast(BuildCtx* build, Scope* lookupscope, Node* n) {
+Node* resolve_ast(BuildCtx* build, Node* n) {
   R r = {
     .build = build,
-    .lookupscope = lookupscope,
+    .lookupscope = build->pkg.scope,
   };
   array_init(&r.funstack, r.funstack_storage, sizeof(r.funstack_storage));
 

@@ -12,7 +12,6 @@ typedef struct Parser Parser;     // parser state (includes Scanner)
 struct Parser {
   Scanner; // parser is based on a scanner
 
-  Scope* pkgscope; // package-level scope
   u32    fnest;    // function nesting level
   error  err;      // !0 if a fatal error occurred (e.g. memory allocation failed)
 
@@ -54,7 +53,7 @@ static_assert(offsetof(Parser,build) == offsetof(Scanner,build),
 
 // parse_cunit parses a translation unit, producing AST at *result.
 // Expects p to be zero-initialized on first call. Can reuse p after return.
-error parse_tu(Parser* p, BuildCtx*, Source*, ParseFlags, Scope* pkgscope, FileNode** result)
+error parse_tu(Parser* p, BuildCtx*, Source*, ParseFlags, FileNode** result)
   WARN_UNUSED_RESULT;
 
 

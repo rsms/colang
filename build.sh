@@ -375,6 +375,7 @@ $TESTING_ENABLED &&
 LLVM_CFLAGS=()
 LLVM_CXXFLAGS=()
 if [ -n "$WITH_LLVM" ]; then
+  XFLAGS+=( -DWITH_LLVM )
   LLVM_CFLAGS=(
     -I$DEPSDIR/llvm/include \
     $($DEPSDIR/llvm/bin/llvm-config --cflags) \

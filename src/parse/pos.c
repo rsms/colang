@@ -9,10 +9,6 @@ void posmap_init(PosMap* pm) {
   pm->a.len++;
 }
 
-void posmap_dispose(PosMap* pm) {
-  array_free(&pm->a);
-}
-
 u32 posmap_origin(PosMap* pm, Source* source) {
   assert(source != NULL);
   for (u32 i = 0; i < pm->a.len; i++) {

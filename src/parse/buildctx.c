@@ -6,28 +6,51 @@
   #include <stdio.h> // vsnprintf
 #endif
 
-void BuildCtxInit(
-  BuildCtx*             ctx,
+error BuildCtxInit(
+  BuildCtx*             build,
   Mem                   mem,
-  SymPool*              syms,
   const char*           pkgid,
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
   assert(strlen(pkgid) > 0);
-  memset(ctx, 0, sizeof(BuildCtx));
-  ctx->mem       = mem;
-  ctx->safe      = true;
-  ctx->syms      = syms;
-  ctx->pkgid     = symget(syms, pkgid, strlen(pkgid));
-  ctx->diagh     = diagh;
-  ctx->userdata  = userdata;
-  ctx->diaglevel = DiagMAX;
-  ctx->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
-  ctx->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  array_init(&ctx->diagarray, NULL, 0);
-  symmap_init(&ctx->types, mem, 1);
-  posmap_init(&ctx->posmap);
+  bool recycle = build->pkg.a.v != NULL;
+
+  build->opt       = OptNone;
+  build->safe      = true;
+  build->debug     = false;
+  build->mem       = mem;
+  build->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
+  build->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
+  build->srclist   = NULL;
+  build->diagh     = diagh;
+  build->userdata  = userdata;
+  build->diaglevel = DiagMAX;
+  build->errcount  = 0;
+
+  if (recycle) {
+    symmap_clear(&build->types);
+    array_clear(&build->diagarray);
+    posmap_clear(&build->posmap);
+    array_clear(&build->pkg.a);
+    // note: leaving build->syms as-is
+  } else {
+    if UNLIKELY(symmap_init(&build->types, mem, 1) == NULL)
+      return err_nomem;
+    sympool_init(&build->syms, universe_syms(), mem, NULL);
+    array_init(&build->diagarray, NULL, 0);
+    posmap_init(&build->posmap);
+    NodeInit(as_Node(&build->pkg), NPkg);
+  }
+
+  if (!ScopeInit(&build->pkgscope, mem, universe_scope()))
+    return err_nomem;
+
+  build->pkgid     = symget(&build->syms, pkgid, strlen(pkgid)); // note: panics on nomem
+  build->pkg.name  = build->pkgid;
+  build->pkg.scope = &build->pkgscope;
+
+  return 0;
 }
 
 void BuildCtxDispose(BuildCtx* ctx) {
@@ -190,7 +213,8 @@ Sym b_typeid_assign(BuildCtx* b, Type* t) {
   char buf[128];
   usize len = typeid_make(buf, sizeof(buf), t);
   if (LIKELY( len < sizeof(buf) ))
-    return t->tid = symget(b->syms, buf, len);
+    return t->tid = symget(&b->syms, buf, len);
+
   // didn't fit in stack buffer; resort to heap allocation
   len++;
   char* s = mem_alloc(b->mem, len);
@@ -199,10 +223,11 @@ Sym b_typeid_assign(BuildCtx* b, Type* t) {
     return kSym__;
   }
   len = typeid_make(s, len, t);
-  t->tid = symget(b->syms, s, len);
+  t->tid = symget(&b->syms, s, len);
   mem_free(b->mem, s, len);
   return t->tid;
 }
+
 
 bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
   // invariant: x != y

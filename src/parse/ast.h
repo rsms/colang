@@ -440,6 +440,7 @@ bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl);
 // --------------------------------------------------------------------------------------
 
 Scope* nullable ScopeNew(Mem mem, const Scope* nullable parent);
+bool ScopeInit(Scope*, Mem mem, const Scope* nullable parent);
 void ScopeFree(Scope*, Mem mem);
 Node* nullable ScopeLookup(const Scope* nullable, Sym);
 

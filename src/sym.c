@@ -102,6 +102,7 @@ static Sym symaddh(SymPool* p, const char* data, u32 len, u32 hash) {
 
   // allocate a new Sym
   SymHeader* hp = (SymHeader*)mem_alloc(p->mem, sizeof(SymHeader) + (usize)len + 1);
+  if UNLIKELY(!hp) panic("[sympool] out of memory");
   hp->hash = hash;
   hp->len = SYM_MAKELEN(len, /*flags*/ 0);
   char* sp = &hp->p[0];

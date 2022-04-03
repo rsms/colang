@@ -6,10 +6,8 @@
 #pragma once
 BEGIN_INTERFACE
 
-// T* resolve_ast(BuildCtx*, Scope* lookupscope, T* n)
-// lookupscope is the outer scope to use for looking up unresolved identifiers.
-Node* resolve_ast(BuildCtx*, Scope* lookupscope, Node* n);
-#define resolve_ast(b, s, n) ( (__typeof__(n)) resolve_ast((b), (s), as_Node(n)) )
+Node* resolve_ast(BuildCtx* b, Node* n);
+#define resolve_ast(b, n) ( (__typeof__(n)) resolve_ast((b), as_Node(n)) )
 
 // resolve_id resolves an identifier by setting id->target and id->type=TypeOfNode(target).
 //

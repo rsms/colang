@@ -1,5 +1,5 @@
 #include "llvm-includes.hh"
-#include "llvm.h"
+#include "llvmimpl.h"
 
 using namespace llvm;
 

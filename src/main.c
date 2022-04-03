@@ -4,6 +4,10 @@
 #include "colib.h"
 #include "parse/parse.h"
 
+#ifdef WITH_LLVM
+  #include "llvm/llvm.h"
+#endif
+
 static char tmpbuf[4096];
 
 
@@ -34,6 +38,39 @@ static void on_diag(Diagnostic* d, void* userdata) {
   str_free(&str);
 }
 
+
+static error begin_pkg(BuildCtx* build, const char* pkgid) {
+  return BuildCtxInit(build, mem_ctx(), pkgid, on_diag, NULL);
+}
+
+
+static error parse_pkg(BuildCtx* build) {
+  Parser p = {0};
+  Str str = str_make(tmpbuf, sizeof(tmpbuf)); // for debug logging
+  for (Source* src = build->srclist; src != NULL; src = src->next) {
+    auto t = logtime_start("parse");
+    FileNode* filenode;
+    error err = parse_tu(&p, build, src, 0, &filenode);
+    if (err)
+      return err;
+    logtime_end(t);
+    str.len = 0;
+    fmtast(filenode, &str, 0);
+    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", str.v);
+
+    t = logtime_start("resolve");
+    filenode = resolve_ast(build, filenode);
+    logtime_end(t);
+    str.len = 0;
+    fmtast(filenode, &str, 0);
+    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n", str.v);
+
+    array_push(&build->pkg.a, as_Node(filenode));
+  }
+  return 0;
+}
+
+
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
@@ -51,23 +88,22 @@ int main(int argc, const char** argv) {
   #endif
   mem_ctx_set(mem);
 
-  // TODO: simplify this by maybe making syms & pkg fields of BuildCtx, instead of
-  // separately allocated data.
+  error err;
 
-  // create a symbol pool to hold all known symbols (keywords and identifiers)
-  SymPool syms = {0};
-  sympool_init(&syms, universe_syms(), mem, NULL);
-
-  // create a build context
+  // setup a build context for the package (can be reused)
   BuildCtx build = {0};
-  const char* pkgid = "foo";
-  BuildCtxInit(&build, mem, &syms, pkgid, on_diag, NULL);
+  if (( err = begin_pkg(&build, "example") ))
+    panic("begin_pkg: %s", error_str(err));
+
+  // configure build mode
+  build.opt   = OptNone;
+  build.safe  = true;
+  build.debug = true;
 
   // add a source file to the logical package
   Source src1 = {0};
   const char* filename = argv[1] ? argv[1] : "examples/hello.co";
-  error err = source_open_file(&src1, filename);
-  if (err)
+  if (( err = source_open_file(&src1, filename) ))
     panic("source_open_data: %s %s", filename, error_str(err));
   b_add_source(&build, &src1);
 
@@ -79,27 +115,17 @@ int main(int argc, const char** argv) {
   // scan_all(&build);
 
   // parse
-  Parser p = {0};
-  Str str = str_make(tmpbuf, sizeof(tmpbuf));
-  auto pkgscope = ScopeNew(mem, universe_scope());
-  for (Source* src = build.srclist; src != NULL; src = src->next) {
-    auto t = logtime_start("parse");
-    FileNode* result;
-    error err = parse_tu(&p, &build, src, 0, pkgscope, &result);
-    if (err)
-      panic("parse_tu: %s", error_str(err));
-    logtime_end(t);
-    str.len = 0;
-    fmtast(result, &str, 0);
-    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", str.v);
+  if (( err = parse_pkg(&build) ))
+    panic("parse_pkg: %s", error_str(err));
+  if (build.errcount)
+    return 1;
 
-    t = logtime_start("resolve");
-    result = resolve_ast(&build, pkgscope, result);
-    logtime_end(t);
-    str.len = 0;
-    fmtast(result, &str, 0);
-    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n", str.v);
-  }
+  // codegen
+  #ifdef WITH_LLVM
+  const char* host_triple = llvm_init_targets();
+  if (( err = llvm_build_and_emit(&build, host_triple) ))
+    panic("llvm_build_and_emit: %s", error_str(err));
+  #endif
 
   return 0;
 }

@@ -41,18 +41,21 @@ struct BuildCtx {
   OptLevel opt;       // optimization level
   bool     debug;     // include debug information
   bool     safe;      // enable boundary checks and memory ref checks
+  Mem      mem;       // memory allocator
+
+  SymMap   types; // interned types
   TypeCode sint_type; // concrete type of "int"
   TypeCode uint_type; // concrete type of "uint"
 
-  Mem             mem;       // memory allocator
-  SymPool*        syms;      // symbol pool
+  SymPool         syms;      // symbol pool
   DiagnosticArray diagarray; // all diagnostic messages produced. Stored in mem.
   PosMap          posmap;    // maps Source <-> Pos
-  Sym             pkgid;     // e.g. "bar/cat"
-  Source*         srclist;   // list of sources (linked via Source.next)
 
-  // interned types
-  SymMap types;
+  PkgNode pkg;
+  Sym     pkgid;     // e.g. "bar/cat"
+  Scope   pkgscope;
+
+  Source* nullable srclist; // list of sources (linked via Source.next)
 
   // diagnostics
   DiagHandler* nullable diagh;     // diagnostics handler
@@ -64,14 +67,10 @@ struct BuildCtx {
   char tmpbuf[2][256];
 };
 
-// BuildCtxInit initializes a BuildCtx structure
-void BuildCtxInit(BuildCtx*,
-  Mem                   mem,
-  SymPool*              syms,
-  const char*           pkgid,
-  DiagHandler* nullable diagh,
-  void* nullable        userdata // passed along to diagh
-);
+// BuildCtxInit initializes a BuildCtx structure.
+// userdata is passed along to DiagHandler.
+error BuildCtxInit(
+  BuildCtx*, Mem, const char* pkgid, DiagHandler* nullable, void* nullable userdata);
 
 // BuildCtxDispose frees up internal resources.
 // BuildCtx can be reused with BuildCtxInit after this call.

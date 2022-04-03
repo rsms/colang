@@ -1,11 +1,4 @@
 #pragma once
-
-#include <llvm-c/Core.h>
-#include <llvm-c/Analysis.h>
-#include <llvm-c/Target.h>
-#include <llvm-c/Initialization.h>
-#include <llvm-c/TargetMachine.h>
-
 #include "../colib.h"
 
 ASSUME_NONNULL_BEGIN
@@ -179,13 +172,13 @@ typedef enum CoLLVMObjectFormat {
 // CoLLVMVersionTuple represents a version. -1 is used to indicate "not applicable."
 typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMVersionTuple;
 
-// // llvm_build_and_emit
-// typedef struct Node Node;
-// EXTERN_C bool llvm_build_and_emit(Build* build, Node* pkgnode, const char* triple);
-// EXTERN_C int llvm_jit(Build* build, Node* pkgnode);
+// llvm_build_and_emit
+typedef struct BuildCtx BuildCtx;
+EXTERN_C bool llvm_build_and_emit(BuildCtx*, const char* target_triple);
+EXTERN_C int llvm_jit(BuildCtx*);
 
 // llvm_init_targets initializes target info and returns the default target triplet.
-// Safe to call multiple times. Just returns a cached value on subsequent calls.
+// Safe to call multiple times. (Returns a cached value on subsequent calls.)
 EXTERN_C const char* llvm_init_targets();
 
 // llvm_triple_info returns structured information about a target triple
@@ -210,30 +203,6 @@ EXTERN_C const char* CoLLVMArch_name(CoLLVMArch); // canonical name
 EXTERN_C const char* CoLLVMVendor_name(CoLLVMVendor); // canonical name
 EXTERN_C const char* CoLLVMEnvironment_name(CoLLVMEnvironment); // canonical name
 
-// llvm_optmod applies module-wide optimizations.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-EXTERN_C bool llvm_optmod(
-  LLVMModuleRef        mod,
-  LLVMTargetMachineRef targetm,
-  int                  optlevel,
-  bool                 enable_tsan,
-  bool                 enable_lto,
-  char**               errmsg);
-
-// llvm_emit_bc writes LLVM IR (text) code to filename.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-static bool llvm_emit_ir(LLVMModuleRef, const char* filename, char** errmsg);
-
-// llvm_emit_bc writes LLVM bitcode to filename.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-EXTERN_C bool llvm_emit_bc(LLVMModuleRef, const char* filename, char** errmsg);
-
-// llvm_emit_mc applies module-wide optimizations (unless CoBuildDebug) and emits machine-specific
-// code to asm_outfile and/or bin_outfile.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-static bool llvm_emit_mc(
-  LLVMModuleRef, LLVMTargetMachineRef, LLVMCodeGenFileType,
-  const char* filename, char** errmsg);
 
 // llvm_write_archive creates an archive (like the ar tool) at arhivefile with filesv.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
@@ -266,24 +235,5 @@ EXTERN_C bool lld_link(CoLLDOptions* options, char** errmsg);
 // EXTERN_C void  jit_dispose(CoJIT*);
 
 
-// --------------------------------------------------------------------------------------
-// implementations
-
-inline static bool llvm_emit_ir(LLVMModuleRef M, const char* filename, char** errmsg) {
-  return LLVMPrintModuleToFile(M, filename, errmsg) == 0;
-}
-
-inline static bool llvm_emit_mc(
-  LLVMModuleRef        M,
-  LLVMTargetMachineRef T,
-  LLVMCodeGenFileType  FT,
-  const char*          filename,
-  char**               errmsg)
-{
-  // Note: Filename argument to LLVMTargetMachineEmitToFile is incorrectly typed as mutable
-  // "char*" in llvm-c/TargetMachine.h. It's really "const char*" as is evident by looking at
-  // the implementation in llvm/lib/Target/TargetMachineC.cpp.
-  return LLVMTargetMachineEmitToFile(T, M, (char*)filename, FT, errmsg) == 0;
-}
 
 ASSUME_NONNULL_END

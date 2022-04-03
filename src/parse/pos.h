@@ -26,7 +26,8 @@ struct PosSpan {
 #define NoPos ((Pos)0)
 
 void posmap_init(PosMap* pm);
-void posmap_dispose(PosMap* pm);
+static void posmap_clear(PosMap* pm);
+static void posmap_dispose(PosMap* pm);
 
 // posmap_origin retrieves the origin for source, allocating one if needed.
 // See pos_source for the inverse function.
@@ -141,6 +142,14 @@ inline static bool pos_isknown(Pos p) {
 }
 inline static Source* nullable pos_source(const PosMap* pm, Pos p) {
   return (Source*)pm->a.v[pos_origin(p)];
+}
+
+inline static void posmap_clear(PosMap* pm) {
+  array_clear(&pm->a);
+}
+
+inline static void posmap_dispose(PosMap* pm) {
+  array_free(&pm->a);
 }
 
 

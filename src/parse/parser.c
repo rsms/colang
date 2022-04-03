@@ -438,9 +438,9 @@ inline static void scopestackPush(Parser* p, Sym key, Node* value) {
 static Node* nullable lookupsymPkg(Parser* p, Sym key) {
   // look in the package's scope (including universe)
   #ifdef DEBUG_LOOKUPSYM
-    dlog("lookup %s fallback to pkgscope", key);
+    dlog("lookup %s fallback to pkg.scope", key);
   #endif
-  Node* n = (Node*)ScopeLookup(p->pkgscope, key);
+  Node* n = (Node*)ScopeLookup(p->build->pkg.scope, key);
   if (n) {
     if (NodeIsUnused(n)) // must check to avoid editing universe
       NodeClearUnused(n);
@@ -521,10 +521,10 @@ static void _defsym(Parser* p, Sym s, Node* n) {
   p->scopestack.len += 2;
 
   if (p->scopestack.base == 0) {
-    // top level definition -- add to pkgscope.
+    // top level definition -- add to pkg.scope.
     // TODO: For imports, make sure to add to file scope instead of package scope
-    //       Lazily create: p->file->array.scope=ScopeNew(p->pkgscope, p->build->mem);
-    p->err = ScopeAssign(p->pkgscope, s, n, p->build->mem);
+    //       Lazily create: p->file->array.scope=ScopeNew(p->pkg.scope, p->build->mem);
+    p->err = ScopeAssign(p->build->pkg.scope, s, n, p->build->mem);
   }
 }
 
@@ -2299,9 +2299,7 @@ static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
 #endif
 
 
-error parse_tu(
-  Parser* p, BuildCtx* b, Source* src, ParseFlags fl, Scope* pkgscope, FileNode** result)
-{
+error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags fl, FileNode** result) {
   // clear result now so that we don't have to in error branches
   *result = NULL;
 
@@ -2311,7 +2309,6 @@ error parse_tu(
 
   // initialize parser state
   p->build = b;
-  p->pkgscope = pkgscope;
   p->fnest = 0;
   p->is_explicit_ctxtype = false;
 

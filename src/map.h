@@ -65,6 +65,9 @@ bool hmap_itnext(HMap* m, void* ep);
 static const void* nullable hmap_citstart(const HMap* m);
 static bool hmap_citnext(const HMap* m, const void* ep);
 
+// hmap_isvalid returns true if m has been initialized
+static bool hmap_isvalid(const HMap* m);
+
 enum HMapLF {
   MAPLF_1 = 1, // grow when 50% full; recommended for maps w/ balanced hit & miss lookups
   MAPLF_2 = 2, // grow when 75% full; recommended for maps of mostly hit lookups
@@ -93,6 +96,9 @@ inline static const void* nullable hmap_citstart(const HMap* m) {
 inline static bool hmap_citnext(const HMap* m, const void* ep) {
   return hmap_itnext((HMap*)m, (void*)ep);
 }
+static bool hmap_isvalid(const HMap* m) {
+  return m->entries != NULL;
+}
 
 inline static bool smap_del(HMap* m, StrSlice key) {
   return hmap_del(m, &key, hash_mem(key.p, key.len, m->hash0));
@@ -100,5 +106,6 @@ inline static bool smap_del(HMap* m, StrSlice key) {
 inline static bool pmap_del(HMap* m, const void* key) {
   return hmap_del(m, &key, hash_ptr(&key, m->hash0));
 }
+
 
 END_INTERFACE
