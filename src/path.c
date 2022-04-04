@@ -30,6 +30,40 @@ const char* path_cwdrel(const char* path) {
 }
 
 
+usize path_dir(const char* restrict filename, char* restrict buf, usize bufcap) {
+  usize len = strlen(filename);
+  isize i = slastindexof(filename, len, PATH_SEPARATOR);
+
+  if (i < 1)
+    goto nodir;
+  len = (usize)i;
+
+  // remove extra trailing "/"
+  if (filename[len - 1] == PATH_SEPARATOR) {
+    len = strim_end(filename, len, PATH_SEPARATOR);
+    if (len < 1)
+      goto nodir;
+  }
+
+  if LIKELY(bufcap > len) {
+    memcpy(buf, filename, len);
+    buf[len] = 0;
+  } else if (bufcap) {
+    buf[0] = 0;
+  }
+  return len;
+
+nodir:
+  if LIKELY(bufcap > 1) {
+    buf[0] = i == 0 ? '/' : '.';
+    buf[1] = 0;
+  } else if (bufcap) {
+    buf[0] = 0;
+  }
+  return 1;
+}
+
+
 const char* path_base(const char* path) {
   if (path[0] == 0)
     return path;
