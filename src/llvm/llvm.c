@@ -2,81 +2,124 @@
 #include "../parse/parse.h"
 
 
-static LLVMTargetRef select_target(const char* triple) {
-  // select target
+static error select_target(const char* triple, LLVMTargetRef* targetp) {
   char* errmsg;
-  LLVMTargetRef target;
-  if (LLVMGetTargetFromTriple(triple, &target, &errmsg) != 0) {
-    // error
-    errlog("LLVMGetTargetFromTriple: %s", errmsg);
+  if (LLVMGetTargetFromTriple(triple, targetp, &errmsg) != 0) {
+    dlog("LLVMGetTargetFromTriple: %s", errmsg);
     LLVMDisposeMessage(errmsg);
-    target = NULL;
-  } else {
-    #if DEBUG
+    return err_invalid;
+  }
+
+  #if DEBUG
+    LLVMTargetRef target = *targetp;
     const char* name = LLVMGetTargetName(target);
     const char* description = LLVMGetTargetDescription(target);
     const char* jit = LLVMTargetHasJIT(target) ? " jit" : "";
     const char* mc = LLVMTargetHasTargetMachine(target) ? " mc" : "";
     const char* asmx = LLVMTargetHasAsmBackend(target) ? " asm" : "";
     dlog("selected target: %s (%s) [abilities:%s%s%s]", name, description, jit, mc, asmx);
-    #endif
-  }
-  return target;
+  #endif
+
+  return 0;
 }
 
 
-static LLVMTargetMachineRef select_target_machine(
-  LLVMTargetRef       target,
-  const char*         triple,
-  LLVMCodeGenOptLevel optLevel,
-  LLVMCodeModel       codeModel)
+// select_target_machine is like -mtune
+static error select_target_machine(
+  LLVMTargetRef         target,
+  const char*           triple,
+  LLVMCodeGenOptLevel   optLevel,
+  LLVMCodeModel         codeModel,
+  LLVMTargetMachineRef* resultp)
 {
-  if (!target)
-    return NULL;
-
+  // select host CPU and features (NOT PORTABLE!) when optimizing
   const char* CPU = "";      // "" for generic
   const char* features = ""; // "" for none
-
-  // select host CPU and features (NOT PORTABLE!) when optimizing
-  char* hostCPUName = NULL;
-  char* hostFeatures = NULL;
-  if (optLevel != LLVMCodeGenLevelNone) {
+  char* hostCPUName = NULL; // needs LLVMDisposeMessage
+  char* hostFeatures = NULL; // needs LLVMDisposeMessage
+  if (optLevel != LLVMCodeGenLevelNone && strcmp(triple, llvm_host_triple())) {
     hostCPUName = LLVMGetHostCPUName();
     hostFeatures = LLVMGetHostCPUFeatures();
     CPU = hostCPUName;
     features = hostFeatures;
   }
 
-  LLVMTargetMachineRef targetMachine = LLVMCreateTargetMachine(
+  LLVMTargetMachineRef tm = LLVMCreateTargetMachine(
     target, triple, CPU, features, optLevel, LLVMRelocStatic, codeModel);
-  if (!targetMachine) {
-    errlog("LLVMCreateTargetMachine failed");
-    return NULL;
-  } else {
-    char* triple1 = LLVMGetTargetMachineTriple(targetMachine);
-    dlog("selected target machine: %s", triple1);
-    LLVMDisposeMessage(triple1);
+  if (!tm) {
+    dlog("LLVMCreateTargetMachine failed");
+    return err_not_supported;
   }
+
   if (hostCPUName) {
     LLVMDisposeMessage(hostCPUName);
     LLVMDisposeMessage(hostFeatures);
   }
-  return targetMachine;
+
+  *resultp = tm;
+  return 0;
 }
 
 
-// defined in build.c
-error llvm_build_module(BuildCtx* build, LLVMModuleRef mod);
+CoLLVMModule nullable llvm_module_create(BuildCtx* build, const char* name) {
+  LLVMContextRef ctx = LLVMContextCreate();
+  return (CoLLVMModule)LLVMModuleCreateWithNameInContext(name, ctx);
+}
 
 
-error llvm_build_and_emit(BuildCtx* build, const char* triple) {
-  dlog("llvm_build_and_emit");
+void llvm_module_free(CoLLVMModule m) {
+  LLVMModuleRef mod = (LLVMModuleRef)m;
+  LLVMContextRef ctx = LLVMGetModuleContext(mod);
+  LLVMDisposeModule(mod);
+  LLVMContextDispose(ctx);
+}
+
+
+error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple) {
+  LLVMTargetRef target;
+  error err = select_target(triple, &target);
+  if (err)
+    return err;
+
+  LLVMCodeGenOptLevel optLevel;
+  LLVMCodeModel codeModel = LLVMCodeModelDefault;
+  switch ((enum OptLevel)build->opt) {
+    case OptNone:
+      optLevel = LLVMCodeGenLevelNone;
+      break;
+    case OptSpeed:
+      optLevel = LLVMCodeGenLevelAggressive;
+      break;
+    case OptSize:
+      optLevel = LLVMCodeGenLevelDefault;
+      codeModel = LLVMCodeModelSmall;
+      break;
+  }
+  LLVMTargetMachineRef targetm;
+  err = select_target_machine(target, triple, optLevel, codeModel, &targetm);
+  if (err)
+    return err;
+
+  LLVMModuleRef mod = (LLVMModuleRef)m;
+  LLVMSetTarget(mod, triple);
+  LLVMTargetDataRef dataLayout = LLVMCreateTargetDataLayout(targetm);
+  LLVMSetModuleDataLayout(mod, assertnotnull(dataLayout));
+
+  return 0;
+}
+
+
+error llvm_build(BuildCtx* build, const char* triple) {
+  dlog("llvm_build");
   error err;
 
-  LLVMContextRef ctx = LLVMContextCreate();
-  LLVMModuleRef mod = LLVMModuleCreateWithNameInContext(build->pkg.name, ctx);
+  CoLLVMModule m = llvm_module_create(build, build->pkg.name);
 
-  err = llvm_build_module(build, mod);
+  err = llvm_module_set_target(build, m, triple);
+  if (err)
+    goto done;
+
+  err = llvm_module_build(build, m);
   if (err)
     goto done;
 
@@ -90,7 +133,6 @@ error llvm_build_and_emit(BuildCtx* build, const char* triple) {
   // - link executable (objects -> elf/mach-o/coff)
 
 done:
-  LLVMDisposeModule(mod);
-  LLVMContextDispose(ctx);
+  llvm_module_free(m);
   return err;
 }

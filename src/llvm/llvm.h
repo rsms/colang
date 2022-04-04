@@ -172,6 +172,8 @@ typedef enum CoLLVMObjectFormat {
   CoLLVMObjectFormat_XCOFF,
 } CoLLVMObjectFormat;
 
+typedef struct CoLLVMModule_* CoLLVMModule; // LLVMModuleRef
+
 // CoLLVMVersionTuple represents a version. -1 is used to indicate "not applicable."
 typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMVersionTuple;
 
@@ -202,8 +204,12 @@ EXTERN_C const char* CoLLVMVendor_name(CoLLVMVendor); // canonical name
 EXTERN_C const char* CoLLVMEnvironment_name(CoLLVMEnvironment); // canonical name
 
 
-// llvm_build_and_emit
-EXTERN_C error llvm_build_and_emit(BuildCtx*, const char* target_triple);
+EXTERN_C CoLLVMModule nullable llvm_module_create(BuildCtx* build, const char* name);
+void llvm_module_free(CoLLVMModule m);
+EXTERN_C error llvm_module_build(BuildCtx* build, CoLLVMModule m);
+
+// llvm_build
+EXTERN_C error llvm_build(BuildCtx*, const char* target_triple);
 EXTERN_C int llvm_jit(BuildCtx*);
 
 

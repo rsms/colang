@@ -7,54 +7,62 @@
 #endif
 
 error BuildCtxInit(
-  BuildCtx*             build,
+  BuildCtx*             b,
   Mem                   mem,
   const char*           pkgid,
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
   assert(strlen(pkgid) > 0);
-  bool recycle = build->pkg.a.v != NULL;
+  bool recycle = b->pkg.a.v != NULL;
 
-  build->opt       = OptNone;
-  build->safe      = true;
-  build->debug     = false;
-  build->mem       = mem;
-  build->sint_type = sizeof(long) > 4 ? TC_i64 : TC_i32; // default to host size
-  build->uint_type = sizeof(long) > 4 ? TC_u64 : TC_u32;
-  build->srclist   = NULL;
-  build->diagh     = diagh;
-  build->userdata  = userdata;
-  build->diaglevel = DiagMAX;
-  build->errcount  = 0;
+  b->opt       = OptNone;
+  b->safe      = true;
+  b->debug     = false;
+  b->mem       = mem;
+  b->srclist   = NULL;
+  b->diagh     = diagh;
+  b->userdata  = userdata;
+  b->diaglevel = DiagMAX;
+  b->errcount  = 0;
+
+  Type* si;
+  Type* ui;
+  if (sizeof(long) <= 1)       { si = kType_i8;   ui = kType_u8; }
+  else if (sizeof(long) == 2)  { si = kType_i16;  ui = kType_u16; }
+  else if (sizeof(long) <= 4)  { si = kType_i32;  ui = kType_u32; }
+  else if (sizeof(long) <= 8)  { si = kType_i64;  ui = kType_u64; }
+  else if (sizeof(long) <= 16) { si = kType_i128; ui = kType_u128; }
+  b->sint_type = as_BasicTypeNode(si);
+  b->uint_type = as_BasicTypeNode(ui);
 
   if (recycle) {
-    symmap_clear(&build->types);
-    array_clear(&build->diagarray);
-    posmap_clear(&build->posmap);
-    array_clear(&build->pkg.a);
-    // note: leaving build->syms as-is
-    for (NodeSlab* s = &build->nodeslab_head; s; s = s->next) {
+    symmap_clear(&b->types);
+    array_clear(&b->diagarray);
+    posmap_clear(&b->posmap);
+    array_clear(&b->pkg.a);
+    // note: leaving b->syms as-is
+    for (NodeSlab* s = &b->nodeslab_head; s; s = s->next) {
       s->len = 0;
       memset(s->data, 0, sizeof(s->data));
     }
   } else {
-    if UNLIKELY(symmap_init(&build->types, mem, 1) == NULL)
+    if UNLIKELY(symmap_init(&b->types, mem, 1) == NULL)
       return err_nomem;
-    sympool_init(&build->syms, universe_syms(), mem, NULL);
-    array_init(&build->diagarray, NULL, 0);
-    posmap_init(&build->posmap);
-    NodeInit(as_Node(&build->pkg), NPkg);
+    sympool_init(&b->syms, universe_syms(), mem, NULL);
+    array_init(&b->diagarray, NULL, 0);
+    posmap_init(&b->posmap);
+    NodeInit(as_Node(&b->pkg), NPkg);
   }
 
-  if (!ScopeInit(&build->pkgscope, mem, universe_scope()))
+  if (!ScopeInit(&b->pkgscope, mem, universe_scope()))
     return err_nomem;
 
-  build->pkgid     = symget(&build->syms, pkgid, strlen(pkgid)); // note: panics on nomem
-  build->pkg.name  = build->pkgid;
-  build->pkg.scope = &build->pkgscope;
+  b->pkgid     = symget(&b->syms, pkgid, strlen(pkgid)); // note: panics on nomem
+  b->pkg.name  = b->pkgid;
+  b->pkg.scope = &b->pkgscope;
 
-  build->nodeslab_curr = &build->nodeslab_head;
+  b->nodeslab_curr = &b->nodeslab_head;
 
   return 0;
 }

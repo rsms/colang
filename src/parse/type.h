@@ -22,16 +22,19 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 // basic: housed in NBasicType, named & exported in the global scope
 #define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                   */\
   _( bool      , 'b' , TF_KindBool )                                                       \
-  _( i8        , 'c' , TF_KindInt | TF_Size1 | TF_Signed )                                 \
-  _( u8        , 'B' , TF_KindInt | TF_Size1 )                                             \
-  _( i16       , 's' , TF_KindInt | TF_Size2 | TF_Signed )                                 \
-  _( u16       , 'S' , TF_KindInt | TF_Size2 )                                             \
-  _( i32       , 'w' , TF_KindInt | TF_Size4 | TF_Signed )                                 \
-  _( u32       , 'W' , TF_KindInt | TF_Size4 )                                             \
-  _( i64       , 'd' , TF_KindInt | TF_Size8 | TF_Signed )                                 \
-  _( u64       , 'D' , TF_KindInt | TF_Size8 )                                             \
-  _( f32       , 'f' , TF_KindF32 | TF_Size4 | TF_Signed )                                 \
-  _( f64       , 'F' , TF_KindF64 | TF_Size8 | TF_Signed )                                 \
+  _( i8        , 'c' , TF_KindInt  | TF_Size1 | TF_Signed )                                 \
+  _( u8        , 'B' , TF_KindInt  | TF_Size1 )                                             \
+  _( i16       , 's' , TF_KindInt  | TF_Size2 | TF_Signed )                                 \
+  _( u16       , 'S' , TF_KindInt  | TF_Size2 )                                             \
+  _( i32       , 'w' , TF_KindInt  | TF_Size4 | TF_Signed )                                 \
+  _( u32       , 'W' , TF_KindInt  | TF_Size4 )                                             \
+  _( i64       , 'd' , TF_KindInt  | TF_Size8 | TF_Signed )                                 \
+  _( u64       , 'D' , TF_KindInt  | TF_Size8 )                                             \
+  _( i128      , 'e' , TF_KindInt  | TF_Size16 | TF_Signed )                                 \
+  _( u128      , 'E' , TF_KindInt  | TF_Size16 )                                             \
+  _( f32       , 'f' , TF_KindF32  | TF_Size4  | TF_Signed )                                 \
+  _( f64       , 'F' , TF_KindF64  | TF_Size8  | TF_Signed )                                 \
+  _( f128      , 'F' , TF_KindF128 | TF_Size16 | TF_Signed )                                 \
   _( int       , 'i' , TF_KindInt            | TF_Signed )                                 \
   _( uint      , 'u' , TF_KindInt )                                                        \
 // end DEF_TYPE_CODES_BASIC_PUB
@@ -71,10 +74,11 @@ enum TypeCode {
   TC_END
 } END_ENUM(TypeCode)
 // order of intrinsic integer types must be signed,unsigned,signed,unsigned...
-static_assert(TC_i8+1  == TC_u8,  "integer order incorrect");
-static_assert(TC_i16+1 == TC_u16, "integer order incorrect");
-static_assert(TC_i32+1 == TC_u32, "integer order incorrect");
-static_assert(TC_i64+1 == TC_u64, "integer order incorrect");
+static_assert(TC_i8+1   == TC_u8,   "integer order incorrect");
+static_assert(TC_i16+1  == TC_u16,  "integer order incorrect");
+static_assert(TC_i32+1  == TC_u32,  "integer order incorrect");
+static_assert(TC_i64+1  == TC_u64,  "integer order incorrect");
+static_assert(TC_i128+1 == TC_u128, "integer order incorrect");
 // must be less than 32 basic (numeric) types
 static_assert(TC_BASIC_END <= 32, "there must be no more than 32 basic types");
 
@@ -86,6 +90,7 @@ enum TypeKind {
   TF_KindF16,     // 16 bit floating point type
   TF_KindF32,     // 32 bit floating point type
   TF_KindF64,     // 64 bit floating point type
+  TF_KindF128,    // 128 bit floating point type
   TF_KindFunc,    // Functions
   TF_KindStruct,  // Structures
   TF_KindArray,   // Arrays

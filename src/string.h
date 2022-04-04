@@ -43,26 +43,27 @@ typedef Array(char) Str;
 
 // functions provided by array implementation (str_* is a thin veneer on array_*)
 static Str  str_make(char* nullable storage, usize storagesize);
-static void str_init(Str* a, char* nullable storage, usize storagesize);
-static void str_clear(Str* a);
-static void str_free(Str* a);
-static char str_at(Str* a, u32 index);
-static char str_at_safe(Str* a, u32 index);
-static bool str_push(Str* a, char c);
+static void str_init(Str*, char* nullable storage, usize storagesize);
+static void str_clear(Str*);
+static void str_free(Str*);
+static char str_at(Str*, u32 index);
+static char str_at_safe(Str*, u32 index);
+static bool str_push(Str*, char c);
 #define     str_appendc str_push
-static bool str_append(Str* a, const char* src, u32 len);
-static void str_remove(Str* a, u32 start, u32 len);
-static void str_move(Str* a, u32 dst, u32 start, u32 end);
-static bool str_reserve(Str* a, u32 addl);
-static bool str_fill(Str* a, u32 start, const char c, u32 len);
-static bool str_splice(Str* a, u32 start, u32 rmlen, u32 addlen, const char* nullable addv);
+static bool str_append(Str*, const char* src, u32 len);
+static void str_remove(Str*, u32 start, u32 len);
+static void str_move(Str*, u32 dst, u32 start, u32 end);
+static bool str_reserve(Str*, u32 addl);
+static bool str_fill(Str*, u32 start, const char c, u32 len);
+static bool str_splice(Str*, u32 start, u32 rmlen, u32 addlen, const char* nullable addv);
 
 // extended functions (not provided by array implementation; implemented in this file)
 bool str_appendfmt(Str*, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
 bool str_appendfmtv(Str*, const char* fmt, va_list);
 static bool str_appendcstr(Str*, const char* cstr);
 bool str_appendfill(Str*, char c, u32 len); // like memset
-bool str_appendrepr(Str*, const void* p, usize size);
+bool str_appendrepr(Str*, const void* p, usize len); // e.g. "hello\nworld\0"
+bool str_appendreprhex(Str*, const void* p, usize len); // e.g. "68656c6c6f0a776f726c6400"
 bool str_appendu32(Str*, u32 value, u32 base);
 bool str_appendu64(Str*, u32 value, u32 base);
 bool str_appendf64(Str*, f64 value, int ndecimals);

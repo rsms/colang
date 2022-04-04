@@ -124,8 +124,8 @@ static Expr* nullable _eval_binop_int(
   TypeCode tc = t->typecode;
 tc_switch:
   switch (tc) {
-    case TC_int:  tc = e.b->sint_type; goto tc_switch;
-    case TC_uint: tc = e.b->uint_type; goto tc_switch;
+    case TC_int:  tc = e.b->sint_type->typecode; goto tc_switch;
+    case TC_uint: tc = e.b->uint_type->typecode; goto tc_switch;
     #define EACH(T) \
       case TC_##T: ok = _eval_binop_##T(op->op, (T*)&x, (T)right->ival); break;
     INTEGER_TYPES(EACH)
@@ -147,8 +147,8 @@ static Expr* nullable _eval_prefixop_int(E e, PrefixOpNode* op, IntLitNode* val)
   TypeCode tc = t->typecode;
 tc_switch:
   switch (tc) {
-    case TC_int:  tc = e.b->sint_type; goto tc_switch;
-    case TC_uint: tc = e.b->uint_type; goto tc_switch;
+    case TC_int:  tc = e.b->sint_type->typecode; goto tc_switch;
+    case TC_uint: tc = e.b->uint_type->typecode; goto tc_switch;
     #define EACH(T) \
       case TC_##T: ok = _eval_prefixop_##T(op->op, (T*)&x); break;
     INTEGER_TYPES(EACH)

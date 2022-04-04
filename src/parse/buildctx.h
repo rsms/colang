@@ -50,9 +50,9 @@ struct BuildCtx {
   bool     safe;      // enable boundary checks and memory ref checks
   Mem      mem;       // memory allocator
 
-  SymMap   types; // interned types
-  TypeCode sint_type; // concrete type of "int"
-  TypeCode uint_type; // concrete type of "uint"
+  SymMap         types;     // interned types
+  BasicTypeNode* sint_type; // concrete type of "int"
+  BasicTypeNode* uint_type; // concrete type of "uint"
 
   SymPool         syms;      // symbol pool
   DiagnosticArray diagarray; // all diagnostic messages produced. Stored in mem.

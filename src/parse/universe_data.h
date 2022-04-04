@@ -12,6 +12,7 @@ Type* kType_type = (Type*)&_kType_type;
 static const Node _kNode_bad = {.kind=NBad};
 Node* kNode_bad = (Node*)&_kNode_bad;
 
+
 //-- BEGIN gen_constants()
 
 const Sym kSym_as = &"\x19\xDB\x2E\xA0\x02\x00\x00\x08""as\0"[8];
@@ -43,8 +44,11 @@ const Sym kSym_i32 = &"\x77\x0C\xAC\xA3\x03\x00\x00\x00""i32\0"[8];
 const Sym kSym_u32 = &"\xEB\x5A\x7F\x99\x03\x00\x00\x00""u32\0"[8];
 const Sym kSym_i64 = &"\x9F\x90\x38\x42\x03\x00\x00\x00""i64\0"[8];
 const Sym kSym_u64 = &"\x21\x47\xF0\xA8\x03\x00\x00\x00""u64\0"[8];
+const Sym kSym_i128 = &"\xB7\x37\x75\x93\x04\x00\x00\x00""i128\0"[8];
+const Sym kSym_u128 = &"\x21\x17\x03\x97\x04\x00\x00\x00""u128\0"[8];
 const Sym kSym_f32 = &"\xB7\x18\x6E\xF2\x03\x00\x00\x00""f32\0"[8];
 const Sym kSym_f64 = &"\x47\xEA\x4B\xB7\x03\x00\x00\x00""f64\0"[8];
+const Sym kSym_f128 = &"\x0C\x9A\x7D\x99\x04\x00\x00\x00""f128\0"[8];
 const Sym kSym_int = &"\xD9\xD4\xAC\x6A\x03\x00\x00\x00""int\0"[8];
 const Sym kSym_uint = &"\x60\x48\xFD\x9C\x04\x00\x00\x00""uint\0"[8];
 const Sym kSym_ideal = &"\x3C\x78\xBD\x6C\x05\x00\x00\x00""ideal\0"[8];
@@ -61,40 +65,46 @@ const Sym kSym_w = &"\x04\xC6\x24\xFC\x01\x00\x00\x00""w\0"[8];
 const Sym kSym_W = &"\x1F\xDB\x11\x23\x01\x00\x00\x00""W\0"[8];
 const Sym kSym_d = &"\xA5\x13\x61\xEC\x01\x00\x00\x00""d\0"[8];
 const Sym kSym_D = &"\x6A\x8C\xF1\x6B\x01\x00\x00\x00""D\0"[8];
+const Sym kSym_e = &"\x97\xC2\x56\xEC\x01\x00\x00\x00""e\0"[8];
+const Sym kSym_E = &"\x8C\x85\x62\x7F\x01\x00\x00\x00""E\0"[8];
 const Sym kSym_f = &"\x2A\x42\xC1\x5E\x01\x00\x00\x00""f\0"[8];
 const Sym kSym_F = &"\xA4\xF4\xCC\x17\x01\x00\x00\x00""F\0"[8];
 const Sym kSym_i = &"\x09\x8C\x6F\xBF\x01\x00\x00\x00""i\0"[8];
 const Sym kSym_u = &"\x2E\x0F\xF1\x26\x01\x00\x00\x00""u\0"[8];
 const Sym kSym_0 = &"\x81\xEF\x0D\xE6\x01\x00\x00\x00""0\0"[8];
-const Sym kSym_$2A = &"\xC3\x15\x5C\x91\x01\x00\x00\x00""*\0"[8];
-const Sym kSym_$22 = &"\x2E\x7F\x10\xD9\x01\x00\x00\x00""\"\0"[8];
+const Sym kSym_$2a = &"\xC3\x15\x5C\x91\x01\x00\x00\x00""*\0"[8];
+const Sym kSym_$22 = &"\x2E\x7F\x10\xD9\x01\x00\x00\x00""*\0"[8];
 const Sym kSym_a = &"\x3E\xF6\x16\x1D\x01\x00\x00\x00""a\0"[8];
 
 static SymRBNode n_i8 = { kSym_i8, false, NULL, NULL };
 static SymRBNode n_F = { kSym_F, true, NULL, NULL };
 static SymRBNode n_a = { kSym_a, false, &n_F, NULL };
-static SymRBNode n_auto = { kSym_auto, true, &n_i8, &n_a, };
+static SymRBNode n_auto = { kSym_auto, false, &n_i8, &n_a, };
 static SymRBNode n_W = { kSym_W, false, NULL, NULL };
-static SymRBNode n_defer = { kSym_defer, false, &n_auto, &n_W, };
 static SymRBNode n_u = { kSym_u, true, NULL, NULL };
 static SymRBNode n_u16 = { kSym_u16, false, &n_u, NULL };
+static SymRBNode n_str = { kSym_str, true, &n_W, &n_u16, };
 static SymRBNode n_continue = { kSym_continue, false, NULL, NULL };
-static SymRBNode n_i64 = { kSym_i64, false, &n_u16, &n_continue, };
-static SymRBNode n_str = { kSym_str, true, &n_defer, &n_i64, };
+static SymRBNode n_i64 = { kSym_i64, false, &n_str, &n_continue, };
+static SymRBNode n_defer = { kSym_defer, true, &n_auto, &n_i64, };
 static SymRBNode n_b = { kSym_b, true, NULL, NULL };
 static SymRBNode n_u8 = { kSym_u8, false, &n_b, NULL };
 static SymRBNode n_f = { kSym_f, true, NULL, NULL };
 static SymRBNode n_int = { kSym_int, true, NULL, NULL };
 static SymRBNode n_true = { kSym_true, false, &n_f, &n_int, };
 static SymRBNode n_const = { kSym_const, false, &n_u8, &n_true, };
+static SymRBNode n_if = { kSym_if, false, &n_defer, &n_const, };
 static SymRBNode n_D = { kSym_D, false, NULL, NULL };
 static SymRBNode n_fun = { kSym_fun, true, NULL, NULL };
-static SymRBNode n_$2A = { kSym_$2A, false, &n_fun, NULL };
-static SymRBNode n_ideal = { kSym_ideal, true, &n_D, &n_$2A, };
-static SymRBNode n_uint = { kSym_uint, false, NULL, NULL };
-static SymRBNode n_u32 = { kSym_u32, false, &n_ideal, &n_uint, };
-static SymRBNode n_switch = { kSym_switch, true, &n_const, &n_u32, };
-static SymRBNode n_if = { kSym_if, false, &n_str, &n_switch, };
+static SymRBNode n_$2a = { kSym_$2a, true, NULL, NULL };
+static SymRBNode n_E = { kSym_E, false, &n_fun, &n_$2a, };
+static SymRBNode n_ideal = { kSym_ideal, false, &n_D, &n_E, };
+static SymRBNode n_u128 = { kSym_u128, false, NULL, NULL };
+static SymRBNode n_u32 = { kSym_u32, true, NULL, NULL };
+static SymRBNode n_uint = { kSym_uint, false, &n_u32, NULL };
+static SymRBNode n_f128 = { kSym_f128, false, &n_u128, &n_uint, };
+static SymRBNode n_i128 = { kSym_i128, false, &n_ideal, &n_f128, };
+static SymRBNode n_switch = { kSym_switch, false, &n_if, &n_i128, };
 static SymRBNode n_bool = { kSym_bool, true, NULL, NULL };
 static SymRBNode n_c = { kSym_c, true, NULL, NULL };
 static SymRBNode n_i32 = { kSym_i32, false, &n_bool, &n_c, };
@@ -113,20 +123,21 @@ static SymRBNode n_s = { kSym_s, false, &n_struct, &n_$22, };
 static SymRBNode n_nil = { kSym_nil, false, NULL, NULL };
 static SymRBNode n_var = { kSym_var, false, &n_s, &n_nil, };
 static SymRBNode n_else = { kSym_else, false, &n_in, &n_var, };
-static SymRBNode n_as = { kSym_as, true, &n_if, &n_else, };
 static SymRBNode n_return = { kSym_return, true, NULL, NULL };
 static SymRBNode n_0 = { kSym_0, false, &n_return, NULL };
 static SymRBNode n_mut = { kSym_mut, true, NULL, NULL };
-static SymRBNode n_d = { kSym_d, false, &n_mut, NULL };
-static SymRBNode n_type = { kSym_type, false, &n_0, &n_d, };
+static SymRBNode n_d = { kSym_d, true, NULL, NULL };
+static SymRBNode n_e = { kSym_e, false, &n_mut, &n_d, };
+static SymRBNode n_type = { kSym_type, false, &n_0, &n_e, };
 static SymRBNode n_false = { kSym_false, false, NULL, NULL };
 static SymRBNode n_import = { kSym_import, true, NULL, NULL };
 static SymRBNode n_w = { kSym_w, false, &n_import, NULL };
 static SymRBNode n_B = { kSym_B, false, &n_false, &n_w, };
 static SymRBNode n_f32 = { kSym_f32, false, &n_type, &n_B, };
-static SymRBNode n_break = { kSym_break, false, &n_as, &n_f32, };
+static SymRBNode n_break = { kSym_break, false, &n_else, &n_f32, };
+static SymRBNode n_as = { kSym_as, false, &n_switch, &n_break, };
 
-static SymRBNode* _symroot = &n_break;
+static SymRBNode* _symroot = &n_as;
 
 #define _(NAME, TID, TFLAGS) \
   {.kind=NBasicType, .tflags=TFLAGS, .tid=TID, TC_##NAME, kSym_##NAME}
@@ -139,12 +150,15 @@ static const BasicTypeNode _kType_i32 = _(i32, kSym_w, TF_KindInt | TF_Size4 | T
 static const BasicTypeNode _kType_u32 = _(u32, kSym_W, TF_KindInt | TF_Size4);
 static const BasicTypeNode _kType_i64 = _(i64, kSym_d, TF_KindInt | TF_Size8 | TF_Signed);
 static const BasicTypeNode _kType_u64 = _(u64, kSym_D, TF_KindInt | TF_Size8);
+static const BasicTypeNode _kType_i128 = _(i128, kSym_e, TF_KindInt | TF_Size16 | TF_Signed);
+static const BasicTypeNode _kType_u128 = _(u128, kSym_E, TF_KindInt | TF_Size16);
 static const BasicTypeNode _kType_f32 = _(f32, kSym_f, TF_KindF32 | TF_Size4 | TF_Signed);
 static const BasicTypeNode _kType_f64 = _(f64, kSym_F, TF_KindF64 | TF_Size8 | TF_Signed);
+static const BasicTypeNode _kType_f128 = _(f128, kSym_F, TF_KindF128 | TF_Size16 | TF_Signed);
 static const BasicTypeNode _kType_int = _(int, kSym_i, TF_KindInt | TF_Signed);
 static const BasicTypeNode _kType_uint = _(uint, kSym_u, TF_KindInt);
 static const BasicTypeNode _kType_nil = _(nil, kSym_0, TF_KindVoid);
-static const BasicTypeNode _kType_ideal = _(ideal, kSym_$2A, TF_KindVoid);
+static const BasicTypeNode _kType_ideal = _(ideal, kSym_$2a, TF_KindVoid);
 static const BasicTypeNode _kType_str = _(str, kSym_$22, TF_KindPointer);
 static const BasicTypeNode _kType_auto = _(auto, kSym_a, TF_KindVoid);
 #undef _
@@ -157,8 +171,11 @@ Type* kType_i32 = (Type*)&_kType_i32;
 Type* kType_u32 = (Type*)&_kType_u32;
 Type* kType_i64 = (Type*)&_kType_i64;
 Type* kType_u64 = (Type*)&_kType_u64;
+Type* kType_i128 = (Type*)&_kType_i128;
+Type* kType_u128 = (Type*)&_kType_u128;
 Type* kType_f32 = (Type*)&_kType_f32;
 Type* kType_f64 = (Type*)&_kType_f64;
+Type* kType_f128 = (Type*)&_kType_f128;
 Type* kType_int = (Type*)&_kType_int;
 Type* kType_uint = (Type*)&_kType_uint;
 Type* kType_nil = (Type*)&_kType_nil;
@@ -178,10 +195,10 @@ Expr* kExpr_false = (Expr*)&_kExpr_false;
 
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
-  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:f32 tc:f64 tc:int tc:uint tc:nil tc:ideal tc:str tc:auto sym:_ const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
+  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:nil tc:ideal tc:str tc:auto sym:_ const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
 #endif
 
-#define kUniverseScopeLen 19
+#define kUniverseScopeLen 22
 
 //-- END gen_constants()
 
@@ -235,15 +252,16 @@ __attribute__((used)) static const char* const debugSymCheck =
 // red-black tree implementation used for interning
 // RBKEY must match that in sym.c
 #define RBKEY      Sym
-#define RBUSERDATA Mem _Nonnull
+#define RBUSERDATA Mem
 #include "../rbtree.h"
 
 
 static RBNode* RBAllocNode(Mem mem) {
-  return (RBNode*)memalloct(mem, RBNode);
+  return (RBNode*)mem_alloct(mem, RBNode);
 }
 
 static void RBFreeNode(RBNode* node, Mem mem) {
+  mem_free(mem, node, sizeof(RBNode));
 }
 
 static int RBCmp(Sym a, Sym b, Mem mem) {
@@ -277,116 +295,110 @@ static const char* cidentc(char c) {
   buf[0] = c;
   buf[1] = 0;
   if (!is_cident_nth(c))
-    snprintf(buf, sizeof(buf), "$%02X", c);
+    snprintf(buf, sizeof(buf), "$%02x", c);
   return buf;
 }
 
-static Str str_append_cident1(Str s, const char* name, u32 len) {
-  s = str_makeroom(s, len*2);
+static void str_append_cident1(Str* s, const char* name, u32 len) {
+  str_reserve(s, len*2);
   for (u32 i = 0; i < len; i++) {
     char c = name[i];
     if (is_cident_nth(c)) {
-      s = str_appendc(s, c);
+      str_appendc(s, c);
     } else {
-      s = str_appendc(s, '$');
-      s = str_appendhex(s, (const u8*)&c, 1);
+      str_appendc(s, '$');
+      str_appendreprhex(s, (const u8*)&c, 1);
     }
   }
-  return s;
 }
 
-static Str str_append_cident(Str s, const char* name) {
+static void str_append_cident(Str* s, const char* name) {
   u32 len = strlen(name);
   for (u32 i = 0; i < len; i++) {
     if (!is_cident_nth(name[i]))
       return str_append_cident1(s, name, len);
   }
-  s = str_appendn(s, name, len);
-  return s;
+  str_append(s, name, len);
 }
 
 
-inline static Str fmt_rbnodes(const RBNode* n, Str s) {
+inline static void fmt_rbnodes(const RBNode* n, Str* s) {
   // descent first
-  if (n->left) {
-    s = fmt_rbnodes(n->left, s);
-  }
-  if (n->right) {
-    s = fmt_rbnodes(n->right, s);
-  }
+  if (n->left)
+    fmt_rbnodes(n->left, s);
+  if (n->right)
+    fmt_rbnodes(n->right, s);
 
-  s = str_appendcstr(s, "static SymRBNode n_");
-  s = str_append_cident(s, n->key);
-  s = str_appendcstr(s, " = { ");
+  str_appendcstr(s, "static SymRBNode n_");
+  str_append_cident(s, n->key);
+  str_appendcstr(s, " = { ");
 
   // { key, isred, left, right }
 
-  s = str_append(s, "kSym_");
-  s = str_append_cident(s, n->key);
-  s = str_append(s, ", ");
+  str_appendcstr(s, "kSym_");
+  str_append_cident(s, n->key);
+  str_appendcstr(s, ", ");
 
-  s = str_appendcstr(s, n->isred ? "true, " : "false, ");
+  str_appendcstr(s, n->isred ? "true, " : "false, ");
   if (n->left) {
-    s = str_append(s, "&n_");
-    s = str_append_cident(s, n->left->key);
-    s = str_append(s, ", ");
+    str_appendcstr(s, "&n_");
+    str_append_cident(s, n->left->key);
+    str_appendcstr(s, ", ");
   } else {
-    s = str_appendcstr(s, "NULL, ");
+    str_appendcstr(s, "NULL, ");
   }
   if (n->right) {
-    s = str_append(s, "&n_");
-    s = str_append_cident(s, n->right->key);
-    s = str_append(s, ", ");
+    str_appendcstr(s, "&n_");
+    str_append_cident(s, n->right->key);
+    str_appendcstr(s, ", ");
   } else {
-    s = str_appendcstr(s, "NULL ");
+    str_appendcstr(s, "NULL ");
   }
-  s = str_appendcstr(s, "};\n");
-  return s;
+  str_appendcstr(s, "};\n");
 }
 
 
-static bool gen_append_symdef(Str* sp, RBNode** rp, Sym sym, const char* name) {
+static bool gen_append_symdef(Str* s, RBNode** rp, Sym sym, const char* name) {
   assert(symlen(sym) < 1000);
   bool added;
-  *rp = RBInsert(*rp, sym, &added, mem_libc_allocator());
+  *rp = RBInsert(*rp, sym, &added, mem_mkalloc_libc());
   if (!added)
     return false;
 
-  Str s = str_trunc(*sp);
-  s = str_append(s, "const Sym kSym_");
-  s = str_append_cident(s, name);
-  s = str_append(s, " = &\"");
+  s->len = 0;
+  str_appendcstr(s, "const Sym kSym_");
+  str_append_cident(s, name);
+  str_appendcstr(s, " = &\"");
 
   const SymHeader* h = _SYM_HEADER(sym);
   const u8* hash = (const u8*)&h->hash;
   const u8* len  = (const u8*)&h->len;
 
   // hash, len, cap
-  s = str_appendfmt(s, "\\x%02X\\x%02X\\x%02X\\x%02X", hash[0], hash[1], hash[2], hash[3]);
-  s = str_appendfmt(s, "\\x%02X\\x%02X\\x%02X\\x%02X", len[0], len[1], len[2], len[3]);
+  str_appendfmt(s, "\\x%02X\\x%02X\\x%02X\\x%02X", hash[0], hash[1], hash[2], hash[3]);
+  str_appendfmt(s, "\\x%02X\\x%02X\\x%02X\\x%02X", len[0], len[1], len[2], len[3]);
 
-  s = str_appendcstr(s, "\"\""); // in case sym starts with a hex digit
-  s = str_appendrepr(s, sym, symlen(sym));
-  s = str_appendfmt(s, "\\0\"[%d];\n", (int)sizeof(SymHeader));
-  *sp = s;
+  str_appendcstr(s, "\"\""); // in case sym starts with a hex digit
+  str_appendrepr(s, sym, symlen(sym));
+  str_appendfmt(s, "\\0\"[%d];\n", (int)sizeof(SymHeader));
   return true;
 }
 
 
-static bool gen_append_symdef_lit(Str* sp, RBNode** rp, Sym sym, const char* name, u8 flags) {
+static bool gen_append_symdef_lit(Str* s, RBNode** rp, Sym sym, const char* name, u8 flags) {
   sym_dangerously_set_flags(sym, flags);
-  return gen_append_symdef(sp, rp, sym, name);
+  return gen_append_symdef(s, rp, sym, name);
 }
 
 
 static bool gen_append_symdef_typecode_lit(
-  Str* sp, RBNode** rp, SymPool* syms, char typecode_ch)
+  Str* s, RBNode** rp, SymPool* syms, char typecode_ch)
 {
   char buf[2];
   buf[0] = typecode_ch;
   buf[1] = 0;
   Sym sym = symadd(syms, buf, 1);
-  return gen_append_symdef(sp, rp, sym, buf);
+  return gen_append_symdef(s, rp, sym, buf);
 }
 
 
@@ -394,9 +406,11 @@ __attribute__((constructor,used))
 static void gen_constants() {
   printf("\n//-- BEGIN gen_constants()\n\n");
 
-  Mem mem = mem_libc_allocator();
+  Mem mem = mem_mkalloc_libc();
 
-  Str tmpstr = str_make(mem, 512); // TODO: convert to (array-backed) Str or ABuf
+  static char buf[4096*8];
+  Str tmpstr_ = str_make(buf, sizeof(buf));
+  Str* tmpstr = &tmpstr_;
 
   SymPool syms;
   sympool_init(&syms, NULL, mem, NULL);
@@ -418,20 +432,20 @@ static void gen_constants() {
   // ------------------------------------------------------------------------------------
   // generate symbol constants
   RBNode* root = NULL;
-  str_trunc(tmpstr);
+  tmpstr->len = 0;
 
   #define SYM_GEN_NOFLAGS(name, ...)                                               \
-    if (gen_append_symdef_lit(&tmpstr, &root, symgetcstr(&syms, #name), #name, 0)) \
-      printf("%s", tmpstr->p);
+    if (gen_append_symdef_lit(tmpstr, &root, symgetcstr(&syms, #name), #name, 0)) \
+      printf("%s", tmpstr->v);
 
   #define SYM_GEN_KEYWORD(tok, name) {                               \
     Sym sym = symgetcstr(&syms, #name);                              \
     u8 flags = (tok - TKeywordsStart);                               \
-    if (!gen_append_symdef_lit(&tmpstr, &root, sym, #name, flags)) { \
+    if (!gen_append_symdef_lit(tmpstr, &root, sym, #name, flags)) { \
       errlog("duplicate keyword symbol definition: %s", sym);        \
       exit(1);                                                       \
     }                                                                \
-    printf("%s", tmpstr->p);                                         \
+    printf("%s", tmpstr->v);                                         \
   }
 
   // keyword symbols must be generated first as they use custom Sym flags
@@ -444,16 +458,17 @@ static void gen_constants() {
 
   // generate typeid syms for use in Type constants
   #define SYM_GEN_TYPECODE(_name, encoding, ...)                         \
-    if (gen_append_symdef_typecode_lit(&tmpstr, &root, &syms, encoding)) \
-      printf("%s", tmpstr->p);
+    if (gen_append_symdef_typecode_lit(tmpstr, &root, &syms, encoding)) \
+      printf("%s", tmpstr->v);
 
   DEF_TYPE_CODES_BASIC_PUB(SYM_GEN_TYPECODE)
   DEF_TYPE_CODES_BASIC(SYM_GEN_TYPECODE)
   DEF_TYPE_CODES_PUB(SYM_GEN_TYPECODE)
 
   // output rbtree
-  Str sympool_s = fmt_rbnodes(root, str_make(mem, 0));
-  printf("\n%s\n", sympool_s->p);
+  tmpstr->len = 0;
+  fmt_rbnodes(root, tmpstr);
+  printf("\n%s\n", tmpstr->v);
   printf("static SymRBNode* _symroot = &n_%s;\n", root->key);
 
   #undef SYM_GEN_NOFLAGS
@@ -503,13 +518,14 @@ static void gen_constants() {
   // ------------------------------------------------------------------------------------
   // generate a sort of checksum used in debug mode to make sure the generator is updated
   // when keywords change. See the function debug_check() below as well.
-  tmpstr = gen_checksum(str_trunc(tmpstr));
+  tmpstr->len = 0;
+  gen_checksum(tmpstr->v, tmpstr->cap);
   printf(
     "\n"
     "#ifndef NDEBUG\n"
     "__attribute__((used)) static const char* const debugSymCheck =\n"
     "  \"%s\";\n#endif\n",
-    tmpstr->p);
+    tmpstr->v);
 
 
   // ------------------------------------------------------------------------------------

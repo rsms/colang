@@ -4,7 +4,7 @@
 using namespace llvm;
 
 
-static char* g_default_target_triple = "";
+static const char* g_default_target_triple = "";
 
 
 bool llvm_init() {

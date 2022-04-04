@@ -60,14 +60,12 @@ typedef struct B {
   Typ t_i16;
   Typ t_i32;
   Typ t_i64;
-  // Typ t_i128;
+  Typ t_i128;
+  Typ t_int; // t_i* type of at least pointer size
+  Typ t_i8ptr; // i8*
   Typ t_f32;
   Typ t_f64;
-  // Typ t_f128;
-  Typ t_int;
-
-  Typ t_i8ptr;  // i8*
-  Typ t_i32ptr; // i32*
+  Typ t_f128;
 
   // ref struct types
   Typ t_ref; // "mut&T", "&T"
@@ -206,19 +204,30 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
     .t_i16  = LLVMInt16TypeInContext(ctx),
     .t_i32  = LLVMInt32TypeInContext(ctx),
     .t_i64  = LLVMInt64TypeInContext(ctx),
-    // .t_i128 = LLVMInt128TypeInContext(ctx),
+    .t_i128 = LLVMInt128TypeInContext(ctx),
     .t_f32  = LLVMFloatTypeInContext(ctx),
     .t_f64  = LLVMDoubleTypeInContext(ctx),
-    // .t_f128 = LLVMFP128TypeInContext(ctx),
+    .t_f128 = LLVMFP128TypeInContext(ctx),
 
     // metadata "kind" identifiers
     .md_kind_prof = LLVMGetMDKindIDInContext(ctx, "prof", 4),
   };
 
+  // initialize int/uint types
+  LLVMTargetDataRef dlayout = LLVMGetModuleDataLayout(mod);
+  u32 ptrsize = LLVMPointerSize(dlayout);
+  if (ptrsize <= 1)       b->t_int = b->t_i8;
+  else if (ptrsize == 2)  b->t_int = b->t_i16;
+  else if (ptrsize <= 4)  b->t_int = b->t_i32;
+  else if (ptrsize <= 8)  b->t_int = b->t_i64;
+  else if (ptrsize <= 16) b->t_int = b->t_i128;
+  else panic("target pointer size too large: %u B", ptrsize);
+  assertf(TF_Size(build->sint_type->tflags) == LLVMGetIntTypeWidth(b->t_int)/8,
+    "builder was configured with a different int type (%u) than module (%u)",
+    TF_Size(build->sint_type->tflags), LLVMGetIntTypeWidth(b->t_int)/8);
+
   // initialize common types
-  b->t_int = (build->sint_type == TC_i32) ? b->t_i32 : b->t_i64;
   b->t_i8ptr = LLVMPointerType(b->t_i8, 0);
-  b->t_i32ptr = LLVMPointerType(b->t_i32, 0);
   b->v_i32_0 = LLVMConstInt(b->t_i32, 0, /*signext*/false);
   b->v_int_0 = LLVMConstInt(b->t_int, 0, /*signext*/false);
 
@@ -891,10 +900,10 @@ static Val build_expr(B* b, Expr* np, const char* vname) {
 //———————————————————————————————————————————————————————————————————————————————————————
 
 
-error llvm_build_module(BuildCtx* build, LLVMModuleRef mod) {
+error llvm_module_build(BuildCtx* build, CoLLVMModule m) {
   // initialize builder
   B b_; B* b = &b_;
-  error err = builder_init(b, build, mod);
+  error err = builder_init(b, build, (LLVMModuleRef)m);
   if (err)
     return err;
 

@@ -22,6 +22,7 @@ BEGIN_INTERFACE
   X( _ ) \
 // end DEF_SYMS_PUB
 
+
 // precompiled constants, defined in universe_data.h
 extern const Sym kSym__;
 extern const Sym kSym_nil;
@@ -36,8 +37,11 @@ extern Type* kType_i32;
 extern Type* kType_u32;
 extern Type* kType_i64;
 extern Type* kType_u64;
+extern Type* kType_i128;
+extern Type* kType_u128;
 extern Type* kType_f32;
 extern Type* kType_f64;
+extern Type* kType_f128;
 extern Type* kType_int;
 extern Type* kType_uint;
 extern Type* kType_nil;

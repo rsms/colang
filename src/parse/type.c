@@ -24,6 +24,7 @@ const char* TypeKindName(TypeKind tk) {
     case TF_KindF16:     return "16-bit floating-point number";
     case TF_KindF32:     return "32-bit floating-point number";
     case TF_KindF64:     return "64-bit floating-point number";
+    case TF_KindF128:    return "128-bit floating-point number";
     case TF_KindFunc:    return "function";
     case TF_KindStruct:  return "struct";
     case TF_KindArray:   return "array";

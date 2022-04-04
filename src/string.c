@@ -352,6 +352,14 @@ bool str_appendrepr(Str* s, const void* p, usize size) {
 }
 
 
+bool str_appendreprhex(Str* s, const void* p, usize size) {
+  STR_USE_ABUF_BEGIN(size*2)
+  abuf_reprhex(&buf, p, size);
+  STR_USE_ABUF_END()
+  return true;
+}
+
+
 bool str_appendf64(Str* s, f64 value, int ndecimals) {
   STR_USE_ABUF_BEGIN(20)
   abuf_f64(&buf, value, ndecimals);
