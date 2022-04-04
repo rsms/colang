@@ -655,186 +655,87 @@ typedef struct FunTypeNode FunTypeNode;
   Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (Type*)kType_type \
    : is_Expr(n__) ? ((Expr*)n__)->type : NULL; }))
 
-union NodeUnion {
-BadNode _0; FieldNode _1; PkgNode _2; FileNode _3; CommentNode _4; NilNode _5;
-  BoolLitNode _6; IntLitNode _7; FloatLitNode _8; StrLitNode _9; IdNode _10;
-  BinOpNode _11; PrefixOpNode _12; PostfixOpNode _13; ReturnNode _14;
-  AssignNode _15; TupleNode _16; ArrayNode _17; BlockNode _18; FunNode _19;
-  MacroNode _20; CallNode _21; TypeCastNode _22; ConstNode _23; VarNode _24;
-  ParamNode _25; MacroParamNode _26; RefNode _27; NamedArgNode _28;
-  SelectorNode _29; IndexNode _30; SliceNode _31; IfNode _32; TypeTypeNode _33;
-  NamedTypeNode _34; AliasTypeNode _35; RefTypeNode _36; BasicTypeNode _37;
-  ArrayTypeNode _38; TupleTypeNode _39; StructTypeNode _40; FunTypeNode _41;
-};
-
-typedef struct ASTVisitor     ASTVisitor;
-typedef struct ASTVisitorFuns ASTVisitorFuns;
-typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
-struct ASTVisitor {
-  ASTVisitorFun ftable[44];
-};
-void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
-// error ASTVisit(ASTVisitor* v, const NODE_TYPE* n)
-#define ASTVisit(v, n) _Generic((n), \
-  const BadNode*: (v)->ftable[NBad]((v),(const Node*)(n)), \
-  BadNode*: (v)->ftable[NBad]((v),(const Node*)(n)), \
-  const FieldNode*: (v)->ftable[NField]((v),(const Node*)(n)), \
-  FieldNode*: (v)->ftable[NField]((v),(const Node*)(n)), \
-  const PkgNode*: (v)->ftable[NPkg]((v),(const Node*)(n)), \
-  PkgNode*: (v)->ftable[NPkg]((v),(const Node*)(n)), \
-  const FileNode*: (v)->ftable[NFile]((v),(const Node*)(n)), \
-  FileNode*: (v)->ftable[NFile]((v),(const Node*)(n)), \
-  const CommentNode*: (v)->ftable[NComment]((v),(const Node*)(n)), \
-  CommentNode*: (v)->ftable[NComment]((v),(const Node*)(n)), \
-  const NilNode*: (v)->ftable[NNil]((v),(const Node*)(n)), \
-  NilNode*: (v)->ftable[NNil]((v),(const Node*)(n)), \
-  const BoolLitNode*: (v)->ftable[NBoolLit]((v),(const Node*)(n)), \
-  BoolLitNode*: (v)->ftable[NBoolLit]((v),(const Node*)(n)), \
-  const IntLitNode*: (v)->ftable[NIntLit]((v),(const Node*)(n)), \
-  IntLitNode*: (v)->ftable[NIntLit]((v),(const Node*)(n)), \
-  const FloatLitNode*: (v)->ftable[NFloatLit]((v),(const Node*)(n)), \
-  FloatLitNode*: (v)->ftable[NFloatLit]((v),(const Node*)(n)), \
-  const StrLitNode*: (v)->ftable[NStrLit]((v),(const Node*)(n)), \
-  StrLitNode*: (v)->ftable[NStrLit]((v),(const Node*)(n)), \
-  const IdNode*: (v)->ftable[NId]((v),(const Node*)(n)), \
-  IdNode*: (v)->ftable[NId]((v),(const Node*)(n)), \
-  const BinOpNode*: (v)->ftable[NBinOp]((v),(const Node*)(n)), \
-  BinOpNode*: (v)->ftable[NBinOp]((v),(const Node*)(n)), \
-  const PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(const Node*)(n)), \
-  PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(const Node*)(n)), \
-  const PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(const Node*)(n)), \
-  PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(const Node*)(n)), \
-  const ReturnNode*: (v)->ftable[NReturn]((v),(const Node*)(n)), \
-  ReturnNode*: (v)->ftable[NReturn]((v),(const Node*)(n)), \
-  const AssignNode*: (v)->ftable[NAssign]((v),(const Node*)(n)), \
-  AssignNode*: (v)->ftable[NAssign]((v),(const Node*)(n)), \
-  const TupleNode*: (v)->ftable[NTuple]((v),(const Node*)(n)), \
-  TupleNode*: (v)->ftable[NTuple]((v),(const Node*)(n)), \
-  const ArrayNode*: (v)->ftable[NArray]((v),(const Node*)(n)), \
-  ArrayNode*: (v)->ftable[NArray]((v),(const Node*)(n)), \
-  const BlockNode*: (v)->ftable[NBlock]((v),(const Node*)(n)), \
-  BlockNode*: (v)->ftable[NBlock]((v),(const Node*)(n)), \
-  const FunNode*: (v)->ftable[NFun]((v),(const Node*)(n)), \
-  FunNode*: (v)->ftable[NFun]((v),(const Node*)(n)), \
-  const MacroNode*: (v)->ftable[NMacro]((v),(const Node*)(n)), \
-  MacroNode*: (v)->ftable[NMacro]((v),(const Node*)(n)), \
-  const CallNode*: (v)->ftable[NCall]((v),(const Node*)(n)), \
-  CallNode*: (v)->ftable[NCall]((v),(const Node*)(n)), \
-  const TypeCastNode*: (v)->ftable[NTypeCast]((v),(const Node*)(n)), \
-  TypeCastNode*: (v)->ftable[NTypeCast]((v),(const Node*)(n)), \
-  const ConstNode*: (v)->ftable[NConst]((v),(const Node*)(n)), \
-  ConstNode*: (v)->ftable[NConst]((v),(const Node*)(n)), \
-  const VarNode*: (v)->ftable[NVar]((v),(const Node*)(n)), \
-  VarNode*: (v)->ftable[NVar]((v),(const Node*)(n)), \
-  const ParamNode*: (v)->ftable[NParam]((v),(const Node*)(n)), \
-  ParamNode*: (v)->ftable[NParam]((v),(const Node*)(n)), \
-  const MacroParamNode*: (v)->ftable[NMacroParam]((v),(const Node*)(n)), \
-  MacroParamNode*: (v)->ftable[NMacroParam]((v),(const Node*)(n)), \
-  const RefNode*: (v)->ftable[NRef]((v),(const Node*)(n)), \
-  RefNode*: (v)->ftable[NRef]((v),(const Node*)(n)), \
-  const NamedArgNode*: (v)->ftable[NNamedArg]((v),(const Node*)(n)), \
-  NamedArgNode*: (v)->ftable[NNamedArg]((v),(const Node*)(n)), \
-  const SelectorNode*: (v)->ftable[NSelector]((v),(const Node*)(n)), \
-  SelectorNode*: (v)->ftable[NSelector]((v),(const Node*)(n)), \
-  const IndexNode*: (v)->ftable[NIndex]((v),(const Node*)(n)), \
-  IndexNode*: (v)->ftable[NIndex]((v),(const Node*)(n)), \
-  const SliceNode*: (v)->ftable[NSlice]((v),(const Node*)(n)), \
-  SliceNode*: (v)->ftable[NSlice]((v),(const Node*)(n)), \
-  const IfNode*: (v)->ftable[NIf]((v),(const Node*)(n)), \
-  IfNode*: (v)->ftable[NIf]((v),(const Node*)(n)), \
-  const TypeTypeNode*: (v)->ftable[NTypeType]((v),(const Node*)(n)), \
-  TypeTypeNode*: (v)->ftable[NTypeType]((v),(const Node*)(n)), \
-  const NamedTypeNode*: (v)->ftable[NNamedType]((v),(const Node*)(n)), \
-  NamedTypeNode*: (v)->ftable[NNamedType]((v),(const Node*)(n)), \
-  const AliasTypeNode*: (v)->ftable[NAliasType]((v),(const Node*)(n)), \
-  AliasTypeNode*: (v)->ftable[NAliasType]((v),(const Node*)(n)), \
-  const RefTypeNode*: (v)->ftable[NRefType]((v),(const Node*)(n)), \
-  RefTypeNode*: (v)->ftable[NRefType]((v),(const Node*)(n)), \
-  const BasicTypeNode*: (v)->ftable[NBasicType]((v),(const Node*)(n)), \
-  BasicTypeNode*: (v)->ftable[NBasicType]((v),(const Node*)(n)), \
-  const ArrayTypeNode*: (v)->ftable[NArrayType]((v),(const Node*)(n)), \
-  ArrayTypeNode*: (v)->ftable[NArrayType]((v),(const Node*)(n)), \
-  const TupleTypeNode*: (v)->ftable[NTupleType]((v),(const Node*)(n)), \
-  TupleTypeNode*: (v)->ftable[NTupleType]((v),(const Node*)(n)), \
-  const StructTypeNode*: (v)->ftable[NStructType]((v),(const Node*)(n)), \
-  StructTypeNode*: (v)->ftable[NStructType]((v),(const Node*)(n)), \
-  const FunTypeNode*: (v)->ftable[NFunType]((v),(const Node*)(n)), \
-  FunTypeNode*: (v)->ftable[NFunType]((v),(const Node*)(n)), \
-  const Node*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  Node*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const Stmt*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  Stmt*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct CUnitNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct CUnitNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const Expr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  Expr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct LitExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct LitExpr*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct ListExprNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct ListExprNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const struct LocalNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  struct LocalNode*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  const Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)), \
-  Type*: (v)->ftable[(n)->kind]((v),(const Node*)(n)))
-
-struct ASTVisitorFuns {
-  error(*nullable Bad)(ASTVisitor*, const BadNode*);
-  error(*nullable Field)(ASTVisitor*, const FieldNode*);
-  error(*nullable Pkg)(ASTVisitor*, const PkgNode*);
-  error(*nullable File)(ASTVisitor*, const FileNode*);
-  error(*nullable Comment)(ASTVisitor*, const CommentNode*);
-  error(*nullable Nil)(ASTVisitor*, const NilNode*);
-  error(*nullable BoolLit)(ASTVisitor*, const BoolLitNode*);
-  error(*nullable IntLit)(ASTVisitor*, const IntLitNode*);
-  error(*nullable FloatLit)(ASTVisitor*, const FloatLitNode*);
-  error(*nullable StrLit)(ASTVisitor*, const StrLitNode*);
-  error(*nullable Id)(ASTVisitor*, const IdNode*);
-  error(*nullable BinOp)(ASTVisitor*, const BinOpNode*);
-  error(*nullable PrefixOp)(ASTVisitor*, const PrefixOpNode*);
-  error(*nullable PostfixOp)(ASTVisitor*, const PostfixOpNode*);
-  error(*nullable Return)(ASTVisitor*, const ReturnNode*);
-  error(*nullable Assign)(ASTVisitor*, const AssignNode*);
-  error(*nullable Tuple)(ASTVisitor*, const TupleNode*);
-  error(*nullable Array)(ASTVisitor*, const ArrayNode*);
-  error(*nullable Block)(ASTVisitor*, const BlockNode*);
-  error(*nullable Fun)(ASTVisitor*, const FunNode*);
-  error(*nullable Macro)(ASTVisitor*, const MacroNode*);
-  error(*nullable Call)(ASTVisitor*, const CallNode*);
-  error(*nullable TypeCast)(ASTVisitor*, const TypeCastNode*);
-  error(*nullable Const)(ASTVisitor*, const ConstNode*);
-  error(*nullable Var)(ASTVisitor*, const VarNode*);
-  error(*nullable Param)(ASTVisitor*, const ParamNode*);
-  error(*nullable MacroParam)(ASTVisitor*, const MacroParamNode*);
-  error(*nullable Ref)(ASTVisitor*, const RefNode*);
-  error(*nullable NamedArg)(ASTVisitor*, const NamedArgNode*);
-  error(*nullable Selector)(ASTVisitor*, const SelectorNode*);
-  error(*nullable Index)(ASTVisitor*, const IndexNode*);
-  error(*nullable Slice)(ASTVisitor*, const SliceNode*);
-  error(*nullable If)(ASTVisitor*, const IfNode*);
-  error(*nullable TypeType)(ASTVisitor*, const TypeTypeNode*);
-  error(*nullable NamedType)(ASTVisitor*, const NamedTypeNode*);
-  error(*nullable AliasType)(ASTVisitor*, const AliasTypeNode*);
-  error(*nullable RefType)(ASTVisitor*, const RefTypeNode*);
-  error(*nullable BasicType)(ASTVisitor*, const BasicTypeNode*);
-  error(*nullable ArrayType)(ASTVisitor*, const ArrayTypeNode*);
-  error(*nullable TupleType)(ASTVisitor*, const TupleTypeNode*);
-  error(*nullable StructType)(ASTVisitor*, const StructTypeNode*);
-  error(*nullable FunType)(ASTVisitor*, const FunTypeNode*);
-
-  // class-level visitors called for nodes without specific visitors
-  error(*nullable Stmt)(ASTVisitor*, const Stmt*);
-  error(*nullable CUnit)(ASTVisitor*, const struct CUnitNode*);
-  error(*nullable Expr)(ASTVisitor*, const Expr*);
-  error(*nullable LitExpr)(ASTVisitor*, const struct LitExpr*);
-  error(*nullable UnaryOp)(ASTVisitor*, const struct UnaryOpNode*);
-  error(*nullable ListExpr)(ASTVisitor*, const struct ListExprNode*);
-  error(*nullable Local)(ASTVisitor*, const struct LocalNode*);
-  error(*nullable Type)(ASTVisitor*, const Type*);
-
-  // catch-all fallback visitor
-  error(*nullable Node)(ASTVisitor*, const Node*);
-};
+// unions
+typedef union CUnitNode_union {
+  Node     Node;
+  Stmt     Stmt;
+  PkgNode  PkgNode;
+  FileNode FileNode;
+} CUnitNode_union;
+typedef union Stmt_union {
+  Node            Node;
+  CUnitNode_union CUnitNode;
+  CommentNode     CommentNode;
+} Stmt_union;
+typedef union LitExpr_union {
+  Node         Node;
+  Expr         Expr;
+  NilNode      NilNode;
+  BoolLitNode  BoolLitNode;
+  IntLitNode   IntLitNode;
+  FloatLitNode FloatLitNode;
+  StrLitNode   StrLitNode;
+} LitExpr_union;
+typedef union UnaryOpNode_union {
+  Node          Node;
+  Expr          Expr;
+  PrefixOpNode  PrefixOpNode;
+  PostfixOpNode PostfixOpNode;
+} UnaryOpNode_union;
+typedef union ListExprNode_union {
+  Node      Node;
+  Expr      Expr;
+  TupleNode TupleNode;
+  ArrayNode ArrayNode;
+} ListExprNode_union;
+typedef union LocalNode_union {
+  Node           Node;
+  Expr           Expr;
+  ConstNode      ConstNode;
+  VarNode        VarNode;
+  ParamNode      ParamNode;
+  MacroParamNode MacroParamNode;
+} LocalNode_union;
+typedef union Expr_union {
+  Node               Node;
+  LitExpr_union      LitExpr;
+  IdNode             IdNode;
+  BinOpNode          BinOpNode;
+  UnaryOpNode_union  UnaryOpNode;
+  ReturnNode         ReturnNode;
+  AssignNode         AssignNode;
+  ListExprNode_union ListExprNode;
+  BlockNode          BlockNode;
+  FunNode            FunNode;
+  MacroNode          MacroNode;
+  CallNode           CallNode;
+  TypeCastNode       TypeCastNode;
+  LocalNode_union    LocalNode;
+  RefNode            RefNode;
+  NamedArgNode       NamedArgNode;
+  SelectorNode       SelectorNode;
+  IndexNode          IndexNode;
+  SliceNode          SliceNode;
+  IfNode             IfNode;
+} Expr_union;
+typedef union Type_union {
+  Node           Node;
+  TypeTypeNode   TypeTypeNode;
+  NamedTypeNode  NamedTypeNode;
+  AliasTypeNode  AliasTypeNode;
+  RefTypeNode    RefTypeNode;
+  BasicTypeNode  BasicTypeNode;
+  ArrayTypeNode  ArrayTypeNode;
+  TupleTypeNode  TupleTypeNode;
+  StructTypeNode StructTypeNode;
+  FunTypeNode    FunTypeNode;
+} Type_union;
+typedef union Node_union {
+  BadNode    BadNode;
+  FieldNode  FieldNode;
+  Stmt_union Stmt;
+  Expr_union Expr;
+  Type_union Type;
+} Node_union;
 
 ASSUME_NONNULL_END

@@ -34,6 +34,10 @@ error BuildCtxInit(
     posmap_clear(&build->posmap);
     array_clear(&build->pkg.a);
     // note: leaving build->syms as-is
+    for (NodeSlab* s = &build->nodeslab_head; s; s = s->next) {
+      s->len = 0;
+      memset(s->data, 0, sizeof(s->data));
+    }
   } else {
     if UNLIKELY(symmap_init(&build->types, mem, 1) == NULL)
       return err_nomem;
@@ -49,6 +53,8 @@ error BuildCtxInit(
   build->pkgid     = symget(&build->syms, pkgid, strlen(pkgid)); // note: panics on nomem
   build->pkg.name  = build->pkgid;
   build->pkg.scope = &build->pkgscope;
+
+  build->nodeslab_curr = &build->nodeslab_head;
 
   return 0;
 }
@@ -179,13 +185,63 @@ end:
 }
 
 
-Node* nullable b_mknodex(BuildCtx* b, NodeKind kind) {
-  Node* n = NodeAlloc(b->mem);
+#if rstrstrstrstrstt
+gdata* d = GSLAB_ALLOC(g, datavhead, datavcurr);
+#define GSLAB_ALLOC(g, HEADFIELD, CURRFIELD, ERRRET...) ({                          \
+  if UNLIKELY(g->CURRFIELD->len == countof(g->HEADFIELD.data)) {                    \
+    if (g->CURRFIELD->next) {                                                       \
+      g->CURRFIELD = g->CURRFIELD->next;                                            \
+      assert(g->CURRFIELD->len == 0);                                               \
+    } else {                                                                        \
+      __typeof__(g->CURRFIELD) tmp__ = rmem_alloc(g->a->mem, sizeof(g->HEADFIELD)); \
+      if (check_alloc(g, tmp__))                                                    \
+        return ERRRET;                                                              \
+      tmp__->len = 0;                                                               \
+      tmp__->next = g->CURRFIELD;                                                   \
+      g->CURRFIELD = tmp__;                                                         \
+    }                                                                               \
+  }                                                                                 \
+  &g->CURRFIELD->data[g->CURRFIELD->len++];                                         \
+})
+#endif
+
+
+static NodeSlab* nullable nodeslab_grow(BuildCtx* b) {
+  if (b->nodeslab_curr->next) {
+    // use recycled slab
+    b->nodeslab_curr = b->nodeslab_curr->next;
+    assert(b->nodeslab_curr->len == 0);
+    return b->nodeslab_curr;
+  }
+  NodeSlab* newslab = mem_alloc(b->mem, sizeof(NodeSlab));
+  if UNLIKELY(!newslab)
+    return NULL;
+  memset(newslab, 0, sizeof(NodeSlab));
+  newslab->next = b->nodeslab_curr;
+  b->nodeslab_curr = newslab;
+  return newslab;
+}
+
+
+static void* nullable nodeslab_alloc(BuildCtx* b, usize ptr_count) {
+  NodeSlab* slab = b->nodeslab_curr;
+  usize avail = countof(b->nodeslab_head.data) - slab->len;
+  if (UNLIKELY(avail < ptr_count) && (slab = nodeslab_grow(b)) == NULL)
+    return NULL;
+  void* p = &slab->data[b->nodeslab_curr->len];
+  slab->len += ptr_count;
+  return p;
+}
+
+
+Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
+  Node* n = nodeslab_alloc(b, nptrs);
+  //Node* n = NodeAlloc(b->mem);
   if UNLIKELY(n == NULL) {
     b_errf(b, (PosSpan){NoPos,NoPos}, "failed to allocate memory");
     return NULL;
   }
-  memset(n, 0, sizeof(union NodeUnion));
+  n->pos = pos;
   return NodeInit(n, kind);
 }
 
@@ -199,7 +255,7 @@ Node* nullable _b_clonenode(BuildCtx* b, const Node* src) {
 
 
 PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
-  auto pkg = b_mknode(b, Pkg);
+  auto pkg = b_mknode(b, Pkg, 0);
   if (LIKELY(pkg != NULL)) {
     pkg->name = b->pkgid;
     pkg->scope = pkgscope;

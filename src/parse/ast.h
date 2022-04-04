@@ -358,8 +358,8 @@ END_INTERFACE
 BEGIN_INTERFACE
 
 // keep the size of nodes in check. Update this if needed.
-static_assert(sizeof(union NodeUnion) >= 104, "AST size shrunk");
-static_assert(sizeof(union NodeUnion) <= 104, "AST size grew");
+static_assert(sizeof(Node_union) >= 104, "AST size shrunk");
+static_assert(sizeof(Node_union) <= 104, "AST size grew");
 
 // all subtypes of LocalNode must have compatible init fields
 
@@ -381,7 +381,7 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
 }
 
 inline static Node* nullable NodeAlloc(Mem mem) {
-  return (Node*)mem_alloc(mem, sizeof(union NodeUnion));
+  return (Node*)mem_alloc(mem, sizeof(Node_union));
 }
 
 Node* NodeInit(Node* n, NodeKind kind);
@@ -404,6 +404,13 @@ inline static u32 NodeUnrefLocal(LocalNode* n) {
   assertgt(n->nrefs, 0);
   return --n->nrefs;
 }
+
+// CONVERT_NODE_KIND(T1 n, T2) => {T2}Node
+#define CONVERT_NODE_KIND(n, NEW_KIND) ({ \
+  static_assert(sizeof(NEW_KIND##Node) <= sizeof(*(n)), ""); \
+  (n)->kind = N##NEW_KIND; \
+  (NEW_KIND##Node*)(n); \
+})
 
 // --------------------------------------------------------------------------------------
 // repr

@@ -95,28 +95,28 @@ int main(int argc, const char** argv) {
   error err;
 
   // setup a build context for the package (can be reused)
-  BuildCtx build = {0};
-  CHECKERR( begin_pkg(&build, "example") );
+  BuildCtx* build = memalloczt(BuildCtx);
+  CHECKERR( begin_pkg(build, "example") );
 
   // configure build mode
-  build.opt   = OptNone;
-  build.safe  = true;
-  build.debug = true;
+  build->opt   = OptNone;
+  build->safe  = true;
+  build->debug = true;
 
   // add a source file to the package
   Source src1 = {0};
   const char* filename = argv[1] ? argv[1] : "examples/hello.co";
   if (( err = source_open_file(&src1, filename) ))
     panic("%s: %s", filename, error_str(err));
-  b_add_source(&build, &src1);
+  b_add_source(build, &src1);
 
   // // compute and print source checksum
   // source_checksum(&src1);
   // print_src_checksum(&src1);
 
   // parse
-  CHECKERR( parse_pkg(&build) );
-  if (build.errcount)
+  CHECKERR( parse_pkg(build) );
+  if (build->errcount)
     return 1;
 
   // codegen
@@ -129,7 +129,7 @@ int main(int argc, const char** argv) {
 
   // build module, generate object code and link executable
   t = logtime_start("llvm_build_and_emit");
-  CHECKERR( llvm_build_and_emit(&build, llvm_host_triple()) );
+  CHECKERR( llvm_build_and_emit(build, llvm_host_triple()) );
   logtime_end(t);
   #endif
 

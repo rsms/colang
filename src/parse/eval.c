@@ -94,24 +94,22 @@ FLOAT_TYPES(EACH)
 
 
 static Expr* nullable make_intlit(E e, u64 value, Node* origin, BasicTypeNode* t) {
-  auto n = b_mknode(e.b, IntLit);
+  auto n = b_mknode(e.b, IntLit, origin->pos);
   if (UNLIKELY(!n))
     return NULL;
   n->type = as_Type(t);
   n->ival = value;
-  n->pos = origin->pos;
   n->endpos = origin->endpos;
   return as_Expr(n);
 }
 
 
 static Expr* nullable make_floatlit(E e, double value, Node* origin, BasicTypeNode* t) {
-  auto n = b_mknode(e.b, FloatLit);
+  auto n = b_mknode(e.b, FloatLit, origin->pos);
   if (UNLIKELY(!n))
     return NULL;
   n->type = as_Type(t);
   n->fval = value;
-  n->pos = origin->pos;
   n->endpos = origin->endpos;
   return as_Expr(n);
 }

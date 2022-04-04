@@ -139,7 +139,7 @@ typedef struct R {
 
 // mknode allocates a new ast node
 // T* nullable mknode(R*, KIND)
-#define mknode(r, KIND) b_mknode((r)->build, KIND)
+#define mknode(r, KIND, pos) b_mknode((r)->build, KIND, (pos))
 
 
 #define FMTNODE(n,bufno) \
@@ -412,7 +412,7 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 
 
 static Node* restype_fun(R* r, FunNode* n) {
-  auto t = mknode(r, FunType);
+  auto t = mknode(r, FunType, n->pos);
   if UNLIKELY(t == NULL)
     return as_Node(n);
   n->type = as_Type(t);
@@ -448,7 +448,7 @@ static Node* restype_fun(R* r, FunNode* n) {
 
 
 static Node* restype_tuple(R* r, TupleNode* n) {
-  auto t = mknode(r, TupleType);
+  auto t = mknode(r, TupleType, n->pos);
   if (UNLIKELY(t == NULL) || !check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
     return as_Node(n);
   for (u32 i = 0; i < n->a.len; i++) {

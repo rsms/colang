@@ -37,6 +37,13 @@ struct Diagnostic {
 
 typedef Array(Diagnostic*) DiagnosticArray;
 
+typedef struct NodeSlab NodeSlab;
+struct NodeSlab {
+  NodeSlab* nullable next; // next slab in the free list
+  u32                len;  // number of used entries at data
+  void*              data[4096/sizeof(void*) - 2];
+};
+
 struct BuildCtx {
   OptLevel opt;       // optimization level
   bool     debug;     // include debug information
@@ -54,6 +61,9 @@ struct BuildCtx {
   PkgNode pkg;
   Sym     pkgid;     // e.g. "bar/cat"
   Scope   pkgscope;
+
+  NodeSlab  nodeslab_head; // first slab + list of additional data slabs
+  NodeSlab* nodeslab_curr; // current slab
 
   Source* nullable srclist; // list of sources (linked via Source.next)
 
@@ -101,15 +111,21 @@ error b_add_source_file(BuildCtx*, const char* filename);
 error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files in dir
 
 
-// b_mknode allocates and initializes a AST node, e.g. b_mknode(b,Id) => IdNode*
-#define b_mknode(b, KIND) ((KIND##Node* nullable)b_mknodex((b),N##KIND))
+// b_mknode allocates and initializes a AST node (e.g. b_mknode(b, Id, NoPos) => IdNode*)
+// b_mknodez allocates and initializes a AST node of particular byte size and kind.
+#define b_mknode(b, KIND, pos) \
+  ( (KIND##Node* nullable) b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
+
+#define b_mknode_union(b, KIND, pos) \
+  ( (KIND##Node* nullable)b_mknodez((b), N##KIND##_BEG, sizeof(KIND##Node_union), (pos)) )
+
+#define b_mknodez(b, kind, size, pos) \
+  ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*))/sizeof(void*)) )
+
+Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
 
 // b_clonenode allocates and initializes a AST node that is a copy of another node
 #define b_clonenode(b, src) ((__typeof__(src) nullable)_b_clonenode((b),as_Node(src)))
-
-// b_mknodex is like b_mknode but not typed
-// If memory allocation fails, an error is reported via b_errf and NULL is returned.
-Node* nullable b_mknodex(BuildCtx* b, NodeKind kind);
 Node* nullable _b_clonenode(BuildCtx* b, const Node* src);
 
 // b_mkpkgnode creates a package node for b, setting

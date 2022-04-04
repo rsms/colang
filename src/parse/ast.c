@@ -29,7 +29,8 @@ Node* NodeInit(Node* np, NodeKind kind) {
     return NULL
 
 Node* nullable NodeCopy(Node* np, const Node* src) {
-  memcpy(np, src, sizeof(union NodeUnion));
+  panic("FIXME node size");
+  memcpy(np, src, sizeof(Node_union));
   NodeInit(np, np->kind);
   switch ((enum NodeKind)np->kind) { case NBad: {
   GNCASE(CUnit)
