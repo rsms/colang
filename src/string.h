@@ -26,11 +26,17 @@ usize sfmt_repr(char* buf, usize bufcap, const void* data, usize len);
 // sreverse reverses s in place; returns s.
 char* sreverse(char* s, usize len);
 
+// strim_end returns the length of s without any trailing trimc characters.
+// e.g. strimend("hello  ", 7, ' ') => 5
+usize strim_end(const char* s, usize len, char trimc);
+
 // shasprefix returns true if s starts with prefix_cstr
 static bool shasprefix(const char* s, usize len, const char* prefix_cstr);
 static bool shassuffix(const char* s, usize len, const char* suffix_cstr);
 bool shasprefixn(const char* s, usize len, const char* prefix, usize prefix_len);
 bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len);
+
+isize slastindexof(const char* s, usize len, char c);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // StrSlice is an immutable view into string data stored elsewhere

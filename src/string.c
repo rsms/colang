@@ -123,12 +123,32 @@ char* sreverse(char* s, usize len) {
 }
 
 
+usize strim_end(const char* s, usize len, char trimc) {
+  if (len == 0)
+    return 0;
+  while (s[--len] == trimc && len != 0) {
+  }
+  return len + 1;
+}
+
+
 bool shasprefixn(const char* s, usize len, const char* prefix, usize prefix_len) {
   return len >= prefix_len && memcmp(s, prefix, prefix_len) == 0;
 }
 
 bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len) {
   return len >= suffix_len && memcmp(s + len - suffix_len, suffix, suffix_len) == 0;
+}
+
+
+isize slastindexof(const char* s, usize len, char c) {
+  if UNLIKELY(len > ISIZE_MAX)
+    len = ISIZE_MAX;
+  while (len--) {
+    if (s[len] == c)
+      return (isize)len;
+  }
+  return -1;
 }
 
 
