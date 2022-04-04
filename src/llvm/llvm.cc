@@ -111,125 +111,129 @@ const char* CoLLVMEnvironment_name(CoLLVMEnvironment v) {
 }
 
 
-bool llvm_optmod(
-  LLVMModuleRef        M,
-  LLVMTargetMachineRef T,
-  int                  optlevel,
-  bool                 enable_tsan,
-  bool                 enable_lto,
-  char**               errmsg)
-{
-  Module& module = *unwrap(M);
+bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions* opt) {
+  Module& module = *unwrap((LLVMModuleRef)M);
   TargetMachine& targetMachine = *reinterpret_cast<TargetMachine*>(T);
-  targetMachine.setO0WantsFastISel(true);
 
   module.setTargetTriple(targetMachine.getTargetTriple().str());
   module.setDataLayout(targetMachine.createDataLayout());
 
-  bool optimize = optlevel > 0;
-
   // pass performance debugging
-  bool enable_time_report = false;
+  const bool enable_time_report = false;
   TimePassesIsEnabled = enable_time_report; // global llvm variable
 
   // Pipeline configurations
-  PipelineTuningOptions pipelineOpt;
-  pipelineOpt.LoopUnrolling = optimize;
-  pipelineOpt.SLPVectorization = optimize;
-  pipelineOpt.LoopVectorization = optimize;
-  pipelineOpt.LoopInterleaving = optimize;
-  pipelineOpt.MergeFunctions = optimize;
+  // See {llvm}/lib/Passes/PassBuilderPipelines.cpp
+  // and {llvm}/include/llvm/Passes/PassBuilder.h
+  //
+  // Note: CallGraphProfile enables the CGProfile pass which produces call graph
+  // profile data used by Profile Guided Optimizations (PGO)
+  // See https://llvm.org/devmtg/2018-10/slides/
+  //     Spencer-Profile%20Guided%20Function%20Layout%20in%20LLVM%20and%20LLD.pdf
+  //
+  // MergeFunctions:   see https://llvm.org/docs/MergeFunctions.html
+  // SLPVectorization: see https://llvm.org/docs/Vectorizers.html#slp-vectorizer
+  //
+  PipelineTuningOptions pipelineOpt; // start with defaults
+  pipelineOpt.LoopInterleaving = opt->optlevel > 0;
+  pipelineOpt.LoopVectorization = opt->optlevel > 0;
+  pipelineOpt.SLPVectorization = opt->optlevel > 0;
+  pipelineOpt.LoopUnrolling = opt->optlevel > 0;
+  pipelineOpt.CallGraphProfile = opt->optlevel > 0;
+  pipelineOpt.MergeFunctions = opt->optlevel > 2;
+  pipelineOpt.EagerlyInvalidateAnalyses = opt->optlevel > 1;
 
   // Instrumentations
-  // https://github.com/ziglang/zig/blob/52d871844c643f396a2bddee0753d24ff7/src/zig_llvm.cpp#L190
   PassInstrumentationCallbacks instrCallbacks;
-  StandardInstrumentations std_instrumentations(false);
-  std_instrumentations.registerCallbacks(instrCallbacks);
+  // StandardInstrumentations std_instrumentations(false);
+  // std_instrumentations.registerCallbacks(instrCallbacks);
 
-  // optimization pass builder
-  Optional<PGOOptions> pgo = None;
-  PassBuilder passBuilder(&targetMachine, pipelineOpt, pgo, &instrCallbacks);
-  LoopAnalysisManager     loopAM;
-  FunctionAnalysisManager functionAM;
-  CGSCCAnalysisManager    cgsccAM;
-  ModuleAnalysisManager   moduleAM;
+  // create analysis managers
+  LoopAnalysisManager     LAM;
+  FunctionAnalysisManager FAM;
+  CGSCCAnalysisManager    CGAM;
+  ModuleAnalysisManager   MAM;
+
+  // create pass manager builder
+  Optional<PGOOptions> pgo = None; // Profile Guided Optimizations (PGO) options
+  PassBuilder PB(&targetMachine, pipelineOpt, pgo, &instrCallbacks);
 
   // Register the AA (Alias Analysis) manager first so that our version is the one used
-  functionAM.registerPass([&] { return passBuilder.buildDefaultAAPipeline(); });
+  FAM.registerPass([&] { return PB.buildDefaultAAPipeline(); });
 
   // Register TargetLibraryAnalysis
   Triple targetTriple(module.getTargetTriple());
   auto tlii = std::make_unique<TargetLibraryInfoImpl>(targetTriple);
-  functionAM.registerPass([&] { return TargetLibraryAnalysis(*tlii); });
+  FAM.registerPass([&] { return TargetLibraryAnalysis(*tlii); });
 
-  // Initialize AnalysisManagers
-  passBuilder.registerModuleAnalyses(moduleAM);
-  passBuilder.registerCGSCCAnalyses(cgsccAM);
-  passBuilder.registerFunctionAnalyses(functionAM);
-  passBuilder.registerLoopAnalyses(loopAM);
-  passBuilder.crossRegisterProxies(loopAM, functionAM, cgsccAM, moduleAM);
-
-  // type alias for convenience
-  // using OptimizationLevel = typename PassBuilder::OptimizationLevel;
+  // Register all the basic analyses with the managers
+  PB.registerModuleAnalyses(MAM);
+  PB.registerCGSCCAnalyses(CGAM);
+  PB.registerFunctionAnalyses(FAM);
+  PB.registerLoopAnalyses(LAM);
+  PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
   // IR verification
   #ifdef DEBUG
   // Verify the input
-  passBuilder.registerPipelineStartEPCallback(
+  PB.registerPipelineStartEPCallback(
     [](ModulePassManager& mpm, OptimizationLevel OL) {
       mpm.addPass(VerifierPass());
     });
   // Verify the output
-  passBuilder.registerOptimizerLastEPCallback(
+  PB.registerOptimizerLastEPCallback(
     [](ModulePassManager& mpm, OptimizationLevel OL) {
       mpm.addPass(VerifierPass());
     });
   #endif
 
   // Passes specific for release build
-  if (optimize) {
-    passBuilder.registerPipelineStartEPCallback(
+  if (opt->optlevel > 0) {
+    PB.registerPipelineStartEPCallback(
       [](ModulePassManager& mpm, OptimizationLevel OL) {
         mpm.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
       });
   }
 
   // Thread sanitizer
-  if (enable_tsan) {
-    passBuilder.registerOptimizerLastEPCallback(
+  if (opt->enable_tsan) {
+    PB.registerOptimizerLastEPCallback(
       [](ModulePassManager& mpm, OptimizationLevel OL) {
         mpm.addPass(ModuleThreadSanitizerPass());
       });
   }
 
-  // Initialize ModulePassManager
-  // See deps/llvm/include/llvm/Passes/OptimizationLevel.h
-  ModulePassManager MPM;
+  // Select optimization level (See {llvm}/include/llvm/Passes/OptimizationLevel.h)
   OptimizationLevel optLevel;
-  switch (optlevel) { // buildctx/OptLevel
+  switch (opt->optlevel) { // buildctx/OptLevel
     case 0: optLevel = OptimizationLevel::O0; break;
     case 1: optLevel = OptimizationLevel::O1; break;
     case 2: optLevel = OptimizationLevel::O2; break;
     case 3: optLevel = OptimizationLevel::O3; break;
     case 4: optLevel = OptimizationLevel::Os; break;
+    default: panic("invalid optlevel %d", opt->optlevel);
   }
+
+  // Create pass manager
+  ModulePassManager MPM;
   if (optLevel == OptimizationLevel::O0) {
-    MPM = passBuilder.buildO0DefaultPipeline(optLevel, enable_lto);
-    MPM.addPass(createModuleToFunctionPassAdaptor(PromotePass())); // mem2reg
-  } else if (enable_lto) {
-    MPM = passBuilder.buildLTOPreLinkDefaultPipeline(optLevel);
+    // note: buildO0DefaultPipeline requires optLevel == O0
+    MPM = PB.buildO0DefaultPipeline(optLevel, opt->enable_lto);
+    // include mem2reg; greatly reduces code size by using registers instead of stack memory
+    // MPM.addPass(createModuleToFunctionPassAdaptor(PromotePass())); // mem2reg
   } else {
-    MPM = passBuilder.buildPerModuleDefaultPipeline(optLevel);
+    // note: buildPerModuleDefaultPipeline requires optLevel != O0
+    MPM = PB.buildPerModuleDefaultPipeline(optLevel, opt->enable_lto);
   }
 
   // run passes
-  MPM.run(module, moduleAM);
+  PreservedAnalyses pa = MPM.run(module, MAM);
 
   // print perf information
   if (enable_time_report)
     TimerGroup::printAll(errs());
 
-  return true;
+  return 0;
 }
 
 

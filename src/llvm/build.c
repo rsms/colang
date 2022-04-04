@@ -532,7 +532,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return fn;
   }
 
-  if (strcmp(vname, "main") != 0) {
+  if (vname[0] == '_' /*strcmp(vname, "main") != 0*/ ) {
     // Note on LLVMSetVisibility: visibility is different.
     // See https://llvm.org/docs/LangRef.html#visibility-styles
     // LLVMPrivateLinkage is like "static" in C but omit from symbol table

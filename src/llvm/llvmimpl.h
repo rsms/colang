@@ -22,16 +22,15 @@ ASSUME_NONNULL_BEGIN
   #define EXTERN_C
 #endif
 
+typedef struct {
+  int  optlevel; // 0: none, 1-3: performance,size, 4: size,performance
+  bool enable_tsan;
+  bool enable_lto;
+} CoLLVMOptOptions;
 
 // llvm_optmod applies module-wide optimizations.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-EXTERN_C bool llvm_optmod(
-  LLVMModuleRef        mod,
-  LLVMTargetMachineRef targetm,
-  int                  optlevel,
-  bool                 enable_tsan,
-  bool                 enable_lto,
-  char**               errmsg);
+EXTERN_C bool llvm_optmod(CoLLVMModule m, LLVMTargetMachineRef tm, const CoLLVMOptOptions*);
 
 // llvm_emit_bc writes LLVM IR (text) code to filename.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.

@@ -9,8 +9,8 @@ BEGIN_INTERFACE
 // panic prints msg to stderr and calls abort()
 #define panic(fmt, args...) _panic(__FILE__, __LINE__, __FUNCTION__, fmt, ##args)
 
-NORETURN void _panic(const char* file, int line, const char* fun, const char* fmt, ...)
-  ATTR_FORMAT(printf, 4, 5);
+EXTERN_C NORETURN ATTR_FORMAT(printf, 4, 5)
+void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
 
 // void log(const char* fmt, ...)
 #ifdef CO_NO_LIBC
@@ -168,7 +168,7 @@ NORETURN void _panic(const char* file, int line, const char* fun, const char* fm
   ), x)
   // debug_tmpsprintf is like sprintf but uses a static buffer.
   // The buffer argument determines which buffer to use (constraint: buffer<6)
-  const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
+  EXTERN_C const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
     ATTR_FORMAT(printf, 2, 3);
   #ifdef CO_NO_LIBC
     #define dlog(format, args...) \

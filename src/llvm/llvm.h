@@ -203,12 +203,14 @@ EXTERN_C const char* CoLLVMArch_name(CoLLVMArch); // canonical name
 EXTERN_C const char* CoLLVMVendor_name(CoLLVMVendor); // canonical name
 EXTERN_C const char* CoLLVMEnvironment_name(CoLLVMEnvironment); // canonical name
 
-
+// module functions
 EXTERN_C CoLLVMModule nullable llvm_module_create(BuildCtx* build, const char* name);
 void llvm_module_free(CoLLVMModule m);
+error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple);
+error llvm_module_optimize(BuildCtx* build, CoLLVMModule m);
 EXTERN_C error llvm_module_build(BuildCtx* build, CoLLVMModule m);
 
-// llvm_build
+// llvm_build (calls llvm_module_* functions)
 EXTERN_C error llvm_build(BuildCtx*, const char* target_triple);
 EXTERN_C int llvm_jit(BuildCtx*);
 

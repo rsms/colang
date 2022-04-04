@@ -3,7 +3,7 @@
 #include "parse.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
-#define CO_PARSE_RESOLVE_DEBUG
+//#define CO_PARSE_RESOLVE_DEBUG
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_id impl

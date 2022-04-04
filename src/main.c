@@ -128,6 +128,7 @@ int main(int argc, const char** argv) {
   logtime_end(t);
 
   // build module, generate object code and link executable
+  //build->opt = OptSpeed;
   t = logtime_start("llvm_build");
   CHECKERR( llvm_build(build, llvm_host_triple()) );
   logtime_end(t);

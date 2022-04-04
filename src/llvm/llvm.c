@@ -76,6 +76,7 @@ void llvm_module_free(CoLLVMModule m) {
 
 
 error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple) {
+  build->cg_target = NULL;
   LLVMTargetRef target;
   error err = select_target(triple, &target);
   if (err)
@@ -88,6 +89,9 @@ error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple
       optLevel = LLVMCodeGenLevelNone;
       break;
     case OptSpeed:
+      optLevel = LLVMCodeGenLevelLess;
+      break;
+    case OptPerf:
       optLevel = LLVMCodeGenLevelAggressive;
       break;
     case OptSize:
@@ -105,7 +109,25 @@ error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple
   LLVMTargetDataRef dataLayout = LLVMCreateTargetDataLayout(targetm);
   LLVMSetModuleDataLayout(mod, assertnotnull(dataLayout));
 
+  build->cg_target = targetm;
   return 0;
+}
+
+
+error llvm_module_optimize(BuildCtx* build, CoLLVMModule m) {
+  // optimize and target-fit module (also verifies the IR)
+  CoLLVMOptOptions opt = {
+    .enable_tsan = false,
+    .enable_lto = false,
+  };
+  switch ((enum OptLevel)build->opt) {
+    case OptNone:  opt.optlevel = 0; break;
+    case OptSpeed: opt.optlevel = 1; break;
+    case OptPerf:  opt.optlevel = 3; break;
+    case OptSize:  opt.optlevel = 4; break;
+  }
+  LLVMTargetMachineRef tm = assertnotnull(build->cg_target);
+  return llvm_optmod(m, tm, &opt);
 }
 
 
@@ -123,6 +145,15 @@ error llvm_build(BuildCtx* build, const char* triple) {
   if (err)
     goto done;
 
+  err = llvm_module_optimize(build, m);
+  if (err)
+    goto done;
+
+  #ifdef DEBUG
+    dlog("LLVM IR module after optimizations:");
+    LLVMDumpModule((LLVMModuleRef)m);
+  #endif
+
   // TODO:
   // - select target and emit machine code
   // - verify, optimize and target-fit module
@@ -134,5 +165,6 @@ error llvm_build(BuildCtx* build, const char* triple) {
 
 done:
   llvm_module_free(m);
+  build->cg_target = NULL; // avoid confusion
   return err;
 }

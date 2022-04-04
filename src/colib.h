@@ -154,7 +154,7 @@ typedef i8 isize;
 #endif
 
 #ifdef __cplusplus
-  #define NORETURN noreturn
+  #define NORETURN [[noreturn]]
 #else
   #define NORETURN      _Noreturn
   #define auto          __auto_type
@@ -664,10 +664,10 @@ char* strstr(const char* haystack, const char* needle);
 ASSUME_NONNULL_END
 
 #include "error.h"
+#include "debug.h"
 
 #ifndef __cplusplus
 
-#include "debug.h"
 #include "test.h"
 
 #include "qsort.h"

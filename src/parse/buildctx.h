@@ -23,9 +23,10 @@ enum DiagLevel {
 } END_ENUM(DiagLevel)
 
 enum OptLevel {
-  OptNone,  // like cc -O0
-  OptSpeed, // like cc -O3
-  OptSize,  // like cc -Os
+  OptNone,  // no optimizations (like cc -O0)
+  OptSpeed, // compile quickly with a few optimizations (like cc -O1)
+  OptPerf,  // maximize performance at cost of compile time and code size (like cc -O3)
+  OptSize,  // small code size and good performance at cost of compile time (like cc -Os)
 } END_ENUM(OptLevel)
 
 struct Diagnostic {
@@ -72,6 +73,9 @@ struct BuildCtx {
   void* nullable        userdata;  // custom user data passed to error handler
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   u32                   errcount;  // total number of errors since last call to build_init
+
+  // codegen state
+  void* nullable cg_target; // i.e. LLVMTargetMachineRef for llvm backend
 
   // temporary buffers for eg string formatting
   char tmpbuf[2][512];
