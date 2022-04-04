@@ -406,6 +406,12 @@ inline static u32 NodeUnrefLocal(LocalNode* n) {
 }
 
 // CONVERT_NODE_KIND(T1 n, T2) => {T2}Node
+//
+// Be careful using this!
+// NodeInit is NOT run here which means that if you convert from or to a node
+// with array fields, that array data either leaks or is uninitialized.
+// The caller must take care to call array_free or NodeInit (or array_init) as needed.
+//
 #define CONVERT_NODE_KIND(n, NEW_KIND) ({ \
   static_assert(sizeof(NEW_KIND##Node) <= sizeof(*(n)), ""); \
   (n)->kind = N##NEW_KIND; \

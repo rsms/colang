@@ -1340,31 +1340,30 @@ static TupleNode* pArgs(Parser* p, PFlag fl) {
 
 parse_arg:
   if (p->tok == TId) {
-    // identifier
-    IdNode* id = mknode(p, Id);
-    id->name = pident(p);
-    NodeSetRValue(id);
-
+    // save position and consume identifier token
+    Pos pos = currpos(p);
+    Sym name = p->name;
+    nexttok(p);
+    // next token decides argument node type
     if (got(p, TAssign)) {
       // named argument (e.g. "name = expr")
-
-      // convert Id to NamedArg
-      Sym name = id->name; // tmp
-      NamedArgNode* namedarg = CONVERT_NODE_KIND(id, NamedArg);
+      NamedArgNode* namedarg = b_mknode(p->build, NamedArg, pos);
       namedarg->name = name;
       namedarg->value = pExpr(p, PREC_LOWEST, fl);
       tuple->flags |= NF_Named; // "has named argument"
-
       arg = as_Expr(namedarg);
     } else {
-      // plain identifier
-      // resolve id (and simplify since rvalue, so may get non-id result)
+      // plain identifier.
+      // Since we look ahead and consume the TId token up front,
+      // emulate pExpr with PId prefix by continue parsing with parse_infix.
+      IdNode* id = b_mknode(p->build, Id, pos);
+      id->name = name;
       Node* left = presolve_id(p, id);
-      // continue parsing with parse_infix
       arg = expectExpr(p, parse_infix(p, PREC_LOWEST, fl, left));
       if (tuple->flags & NF_Named)
         goto err_pos_after_named;
     }
+    NodeSetRValue(arg);
   } else {
     arg = pExpr(p, PREC_LOWEST, fl);
     if (tuple->flags & NF_Named)

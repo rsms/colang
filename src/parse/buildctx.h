@@ -112,9 +112,10 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
 
 
 // b_mknode allocates and initializes a AST node (e.g. b_mknode(b, Id, NoPos) => IdNode*)
-// b_mknodez allocates and initializes a AST node of particular byte size and kind.
+// b_mknode_union allocates a union of nodes, initializing it as the lowest NodeKind.
+// b_mknodez allocates and initializes a node of particular byte size and kind.
 #define b_mknode(b, KIND, pos) \
-  ( (KIND##Node* nullable) b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
+  ( (KIND##Node* nullable)b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
 
 #define b_mknode_union(b, KIND, pos) \
   ( (KIND##Node* nullable)b_mknodez((b), N##KIND##_BEG, sizeof(KIND##Node_union), (pos)) )
@@ -123,6 +124,7 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
   ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*))/sizeof(void*)) )
 
 Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
+
 
 // b_clonenode allocates and initializes a AST node that is a copy of another node
 #define b_clonenode(b, src) ((__typeof__(src) nullable)_b_clonenode((b),as_Node(src)))
