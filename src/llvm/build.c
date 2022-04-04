@@ -620,9 +620,6 @@ static Val build_global_var(B* b, VarNode* n) {
 
 
 static void build_file(B* b, FileNode* n) {
-  dlog("build_file %s", n->name);
-  LLVMSetSourceFileName(b->mod, n->name, (usize)strlen(n->name));
-
   // first build all globals ...
   for (u32 i = 0; i < n->a.len; i++) {
     Node* np = n->a.v[i];
@@ -650,6 +647,11 @@ static void build_pkg(B* b, PkgNode* n) {
   NodeArray* na = &b->build->pkg.a;
   for (u32 i = 0; i < na->len; i++) {
     FileNode* file = as_FileNode(na->v[i]);
+    if (i == 0) {
+      usize bufcap = sizeof(b->build->tmpbuf[0]);
+      usize n = path_dir(file->name, b->build->tmpbuf[0], bufcap);
+      LLVMSetSourceFileName(b->mod, b->build->tmpbuf[0], MIN(n, bufcap - 1));
+    }
     build_file(b, file);
   }
 }

@@ -74,7 +74,7 @@ struct BuildCtx {
   u32                   errcount;  // total number of errors since last call to build_init
 
   // temporary buffers for eg string formatting
-  char tmpbuf[2][256];
+  char tmpbuf[2][512];
 };
 
 // BuildCtxInit initializes a BuildCtx structure.
