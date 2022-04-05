@@ -275,10 +275,6 @@ EXTERN_C error llvm_module_emit(
   CoLLVMModule*, const char* filename, CoLLVMEmitType, CoLLVMEmitFlags);
 
 
-// llvm_jit TODO
-EXTERN_C int llvm_jit(BuildCtx*);
-
-
 // llvm_write_archive creates an archive (like the ar tool) at archivefile.
 // filesv is an array of object filenames.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
@@ -298,6 +294,9 @@ EXTERN_C error llvm_link(const CoLLVMLink*);
 // typedef struct CoJIT CoJIT;
 // EXTERN_C error jit_create(CoJIT** result);
 // EXTERN_C void  jit_dispose(CoJIT*);
+
+// llvm_jit TODO
+EXTERN_C int llvm_jit(BuildCtx*);
 
 
 

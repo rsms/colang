@@ -297,6 +297,7 @@ static error emit_mc(
   }
 
   legacy::PassManager PM;
+  PM.add(createTargetTransformInfoWrapperPass(TM.getTargetIRAnalysis()));
   if (TM.addPassesToEmitFile(PM, OS, nullptr, ft)) {
     // "TargetMachine can't emit a file of this type"
     return err_not_supported;
@@ -394,7 +395,8 @@ bool llvm_write_archive(
   bool deterministic = true;
   SmallVector<NewArchiveMember, 4> newMembers;
   for (u32 i = 0; i < filesc; i += 1) {
-    Expected<NewArchiveMember> newMember = NewArchiveMember::getFile(filesv[i], deterministic);
+    Expected<NewArchiveMember> newMember =
+      NewArchiveMember::getFile(filesv[i], deterministic);
     llvm::Error err = newMember.takeError();
     if (err)
       return llvm_error_to_errmsg(std::move(err), errmsg);
