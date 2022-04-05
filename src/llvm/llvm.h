@@ -289,11 +289,9 @@ EXTERN_C bool llvm_write_archive(
   CoLLVMOS     os,
   char**       errmsg);
 
-// lld_link links objects, archives and shared libraries together into a library or
-// executable. It is a high-level interface to the target-specific linker implementations.
-// Always sets errmsg; on success it contains warning messages (if any.)
-// Caller must always call LLVMDisposeMessage on errmsg.
-// Returns true on success.
+// llvm_link links objects, archives and shared libraries together into a library or
+// executable.
+// It is a high-level interface to the target-specific linker implementations of lld.
 EXTERN_C error llvm_link(const CoLLVMLink*);
 
 // // —— JIT ——
