@@ -75,6 +75,53 @@ static error parse_pkg(BuildCtx* build) {
 }
 
 
+#ifdef WITH_LLVM
+  static int main2_llvm(BuildCtx* build) {
+    // initialize llvm
+    auto t = logtime_start("[llvm] init:");
+    CHECKERR( llvm_init() );
+    logtime_end(t);
+
+    // build module
+    // build->opt = OptSpeed;
+    CoLLVMBuild buildopt = {
+      .target_triple = llvm_host_triple(),
+      .enable_tsan = false,
+      .enable_lto = false,
+    };
+    CoLLVMModule m;
+    t = logtime_start("[llvm] build module:");
+    CHECKERR( llvm_build(build, &m, &buildopt) );
+    logtime_end(t);
+
+    // write IR source text, LLVM bitcode and assembly source code (for debugging)
+    CHECKERR( llvm_module_emit(&m, "out.ll", CoLLVMEmit_ir, CoLLVMEmit_debug) );
+    CHECKERR( llvm_module_emit(&m, "out.bc", CoLLVMEmit_bc, 0) );
+    CHECKERR( llvm_module_emit(&m, "out.s", CoLLVMEmit_asm, 0) );
+
+    // generate object code
+    t = logtime_start("[llvm] emit object file:");
+    CHECKERR( llvm_module_emit(&m, "out.o", CoLLVMEmit_obj, 0) );
+    logtime_end(t);
+
+    // link executable
+    const char* objfiles[] = { "out.o" };
+    CoLLVMLink link = {
+      .target_triple = buildopt.target_triple,
+      .outfile = "out.exe",
+      .infilec = countof(objfiles),
+      .infilev = objfiles,
+    };
+    t = logtime_start("[llvm] link executable:");
+    CHECKERR( llvm_link(&link) );
+    logtime_end(t);
+
+    //llvm_module_dispose(&m);
+    return 0;
+  }
+#endif
+
+
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
@@ -121,18 +168,8 @@ int main(int argc, const char** argv) {
 
   // codegen
   #ifdef WITH_LLVM
-  // initialize llvm
-  auto t = logtime_start("llvm_init");
-  if (!llvm_init())
-    panic("llvm_init");
-  logtime_end(t);
-
-  // build module, generate object code and link executable
-  //build->opt = OptSpeed;
-  t = logtime_start("llvm_build");
-  CHECKERR( llvm_build(build, llvm_host_triple()) );
-  logtime_end(t);
+    return main2_llvm(build);
+  #else
+    return 0;
   #endif
-
-  return 0;
 }

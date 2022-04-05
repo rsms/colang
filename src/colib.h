@@ -366,12 +366,18 @@ typedef i8 isize;
 //   // error: static_assert failed due to requirement
 //   // 'sizeof(enum foo) <= sizeof(unsigned char)' "too many foo values"
 //
-#if __has_attribute(__packed__)
+#if __has_attribute(__packed__) && !defined(__cplusplus)
   #define END_ENUM(NAME) \
     __attribute__((__packed__));  \
     static_assert(sizeof(enum NAME) <= sizeof(NAME), "too many " #NAME " values");
 #else
   #define END_ENUM(NAME) ;
+#endif
+
+#ifdef __cplusplus
+  #define DEF_ENUM(NAME) enum NAME##E
+#else
+  #define DEF_ENUM(NAME) enum NAME
 #endif
 
 // u32 CAST_U32(anyint z) => [0-U32_MAX]

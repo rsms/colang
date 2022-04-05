@@ -172,23 +172,68 @@ typedef enum CoLLVMObjectFormat {
   CoLLVMObjectFormat_XCOFF,
 } CoLLVMObjectFormat;
 
-typedef struct CoLLVMModule_* CoLLVMModule; // LLVMModuleRef
+// -- end constants copied from include/llvm/ADT/Triple.h --
+
+typedef struct {
+  BuildCtx*      build;
+  void*          M;  // LLVMModuleRef
+  void* nullable TM; // LLVMTargetMachineRef
+} CoLLVMModule;
+
+typedef struct {
+  CoLLVMArch         arch_type;
+  CoLLVMVendor       vendor_type;
+  CoLLVMOS           os_type;
+  CoLLVMEnvironment  env_type;
+  CoLLVMObjectFormat obj_format;
+} CoLLVMTargetInfo;
 
 // CoLLVMVersionTuple represents a version. -1 is used to indicate "not applicable."
-typedef struct CoLLVMVersionTuple { int major, minor, subminor, build; } CoLLVMVersionTuple;
+typedef struct {
+  int major, minor, subminor, build;
+} CoLLVMVersionTuple;
+
+typedef struct {
+  const char* target_triple;
+  bool        enable_tsan;
+  bool        enable_lto;
+} CoLLVMBuild;
+
+// CoLLVMLink specifies parameters for an invocation of llvm_link
+typedef struct {
+  const char*          target_triple; // target machine triple
+  const char* nullable outfile; // output file. NULL for no output
+  u32                  infilec; // input file count
+  const char**         infilev; // input file array
+  int                  lto_level;
+  bool                 strip_dead;
+} CoLLVMLink;
+
+typedef enum CoLLVMWriteIRFlags {
+  CoLLVMWriteIR_irtext  = 0,      // write textual IR source (default)
+  CoLLVMWriteIR_bitcode = 1 << 0, // write LLVM bitcode instead of textual IR source
+  CoLLVMWriteIR_debug   = 1 << 1, // include names and analytical information in comments
+} CoLLVMWriteIRFlags;
+
+typedef enum CoLLVMEmitType {
+  CoLLVMEmit_obj, // binary object code (.o)
+  CoLLVMEmit_asm, // assembly text (.s)
+  CoLLVMEmit_ir,  // LLVM IR text (.ll)
+  CoLLVMEmit_bc,  // LLVM bitcode (.bc)
+} CoLLVMEmitType;
+typedef enum CoLLVMEmitFlags {
+  CoLLVMEmit_debug = 1 << 0, // include names and analytical information in comments
+} CoLLVMEmitFlags;
 
 
-EXTERN_C bool llvm_init(); // false on error
-EXTERN_C const char* llvm_host_triple(); // default target triplet
+// llvm_init initializes the llvm "library"
+EXTERN_C error llvm_init();
+
+// llvm_host_triple returns the default (host system) target triplet
+EXTERN_C const char* llvm_host_triple();
 
 // llvm_triple_info returns structured information about a target triple
-EXTERN_C void llvm_triple_info(
-  const char*         triple,
-  CoLLVMArch*         arch_type,
-  CoLLVMVendor*       vendor_type,
-  CoLLVMOS*           os_type,
-  CoLLVMEnvironment*  environ_type,
-  CoLLVMObjectFormat* oformat);
+EXTERN_C void llvm_triple_info(const char* triple, CoLLVMTargetInfo* result);
 
 // llvm_triple_min_version returns the minimum supported OS version for a target triple.
 // Some platforms have different minimum supported OS versions that varies by the
@@ -203,43 +248,53 @@ EXTERN_C const char* CoLLVMArch_name(CoLLVMArch); // canonical name
 EXTERN_C const char* CoLLVMVendor_name(CoLLVMVendor); // canonical name
 EXTERN_C const char* CoLLVMEnvironment_name(CoLLVMEnvironment); // canonical name
 
-// module functions
-EXTERN_C CoLLVMModule nullable llvm_module_create(BuildCtx* build, const char* name);
-void llvm_module_free(CoLLVMModule m);
-error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple);
-error llvm_module_optimize(BuildCtx* build, CoLLVMModule m);
-EXTERN_C error llvm_module_build(BuildCtx* build, CoLLVMModule m);
 
-// llvm_build (calls llvm_module_* functions)
-EXTERN_C error llvm_build(BuildCtx*, const char* target_triple);
+// llvm_build builds the package represented at BuildCtx.pkg as an LLVM module.
+// This is a wrapper function which calls llvm_module_* functions:
+//   llvm_module_init(m, build, build->pkg.name)
+//   llvm_module_set_target(m, opt->target_triple)
+//   llvm_module_build(m, opt)
+//   llvm_module_optimize(m, opt)
+// Caller should call llvm_module_dispose(m) when done with m.
+EXTERN_C error llvm_build(BuildCtx*, CoLLVMModule* m, const CoLLVMBuild*);
+
+
+// module functions
+EXTERN_C void llvm_module_init(CoLLVMModule* m, BuildCtx* build, const char* name);
+EXTERN_C void llvm_module_dispose(CoLLVMModule* m);
+EXTERN_C error llvm_module_set_target(CoLLVMModule* m, const char* triple);
+EXTERN_C error llvm_module_optimize(CoLLVMModule* m, const CoLLVMBuild*);
+EXTERN_C error llvm_module_build(CoLLVMModule* m, const CoLLVMBuild*);
+
+// llvm_module_write writes .ll IR text source to file.
+// if isfordebug is set, some additional information is included.
+EXTERN_C error llvm_module_write(CoLLVMModule*, const char* filename, CoLLVMWriteIRFlags);
+
+// llvm_module_emit writes representations of a module to a file
+EXTERN_C error llvm_module_emit(
+  CoLLVMModule*, const char* filename, CoLLVMEmitType, CoLLVMEmitFlags);
+
+
+// llvm_jit TODO
 EXTERN_C int llvm_jit(BuildCtx*);
 
 
-// llvm_write_archive creates an archive (like the ar tool) at arhivefile with filesv.
+// llvm_write_archive creates an archive (like the ar tool) at archivefile.
+// filesv is an array of object filenames.
 // Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
 EXTERN_C bool llvm_write_archive(
-  const char*  arhivefile,
+  const char*  archivefile,
   const char** filesv,
   u32          filesc,
   CoLLVMOS     os,
   char**       errmsg);
-
-
-// CoLLDOptions specifies options for an invocation of lld_link
-typedef struct CoLLDOptions {
-  const char*          targetTriple; // target machine triple
-  // CoOptType            opt;     // optimization level
-  const char* nullable outfile; // output file. NULL for no output
-  u32                  infilec; // input file count
-  const char**         infilev; // input file array
-} CoLLDOptions;
 
 // lld_link links objects, archives and shared libraries together into a library or
 // executable. It is a high-level interface to the target-specific linker implementations.
 // Always sets errmsg; on success it contains warning messages (if any.)
 // Caller must always call LLVMDisposeMessage on errmsg.
 // Returns true on success.
-EXTERN_C bool lld_link(CoLLDOptions* options, char** errmsg);
+EXTERN_C error llvm_link(const CoLLVMLink*);
 
 // // —— JIT ——
 // typedef struct CoJIT CoJIT;

@@ -49,6 +49,10 @@ OPENSSL_VERSION=1.1.1n
 OPENSSL_CHECKSUM=4b0936dd798f60c97c68fc62b73033ecba6dfb0c
 OPENSSL_DESTDIR=$DESTDIR/openssl
 
+LIBXML2_VERSION=2.9.13
+LIBXML2_CHECKSUM=7dced00d88181d559ee76c6d8ef4571eb1bd0b26
+LIBXML2_DESTDIR=$DESTDIR/libxml2
+
 XAR_DESTDIR=$DESTDIR/xar
 
 FORCE=false
@@ -235,10 +239,6 @@ fi
 # -------------------------------------------------------------------------
 # libxml2 (required by xar)
 
-LIBXML2_VERSION=2.9.13
-LIBXML2_CHECKSUM=7dced00d88181d559ee76c6d8ef4571eb1bd0b26
-LIBXML2_DESTDIR=$DESTDIR/libxml2
-
 if $DEPS_CHANGED || [ ! -f "$LIBXML2_DESTDIR/lib/libxml2.a" ] ||
    [ "$(cat "$LIBXML2_DESTDIR/version" 2>/dev/null)" != "$LIBXML2_VERSION" ]
 then
@@ -325,6 +325,8 @@ fi
 # llvm & clang
 
 LLVM_BUILD_DIR=$LLVM_SRCDIR/build-$LLVM_BUILD_MODE
+LLVM_LIBFILES=()
+
 
 # _llvm_build <build-type> [args to cmake ...]
 _llvm_build() {
@@ -461,50 +463,13 @@ _mk_dlib_macos() {
   local DLIB_FILE=$LLVM_DESTDIR/lib/libco-llvm-bundle-d.dylib
   local LIB_VERSION=0.0.1        # used for mach-o dylib
   local LIB_VERSION_COMPAT=0.0.1 # used for mach-o dylib
-  local LIBFILES=(
-    $("$LLVM_DESTDIR/bin/llvm-config" --link-static --libfiles "${LLVM_COMPONENTS[@]}") \
-    $ZLIB_DESTDIR/lib/libz.a \
-  )
   local MACOS_FRAMEWORKS=()
   local EXTRA_LDFLAGS=( -lc++ )
-
-  local OBJXDIR=$LLVM_BUILD_DIR/co-objx
-  local OBJFILES=()
-  # rm -rf "$OBJXDIR"
-  mkdir -p "$OBJXDIR"
-  _pushd "$OBJXDIR"
-  local f name
-  for f in "${LIBFILES[@]}"; do
-    name=$(basename "$f")
-    if ! [ -d "$name" -a "$name" -nt "$f" ]; then
-      mkdir "$name"
-      cd "$name"
-      echo "extract $name"
-      $LLVM_DESTDIR/bin/llvm-ar x "$f"
-      cd ..
-    fi
-    OBJFILES+=( $PWD/$name/*.o )
-  done
-  _popd
-  echo "${#OBJFILES[@]} OBJFILES"
-
-  local SYMS_FILE=$WORK_DIR/libco-llvm-bundle.syms
-  cat << _END_ > "$SYMS_FILE"
-# this first explicit symbol acts as a test:
-# if it is not found, building the dylib will fail with an error.
-#_wgpuRenderPassEncoderEndPass
-
-# all symbols with the prefix "wgpu" are made public
-_llvm*
-
-# the rest of the symbols are made local/internal
-_END_
-  # EXTRA_LDFLAGS+=( -exported_symbols_list "$SYMS_FILE" )
 
   echo "create ${DLIB_FILE##$PWD/}"
 
   ld64.lld -dylib \
-    -o $DLIB_FILE \
+    -o "$DLIB_FILE" \
     --color-diagnostics \
     --lto-O3 \
     -install_name "@rpath/$(basename "$DLIB_FILE")" \
@@ -514,10 +479,11 @@ _END_
     -arch $(uname -m) \
     -ObjC \
     -platform_version macos 10.15 10.15 \
+    -all_load \
     \
     -lSystem.B \
     "${EXTRA_LDFLAGS[@]}" \
-    "${OBJFILES[@]}" \
+    "${LLVM_LIBFILES[@]}" \
     "${MACOS_FRAMEWORKS[@]}"
 }
 
@@ -525,20 +491,13 @@ _END_
 _mk_alib_macos() {
   local OUTFILE=$LLVM_DESTDIR/lib/libco-llvm-bundle.a
   local MRIFILE=$WORK_DIR/$(basename "$OUTFILE").mri
-  local LIBFILES=(
-    $("$LLVM_DESTDIR/bin/llvm-config" --link-static --libfiles "${LLVM_COMPONENTS[@]}") \
-    $ZLIB_DESTDIR/lib/libz.a \
-  )
-    # $XC_DESTDIR/lib/liblzma.a \
-    # $OPENSSL_DESTDIR/lib/libcrypto.a \
-    # $XAR_DESTDIR/lib/libxar.a \
 
   echo "create ${OUTFILE##$PWD/}"
   # lld (llvm 13) does not yet support prelinking, so we produce an archive instead
 
   mkdir -p "$(dirname "$MRIFILE")"
   echo "create $OUTFILE" > "$MRIFILE"
-  for f in "${LIBFILES[@]}"; do
+  for f in "${LLVM_LIBFILES[@]}"; do
     echo "addlib $f" >> "$MRIFILE"
   done
   echo "save" >> "$MRIFILE"
@@ -548,7 +507,17 @@ _mk_alib_macos() {
   llvm-ranlib "$OUTFILE"
 }
 
+
 _mk_lib_bundles() {
+  LLVM_LIBFILES=(
+    $("$LLVM_DESTDIR/bin/llvm-config" --link-static --libfiles "${LLVM_COMPONENTS[@]}") \
+    $LLVM_DESTDIR/lib/liblld*.a \
+    $ZLIB_DESTDIR/lib/libz.a \
+    $XAR_DESTDIR/lib/libxar.a \
+    $XC_DESTDIR/lib/liblzma.a \
+    $OPENSSL_DESTDIR/lib/libcrypto.a \
+    $LIBXML2_DESTDIR/lib/libxml2.a \
+  )
   case "$(uname -s)" in
     Darwin)
       _mk_alib_macos
@@ -588,6 +557,8 @@ else
   REBUILD_ARGS=( "$@" -force )
   _log "$(_relpath "$LLVM_DESTDIR") is up to date. To rebuild: $0 ${REBUILD_ARGS[@]}"
 fi
+
+_mk_lib_bundles
 
 #—— END —————————————————————————————————————————————————————————————————————————————————
 #

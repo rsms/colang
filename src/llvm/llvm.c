@@ -2,13 +2,17 @@
 #include "../parse/parse.h"
 
 
+#define HANDLE_LLVM_ERRMSG(err, errmsg) ({ \
+  dlog("llvm error: %s", (errmsg)); \
+  LLVMDisposeMessage((errmsg)); \
+  err; \
+})
+
+
 static error select_target(const char* triple, LLVMTargetRef* targetp) {
   char* errmsg;
-  if (LLVMGetTargetFromTriple(triple, targetp, &errmsg) != 0) {
-    dlog("LLVMGetTargetFromTriple: %s", errmsg);
-    LLVMDisposeMessage(errmsg);
-    return err_invalid;
-  }
+  if (LLVMGetTargetFromTriple(triple, targetp, &errmsg) != 0)
+    return HANDLE_LLVM_ERRMSG(err_invalid, errmsg);
 
   #if DEBUG
     LLVMTargetRef target = *targetp;
@@ -61,22 +65,26 @@ static error select_target_machine(
 }
 
 
-CoLLVMModule nullable llvm_module_create(BuildCtx* build, const char* name) {
-  LLVMContextRef ctx = LLVMContextCreate();
-  return (CoLLVMModule)LLVMModuleCreateWithNameInContext(name, ctx);
+void llvm_module_init(CoLLVMModule* m, BuildCtx* build, const char* name) {
+  m->build = build;
+  m->M = LLVMModuleCreateWithNameInContext(name, LLVMContextCreate());
+  m->TM = NULL;
 }
 
 
-void llvm_module_free(CoLLVMModule m) {
-  LLVMModuleRef mod = (LLVMModuleRef)m;
+void llvm_module_dispose(CoLLVMModule* m) {
+  if (m->M == NULL)
+    return;
+  LLVMModuleRef mod = m->M;
   LLVMContextRef ctx = LLVMGetModuleContext(mod);
   LLVMDisposeModule(mod);
   LLVMContextDispose(ctx);
+  memset(m, 0, sizeof(*m));
 }
 
 
-error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple) {
-  build->cg_target = NULL;
+error llvm_module_set_target(CoLLVMModule* m, const char* triple) {
+  m->TM = NULL;
   LLVMTargetRef target;
   error err = select_target(triple, &target);
   if (err)
@@ -84,7 +92,7 @@ error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple
 
   LLVMCodeGenOptLevel optLevel;
   LLVMCodeModel codeModel = LLVMCodeModelDefault;
-  switch ((enum OptLevel)build->opt) {
+  switch ((enum OptLevel)m->build->opt) {
     case OptNone:
       optLevel = LLVMCodeGenLevelNone;
       break;
@@ -104,54 +112,51 @@ error llvm_module_set_target(BuildCtx* build, CoLLVMModule m, const char* triple
   if (err)
     return err;
 
-  LLVMModuleRef mod = (LLVMModuleRef)m;
+  LLVMModuleRef mod = m->M;
   LLVMSetTarget(mod, triple);
   LLVMTargetDataRef dataLayout = LLVMCreateTargetDataLayout(targetm);
   LLVMSetModuleDataLayout(mod, assertnotnull(dataLayout));
 
-  build->cg_target = targetm;
+  m->TM = targetm;
   return 0;
 }
 
 
-error llvm_module_optimize(BuildCtx* build, CoLLVMModule m) {
+error llvm_module_optimize(CoLLVMModule* m, const CoLLVMBuild* opt) {
   // optimize and target-fit module (also verifies the IR)
-  CoLLVMOptOptions opt = {
-    .enable_tsan = false,
-    .enable_lto = false,
-  };
-  switch ((enum OptLevel)build->opt) {
-    case OptNone:  opt.optlevel = 0; break;
-    case OptSpeed: opt.optlevel = 1; break;
-    case OptPerf:  opt.optlevel = 3; break;
-    case OptSize:  opt.optlevel = 4; break;
+  int optlevel = 0;
+  switch ((enum OptLevel)m->build->opt) {
+    case OptNone:  optlevel = 0; break;
+    case OptSpeed: optlevel = 1; break;
+    case OptPerf:  optlevel = 3; break;
+    case OptSize:  optlevel = 4; break;
   }
-  LLVMTargetMachineRef tm = assertnotnull(build->cg_target);
-  return llvm_optmod(m, tm, &opt);
+  return llvm_module_optimize1(m, opt, optlevel);
 }
 
 
-error llvm_build(BuildCtx* build, const char* triple) {
+error llvm_build(BuildCtx* build, CoLLVMModule* m, const CoLLVMBuild* opt) {
   dlog("llvm_build");
   error err;
 
-  CoLLVMModule m = llvm_module_create(build, build->pkg.name);
+  llvm_module_init(m, build, build->pkg.name);
 
-  err = llvm_module_set_target(build, m, triple);
+  err = llvm_module_set_target(m, opt->target_triple);
   if (err)
-    goto done;
+    goto onerror;
 
-  err = llvm_module_build(build, m);
+  err = llvm_module_build(m, opt);
   if (err)
-    goto done;
+    goto onerror;
 
-  err = llvm_module_optimize(build, m);
+  err = llvm_module_optimize(m, opt);
   if (err)
-    goto done;
+    goto onerror;
 
   #ifdef DEBUG
-    dlog("LLVM IR module after optimizations:");
-    LLVMDumpModule((LLVMModuleRef)m);
+    dlog("————————————— final LLVM IR module: —————————————");
+    LLVMDumpModule(m->M);
+    dlog("—————————————————————————————————————————————————");
   #endif
 
   // TODO:
@@ -163,8 +168,8 @@ error llvm_build(BuildCtx* build, const char* triple) {
   // - emit LLVM IR text code (for debugging)
   // - link executable (objects -> elf/mach-o/coff)
 
-done:
-  llvm_module_free(m);
-  build->cg_target = NULL; // avoid confusion
+  return 0;
+onerror:
+  llvm_module_dispose(m);
   return err;
 }

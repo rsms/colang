@@ -22,50 +22,8 @@ ASSUME_NONNULL_BEGIN
   #define EXTERN_C
 #endif
 
-typedef struct {
-  int  optlevel; // 0: none, 1-3: performance,size, 4: size,performance
-  bool enable_tsan;
-  bool enable_lto;
-} CoLLVMOptOptions;
+// llvm_module_optimize1 is the part of llvm_module_optimize implemented in C++
+EXTERN_C error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild*, int olevel);
 
-// llvm_optmod applies module-wide optimizations.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-EXTERN_C bool llvm_optmod(CoLLVMModule m, LLVMTargetMachineRef tm, const CoLLVMOptOptions*);
-
-// llvm_emit_bc writes LLVM IR (text) code to filename.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-static bool llvm_emit_ir(LLVMModuleRef, const char* filename, char** errmsg);
-
-// llvm_emit_bc writes LLVM bitcode to filename.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-EXTERN_C bool llvm_emit_bc(LLVMModuleRef, const char* filename, char** errmsg);
-
-// llvm_emit_mc applies module-wide optimizations (unless CoBuildDebug) and emits machine-specific
-// code to asm_outfile and/or bin_outfile.
-// Returns false on error and sets errmsg; caller should dispose it with LLVMDisposeMessage.
-static bool llvm_emit_mc(
-  LLVMModuleRef, LLVMTargetMachineRef, LLVMCodeGenFileType,
-  const char* filename, char** errmsg);
-
-
-// --------------------------------------------------------------------------------------
-// implementations
-
-inline static bool llvm_emit_ir(LLVMModuleRef M, const char* filename, char** errmsg) {
-  return LLVMPrintModuleToFile(M, filename, errmsg) == 0;
-}
-
-inline static bool llvm_emit_mc(
-  LLVMModuleRef        M,
-  LLVMTargetMachineRef T,
-  LLVMCodeGenFileType  FT,
-  const char*          filename,
-  char**               errmsg)
-{
-  // Note: Filename argument to LLVMTargetMachineEmitToFile is incorrectly typed as mutable
-  // "char*" in llvm-c/TargetMachine.h. It's really "const char*" as is evident by looking at
-  // the implementation in llvm/lib/Target/TargetMachineC.cpp.
-  return LLVMTargetMachineEmitToFile(T, M, (char*)filename, FT, errmsg) == 0;
-}
 
 ASSUME_NONNULL_END

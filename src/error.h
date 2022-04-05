@@ -37,7 +37,7 @@ enum _co_error { // canonical negative values
 };
 // note: this file is included by llvm/*.cc, so enum names must differ from typedef
 
-EXTERN_C error error_from_errno(int errno);
+EXTERN_C error error_from_errno(int err_no);
 EXTERN_C const char* error_str(error);
 
 END_INTERFACE

@@ -26,8 +26,14 @@ NINJA_ARGS=()
 ONLY_CONFIGURE=false
 TESTING_ENABLED=false
 VERBOSE=false
+ORIG_ARGS=()
 
-while [[ $# -gt 0 ]]; do case "$1" in
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -w|-run=*) ;; # filter out from watchs' invocation
+    *) ORIG_ARGS+=( "$1" ) ;;
+  esac
+  case "$1" in
   -h|-help|--help) cat << _END
 usage: $0 [options] [--] [<target-or-arg-to-ninja> ...]
 options:
@@ -214,8 +220,7 @@ if [ -n "$WATCH" ]; then
   while true; do
     printf "\x1bc"  # clear screen ("scroll to top" style)
     BUILD_OK=1
-    ${SHELL:-bash} "./$(basename "$0")" -_w_ "-$BUILD_MODE" "${NINJA_ARGS[@]}" "$@" ||
-      BUILD_OK=
+    ${SHELL:-bash} "./$(basename "$0")" -_w_ "${ORIG_ARGS[@]}" || BUILD_OK=
     printf "\e[2m> watching files for changes...\e[m\n"
     if [ -n "$BUILD_OK" -a -n "$RUN" ]; then
       export ASAN_OPTIONS=detect_stack_use_after_return=1
@@ -512,15 +517,13 @@ rule cxx_pch_gen
   #clang -cc1 -emit-pch -x c++-header \$in -o \$out
   generator = true
 
-rule cxx_pch_obj
-  command = $CXX -c \$in -o \$out
-
 build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/parse/ast_gen.py
 
 _END
 
 if [ -n "$WITH_LLVM" ]; then
   echo "build \$objdir/llvm-includes.pch: cxx_pch_gen src/llvm/llvm-includes.hh" >> $NF
+  echo "  FLAGS = ${LLVM_CXXFLAGS[@]}" >> $NF
 fi
 
 

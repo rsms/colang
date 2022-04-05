@@ -182,17 +182,17 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
   ( UNLIKELY(expr) ? (b_errf(b->build, (PosSpan){0}, "out of memory"), true) : false )
 
 
-static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
+static error builder_init(B* b, CoLLVMModule* m) {
   #ifdef DEBUG_BUILD_EXPR
   memset(kSpaces, ' ', sizeof(kSpaces));
   #endif
 
-  LLVMContextRef ctx = LLVMGetModuleContext(mod);
+  LLVMContextRef ctx = LLVMGetModuleContext(m->M);
 
   *b = (B){
-    .build = build,
+    .build = m->build,
     .ctx = ctx,
-    .mod = mod,
+    .mod = m->M,
     .builder = LLVMCreateBuilderInContext(ctx),
     .prettyIR = true,
 
@@ -214,7 +214,7 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
   };
 
   // initialize int/uint types
-  LLVMTargetDataRef dlayout = LLVMGetModuleDataLayout(mod);
+  LLVMTargetDataRef dlayout = LLVMGetModuleDataLayout(b->mod);
   u32 ptrsize = LLVMPointerSize(dlayout);
   if (ptrsize <= 1)       b->t_int = b->t_i8;
   else if (ptrsize == 2)  b->t_int = b->t_i16;
@@ -222,9 +222,9 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
   else if (ptrsize <= 8)  b->t_int = b->t_i64;
   else if (ptrsize <= 16) b->t_int = b->t_i128;
   else panic("target pointer size too large: %u B", ptrsize);
-  assertf(TF_Size(build->sint_type->tflags) == LLVMGetIntTypeWidth(b->t_int)/8,
+  assertf(TF_Size(b->build->sint_type->tflags) == LLVMGetIntTypeWidth(b->t_int)/8,
     "builder was configured with a different int type (%u) than module (%u)",
-    TF_Size(build->sint_type->tflags), LLVMGetIntTypeWidth(b->t_int)/8);
+    TF_Size(b->build->sint_type->tflags), LLVMGetIntTypeWidth(b->t_int)/8);
 
   // initialize common types
   b->t_i8ptr = LLVMPointerType(b->t_i8, 0);
@@ -233,14 +233,15 @@ static error builder_init(B* b, BuildCtx* build, LLVMModuleRef mod) {
 
   // FPM: Apply per-function optimizations. (NULL to disable.)
   // Really only useful for JIT; for offline compilation we use module-wide passes.
-  //b->FPM = LLVMCreateFunctionPassManagerForModule(mod);
+  //if (m->build->opt == OptPerf)
+  //  b->FPM = LLVMCreateFunctionPassManagerForModule(b->mod);
 
   // initialize containers
-  if (symmap_init(&b->internedTypes, build->mem, 16) == NULL) {
+  if (symmap_init(&b->internedTypes, b->build->mem, 16) == NULL) {
     LLVMDisposeBuilder(b->builder);
     return err_nomem;
   }
-  if (pmap_init(&b->defaultInits, build->mem, 16, MAPLF_2) == NULL) {
+  if (pmap_init(&b->defaultInits, b->build->mem, 16, MAPLF_2) == NULL) {
     LLVMDisposeBuilder(b->builder);
     symmap_free(&b->internedTypes);
     return err_nomem;
@@ -902,15 +903,15 @@ static Val build_expr(B* b, Expr* np, const char* vname) {
 //———————————————————————————————————————————————————————————————————————————————————————
 
 
-error llvm_module_build(BuildCtx* build, CoLLVMModule m) {
+error llvm_module_build(CoLLVMModule* m, const CoLLVMBuild* opt) {
   // initialize builder
   B b_; B* b = &b_;
-  error err = builder_init(b, build, (LLVMModuleRef)m);
+  error err = builder_init(b, m);
   if (err)
     return err;
 
   // build package
-  build_pkg(b, &build->pkg);
+  build_pkg(b, &m->build->pkg);
 
   // verify IR
   #ifdef DEBUG

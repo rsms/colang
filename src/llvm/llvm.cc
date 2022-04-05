@@ -7,7 +7,7 @@ using namespace llvm;
 static const char* g_default_target_triple = "";
 
 
-bool llvm_init() {
+error llvm_init() {
   static std::once_flag once;
   std::call_once(once, [](){
     #if 1
@@ -38,7 +38,7 @@ bool llvm_init() {
     g_default_target_triple = LLVMGetDefaultTargetTriple();
     // Note: if we ever make this non-static, LLVMDisposeMessage(str) when done.
   });
-  return true;
+  return 0;
 }
 
 
@@ -55,21 +55,13 @@ static bool llvm_error_to_errmsg(llvm::Error err, char** errmsg) {
 }
 
 
-void llvm_triple_info(
-  const char*         triple_input,
-  CoLLVMArch*         arch_type,
-  CoLLVMVendor*       vendor_type,
-  CoLLVMOS*           os_type,
-  CoLLVMEnvironment*  environ_type,
-  CoLLVMObjectFormat* oformat)
-{
-  Triple triple(Triple::normalize(triple_input));
-  // Triple triple(hostTriple);
-  *arch_type    = (CoLLVMArch)triple.getArch();
-  *vendor_type  = (CoLLVMVendor)triple.getVendor();
-  *os_type      = (CoLLVMOS)triple.getOS();
-  *environ_type = (CoLLVMEnvironment)triple.getEnvironment();
-  *oformat      = (CoLLVMObjectFormat)triple.getObjectFormat();
+void llvm_triple_info(const char* triplestr, CoLLVMTargetInfo* info) {
+  Triple triple(Triple::normalize(triplestr));
+  info->arch_type   = (CoLLVMArch)triple.getArch();
+  info->vendor_type = (CoLLVMVendor)triple.getVendor();
+  info->os_type     = (CoLLVMOS)triple.getOS();
+  info->env_type    = (CoLLVMEnvironment)triple.getEnvironment();
+  info->obj_format  = (CoLLVMObjectFormat)triple.getObjectFormat();
 }
 
 
@@ -110,11 +102,12 @@ const char* CoLLVMEnvironment_name(CoLLVMEnvironment v) {
   return (const char*)Triple::getEnvironmentTypeName((Triple::EnvironmentType)v).bytes_begin();
 }
 
+error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, int optlevel) {
+  assert(0 <= optlevel && optlevel <= 4);
 
-bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions* opt) {
-  Module& module = *unwrap((LLVMModuleRef)M);
-  TargetMachine& targetMachine = *reinterpret_cast<TargetMachine*>(T);
+  Module& module = *unwrap((LLVMModuleRef)m->M);
 
+  TargetMachine& targetMachine = *reinterpret_cast<TargetMachine*>(assertnotnull(m->TM));
   module.setTargetTriple(targetMachine.getTargetTriple().str());
   module.setDataLayout(targetMachine.createDataLayout());
 
@@ -135,13 +128,13 @@ bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions*
   // SLPVectorization: see https://llvm.org/docs/Vectorizers.html#slp-vectorizer
   //
   PipelineTuningOptions pipelineOpt; // start with defaults
-  pipelineOpt.LoopInterleaving = opt->optlevel > 0;
-  pipelineOpt.LoopVectorization = opt->optlevel > 0;
-  pipelineOpt.SLPVectorization = opt->optlevel > 0;
-  pipelineOpt.LoopUnrolling = opt->optlevel > 0;
-  pipelineOpt.CallGraphProfile = opt->optlevel > 0;
-  pipelineOpt.MergeFunctions = opt->optlevel > 2;
-  pipelineOpt.EagerlyInvalidateAnalyses = opt->optlevel > 1;
+  pipelineOpt.LoopInterleaving = optlevel > 0;
+  pipelineOpt.LoopVectorization = optlevel > 0;
+  pipelineOpt.SLPVectorization = optlevel > 0;
+  pipelineOpt.LoopUnrolling = optlevel > 0;
+  pipelineOpt.CallGraphProfile = optlevel > 0;
+  pipelineOpt.MergeFunctions = optlevel > 2;
+  pipelineOpt.EagerlyInvalidateAnalyses = optlevel > 1;
 
   // Instrumentations
   PassInstrumentationCallbacks instrCallbacks;
@@ -188,7 +181,7 @@ bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions*
   #endif
 
   // Passes specific for release build
-  if (opt->optlevel > 0) {
+  if (optlevel > 0) {
     PB.registerPipelineStartEPCallback(
       [](ModulePassManager& mpm, OptimizationLevel OL) {
         mpm.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
@@ -205,13 +198,13 @@ bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions*
 
   // Select optimization level (See {llvm}/include/llvm/Passes/OptimizationLevel.h)
   OptimizationLevel optLevel;
-  switch (opt->optlevel) { // buildctx/OptLevel
+  switch (optlevel) { // buildctx/OptLevel
     case 0: optLevel = OptimizationLevel::O0; break;
     case 1: optLevel = OptimizationLevel::O1; break;
     case 2: optLevel = OptimizationLevel::O2; break;
     case 3: optLevel = OptimizationLevel::O3; break;
     case 4: optLevel = OptimizationLevel::Os; break;
-    default: panic("invalid optlevel %d", opt->optlevel);
+    default: panic("invalid optlevel %d", optlevel);
   }
 
   // Create pass manager
@@ -237,46 +230,139 @@ bool llvm_optmod(CoLLVMModule M, LLVMTargetMachineRef T, const CoLLVMOptOptions*
 }
 
 
-bool llvm_emit_bc(LLVMModuleRef M, const char* filename, char** errmsg) {
-  // Note: llvm-c provides a simplified function LLVMWriteBitcodeToFile
-
-  // WriteBitcodeToFile documentation:
-  //   Write the specified module to the specified raw output stream.
-  //
-  //   For streams where it matters, the given stream should be in "binary"
-  //   mode.
-  //
-  //   If ShouldPreserveUseListOrder, encode the use-list order for each
-  //   Value in M.  These will be reconstructed exactly when M is
-  //   deserialized.
-  //
-  //   If Index is supplied, the bitcode will contain the summary index
-  //   (currently for use in ThinLTO optimization).
-  //
-  //   genHash enables hashing the Module and including the hash in the
-  //   bitcode (currently for use in ThinLTO incremental build).
-  //
-  //   If ModHash is non-null, when genHash is true, the resulting
-  //   hash is written into ModHash. When genHash is false, that value
-  //   is used as the hash instead of computing from the generated bitcode.
-  //   Can be used to produce the same module hash for a minimized bitcode
-  //   used just for the thin link as in the regular full bitcode that will
-  //   be used in the backend.
-  //
-  Module& module = *unwrap(M);
-  std::error_code EC;
-  raw_fd_ostream dest(filename, EC, sys::fs::OF_None);
-  if (EC) {
-    *errmsg = LLVMCreateMessage(EC.message().c_str());
-    return false;
+static void printDebugLoc(const DebugLoc &DL, formatted_raw_ostream &OS) {
+  OS << DL.getLine() << ":" << DL.getCol();
+  if (DILocation *IDL = DL.getInlinedAt()) {
+    OS << "@";
+    printDebugLoc(IDL, OS);
   }
-  bool preserveUseListOrder = false;
-  const ModuleSummaryIndex* index = nullptr;
-  bool genHash = false;
-  ModuleHash* modHash = nullptr;
-  WriteBitcodeToFile(module, dest, preserveUseListOrder, index, genHash, modHash);
-  dest.flush();
-  return true;
+}
+class CommentWriter : public AssemblyAnnotationWriter {
+public:
+  void emitFunctionAnnot(const Function *F,
+                         formatted_raw_ostream &OS) override {
+    OS << "; [#uses=" << F->getNumUses() << ']';  // Output # uses
+    OS << '\n';
+  }
+  void printInfoComment(const Value &V, formatted_raw_ostream &OS) override {
+    bool Padded = false;
+    if (!V.getType()->isVoidTy()) {
+      OS.PadToColumn(50);
+      Padded = true;
+      // Output # uses and type
+      OS << "; [#uses=" << V.getNumUses() << " type=" << *V.getType() << "]";
+    }
+    if (const Instruction *I = dyn_cast<Instruction>(&V)) {
+      if (const DebugLoc &DL = I->getDebugLoc()) {
+        if (!Padded) {
+          OS.PadToColumn(50);
+          Padded = true;
+          OS << ";";
+        }
+        OS << " [debug line = ";
+        printDebugLoc(DL,OS);
+        OS << "]";
+      }
+      if (const DbgDeclareInst *DDI = dyn_cast<DbgDeclareInst>(I)) {
+        if (!Padded) {
+          OS.PadToColumn(50);
+          OS << ";";
+        }
+        OS << " [debug variable = " << DDI->getVariable()->getName() << "]";
+      }
+      else if (const DbgValueInst *DVI = dyn_cast<DbgValueInst>(I)) {
+        if (!Padded) {
+          OS.PadToColumn(50);
+          OS << ";";
+        }
+        OS << " [debug variable = " << DVI->getVariable()->getName() << "]";
+      }
+    }
+  }
+};
+
+
+static error emit_mc(
+  CoLLVMModule* m, raw_fd_ostream& OS, CoLLVMEmitType etype, CoLLVMEmitFlags fl)
+{
+  Module& module = *unwrap((LLVMModuleRef)m->M);
+  TargetMachine& TM = *reinterpret_cast<TargetMachine*>(assertnotnull(m->TM));
+  module.setDataLayout(TM.createDataLayout());
+
+  CodeGenFileType ft = CGFT_ObjectFile;
+  if (etype == CoLLVMEmit_asm) {
+    ft = CGFT_AssemblyFile;
+  } else {
+    assert(etype == CoLLVMEmit_obj);
+  }
+
+  legacy::PassManager PM;
+  if (TM.addPassesToEmitFile(PM, OS, nullptr, ft)) {
+    // "TargetMachine can't emit a file of this type"
+    return err_not_supported;
+  }
+
+  PM.run(module);
+  OS.flush();
+  return 0;
+}
+
+
+static error emit_llvm(
+  CoLLVMModule* m, raw_fd_ostream& OS, CoLLVMEmitType etype, CoLLVMEmitFlags fl)
+{
+  Module& module = *unwrap((LLVMModuleRef)m->M);
+  bool isdebug = (fl & CoLLVMEmit_debug) != 0;
+  bool preserveUseListOrder = isdebug;
+    // If preserveUseListOrder, then include uselistorder directives so that
+    // use-lists can be recreated when reading the assembly.
+  if (etype == CoLLVMEmit_bc) {
+    const ModuleSummaryIndex* index = nullptr;
+    bool genHash = false;
+    ModuleHash* modHash = nullptr;
+    WriteBitcodeToFile(module, OS, preserveUseListOrder, index, genHash, modHash);
+  } else {
+    assert(etype == CoLLVMEmit_ir);
+    std::unique_ptr<AssemblyAnnotationWriter> annotator;
+    if (isdebug)
+      annotator.reset(new CommentWriter());
+    module.print(OS, annotator.get(), preserveUseListOrder, isdebug);
+  }
+  OS.flush();
+  return 0;
+}
+
+
+error llvm_module_emit(
+  CoLLVMModule* m, const char* filename, CoLLVMEmitType etype, CoLLVMEmitFlags fl)
+{
+  // open file output stream
+  sys::fs::OpenFlags oflags = sys::fs::OF_None;
+  if (etype & (CoLLVMEmit_asm | CoLLVMEmit_ir))
+    oflags = sys::fs::OF_TextWithCRLF;
+  std::error_code errcode;
+  raw_fd_ostream dest(filename, errcode, oflags);
+  if (errcode)
+    return error_from_errno(errcode.value());
+
+  // call type-specific emitter
+  error err = err_invalid;
+  switch (etype) {
+    case CoLLVMEmit_obj:
+    case CoLLVMEmit_asm:
+      err = emit_mc(m, dest, etype, fl);
+      break;
+    case CoLLVMEmit_ir:
+    case CoLLVMEmit_bc:
+      err = emit_llvm(m, dest, etype, fl);
+      break;
+  }
+
+  // flush & close output
+  dest.close();
+  if (!err && dest.has_error())
+    return error_from_errno(dest.error().value());
+  return err;
 }
 
 

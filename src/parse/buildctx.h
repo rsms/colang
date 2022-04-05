@@ -74,9 +74,6 @@ struct BuildCtx {
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   u32                   errcount;  // total number of errors since last call to build_init
 
-  // codegen state
-  void* nullable cg_target; // i.e. LLVMTargetMachineRef for llvm backend
-
   // temporary buffers for eg string formatting
   char tmpbuf[2][512];
 };
