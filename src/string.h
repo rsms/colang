@@ -76,6 +76,8 @@ static bool str_fill(Str*, u32 start, const char c, u32 len);
 static bool str_splice(Str*, u32 start, u32 rmlen, u32 addlen, const char* nullable addv);
 
 // extended functions (not provided by array implementation; implemented in this file)
+Str str_dup(const char* src, usize len); // returns a string containing a copy of src
+static Str str_dupcstr(const char* src);
 bool str_appendfmt(Str*, const char* fmt, ...) ATTR_FORMAT(printf, 2, 3);
 bool str_appendfmtv(Str*, const char* fmt, va_list);
 static bool str_appendcstr(Str*, const char* cstr);
@@ -85,7 +87,7 @@ bool str_appendreprhex(Str*, const void* p, usize len); // e.g. "68656c6c6f0a776
 bool str_appendu32(Str*, u32 value, u32 base);
 bool str_appendu64(Str*, u32 value, u32 base);
 bool str_appendf64(Str*, f64 value, int ndecimals);
-bool str_terminate(Str*); // writes \0 to v[len] but does not increment len
+char* nullable str_cstr(Str*); // writes \0 to v[len] but does not increment len
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // ABuf is a string append buffer for implementing snprintf-style functions which
@@ -174,6 +176,10 @@ DEF_ARRAY_VENEER(Str, char, str_)
 
 inline static bool str_appendcstr(Str* s, const char* cstr) {
   return str_append(s, cstr, strlen(cstr));
+}
+
+inline static Str str_dupcstr(const char* src) {
+  return str_dup(src, strlen(src));
 }
 
 //————

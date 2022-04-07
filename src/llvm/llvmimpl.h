@@ -23,7 +23,7 @@ ASSUME_NONNULL_BEGIN
 #endif
 
 // llvm_module_optimize1 is the part of llvm_module_optimize implemented in C++
-EXTERN_C error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild*, int olevel);
+EXTERN_C error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild*, char O);
 
 
 ASSUME_NONNULL_END

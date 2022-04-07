@@ -469,6 +469,14 @@ bool abuf_endswith(const ABuf* s, const char* str, usize len) {
 //———————————————————————————————————————————————————————————————————————————————————————
 // Str impl
 
+
+Str str_dup(const char* src, usize len) {
+  Str s = str_make(NULL, 0);
+  str_append(&s, src, len);
+  return s;
+}
+
+
 #define STR_USE_ABUF_BEGIN(initnbytes) \
   for (usize nbytes__ = (initnbytes); ; ) { \
     if UNLIKELY(!str_reserve(s, nbytes__)) \
@@ -561,11 +569,11 @@ bool str_appendu64(Str* s, u32 value, u32 base) {
 }
 
 
-bool str_terminate(Str* s) {
+char* nullable str_cstr(Str* s) {
   if (s->cap == 0 && UNLIKELY(!_array_grow((VoidArray*)s, mem_ctx(), 1, 1)))
-    return false;
+    return NULL;
   s->v[s->len] = 0;
-  return true;
+  return s->v;
 }
 
 

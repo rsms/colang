@@ -308,8 +308,8 @@ DEF_TEST(sindexof) {
     { "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxfoo:bar", ':', 63, 63 },
   };
   for (usize i = 0; i < countof(tests); i++) {
-    isize expect, res;
     usize inputlen = strlen(tests[i].input);
+    isize res;
     isize expect_first = tests[i].expected_first_index;
     isize expect_last = tests[i].expected_last_index;
 

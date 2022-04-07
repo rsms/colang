@@ -96,8 +96,11 @@ error llvm_module_set_target(CoLLVMModule* m, const char* triple) {
     case OptNone:
       optLevel = LLVMCodeGenLevelNone;
       break;
-    case OptSpeed:
+    case OptMinimal:
       optLevel = LLVMCodeGenLevelLess;
+      break;
+    case OptBalanced:
+      optLevel = LLVMCodeGenLevelDefault;
       break;
     case OptPerf:
       optLevel = LLVMCodeGenLevelAggressive;
@@ -124,14 +127,7 @@ error llvm_module_set_target(CoLLVMModule* m, const char* triple) {
 
 error llvm_module_optimize(CoLLVMModule* m, const CoLLVMBuild* opt) {
   // optimize and target-fit module (also verifies the IR)
-  int optlevel = 0;
-  switch ((enum OptLevel)m->build->opt) {
-    case OptNone:  optlevel = 0; break;
-    case OptSpeed: optlevel = 1; break;
-    case OptPerf:  optlevel = 3; break;
-    case OptSize:  optlevel = 4; break;
-  }
-  return llvm_module_optimize1(m, opt, optlevel);
+  return llvm_module_optimize1(m, opt, (char)m->build->opt);
 }
 
 

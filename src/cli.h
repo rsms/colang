@@ -59,9 +59,15 @@ void cliopt_help(
   const char* nullable usage,
   const char* nullable extra_help);
 
-// cliopt_bool returns true if flag longname is set in options
-static bool cliopt_bool(CliOption* opts, const char* longname);
-bool cliopt_booln(CliOption* opts, const char* longname, usize namelen);
+// cliopt_bool returns true if flag is set in options
+static bool cliopt_bool(CliOption* opts, const char* name);
+bool cliopt_booln(CliOption* opts, const char* name, usize namelen);
+
+// cliopt_str returns the string value for an option (defaultval if not found or set.)
+static const char* nullable cliopt_str(
+  CliOption*, const char* name, const char* nullable defaultval);
+const char* nullable cliopt_strn(
+  CliOption*, const char* name, usize namelen, const char* nullable defaultval);
 
 // cliopt_find locates an option in the opts array. Returns NULL if not found.
 // If consider_short is true, then name[0] is considered for shortname if no
@@ -72,8 +78,14 @@ CliOption* nullable cliopt_find(
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal
 
-inline static bool cliopt_bool(CliOption* opts, const char* longname) {
-  return cliopt_booln(opts, longname, strlen(longname));
+inline static bool cliopt_bool(CliOption* opts, const char* name) {
+  return cliopt_booln(opts, name, strlen(name));
+}
+
+inline static const char* cliopt_str(
+  CliOption* opts, const char* name, const char* nullable defaultval)
+{
+  return cliopt_strn(opts, name, strlen(name), defaultval);
 }
 
 END_INTERFACE

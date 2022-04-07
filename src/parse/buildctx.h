@@ -23,10 +23,11 @@ enum DiagLevel {
 } END_ENUM(DiagLevel)
 
 enum OptLevel {
-  OptNone,  // no optimizations (like cc -O0)
-  OptSpeed, // compile quickly with a few optimizations (like cc -O1)
-  OptPerf,  // maximize performance at cost of compile time and code size (like cc -O3)
-  OptSize,  // small code size and good performance at cost of compile time (like cc -Os)
+  OptNone     = '0', // no optimizations
+  OptMinimal  = '1', // compile quickly with a few optimizations
+  OptBalanced = '2', // balance between performance, compile time and code size
+  OptPerf     = '3', // maximize performance at cost of compile time and code size
+  OptSize     = 's', // small code size and good performance at cost of compile time
 } END_ENUM(OptLevel)
 
 struct Diagnostic {

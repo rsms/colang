@@ -194,10 +194,8 @@ static Pos syntaxerrp(Parser* p, Pos pos, const char* format, ...) {
     va_end(ap);
   }
 
-  str_terminate(&msg);
-
   // report
-  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, msg.v);
+  b_diag(p->build, DiagError, (PosSpan){pos, NoPos}, str_cstr(&msg));
 
   #ifdef DEBUG_PANIC_ON_PARSE_ERROR
   panic("DEBUG_PANIC_ON_PARSE_ERROR %s", msg.v);

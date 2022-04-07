@@ -1,10 +1,10 @@
 #include "colib.h"
 
 
-extern FILE* g_cli_help_fp;
+extern FILE* _g_cli_stderr;
 
 
-static const char* status_name(CliParseStatus status) {
+UNUSED static const char* status_name(CliParseStatus status) {
   switch ((enum CliParseStatus)status) {
     case CLI_PS_HELP:   return "HELP";
     case CLI_PS_OK:     return "OK";
@@ -24,6 +24,10 @@ static void reset_test_options(CliOption* opts) {
     opts[i].intval = 0;
   GETOPTION(opts, "output")->strval = "a.out";
   GETOPTION(opts, "count")->intval = 3;
+  if (_g_cli_stderr && _g_cli_stderr != stderr) {
+    // rewind stderrbuf write offset
+    fseek(_g_cli_stderr, 0, SEEK_SET);
+  }
 }
 
 
@@ -49,6 +53,10 @@ DEF_TEST(cliopt_parse) {
   CliParseStatus status;
   const char* restbuf[16];
   auto rest = array_make(CStrArray, restbuf, sizeof(restbuf));
+
+  // redirect stderr to memory buffer
+  char stderrbuf[512];
+  _g_cli_stderr = test_fmemopen(stderrbuf, sizeof(stderrbuf), "w");
 
   { //———— boolean option + stop parsing options after "--" ————
     const char* argv[] = {
@@ -89,38 +97,43 @@ DEF_TEST(cliopt_parse) {
     asserteq(count, 0xdeadbeef);
   }
 
+  { //———— short immediate is NOT supported ————
+    const char* argv[] = { "test", "-c3" };
+    rest.len = 0;
+    reset_test_options(options);
+    status = cliopt_parse(options, countof(argv), argv, &rest, NULL, NULL);
+    asserteq(CLI_PS_BADOPT, status);
+    asserteq(rest.len, 1);
+  }
+
   { //———— help ————
     const char* argv[] = { "test", "-h" };
     rest.len = 0;
     reset_test_options(options);
 
-    char helpbuf[512];
-    g_cli_help_fp = test_fmemopen(helpbuf, sizeof(helpbuf), "w");
-
     const char* help_suffix = "Extra help\n";
     status = cliopt_parse(options, countof(argv), argv, &rest, NULL, help_suffix);
 
-    isize n = test_fmemclose(g_cli_help_fp); g_cli_help_fp = NULL;
-    usize helpbuflen = MIN((usize)MAX(n, 0), sizeof(helpbuf) - 1);
-    helpbuf[helpbuflen] = 0;
+    isize n = ftell(_g_cli_stderr); fseek(_g_cli_stderr, 0, SEEK_SET);
+    usize stderrbuflen = MIN((usize)MAX(n, 0), sizeof(stderrbuf) - 1);
+    stderrbuf[stderrbuflen] = 0;
 
     // For now, just make sure help is reported correctly (status, prefix and suffix.)
     // Don't validate exact output as it may change.
-    //dlog("cliopt_parse => %s", status_name(status));
-    //dlog("help: %s", helpbuf);
+    //dlog("help: %s", stderrbuf);
     asserteq(CLI_PS_HELP, status);
 
     const char* expect_help_prefix = "usage: test ";
-    assertf(shasprefix(helpbuf, helpbuflen, expect_help_prefix),
+    assertf(shasprefix(stderrbuf, stderrbuflen, expect_help_prefix),
       "expected prefix \"%s\", got \"%.*s\"",
       expect_help_prefix,
-      (int)MIN(helpbuflen, strlen(expect_help_prefix)), helpbuf);
+      (int)MIN(stderrbuflen, strlen(expect_help_prefix)), stderrbuf);
 
-    assertf(shassuffix(helpbuf, helpbuflen, help_suffix),
+    assertf(shassuffix(stderrbuf, stderrbuflen, help_suffix),
       "expected suffix \"%s\", got \"%.*s\"",
       help_suffix,
-      (int)MIN(helpbuflen, strlen(help_suffix)),
-      helpbuf + MIN(helpbuflen, (helpbuflen - strlen(help_suffix))) );
+      (int)MIN(stderrbuflen, strlen(help_suffix)),
+      stderrbuf + MIN(stderrbuflen, (stderrbuflen - strlen(help_suffix))) );
   }
 
 
@@ -135,4 +148,8 @@ DEF_TEST(cliopt_parse) {
     status = cliopt_parse(options, countof(argv), argv, &rest, NULL, NULL);
     asserteq(CLI_PS_OK, status);
   }
+
+  // close memory buffer and restore stderr
+  fclose(_g_cli_stderr);
+  _g_cli_stderr = NULL;
 }

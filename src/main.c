@@ -9,19 +9,31 @@
   #include "llvm/llvm.h"
 #endif
 
+static const char* progname = "co";
 static char tmpbuf[4096];
 
-static const char* cli_usage = "usage: co [options] [<srcfile> ...]";
-static CliOption cli_options[] = {
-  // longname, shortname, valuename, type, help [, default value]
+static const char* cli_usage =
+  "Co compiler\n"
+  "Usage: co [options] [<srcfile> ...]\n"
+  "       Build specific source files as one package\n"
+  "Usage: co [options] <dir> ...\n"
+  "       Build each directory as a package"
+;
+static CliOption cliopts[] = {
+  // CliOption{longname, shortname, valuename, type, help [, default value]}
+  // Keep most commonly used options at the top of the list.
+
+  {"debug", 0, "", CLI_T_BOOL, "Build with debug features and minimum optimizations" },
+  {"unsafe", 0, "", CLI_T_BOOL, "Build witout runtime safety checks" },
+  {"small", 0, "", CLI_T_BOOL, "Bias optimizations toward minimizing code size" },
   {"output", 'o', "<file>", CLI_T_STR, "Write output to <file>" },
-  {"safe", 0, "", CLI_T_BOOL, "Build with optimizations + runtime safety checks (default)" },
-  {"fast", 0, "", CLI_T_BOOL, "Build with optimizations" },
-  {"debug", 0, "", CLI_T_BOOL, "Build without optimizations" },
-  {"no-debug-info", 0, "", CLI_T_BOOL, "Do not generate debug information" },
+  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package" },
+  {"output-asm", 0, "<file>", CLI_T_STR, "Write machine assembly to <file>" },
+  {"output-ir", 0, "<file>", CLI_T_STR, "Write IR source to <file>" },
+  {"opt", 0, "<level>", CLI_T_STR, "Set specific optimization level (0-3, s)" },
 
   #if CO_TESTING_ENABLED
-  {"test-only", 0, "", CLI_T_BOOL, "Run unit tests and exit" },
+  {"test-only", 0, "", CLI_T_BOOL, "Exit after running unit tests" },
   #endif
   {0},
 };
@@ -31,10 +43,11 @@ static const char* cli_help =
 static CStrArray cli_args;
 
 
-static void parse_cli_options(int argc, const char** argv) {
+static void parse_cliopts(int argc, const char** argv) {
+  progname = argv[0];
   static const char* cli_restbuf[16];
   cli_args = array_make(CStrArray, cli_restbuf, sizeof(cli_restbuf));
-  switch (cliopt_parse(cli_options, argc, argv, &cli_args, cli_usage, cli_help)) {
+  switch (cliopt_parse(cliopts, argc, argv, &cli_args, cli_usage, cli_help)) {
     case CLI_PS_OK:     break;
     case CLI_PS_HELP:   exit(0);
     case CLI_PS_BADOPT: exit(1);
@@ -46,6 +59,9 @@ static void parse_cli_options(int argc, const char** argv) {
 #define CHECKERR(expr) \
   ({ error err__ = (expr); \
      err__ != 0 ? panic(#expr ": %s", error_str(err__)) : ((void)0); })
+
+
+#define die(fmt, args...) { log("%s: " fmt, progname, ##args); exit(1); }
 
 
 // static void print_src_checksum(const Source* src) {
@@ -128,21 +144,30 @@ static error parse_pkg(BuildCtx* build) {
     logtime_end(t);
     //llvm_module_dump(m);
 
-    // write IR source text, LLVM bitcode and assembly source code (for debugging)
-    CHECKERR( llvm_module_emit(&m, "out.ll", CoLLVMEmit_ir, CoLLVMEmit_debug) );
-    CHECKERR( llvm_module_emit(&m, "out.bc", CoLLVMEmit_bc, 0) );
-    CHECKERR( llvm_module_emit(&m, "out.s", CoLLVMEmit_asm, 0) );
+    const char* outfile = cliopt_str(cliopts, "output", NULL);
+    const char* outfile_ir = cliopt_str(cliopts, "output-ir", NULL);
+    const char* outfile_asm = cliopt_str(cliopts, "output-asm", NULL);
+
+    if (outfile_ir && outfile_ir[0])
+      CHECKERR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
+
+    if (outfile_asm && outfile_asm[0])
+      CHECKERR( llvm_module_emit(&m, outfile_asm, CoLLVMEmit_asm, 0) );
+
+    if (!outfile)
+      return 0;
 
     // generate object code
+    Str outfile_o = str_dupcstr(outfile); str_appendcstr(&outfile_o, ".o");
     t = logtime_start("[llvm] emit object file:");
-    CHECKERR( llvm_module_emit(&m, "out.o", CoLLVMEmit_obj, 0) );
+    CHECKERR( llvm_module_emit(&m, str_cstr(&outfile_o), CoLLVMEmit_obj, 0) );
     logtime_end(t);
 
     // link executable
-    const char* objfiles[] = { "out.o" };
+    const char* objfiles[] = { outfile_o.v };
     CoLLVMLink link = {
       .target_triple = buildopt.target_triple,
-      .outfile = "out.exe",
+      .outfile = outfile,
       .infilec = countof(objfiles),
       .infilev = objfiles,
     };
@@ -156,18 +181,39 @@ static error parse_pkg(BuildCtx* build) {
 #endif
 
 
+static void set_build_opt(BuildCtx* build) {
+  const char* opt = cliopt_str(cliopts, "opt", NULL);
+  if (!opt) {
+    // set default opt level based on build mode
+    build->opt = build->debug ? OptMinimal : OptBalanced;
+    if (cliopt_bool(cliopts, "small"))
+      build->opt = OptSize;
+    return;
+  }
+  if (opt[0] && opt[1] == 0) switch (opt[0]) {
+    case '0': build->opt = OptNone; return;
+    case '1': build->opt = OptMinimal; return;
+    case '2': build->opt = OptBalanced; return;
+    case '3': build->opt = OptPerf; return;
+    case 's': build->opt = OptSize; return;
+  }
+  die("invalid -opt: %s", opt);
+  exit(1);
+}
+
+
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
 
   // parse command-line options
-  parse_cli_options(argc, argv);
+  parse_cliopts(argc, argv);
 
   // run unit tests
   #if CO_TESTING_ENABLED
     if (co_test_runall(/*filter_prefix*/NULL))
       return 1;
-    if (cliopt_bool(cli_options, "test-only")) return 0;
+    if (cliopt_bool(cliopts, "test-only")) return 0;
   #endif
 
   // initialize built-ins
@@ -190,12 +236,14 @@ int main(int argc, const char** argv) {
 
   // setup a build context for the package (can be reused)
   BuildCtx* build = memalloczt(BuildCtx);
-  CHECKERR( begin_pkg(build, "example") );
+  CHECKERR( begin_pkg(build, cliopt_str(cliopts, "pkgname", "example")) );
+  if (symlen(build->pkgid) == 0)
+    panic("empty pkgname");
 
   // configure build mode
-  build->opt   = OptNone;
-  build->safe  = true;
-  build->debug = true;
+  build->safe  = !cliopt_bool(cliopts, "unsafe");
+  build->debug = cliopt_bool(cliopts, "debug");
+  set_build_opt(build);
 
   // add a source file to the package
   Source src1 = {0};

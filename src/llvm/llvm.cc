@@ -102,9 +102,7 @@ const char* CoLLVMEnvironment_name(CoLLVMEnvironment v) {
   return (const char*)Triple::getEnvironmentTypeName((Triple::EnvironmentType)v).bytes_begin();
 }
 
-error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, int optlevel) {
-  assert(0 <= optlevel && optlevel <= 4);
-
+error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, char O) {
   Module& module = *unwrap((LLVMModuleRef)m->M);
 
   TargetMachine& targetMachine = *reinterpret_cast<TargetMachine*>(assertnotnull(m->TM));
@@ -128,13 +126,13 @@ error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, int optleve
   // SLPVectorization: see https://llvm.org/docs/Vectorizers.html#slp-vectorizer
   //
   PipelineTuningOptions pipelineOpt; // start with defaults
-  pipelineOpt.LoopInterleaving = optlevel > 0;
-  pipelineOpt.LoopVectorization = optlevel > 0;
-  pipelineOpt.SLPVectorization = optlevel > 0;
-  pipelineOpt.LoopUnrolling = optlevel > 0;
-  pipelineOpt.CallGraphProfile = optlevel > 0;
-  pipelineOpt.MergeFunctions = optlevel > 2;
-  pipelineOpt.EagerlyInvalidateAnalyses = optlevel > 1;
+  pipelineOpt.LoopInterleaving = O > '0';
+  pipelineOpt.LoopVectorization = O > '0';
+  pipelineOpt.SLPVectorization = O > '0';
+  pipelineOpt.LoopUnrolling = O > '0';
+  pipelineOpt.CallGraphProfile = O > '0';
+  pipelineOpt.MergeFunctions = O > '2';
+  pipelineOpt.EagerlyInvalidateAnalyses = O > '1';
 
   // Instrumentations
   PassInstrumentationCallbacks instrCallbacks;
@@ -181,7 +179,7 @@ error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, int optleve
   #endif
 
   // Passes specific for release build
-  if (optlevel > 0) {
+  if (O != '0') {
     PB.registerPipelineStartEPCallback(
       [](ModulePassManager& mpm, OptimizationLevel OL) {
         mpm.addPass(createModuleToFunctionPassAdaptor(AddDiscriminatorsPass()));
@@ -198,13 +196,14 @@ error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild* opt, int optleve
 
   // Select optimization level (See {llvm}/include/llvm/Passes/OptimizationLevel.h)
   OptimizationLevel optLevel;
-  switch (optlevel) { // buildctx/OptLevel
-    case 0: optLevel = OptimizationLevel::O0; break;
-    case 1: optLevel = OptimizationLevel::O1; break;
-    case 2: optLevel = OptimizationLevel::O2; break;
-    case 3: optLevel = OptimizationLevel::O3; break;
-    case 4: optLevel = OptimizationLevel::Os; break;
-    default: panic("invalid optlevel %d", optlevel);
+  switch (O) { // buildctx/OptLevel
+    case '0': optLevel = OptimizationLevel::O0; break;
+    case '1': optLevel = OptimizationLevel::O1; break;
+    case '2': optLevel = OptimizationLevel::O2; break;
+    case '3': optLevel = OptimizationLevel::O3; break;
+    case 's': optLevel = OptimizationLevel::Os; break;
+    default:
+      assertf(0,"invalid optlevel O='%c' (0x%02x)", O, O);
   }
 
   // Create pass manager

@@ -2,11 +2,21 @@
 
 #ifndef CO_NO_LIBC
   #include <sys/ioctl.h>
+  #define cli_logf(fmt, args...) fprintf(g_cli_stderr, fmt "\n", ##args)
+#else
+  #define cli_logf log
+#endif
+
+#if CO_TESTING_ENABLED && !defined(CO_NO_LIBC)
+  FILE* _g_cli_stderr = NULL;
+  #define g_cli_stderr (_g_cli_stderr ? _g_cli_stderr : stderr)
+#else
+  #define g_cli_stderr stderr
 #endif
 
 
 static CliParseStatus fail_nomem(const char* prog) {
-  log("%s: out of memory", prog);
+  cli_logf("%s: out of memory", prog);
   return CLI_PS_NOMEM;
 }
 
@@ -31,9 +41,16 @@ CliOption* nullable cliopt_find(
 }
 
 
-bool cliopt_booln(CliOption* opts, const char* longname, usize namelen) {
-  CliOption* opt = cliopt_find(opts, longname, namelen, /*consider_short*/false);
-  return opt && opt->boolval;
+bool cliopt_booln(CliOption* opts, const char* name, usize namelen) {
+  CliOption* opt = cliopt_find(opts, name, namelen, true);
+  return opt && opt->type == CLI_T_BOOL && opt->boolval;
+}
+
+const char* nullable cliopt_strn(
+  CliOption* opts, const char* name, usize namelen, const char* nullable defaultval)
+{
+  CliOption* opt = cliopt_find(opts, name, namelen, true);
+  return opt && opt->type == CLI_T_STR && opt->strval ? opt->strval : defaultval;
 }
 
 
@@ -51,11 +68,6 @@ bool cliopt_booln(CliOption* opts, const char* longname, usize namelen) {
     TStyleStack stylestack;
     char        tmpbuf[512];
   } CliHelpCtx;
-
-
-  #if CO_TESTING_ENABLED
-    FILE* g_cli_help_fp = NULL;
-  #endif
 
 
   inline static usize printlen(const char* cstr) {
@@ -149,17 +161,20 @@ bool cliopt_booln(CliOption* opts, const char* longname, usize namelen) {
     if (usagelen > hc->usagelen_limit || hc->column_limit < 40) {
       fputc('\n', hc->fp);
       fwrite(spaces, kIndent, 1, hc->fp);
-    } else if (usagelen < hc->usagelen_max) {
-      // adjust to column for single-line
-      usize nspaces = MIN(sizeof(spaces), hc->usagelen_max - usagelen);
-      fwrite(spaces, nspaces, 1, hc->fp);
+    } else {
+      if (usagelen < hc->usagelen_max) {
+        // adjust to column for single-line
+        usize nspaces = MIN(sizeof(spaces), hc->usagelen_max - usagelen);
+        fwrite(spaces, nspaces, 1, hc->fp);
+      }
       help_indent += hc->usagelen_max;
     }
 
-    usize help_column_limit = (usize)MAX(((isize)hc->column_limit-(isize)help_indent),8);
+    usize help_column_limit = (usize)MAX(((isize)hc->column_limit - (isize)help_indent),8);
 
     usize buflen = strlen(hc->tmpbuf);
-    if (buflen > help_column_limit) {
+    usize buf_prinlen = printlen(hc->tmpbuf);
+    if (buf_prinlen > help_column_limit) {
       swrap_simple(hc->tmpbuf, buflen, help_column_limit);
 
       usize nspaces = MIN(sizeof(spaces), help_indent);
@@ -179,7 +194,7 @@ bool cliopt_booln(CliOption* opts, const char* longname, usize namelen) {
       fwrite(hc->tmpbuf + lnstart, i - lnstart, 1, hc->fp);
     } else {
       fwrite(spaces, kIndent, 1, hc->fp);
-      fwrite(hc->tmpbuf, strlen(hc->tmpbuf), 1, hc->fp);
+      fwrite(hc->tmpbuf, buflen, 1, hc->fp);
     }
 
     fputc('\n', hc->fp);
@@ -245,11 +260,7 @@ bool cliopt_booln(CliOption* opts, const char* longname, usize namelen) {
   {
     CliHelpCtx hc = {0};
     hc.opts = opts;
-    hc.fp = stderr;
-    #if CO_TESTING_ENABLED
-      if (g_cli_help_fp)
-        hc.fp = g_cli_help_fp;
-    #endif
+    hc.fp = g_cli_stderr;
     hc.styles = isatty(fileno(hc.fp)) ? TStylesForTerm() : TStylesNone();
 
     hc.column_limit = 80;
@@ -324,17 +335,16 @@ static int parse_opt(
       *stp = CLI_PS_HELP;
       cliopt_help(opts, argv[0], rest != NULL, usage, extra_help);
     } else {
-      *stp = CLI_PS_BADOPT;
-      log("%s: unrecognized option \"%s\"", argv[0], arg);
+      cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
+      goto badopt;
     }
     return -1;
   }
 
   if (opt->type == CLI_T_BOOL) {
     if (value) {
-      log("%s: unexpected value for flag \"%s\"", argv[0], arg);
-      *stp = CLI_PS_BADOPT;
-      return -1;
+      cli_logf("%s: unexpected value for flag \"%s\"", argv[0], arg);
+      goto badopt;
     }
     opt->boolval = true;
     if (opt->valuep)
@@ -346,10 +356,9 @@ static int parse_opt(
 
   if (value == NULL) {
     argi++;
-    if (argc - 1 == argi) {
-      log("%s: missing value for option \"%s\"", argv[0], arg);
-      *stp = CLI_PS_BADOPT;
-      return -1;
+    if (argc == argi) {
+      cli_logf("%s: missing value for option \"%s\"", argv[0], arg);
+      goto badopt;
     }
     value = argv[argi];
   }
@@ -374,9 +383,8 @@ static int parse_opt(
     }
     error err = sparse_i64(value, strlen(value), base, &opt->intval);
     if (err) {
-      log("%s: invalid integer value \"%s\" for option \"%s\"", argv[0], value, arg);
-      *stp = CLI_PS_BADOPT;
-      return -1;
+      cli_logf("%s: invalid integer value \"%s\" for option \"%s\"", argv[0], value, arg);
+      goto badopt;
     }
     if (opt->valuep)
       *(i64*)opt->valuep = opt->intval;
@@ -385,10 +393,13 @@ static int parse_opt(
 
   default:
     dlog("invalid cli option type %u", opt->type);
-    log("%s: failed to parse option \"%s\"", argv[0], arg);
-    *stp = CLI_PS_BADOPT;
-    return -1;
+    cli_logf("%s: failed to parse option \"%s\"", argv[0], arg);
   }
+badopt:
+  *stp = CLI_PS_BADOPT;
+  if UNLIKELY(rest && !array_push(rest, arg))
+    *stp = fail_nomem(argv[0]);
+  return -1;
 }
 
 
@@ -400,7 +411,7 @@ CliParseStatus cliopt_parse(
   const char* nullable extra_help)
 {
   if (argc < 1) {
-    log("?: empty command line");
+    cli_logf("?: empty command line");
     return CLI_PS_BADOPT;
   }
   CliParseStatus status = CLI_PS_OK;
