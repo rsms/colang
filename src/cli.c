@@ -334,16 +334,15 @@ static int parse_opt(
       // -h, -help, --help
       *stp = CLI_PS_HELP;
       cliopt_help(opts, argv[0], rest != NULL, usage, extra_help);
-    } else {
-      cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
-      goto badopt;
+      return -1;
     }
-    return -1;
+    cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
+    goto badopt;
   }
 
   if (opt->type == CLI_T_BOOL) {
-    if (value) {
-      cli_logf("%s: unexpected value for flag \"%s\"", argv[0], arg);
+    if (value) { // e.g. -flag=on
+      cli_logf("%s: unexpected argument \"%s\"", argv[0], arg);
       goto badopt;
     }
     opt->boolval = true;
@@ -397,9 +396,11 @@ static int parse_opt(
   }
 badopt:
   *stp = CLI_PS_BADOPT;
-  if UNLIKELY(rest && !array_push(rest, arg))
+  if UNLIKELY(rest && !array_push(rest, arg)) {
     *stp = fail_nomem(argv[0]);
-  return -1;
+    return -1;
+  }
+  return argi;
 }
 
 
@@ -432,7 +433,7 @@ CliParseStatus cliopt_parse(
       i++;
       if UNLIKELY(i < argc && !array_append(rest, argv + i, (u32)(argc - i)))
         return fail_nomem(prog);
-      return CLI_PS_OK;
+      return status;
     }
 
     i = parse_opt(opts, argc, argv, rest, usage, extra_help, i, arg, arglen, &status);
@@ -440,5 +441,5 @@ CliParseStatus cliopt_parse(
       return status;
   }
 
-  return CLI_PS_OK;
+  return status;
 }
