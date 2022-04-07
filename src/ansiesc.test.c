@@ -157,11 +157,6 @@ DEF_TEST(aesc_parsec) {
       { [19] = &a_rgbFF0102_def, [38] = &a_rgbFF0102_rgb0201FF,
         [49] = &a_rgbFF0102_def, [58] = &a_def_def },
     },
-    // { // bug 1
-    //   "hello \x1B[31mredfg \x1B[44mbluebg\x1B[49m redfg\x1B[39m",
-    //   { [19] = &a_rgbFF0102_def, [38] = &a_rgbFF0102_rgb0201FF,
-    //     [49] = &a_rgbFF0102_def, [58] = &a_def_def },
-    // },
   };
 
   for (usize tidx = 0; tidx < countof(tests); tidx++) {
