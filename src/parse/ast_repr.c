@@ -545,7 +545,16 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_name(r, n->name);
     write_node(r, n->type);
 
-  _(ArrayType)  write_TODO(r);
+  _(ArrayType)
+    write_node(r, n->elem);
+    if (n->size) {
+      str_push(&r->dst, ' ');
+      write_push_style(r, STYLE_LIT);
+      str_appendu64(&r->dst, n->size, 10);
+      write_pop_style(r);
+    } else if (n->sizeexpr) {
+      write_node(r, n->sizeexpr);
+    }
 
   _(TupleType)
     if (n->a.len > 0)

@@ -106,6 +106,15 @@ usize sfmt_u64(char buf[64], u64 v, u32 base) {
 }
 
 
+usize sfmt_i64(char buf[65], i64 value, u32 base) {
+  if (value >= 0)
+    return sfmt_u64(buf, (u64)value, base);
+  buf[0] = '-';
+  buf++;
+  return 1 + sfmt_u64(buf, (u64)-value, base);
+}
+
+
 usize sfmt_repr(char* buf, usize bufcap, const void* data, usize len) {
   ABuf s = abuf_make(buf, bufcap);
   abuf_repr(&s, data, len);
@@ -120,6 +129,13 @@ char* sreverse(char* s, usize len) {
     s[j] = tmp;
   }
   return s;
+}
+
+const char* strim_begin(const char* s, usize len, char trimc) {
+  usize i = 0;
+  for (; s[i] == trimc && i < len; i++) {
+  }
+  return s + i;
 }
 
 
@@ -141,7 +157,65 @@ bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len)
 }
 
 
-isize slastindexof(const char* s, usize len, char c) {
+isize sindexofn(const char* src, usize len, char c) {
+  if UNLIKELY(len > ISIZE_MAX)
+    len = ISIZE_MAX;
+
+  /* BEGIN musl licensed code
+  This block of code has been adapted from musl and is licensed as follows:
+
+  Copyright © 2005-2020 Rich Felker, et al.
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy of this
+  software and associated documentation files (the "Software"), to deal in the Software
+  without restriction, including without limitation the rights to use, copy, modify,
+  merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+  permit persons to whom the Software is furnished to do so, subject to the following
+  conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+  INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+  PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+  HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF
+  CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
+  OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+  */
+  const u8* s = (const u8*)src;
+  u8 b = (u8)c;
+
+  #if __has_attribute(__may_alias__)
+  #define SS         (sizeof(usize))
+  #define ONES       ((usize)-1/U8_MAX)
+  #define HIGHS      (ONES * (U8_MAX/2 + 1))
+  #define HASZERO(x) ((x) - ONES & ~(x) & HIGHS)
+
+  usize n = len;
+  for (; ((uintptr)s & (sizeof(usize)-1)) && n && *s != b; s++, n--) {}
+
+  if (n && *s != b) {
+    typedef usize __attribute__((__may_alias__)) AliasSize;
+    const AliasSize* w;
+    usize k = ((usize) - 1/U8_MAX) * b;
+    for (w = (const void*)s; n>=SS && !HASZERO(*w^k); w++, n-=SS);
+    s = (const void*)w;
+  }
+
+  #undef SS
+  #undef ONES
+  #undef HIGHS
+  #undef HASZERO
+  #endif
+
+  for (; n && *s != b; s++, n--) {}
+  return n ? (isize)(len - n) : -1;
+  /* END musl licensed code */
+}
+
+
+isize slastindexofn(const char* s, usize len, char c) {
   if UNLIKELY(len > ISIZE_MAX)
     len = ISIZE_MAX;
   while (len--) {
@@ -149,6 +223,47 @@ isize slastindexof(const char* s, usize len, char c) {
       return (isize)len;
   }
   return -1;
+}
+
+
+isize sindexof(const char* s, char c) {
+  char* p = strchr(s, c);
+  return p ? (isize)(uintptr)(p - s) : -1;
+}
+
+
+isize slastindexof(const char* s, char c) {
+  return slastindexofn(s, strlen(s), c);
+}
+
+
+void swrap_simple(char* buf, usize len, usize column_limit) {
+  assert(column_limit > 0);
+  if (len < column_limit)
+    return;
+
+  usize col = 0;
+  char* lastspace = NULL;
+  char* end = buf + len;
+
+  for (; buf != end; buf++) {
+    col++;
+    if (*buf == '\n') {
+      col = 0;
+      lastspace = NULL;
+    } else if (col > column_limit) {
+      if (lastspace) {
+        *lastspace = '\n';
+        col = (usize)(uintptr)(buf - lastspace);
+      } else {
+        *buf = '\n';
+        col = 0;
+      }
+      lastspace = NULL;
+    } else if (ascii_isspace(*buf)) {
+      lastspace = buf;
+    }
+  }
 }
 
 
@@ -175,6 +290,12 @@ ABuf* abuf_append(ABuf* s, const char* p, usize len) {
 ABuf* abuf_u64(ABuf* s, u64 v, u32 base) {
   char buf[64];
   usize len = sfmt_u64(buf, v, base);
+  return abuf_append(s, buf, len);
+}
+
+ABuf* abuf_i64(ABuf* s, i64 v, u32 base) {
+  char buf[65];
+  usize len = sfmt_i64(buf, v, base);
   return abuf_append(s, buf, len);
 }
 

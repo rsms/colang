@@ -265,6 +265,7 @@ EXTERN_C void llvm_module_dispose(CoLLVMModule* m);
 EXTERN_C error llvm_module_set_target(CoLLVMModule* m, const char* triple);
 EXTERN_C error llvm_module_optimize(CoLLVMModule* m, const CoLLVMBuild*);
 EXTERN_C error llvm_module_build(CoLLVMModule* m, const CoLLVMBuild*);
+EXTERN_C void llvm_module_dump(CoLLVMModule* m); // print IR to stderr
 
 // llvm_module_write writes .ll IR text source to file.
 // if isfordebug is set, some additional information is included.

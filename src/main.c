@@ -1,18 +1,51 @@
 #include <stdio.h>
-#include <err.h>
+#include <getopt.h>
 
 #include "colib.h"
+#include "cli.h"
 #include "parse/parse.h"
 
 #ifdef WITH_LLVM
   #include "llvm/llvm.h"
 #endif
 
+static char tmpbuf[4096];
+
+static const char* cli_usage = "usage: co [options] [<srcfile> ...]";
+static CliOption cli_options[] = {
+  // longname, shortname, valuename, type, help [, default value]
+  {"output", 'o', "<file>", CLI_T_STR, "Write output to <file>" },
+  {"safe", 0, "", CLI_T_BOOL, "Build with optimizations + runtime safety checks (default)" },
+  {"fast", 0, "", CLI_T_BOOL, "Build with optimizations" },
+  {"debug", 0, "", CLI_T_BOOL, "Build without optimizations" },
+  {"no-debug-info", 0, "", CLI_T_BOOL, "Do not generate debug information" },
+
+  #if CO_TESTING_ENABLED
+  {"test-only", 0, "", CLI_T_BOOL, "Run unit tests and exit" },
+  #endif
+  {0},
+};
+static const char* cli_help =
+  "<srcfile>\n"
+  "  If not provided, read source from stdin";
+static CStrArray cli_args;
+
+
+static void parse_cli_options(int argc, const char** argv) {
+  static const char* cli_restbuf[16];
+  cli_args = array_make(CStrArray, cli_restbuf, sizeof(cli_restbuf));
+  switch (cliopt_parse(cli_options, argc, argv, &cli_args, cli_usage, cli_help)) {
+    case CLI_PS_OK:     break;
+    case CLI_PS_HELP:   exit(0);
+    case CLI_PS_BADOPT: exit(1);
+    case CLI_PS_NOMEM:  exit(127);
+  }
+}
+
+
 #define CHECKERR(expr) \
   ({ error err__ = (expr); \
      err__ != 0 ? panic(#expr ": %s", error_str(err__)) : ((void)0); })
-
-static char tmpbuf[4096];
 
 
 // static void print_src_checksum(const Source* src) {
@@ -93,6 +126,7 @@ static error parse_pkg(BuildCtx* build) {
     t = logtime_start("[llvm] build module:");
     CHECKERR( llvm_build(build, &m, &buildopt) );
     logtime_end(t);
+    //llvm_module_dump(m);
 
     // write IR source text, LLVM bitcode and assembly source code (for debugging)
     CHECKERR( llvm_module_emit(&m, "out.ll", CoLLVMEmit_ir, CoLLVMEmit_debug) );
@@ -125,9 +159,22 @@ static error parse_pkg(BuildCtx* build) {
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
-  if (co_test_main(argc, argv))
-    return 1;
+
+  // parse command-line options
+  parse_cli_options(argc, argv);
+
+  // run unit tests
+  #if CO_TESTING_ENABLED
+    if (co_test_runall(/*filter_prefix*/NULL))
+      return 1;
+    if (cliopt_bool(cli_options, "test-only")) return 0;
+  #endif
+
+  // initialize built-ins
   universe_init();
+
+  // run parser tests (only has effect with CO_TESTING_ENABLED)
+  if (parse_test_main(argc, argv)) return 1;
 
   // select a memory allocator
   #ifdef CO_NO_LIBC
@@ -152,7 +199,7 @@ int main(int argc, const char** argv) {
 
   // add a source file to the package
   Source src1 = {0};
-  const char* filename = argv[1] ? argv[1] : "examples/hello.co";
+  const char* filename = cli_args.len ? cli_args.v[0] : "examples/hello.co";
   if (( err = source_open_file(&src1, filename) ))
     panic("%s: %s", filename, error_str(err));
   b_add_source(build, &src1);

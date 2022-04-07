@@ -94,7 +94,7 @@ typedef double f64;
 #endif
 
 // isize
-#if USIZE_MAX == __LONG_MAX__
+#if USIZE_MAX == (__LONG_MAX__ *2UL+1UL)
 typedef long isize;
 #elif USIZE_MAX >= 0xffffffffffffffff
 typedef i64 isize;
@@ -104,6 +104,9 @@ typedef i32 isize;
 typedef i16 isize;
 #elif USIZE_MAX >= 0xff
 typedef i8 isize;
+#endif
+#ifdef __cplusplus
+_Static_assert(sizeof(usize) == sizeof(isize), "");
 #endif
 
 
@@ -452,13 +455,13 @@ static inline WARN_UNUSED_RESULT bool __must_check_unlikely(bool unlikely) {
 // #define IS_ALIGNED(x, a)       (((x) & ((__typeof__(x))(a) - 1)) == 0)
 
 // a + b => d
-#define check_add_overflow(a, b, d) __must_check_unlikely(({  \
-  __typeof__(a) __a = (a);      \
-  __typeof__(b) __b = (b);      \
-  __typeof__(d) __d = (d);      \
-  (void) (&__a == &__b);      \
-  (void) (&__a == __d);     \
-  __builtin_add_overflow(__a, __b, __d);  \
+#define check_add_overflow(a, b, d) __must_check_unlikely(({ \
+  __typeof__(a) __a = (a); \
+  __typeof__(b) __b = (b); \
+  __typeof__(d) __d = (d); \
+  (void) (&__a == &__b); /* warning if incompatible */ \
+  (void) (&__a == __d);  /* warning if incompatible */ \
+  __builtin_add_overflow(__a, __b, __d); \
 }))
 
 // a - b => d
@@ -664,6 +667,7 @@ typedef __builtin_va_list va_list;
   #define va_copy  __builtin_va_copy
 #endif
 
+char* strchr(const char* haystack, int needlechar);
 char* strstr(const char* haystack, const char* needle);
 
 // —————————————————————————————————————————————————————————————————————————————————————
@@ -692,6 +696,8 @@ ASSUME_NONNULL_END
 #include "tstyle.h"
 #include "sha256.h"
 #include "unicode.h"
+#include "ansiesc.h"
+#include "cli.h"
 
 #endif // !defined(__cplusplus)
 // —————————————————————————————————————————————————————————————————————————————————————

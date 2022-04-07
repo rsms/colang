@@ -57,9 +57,10 @@ bool array_splice(Array(T)* a, u32 start, u32 removelen,
 
 #endif // API_DOC
 
-typedef Array(void)  VoidArray;
-typedef Array(void*) PtrArray;
-typedef Array(u32)   U32Array;
+typedef Array(void)        VoidArray;
+typedef Array(void*)       PtrArray;
+typedef Array(u32)         U32Array;
+typedef Array(const char*) CStrArray;
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal

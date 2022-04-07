@@ -3,52 +3,79 @@
 #include "colib.h"
 
 
-Rune utf8_decode(const u8* buf, usize len, u32* width_out) {
-  u8 b = *buf;
-  if (b < RuneSelf) {
-    *width_out = 1;
-    return b;
+Rune utf8_decode(const u8** cursor, const u8* end) {
+  assertf(*cursor != end, "empty input");
+  const u8* s = *cursor;
+  int k = __builtin_clz(~((u32)*s << 24));
+  assert(k <= 8);
+  Rune mask = (1 << (8 - k)) - 1;
+  Rune r = *s & mask;
+  for (++s, --k; k > 0 && s != end; --k, ++s) {
+    r <<= 6;
+    r += (*s & 0x3F);
   }
-  if ((b >> 5) == 0x6) {
-    *width_out = 2;
-    return len < 2 ? RuneErr
-                   : ((b << 6) & 0x7ff) + ((buf[1]) & 0x3f);
-  }
-  if ((b >> 4) == 0xE) {
-    *width_out = 3;
-    return len < 3 ? RuneErr
-                  : ((b << 12) & 0xffff) + ((buf[1] << 6) & 0xfff) + ((buf[2]) & 0x3f);
-  }
-  if ((b >> 3) == 0x1E) {
-    *width_out = 4;
-    return len < 4 ? RuneErr
-                   : ((b << 18) & 0x1fffff) + ((buf[1] << 12) & 0x3ffff) +
-                     ((buf[2] << 6) & 0xfff) + ((buf[3]) & 0x3f);
-  }
-  *width_out = 1; // make naive caller advance in case it doesn't check error
-  return RuneErr;
+  *cursor = s;
+  // TODO: RuneErr on invalid input
+  return r;
 }
 
 
-DEF_TEST(unicode_ascii_is) {
-  for (char c = 0; c < '0'; c++) {
-    assert(!ascii_isdigit(c));
-    assert(!ascii_ishexdigit(c));
+usize utf8_len(const u8* s, usize len, UnicodeLenFlags flags) {
+  usize count = 0;
+  const u8* end = s + len;
+
+  if LIKELY((flags & UC_LFL_SKIP_ANSI) == 0) {
+    // Note: this can be done MUCH faster for large inputs with SIMD.
+    // See https://github.com/simdutf/simdutf/blob/4f6d4c6a89e3fba1fb6/src/generic/utf8.h#L10
+    // -65 is 0b10111111, anything larger in two-complement's should start a new code point.
+    while (s < end)
+      count += ((i8)*s++ > (i8)-65);
+    return count;
   }
-  for (char c = '0'; c < '9'+1; c++) {
-    assert(ascii_isdigit(c));
-    assert(ascii_ishexdigit(c));
+
+  AEscParser ap = aesc_mkparser(AESC_DEFAULT_ATTR);
+  while (s < end) {
+    Rune r = utf8_decode(&s, end);
+    if (r == '\x1B') {
+      for (s--;;) { // scan past the ANSI escape sequence
+        AEscParseState ps = aesc_parsec(&ap, *s++);
+        if ((ps && *s != '\x1B') || s == end)
+          break;
+      }
+    } else {
+      count++;
+    }
   }
-  for (char c = 'A'; c < 'F'+1; c++) {
-    assert(!ascii_isdigit(c));
-    assert(ascii_ishexdigit(c));
+  return count;
+}
+
+
+usize utf8_printlen(const u8* s, usize len, UnicodeLenFlags flags) {
+  usize count = 0;
+  const u8* end = s + len;
+
+  if LIKELY((flags & UC_LFL_SKIP_ANSI) == 0) {
+    while (s < end) {
+      Rune r = utf8_decode(&s, end);
+      count += r >= RuneSelf || ascii_isprint(r);
+    }
+    return count;
   }
-  for (char c = 'a'; c < 'f'+1; c++) {
-    assert(!ascii_isdigit(c));
-    assert(ascii_ishexdigit(c));
+
+  AEscParser ap = aesc_mkparser(AESC_DEFAULT_ATTR);
+  while (s < end) {
+    Rune r = utf8_decode(&s, end);
+    if (r >= RuneSelf) {
+      count++;
+    } else if (r == '\x1B') {
+      for (s--;;) { // scan past the ANSI escape sequence
+        AEscParseState ps = aesc_parsec(&ap, *s++);
+        if ((ps && *s != '\x1B') || s == end)
+          break;
+      }
+    } else {
+      count += ascii_isprint(r);
+    }
   }
-  for (char c = 'f'+1; c < 'z'+1; c++) {
-    assert(!ascii_isdigit(c));
-    assert(!ascii_ishexdigit(c));
-  }
+  return count;
 }

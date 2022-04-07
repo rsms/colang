@@ -135,6 +135,11 @@ error llvm_module_optimize(CoLLVMModule* m, const CoLLVMBuild* opt) {
 }
 
 
+void llvm_module_dump(CoLLVMModule* m) {
+  LLVMDumpModule(m->M);
+}
+
+
 error llvm_build(BuildCtx* build, CoLLVMModule* m, const CoLLVMBuild* opt) {
   dlog("llvm_build");
   error err;
@@ -152,21 +157,6 @@ error llvm_build(BuildCtx* build, CoLLVMModule* m, const CoLLVMBuild* opt) {
   err = llvm_module_optimize(m, opt);
   if (err)
     goto onerror;
-
-  #ifdef DEBUG
-    dlog("————————————— final LLVM IR module: —————————————");
-    LLVMDumpModule(m->M);
-    dlog("—————————————————————————————————————————————————");
-  #endif
-
-  // TODO:
-  // - select target and emit machine code
-  // - verify, optimize and target-fit module
-  // - emit machine code (object)
-  // - emit machine assembly (for debugging)
-  // - emit LLVM IR bitcode (for debugging)
-  // - emit LLVM IR text code (for debugging)
-  // - link executable (objects -> elf/mach-o/coff)
 
   return 0;
 onerror:

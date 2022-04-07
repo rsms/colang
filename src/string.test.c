@@ -220,3 +220,117 @@ DEF_TEST(abuf_repr) {
 
   #undef T
 }
+
+
+DEF_TEST(strim_end) {
+  struct {
+    const char* input;
+    char        trimc;
+    const char* expected_output;
+  } tests[] = {
+    { "hello  ", ' ', "hello" },
+    { "hello", ' ', "hello" },
+  };
+  for (usize i = 0; i < countof(tests); i++) {
+    usize len = strim_end(tests[i].input, strlen(tests[i].input), tests[i].trimc);
+    assertf(len <= strlen(tests[i].input), "%s", tests[i].input);
+    assertf(len == strlen(tests[i].expected_output),
+      "len(%s) != len(%.*s)", tests[i].expected_output, (int)len, tests[i].input);
+    assertf(memcmp(tests[i].expected_output, tests[i].input, len) == 0,
+      "\"%s\" != \"%.*s\"", tests[i].expected_output, (int)len, tests[i].input);
+  }
+}
+
+
+DEF_TEST(strim_begin) {
+  struct {
+    const char* input;
+    char        trimc;
+    const char* expected_output;
+  } tests[] = {
+    { "  hello", ' ', "hello" },
+    { "hello", ' ', "hello" },
+  };
+  for (usize i = 0; i < countof(tests); i++) {
+    const char* res = strim_begin(tests[i].input, strlen(tests[i].input), tests[i].trimc);
+    assertcstreq(res, tests[i].expected_output);
+  }
+}
+
+
+DEF_TEST(swrap_simple) {
+  char text[] = {
+    "Lorem ipsum dolor sit amet, consectetur adipiscing elit."
+    " Etiam aliquet, nisl ac hendrerit cursus, ligula libero vestibulum mauris,"
+    " pretium pharetra ligula ligula et neque.\n"
+    "\n"
+    "Integer at volutpat magna. Nunc quis dictum diam. Cras leo nibh, luctus vel porta ut,"
+    " euismod id sapien. Maecenas luctus vel tellus at volutpat.\n"
+    "Sed pharetra mauris ac rhoncus maximus. Morbi fermentum ipsum in sem vehicula,"
+    " at rutrum augue ornare. Duis interdum odio vel lacus consequat aliquam.\n"
+    "Quisque faucibus sem urna, eu accumsan diam rutrum ut.\n" };
+
+  const char* expected_result =
+    "Lorem ipsum dolor sit amet, consectetur\n"
+    "adipiscing elit. Etiam aliquet, nisl ac\n"
+    "hendrerit cursus, ligula libero\n"
+    "vestibulum mauris, pretium pharetra\n"
+    "ligula ligula et neque.\n"
+    "\n"
+    "Integer at volutpat magna. Nunc quis\n"
+    "dictum diam. Cras leo nibh, luctus vel\n"
+    "porta ut, euismod id sapien. Maecenas\n"
+    "luctus vel tellus at volutpat.\n"
+    "Sed pharetra mauris ac rhoncus maximus.\n"
+    "Morbi fermentum ipsum in sem vehicula,\n"
+    "at rutrum augue ornare. Duis interdum\n"
+    "odio vel lacus consequat aliquam.\n"
+    "Quisque faucibus sem urna, eu accumsan\n"
+    "diam rutrum ut.\n";
+
+  swrap_simple(text, strlen(text), 40);
+  // dlog("text:\n%s", text);
+  assertcstreq(expected_result, text);
+}
+
+
+DEF_TEST(sindexof) {
+  struct {
+    const char* input;
+    char        c;
+    isize       expected_first_index;
+    isize       expected_last_index;
+  } tests[] = {
+    { "foo:bar:baz", ':', 3, 7 },
+    { "foo bar baz", ':', -1, -1 },
+    { "foo:", ':', 3, 3 },
+    { ":foo", ':', 0, 0 },
+    { "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxfoo:bar", ':', 63, 63 },
+  };
+  for (usize i = 0; i < countof(tests); i++) {
+    isize expect, res;
+    usize inputlen = strlen(tests[i].input);
+    isize expect_first = tests[i].expected_first_index;
+    isize expect_last = tests[i].expected_last_index;
+
+    res = sindexofn(tests[i].input, inputlen, tests[i].c);
+    assertf(res == expect_first,
+      "sindexofn(\"%s\", %zu, '%c')\nexpect %zd\ngot    %ld\n",
+      tests[i].input, inputlen, tests[i].c, expect_first, res);
+
+    res = sindexof(tests[i].input, tests[i].c);
+    assertf(res == expect_first,
+      "sindexof(\"%s\", '%c')\nexpect %zd\ngot    %ld\n",
+      tests[i].input, tests[i].c, expect_first, res);
+
+    res = slastindexofn(tests[i].input, inputlen, tests[i].c);
+    assertf(res == expect_last,
+      "slastindexofn(\"%s\", %zu, '%c')\nexpect %zd\ngot    %ld\n",
+      tests[i].input, inputlen, tests[i].c, expect_last, res);
+
+    res = slastindexof(tests[i].input, tests[i].c);
+    assertf(res == expect_last,
+      "slastindexofn(\"%s\", '%c')\nexpect %zd\ngot    %ld\n",
+      tests[i].input, tests[i].c, expect_last, res);
+  }
+}

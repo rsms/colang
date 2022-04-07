@@ -8,6 +8,10 @@ BEGIN_INTERFACE
 
 typedef i32 Rune;
 
+typedef u8 UnicodeLenFlags; enum {
+  UC_LFL_SKIP_ANSI = 1 << 0, // skip past ANSI escape sequences
+};
+
 static const Rune RuneErr  = 0xFFFD; // Unicode replacement character
 static const Rune RuneSelf = 0x80;
   // characters below RuneSelf are represented as themselves in a single byte.
@@ -22,7 +26,16 @@ static const Rune RuneSelf = 0x80;
 #define ascii_isspace(c)    ( (c) == ' ' || (u32)(c) - '\t' < 5 )           /* SP, \{tnvfr} */
 #define ascii_ishexdigit(c) ( ascii_isdigit(c) || ((u32)c | 32) - 'a' < 6 ) /* 0-9A-Fa-f */
 
-Rune utf8_decode(const u8* src, usize srclen, u32* width_out);
+// utf8_decode decodes the next codepoint at *cursor.
+// Always advances *cursor by at least 1 byte.
+// Required precondition *cursor < end (input is not empty.)
+Rune utf8_decode(const u8** cursor, const u8* end);
+
+// utf8_len returns the number of unicode codepoints at s
+usize utf8_len(const u8* s, usize len, UnicodeLenFlags);
+
+// utf8_printlen returns the number of printable unicode codepoints at s
+usize utf8_printlen(const u8* s, usize len, UnicodeLenFlags);
 
 
 END_INTERFACE

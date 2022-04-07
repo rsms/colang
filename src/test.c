@@ -30,6 +30,19 @@ void co_test_add(CoTesting* t) {
 }
 
 
+#ifndef CO_NO_LIBC
+  FILE* test_fmemopen(void* restrict buf, usize bufcap, const char* restrict mode) {
+    return assertnotnull(fmemopen(buf, bufcap, mode));
+  }
+
+  isize test_fmemclose(FILE* fp) {
+    long fpi = ftell(fp);
+    fclose(fp);
+    return (isize)fpi;
+  }
+#endif // CO_NO_LIBC
+
+
 static bool should_run_test(CoTesting* t, const char* nullable filter_prefix) {
   if (!filter_prefix)
     return true; // no filter
@@ -77,28 +90,19 @@ static void testrun_end(CoTesting* t, u64 startat) {
 }
 
 
-int co_test_main(int argc, const char** argv) {
-  // usage: $0 [filter_prefix]
-  // note: if env CO_TEST_FILTER is set, it is used as the default value for argv[1]
-  int failcount = 0;
-  bool exit_when_done = false;
-  const char* filter_prefix = NULL;
+static int test_sort_fn(const void* x, const void* y, void* nullable ctx) {
+  const CoTesting* a = *(const void**)x;
+  const CoTesting* b = *(const void**)y;
+  int cmp = strcmp(a->file, b->file);
+  return cmp == 0 ? (a->line - b->line) : cmp;
+}
+
+
+usize co_test_runall(const char* nullable filter_prefix) {
+  usize failcount = 0;
 
   if (!testlist_head)
     goto done;
-
-  for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--test-only") == 0) {
-      exit_when_done = true;
-    } else if (strcmp(argv[i], "--test-filter") == 0) {
-      i++;
-      if (i == argc) {
-        errlog("missing <filter> for --test-filter");
-        return 1;
-      }
-      filter_prefix = argv[i];
-    }
-  }
 
   if (filter_prefix == NULL) {
     #ifdef CO_NO_LIBC
@@ -116,44 +120,45 @@ int co_test_main(int argc, const char** argv) {
     #endif
   }
 
-  int runcount = 0;
+  // Sort tests by source {file,line} to make execution order predictable.
+  // Start by collecting enabled tests into an array:
+  static CoTesting* tests[128];
+  usize ntests = 0;
   for (CoTesting* t = testlist_head; t; t = t->_next) {
-    if (should_run_test(t, filter_prefix)) {
-      u64 startat = nanotime();
-      testrun_start(t);
-      t->fn(t);
-      testrun_end(t, startat);
-      runcount++;
-      if (t->failed)
-        failcount++;
-    }
+    if (!should_run_test(t, filter_prefix))
+      continue;
+    assertf(ntests < countof(tests), "wowza, that is a lot of tests (%zu)", ntests);
+    tests[ntests++] = t;
   }
-
-  if (runcount == 0) {
-    assertnotnull(filter_prefix);
-    fprintf(stderr, "no tests with prefix %s\n", filter_prefix);
+  if (ntests == 0) {
+    if (filter_prefix && strlen(filter_prefix) > 0)
+      fprintf(stderr, "no tests with prefix %s\n", filter_prefix);
     goto done;
   }
+  xqsort(tests, ntests, sizeof(void*), &test_sort_fn, NULL);
 
-  const char* progname = path_base(argv[0]);
+  // run tests
+  for (usize i = 0; i < ntests; i++) {
+    CoTesting* t = tests[i];
+    u64 startat = nanotime();
+    testrun_start(t);
+    t->fn(t);
+    testrun_end(t, startat);
+    if (t->failed)
+      failcount++;
+  }
 
-  if (failcount > 0) {
-    fprintf(stderr, "%sFAILED:%s %s (%d)\n",
-      failstyle, nostyle, progname, failcount);
-    for (CoTesting* t = testlist_head; t; t = t->_next) {
+  // report failures after all tests has finished running
+  if (failcount) {
+    fprintf(stderr, "%sFAILED:%s (%zu)\n", failstyle, nostyle, failcount);
+    for (usize i = 0; i < ntests; i++) {
+      CoTesting* t = tests[i];
       if (t->failed)
         fprintf(stderr, "  %s\tat %s:%d\n", t->name, t->file, t->line);
     }
-  // } else {
-  //   fprintf(stderr, "%sPASS:%s %s\n", okstyle, nostyle, progname);
   }
 
 done:
-  if (exit_when_done) {
-    #ifndef CO_NO_LIBC
-      exit(0);
-    #endif
-  }
-  return failcount > 0 ? 1 : 0;
+  return failcount;
 }
 

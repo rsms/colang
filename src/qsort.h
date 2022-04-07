@@ -8,6 +8,6 @@ BEGIN_INTERFACE
 
 // xqsort is qsort_r aka qsort_s
 typedef int(*xqsort_cmp)(const void* x, const void* y, void* nullable ctx);
-void xqsort(void* base, usize nmemb, usize size, xqsort_cmp cmp, void* nullable ctx);
+void xqsort(void* base, usize count, usize elemsize, xqsort_cmp cmp, void* nullable ctx);
 
 END_INTERFACE

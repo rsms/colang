@@ -32,7 +32,7 @@ const char* path_cwdrel(const char* path) {
 
 usize path_dir(const char* restrict filename, char* restrict buf, usize bufcap) {
   usize len = strlen(filename);
-  isize i = slastindexof(filename, len, PATH_SEPARATOR);
+  isize i = slastindexofn(filename, len, PATH_SEPARATOR);
 
   if (i < 1)
     goto nodir;

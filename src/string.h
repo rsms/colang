@@ -16,6 +16,7 @@ error sparse_i32(const char* src, usize len, u32 base, i32* result);
 // sfmt_TYPE formats a value of TYPE, returning the number of bytes written.
 // These functions do NOT append a terminating '\0'.
 usize sfmt_u64(char buf[64], u64 value, u32 base);
+usize sfmt_i64(char buf[65], i64 value, u32 base);
 static usize sfmt_u32(char buf[32], u32 value, u32 base);
 static usize sfmt_u8(char buf[8], u8 value, u32 base);
 
@@ -26,17 +27,28 @@ usize sfmt_repr(char* buf, usize bufcap, const void* data, usize len);
 // sreverse reverses s in place; returns s.
 char* sreverse(char* s, usize len);
 
+// strim_begin returns offset into s past any leading trimc characters.
+// e.g. strim_begin("  hello", 7, ' ') => "hello"
+const char* strim_begin(const char* s, usize len, char trimc);
+
 // strim_end returns the length of s without any trailing trimc characters.
-// e.g. strimend("hello  ", 7, ' ') => 5
+// e.g. strim_end("hello  ", 7, ' ') => 5
 usize strim_end(const char* s, usize len, char trimc);
 
 // shasprefix returns true if s starts with prefix_cstr
-static bool shasprefix(const char* s, usize len, const char* prefix_cstr);
-static bool shassuffix(const char* s, usize len, const char* suffix_cstr);
 bool shasprefixn(const char* s, usize len, const char* prefix, usize prefix_len);
 bool shassuffixn(const char* s, usize len, const char* suffix, usize suffix_len);
+static bool shasprefix(const char* s, usize len, const char* prefix_cstr);
+static bool shassuffix(const char* s, usize len, const char* suffix_cstr);
 
-isize slastindexof(const char* s, usize len, char c);
+isize sindexofn(const char* s, usize len, char c);
+isize slastindexofn(const char* s, usize len, char c);
+isize sindexof(const char* s, char c);
+isize slastindexof(const char* s, char c);
+
+// swrap_simple performs a basic form of text wrapping by replacing ASCII space
+// characters with LF to keep lines no longer than column_limit.
+void swrap_simple(char* buf, usize len, usize column_limit);
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // StrSlice is an immutable view into string data stored elsewhere
@@ -87,6 +99,7 @@ ABuf* abuf_append(ABuf* s, const char* p, usize len);
 static ABuf* abuf_cstr(ABuf* s, const char* cstr); // = abuf_append(s, cstr, strlen())
 ABuf* abuf_c(ABuf* s, char c);
 ABuf* abuf_u64(ABuf* s, u64 v, u32 base);
+ABuf* abuf_i64(ABuf* s, i64 v, u32 base);
 ABuf* abuf_u32(ABuf* s, u32 v, u32 base);
 ABuf* abuf_f64(ABuf* s, f64 v, int ndecimals);
 ABuf* abuf_fill(ABuf* s, char c, usize len); // like memset

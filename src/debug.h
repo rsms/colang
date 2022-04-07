@@ -48,12 +48,12 @@ void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
   #define assert(cond) \
     (UNLIKELY(!(cond)) ? _assertfail("%s", #cond) : ((void)0))
 
-  #define assertop(a,op,b) ({                                               \
-    __typeof__(a) A__ = a;                                                  \
-    __typeof__(a) B__ = b; /* intentionally typeof(a) and not b for lits */ \
-    if (UNLIKELY(!(A__ op B__)))                                            \
-      _assertfail("%s %s %s (%s %s %s)",                                    \
-        #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__));    \
+  #define assertop(a,op,b) ({                                            \
+    __typeof__(a) A__ = (a);                                             \
+    __typeof__(a) B__ = (b);                                             \
+    if (UNLIKELY(!(A__ op B__)))                                         \
+      _assertfail("%s %s %s (%s %s %s)",                                 \
+        #a, #op, #b, debug_quickfmt(0,A__), #op, debug_quickfmt(1,B__)); \
   })
 
   #define assertcstreq(cstr1, cstr2) ({                  \
@@ -164,12 +164,12 @@ void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
     double:             "%f", \
     void*:              "%p", \
     const void*:        "%p", \
-    default:            "%p" \
-  ), x)
+    default:            "%lld" \
+  ), (x))
   // debug_tmpsprintf is like sprintf but uses a static buffer.
   // The buffer argument determines which buffer to use (constraint: buffer<6)
-  EXTERN_C const char* debug_tmpsprintf(int buffer, const char* fmt, ...)
-    ATTR_FORMAT(printf, 2, 3);
+  EXTERN_C const char* debug_tmpsprintf(int buffer, const char* fmt, ...);
+  // intentionally no ATTR_FORMAT
   #ifdef CO_NO_LIBC
     #define dlog(format, args...) \
       log("[D] " format " (%s:%d)", ##args, __FILE__, __LINE__)

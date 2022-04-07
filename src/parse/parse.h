@@ -19,3 +19,4 @@
 #include "resolve.h"
 #include "scanner.h"
 #include "parser.h"
+#include "parsetest.h"

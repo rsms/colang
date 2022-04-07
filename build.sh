@@ -270,6 +270,7 @@ XFLAGS=(
   -Werror=implicit-function-declaration \
   -Werror=incompatible-pointer-types \
   -Werror=int-conversion \
+  -Werror=format \
   "${XFLAGS[@]}" \
 )
 XFLAGS_HOST=()
