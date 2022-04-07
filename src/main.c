@@ -37,9 +37,6 @@ static CliOption cliopts[] = {
   #endif
   {0},
 };
-static const char* cli_help =
-  "<srcfile>\n"
-  "  If not provided, read source from stdin";
 static CStrArray cli_args;
 
 
@@ -47,7 +44,7 @@ static void parse_cliopts(int argc, const char** argv) {
   progname = argv[0];
   static const char* cli_restbuf[16];
   cli_args = array_make(CStrArray, cli_restbuf, sizeof(cli_restbuf));
-  switch (cliopt_parse(cliopts, argc, argv, &cli_args, cli_usage, cli_help)) {
+  switch (cliopt_parse(cliopts, argc, argv, &cli_args, cli_usage, NULL)) {
     case CLI_PS_OK:     break;
     case CLI_PS_HELP:   exit(0);
     case CLI_PS_BADOPT: exit(1);
