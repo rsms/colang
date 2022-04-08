@@ -235,10 +235,8 @@ static void snameuni(Scanner* s) {
         break;
       r = b;
       s->inp++;
-    } else {
-      r = utf8_decode(&s->inp, s->inend);
-      if (r == RuneErr)
-        serr(s, "invalid UTF-8 encoding");
+    } else if (!utf8_decode(&s->inp, s->inend, &r)) {
+      serr(s, "invalid UTF-8 data");
     }
   }
   s->tokend = s->inp;
