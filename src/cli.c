@@ -299,10 +299,9 @@ static int parse_opt(
   CStrArray* nullable rest,
   const char* nullable usage,
   const char* nullable extra_help,
-  int argi, const char* arg, usize arglen, CliParseStatus* stp)
+  int argi, const char* arg, CliParseStatus* stp)
 {
-  assert(arglen > 1);
-
+  char tmpbuf[64];
   bool maybe_short = true;
   const char* name = &arg[1];
   if (arg[1] == '-') {
@@ -318,15 +317,12 @@ static int parse_opt(
     namelen = (usize)eqi;
     value = &name[eqi + 1];
   }
+  int arglen = namelen + 1 + (arg[1] == '-'); // length of "-foo" in "-foo=bar"
 
+  CliOption helpopt = {0};
   CliOption* opt = cliopt_find(opts, name, namelen, maybe_short);
+
   if (!opt) {
-    if (name[0] == 'h' && (name[1] == 0 || strcmp(name, "help") == 0)) {
-      // -h, -help, --help
-      *stp = CLI_PS_HELP;
-      cliopt_help(opts, argv[0], rest != NULL, usage, extra_help);
-      return -1;
-    }
     // short with immediate value?
     if (maybe_short && name[1]) {
       opt = cliopt_find(opts, name, 1, maybe_short);
@@ -334,14 +330,30 @@ static int parse_opt(
         value = &name[1];
     }
     if (!opt) {
-      cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
-      goto badopt;
+      // Did not find a short option that accepts immediate value
+      if ((name[0] == 'h' && name[1] == 0) ||
+          (namelen == 4 && memcmp(name, "help", 4) == 0))
+      {
+        // -h, -help, --help
+        if (!value) {
+          *stp = CLI_PS_HELP;
+          cliopt_help(opts, argv[0], rest != NULL, usage, extra_help);
+          return -1;
+        }
+        // trigger "-h option does not accept a value"
+        helpopt.type = CLI_T_BOOL;
+        opt = &helpopt;
+      } else {
+        sfmt_repr(tmpbuf, sizeof(tmpbuf), arg, (usize)arglen);
+        cli_logf("%s: unrecognized option \"%s\"", argv[0], tmpbuf);
+        goto badopt;
+      }
     }
   }
 
   if (opt->type == CLI_T_BOOL) {
     if (value) { // e.g. -foo=on
-      cli_logf("%s: unexpected argument \"%s\"", argv[0], arg);
+      cli_logf("%s: %.*s option does not accept a value", argv[0], arglen, arg);
       goto badopt;
     }
     opt->boolval = true;
@@ -355,7 +367,7 @@ static int parse_opt(
   if (value == NULL) {
     argi++;
     if (argc == argi) {
-      cli_logf("%s: missing value for option \"%s\"", argv[0], arg);
+      cli_logf("%s: missing value for option %.*s", argv[0], arglen, arg);
       goto badopt;
     }
     value = argv[argi];
@@ -381,7 +393,7 @@ static int parse_opt(
     }
     error err = sparse_i64(value, strlen(value), base, &opt->intval);
     if (err) {
-      cli_logf("%s: invalid integer value for option \"%s\"", argv[0], arg);
+      cli_logf("%s: invalid integer value for option %.*s", argv[0], arglen, arg);
       goto badopt;
     }
     if (opt->valuep)
@@ -390,8 +402,8 @@ static int parse_opt(
   }
 
   default:
-    dlog("invalid cli option type %u", opt->type);
-    cli_logf("%s: failed to parse option \"%s\"", argv[0], arg);
+    assertf(0,"invalid cli option type %u", opt->type);
+    cli_logf("%s: failed to parse option %.*s", argv[0], arglen, arg);
   }
 badopt:
   *stp = CLI_PS_BADOPT;
@@ -435,7 +447,7 @@ CliParseStatus cliopt_parse(
       return status;
     }
 
-    i = parse_opt(opts, argc, argv, rest, usage, extra_help, i, arg, arglen, &status);
+    i = parse_opt(opts, argc, argv, rest, usage, extra_help, i, arg, &status);
     if (i < 0)
       return status;
   }
