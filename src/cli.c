@@ -46,11 +46,14 @@ bool cliopt_booln(CliOption* opts, const char* name, usize namelen) {
   return opt && opt->type == CLI_T_BOOL && opt->boolval;
 }
 
-const char* nullable cliopt_strn(
-  CliOption* opts, const char* name, usize namelen, const char* nullable defaultval)
-{
+i64 cliopt_intn(CliOption* opts, const char* name, usize namelen) {
   CliOption* opt = cliopt_find(opts, name, namelen, true);
-  return opt && opt->type == CLI_T_STR && opt->strval ? opt->strval : defaultval;
+  return (opt && opt->type == CLI_T_INT) ? opt->intval : 0;
+}
+
+const char* nullable cliopt_strn(CliOption* opts, const char* name, usize namelen) {
+  CliOption* opt = cliopt_find(opts, name, namelen, true);
+  return (opt && opt->type == CLI_T_STR && opt->strval) ? opt->strval : NULL;
 }
 
 
@@ -116,25 +119,13 @@ const char* nullable cliopt_strn(
 
 
   static usize fmt_opt_help(CliHelpCtx* hc, char* buf, usize bufcap, CliOption* opt) {
-    // e.g. Enable verbose logging
-    //      Write output to file (default "a.out")
+    // e.g. "Enable verbose logging"
     ABuf s_ = abuf_make(buf, bufcap); ABuf* s = &s_;
-    bool has_help = opt->help && opt->help[0];
-    if (has_help)
+    if (opt->help && opt->help[0]) {
       abuf_cstr(s, opt->help);
-
-    // "(default val)"
-    if (opt->strval && opt->type != CLI_T_BOOL) {
-      if (has_help)
-        abuf_c(s, ' ');
-      abuf_cstr(s, "(default ");
-      switch (opt->type) {
-        case CLI_T_STR: abuf_repr(s, opt->strval, strlen(opt->strval)); break;
-        case CLI_T_INT: abuf_i64(s, opt->intval, 10); break;
-      }
-      abuf_c(s, ')');
+    } else {
+      abuf_cstr(s, "(No help information)");
     }
-
     return abuf_terminate(s);
   }
 
@@ -336,12 +327,20 @@ static int parse_opt(
       cliopt_help(opts, argv[0], rest != NULL, usage, extra_help);
       return -1;
     }
-    cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
-    goto badopt;
+    // short with immediate value?
+    if (maybe_short && name[1]) {
+      opt = cliopt_find(opts, name, 1, maybe_short);
+      if (opt && opt->type != CLI_T_BOOL)
+        value = &name[1];
+    }
+    if (!opt) {
+      cli_logf("%s: unrecognized option \"%s\"", argv[0], arg);
+      goto badopt;
+    }
   }
 
   if (opt->type == CLI_T_BOOL) {
-    if (value) { // e.g. -flag=on
+    if (value) { // e.g. -foo=on
       cli_logf("%s: unexpected argument \"%s\"", argv[0], arg);
       goto badopt;
     }
@@ -382,7 +381,7 @@ static int parse_opt(
     }
     error err = sparse_i64(value, strlen(value), base, &opt->intval);
     if (err) {
-      cli_logf("%s: invalid integer value \"%s\" for option \"%s\"", argv[0], value, arg);
+      cli_logf("%s: invalid integer value for option \"%s\"", argv[0], arg);
       goto badopt;
     }
     if (opt->valuep)

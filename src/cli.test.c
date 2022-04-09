@@ -97,13 +97,14 @@ DEF_TEST(cliopt_parse) {
     asserteq(count, 0xdeadbeef);
   }
 
-  { //———— short immediate is NOT supported ————
+  { //———— short with immediate value ————
     const char* argv[] = { "test", "-c3" };
     rest.len = 0;
     reset_test_options(options);
     status = cliopt_parse(options, countof(argv), argv, &rest, NULL, NULL);
-    asserteq(CLI_PS_BADOPT, status);
-    asserteq(rest.len, 1);
+    asserteq(CLI_PS_OK, status);
+    asserteq(rest.len, 0);
+    asserteq(cliopt_int(options, "c"), 3);
   }
 
   { //———— help ————

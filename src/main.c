@@ -27,10 +27,10 @@ static CliOption cliopts[] = {
   {"unsafe", 0, "", CLI_T_BOOL, "Build witout runtime safety checks" },
   {"small", 0, "", CLI_T_BOOL, "Bias optimizations toward minimizing code size" },
   {"output", 'o', "<file>", CLI_T_STR, "Write output to <file>" },
-  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package" },
+  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package", .strval="example" },
   {"output-asm", 0, "<file>", CLI_T_STR, "Write machine assembly to <file>" },
   {"output-ir", 0, "<file>", CLI_T_STR, "Write IR source to <file>" },
-  {"opt", 0, "<level>", CLI_T_STR, "Set specific optimization level (0-3, s)" },
+  {"opt", 'O', "<level>", CLI_T_STR, "Set specific optimization level (0-3, s)" },
 
   #if CO_TESTING_ENABLED
   {"test-only", 0, "", CLI_T_BOOL, "Exit after running unit tests" },
@@ -141,9 +141,9 @@ static error parse_pkg(BuildCtx* build) {
     logtime_end(t);
     //llvm_module_dump(m);
 
-    const char* outfile = cliopt_str(cliopts, "output", NULL);
-    const char* outfile_ir = cliopt_str(cliopts, "output-ir", NULL);
-    const char* outfile_asm = cliopt_str(cliopts, "output-asm", NULL);
+    const char* outfile = cliopt_str(cliopts, "output");
+    const char* outfile_ir = cliopt_str(cliopts, "output-ir");
+    const char* outfile_asm = cliopt_str(cliopts, "output-asm");
 
     if (outfile_ir && outfile_ir[0])
       CHECKERR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
@@ -179,7 +179,7 @@ static error parse_pkg(BuildCtx* build) {
 
 
 static void set_build_opt(BuildCtx* build) {
-  const char* opt = cliopt_str(cliopts, "opt", NULL);
+  const char* opt = cliopt_str(cliopts, "opt");
   if (!opt) {
     // set default opt level based on build mode
     build->opt = build->debug ? OptMinimal : OptBalanced;
@@ -233,7 +233,7 @@ int main(int argc, const char** argv) {
 
   // setup a build context for the package (can be reused)
   BuildCtx* build = memalloczt(BuildCtx);
-  CHECKERR( begin_pkg(build, cliopt_str(cliopts, "pkgname", "example")) );
+  CHECKERR( begin_pkg(build, cliopt_str(cliopts, "pkgname")) );
   if (symlen(build->pkgid) == 0)
     panic("empty pkgname");
 
