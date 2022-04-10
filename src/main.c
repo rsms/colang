@@ -118,6 +118,8 @@ static error parse_pkg(BuildCtx* build) {
     str.len = 0;
     fmtast(filenode, &str, 0);
     printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", str.v);
+    if (build->errcount)
+      break;
 
     t = logtime_start("resolve");
     filenode = resolve_ast(build, filenode);
