@@ -292,9 +292,9 @@ inline static Block get_current_block(B* b) {
   return LLVMGetInsertBlock(b->builder);
 }
 
-inline static Val get_current_fun(B* b) {
-  return LLVMGetBasicBlockParent(get_current_block(b));
-}
+// inline static Val get_current_fun(B* b) {
+//   return LLVMGetBasicBlockParent(get_current_block(b));
+// }
 
 
 #define noload_scope() \
@@ -327,7 +327,7 @@ inline static Val get_current_fun(B* b) {
     return p[i];
   }
 
-  static const char* fmtval(Val v) {
+  /*static const char* fmtval(Val v) {
     if (!v)
       return "(null)";
     static char* p[5] = {NULL};
@@ -359,7 +359,7 @@ inline static Val get_current_fun(B* b) {
       s++;
 
     return s;
-  }
+  }*/
 #endif
 
 
@@ -472,12 +472,12 @@ inline static Val build_expr_noload(B* b, Expr* n, const char* vname) {
   return v;
 }
 
-inline static Val build_expr_doload(B* b, Expr* n, const char* vname) {
-  bool noload = b->noload; b->noload = false;
-  Val v = build_expr(b, n, vname);
-  b->noload = noload;
-  return v;
-}
+// inline static Val build_expr_doload(B* b, Expr* n, const char* vname) {
+//   bool noload = b->noload; b->noload = false;
+//   Val v = build_expr(b, n, vname);
+//   b->noload = noload;
+//   return v;
+// }
 
 
 static Val build_store(B* b, Val dst, Val val) {
@@ -655,7 +655,7 @@ static void build_pkg(B* b, PkgNode* n) {
     FileNode* file = as_FileNode(na->v[i]);
     if (i == 0) {
       Str dir = str_make(b->build->tmpbuf[0], sizeof(b->build->tmpbuf[0]));
-      usize n = path_dir(&dir, file->name, strlen(file->name));
+      safecheckexpr( path_dir(&dir, file->name, strlen(file->name)), true);
       LLVMSetSourceFileName(b->mod, dir.v, dir.len);
       str_free(&dir);
     }

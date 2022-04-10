@@ -78,8 +78,8 @@ struct BoolLitNode  { LitExpr; u64 ival; }; // boolean literal
 struct IntLitNode   { LitExpr; u64 ival; }; // integer literal
 struct FloatLitNode { LitExpr; f64 fval; }; // floating-point literal
 struct StrLitNode   { LitExpr;
-  const char* sp;
-  u32         len;
+  u32  len;
+  char p[];
 };
 
 struct IdNode { Expr;

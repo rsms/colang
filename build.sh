@@ -513,12 +513,17 @@ rule ast_gen
   command = python3 src/parse/ast_gen.py \$in \$out
   generator = true
 
+rule parse_gen
+  command = python3 src/parse/parse_gen.py \$in \$out
+  generator = true
+
 rule cxx_pch_gen
   command = $CXX \$cxxflags \$cxxflags_host \$FLAGS -x c++-header \$in -o \$out
   #clang -cc1 -emit-pch -x c++-header \$in -o \$out
   generator = true
 
 build src/parse/ast_gen.h src/parse/ast_gen.c: ast_gen src/parse/ast.h | src/parse/ast_gen.py
+build src/parse/parser_gen.h: parse_gen src/parse/parser.c | src/parse/parse_gen.py
 
 _END
 

@@ -58,7 +58,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NFloatLit: // 12.3
     return abuf_f64(s, ((FloatLitNode*)n)->fval, -1);
   case NStrLit: // "lolcat"
-    return CH(abuf_repr(CH(s, '"'), ((StrLitNode*)n)->sp, ((StrLitNode*)n)->len), '"');
+    return CH(abuf_repr(CH(s, '"'), ((StrLitNode*)n)->p, ((StrLitNode*)n)->len), '"');
   case NId: // foo
     return SYM(s, ((IdNode*)n)->name);
   case NBinOp: // foo + bar
@@ -477,7 +477,7 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_pop_style(r);
 
   _(StrLit)
-    write_qstr(r, n->sp, n->len);
+    write_qstr(r, n->p, n->len);
 
   _(Id)
     write_name(r, n->name);

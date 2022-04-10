@@ -63,6 +63,7 @@ typedef u16 Tok;
   _( TId            , "identifier")  \
   _( TIntLit        , "int") \
   _( TFloatLit      , "float") \
+  _( TStrLit        , "string") \
 // end DEF_TOKENS
 #define DEF_TOKENS_KEYWORD(_) \
   _( TAs,       as )          \

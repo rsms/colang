@@ -493,42 +493,42 @@ static Node* restype_block(R* r, BlockNode* n) {
 
 
 static Node* restype_field(R* r, FieldNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_comment(R* r, CommentNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_nil(R* r, NilNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_boollit(R* r, BoolLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_intlit(R* r, IntLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_floatlit(R* r, FloatLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_strlit(R* r, StrLitNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_id(R* r, IdNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -566,12 +566,12 @@ static Node* restype_binop(R* r, BinOpNode* n) {
 
 
 static Node* restype_prefixop(R* r, PrefixOpNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_postfixop(R* r, PostfixOpNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -619,112 +619,112 @@ static Node* restype_assign(R* r, AssignNode* n) {
 
 
 static Node* restype_macro(R* r, MacroNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_call(R* r, CallNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_typecast(R* r, TypeCastNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_const(R* r, ConstNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_var(R* r, VarNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_param(R* r, ParamNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_macroparam(R* r, MacroParamNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_ref(R* r, RefNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_namedarg(R* r, NamedArgNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_selector(R* r, SelectorNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_index(R* r, IndexNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_slice(R* r, SliceNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_if(R* r, IfNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_typetype(R* r, TypeTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_namedtype(R* r, NamedTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_aliastype(R* r, AliasTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_reftype(R* r, RefTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_basictype(R* r, BasicTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_arraytype(R* r, ArrayTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_tupletype(R* r, TupleTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_structtype(R* r, StructTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 
 static Node* restype_funtype(R* r, FunTypeNode* n) {
-  dlog2("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
   return as_Node(n);
 }
 

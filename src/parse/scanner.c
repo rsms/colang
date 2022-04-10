@@ -96,8 +96,13 @@ error ScannerInit(Scanner* s, BuildCtx* build, Source* src, ParseFlags flags) {
   s->tokend     = s->inp;
   s->prevtokend = s->inp;
 
+  str_init(&s->sbuf, s->sbuf_storage, sizeof(s->sbuf_storage));
+
   s->linestart = s->inp;
   s->lineno    = 1;
+
+  s->comments_head = NULL;
+  s->comments_tail = NULL;
 
   return 0;
 }
@@ -107,12 +112,8 @@ void ScannerDispose(Scanner* s) {
     mem_free(s->build->mem, s->indentStack.v, sizeof(Indent) * s->indentStack.cap);
 
   // free comments
-  while (1) {
-    Comment* c = ScannerCommentPop(s);
-    if (!c)
-      break;
+  for (Comment* c; (c = ScannerCommentPop(s)); )
     mem_free(s->build->mem, c, sizeof(Comment));
-  }
 }
 
 Pos ScannerPos(const Scanner* s) {
@@ -169,6 +170,12 @@ Comment* ScannerCommentPop(Scanner* s) {
 }
 
 
+static void snewline(Scanner* s) {
+  s->lineno++;
+  s->linestart = s->inp + 1;
+}
+
+
 static void comments_push_back(Scanner* s) {
   Comment* c = mem_alloct(s->build->mem, Comment);
   c->next = NULL;
@@ -199,9 +206,7 @@ static void scomment_block(Scanner* s) {
         }
         break;
       case '\n':
-        // update line state
-        s->lineno++;
-        s->linestart = s->inp + 1;
+        snewline(s);
         break;
       default:
         break;
@@ -262,19 +267,142 @@ static void sname(Scanner* s) {
 }
 
 
-#define isdigit(c) (((u32)(c) - '0') < 10)
-
-
-// scan a number
 static void snumber(Scanner* s) {
   while (s->inp < s->inend) {
     u8 c = *s->inp;
-    if (!isdigit(c))
+    if (!ascii_isdigit(c))
       break;
     s->inp++;
   }
   s->tokend = s->inp;
   s->tok = TIntLit;
+}
+
+
+static u32 sstring_multiline(Scanner* s, const u8* start, const u8* end) {
+  panic("TODO");
+  return 0;
+}
+
+
+static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
+  const u8* src = s->tokstart + 1; // +1 to skip initial '"'
+  u32 len = CAST_U32((s->inp - 1) - src);
+  s->sval.p = "";
+  s->sval.len = 0;
+  s->sbuf.len = 0;
+
+  // calculate effective string length for multiline strings
+  if (ismultiline) {
+    if UNLIKELY(extralen >= len) {
+      // sstring assumes \n is followed by |, but it isn't the case.
+      // i.e. a string of only linebreaks.
+      return serr(s, "missing \"|\" after linebreak in multiline string");
+    }
+    // verify indentation and calculate nbytes used for indentation
+    u32 indentextralen = sstring_multiline(s, src, src + len);
+    if UNLIKELY(indentextralen == 0) // an error occured
+      return;
+    if (check_add_overflow(extralen, indentextralen, &extralen))
+      return serr(s, "string literal too large");
+    src++; len--;  // sans leading '\n'
+  }
+
+  assert(extralen <= len);
+  len -= extralen;
+
+  // allocate space needed up front since we already know the size
+  if UNLIKELY(!str_reserve(&s->sbuf, len)) {
+    serr(s, "failed to allocate memory for string literal");
+    return;
+  }
+  char* dst = s->sbuf.v;
+  s->sval.p = s->sbuf.v;
+  s->sval.len = len;
+
+  const u8* chunkstart = src;
+
+  #define FLUSH_BUF() { \
+    usize nbyte = (usize)((src) - chunkstart); \
+    memcpy(dst, chunkstart, nbyte); \
+    dst += nbyte; \
+  }
+
+  if (ismultiline) {
+    while (*src++ != '|') {}
+    chunkstart = src;
+  }
+
+  while (src < s->inend) {
+    switch (*src) {
+      case '\\':
+        FLUSH_BUF();
+        src++;
+        switch (*src) {
+          case 'n': *dst++ = 0xA; break;
+          default:  *dst++ = *src; break; // verbatim
+        }
+        chunkstart = ++src;
+        break;
+      case '\n':
+        src++;
+        FLUSH_BUF();
+        // note: sstring_multiline has verified syntax already
+        while (*src++ != '|') {}
+        chunkstart = src;
+        break;
+      case '"':
+        goto done;
+      default:
+        src++;
+    }
+  }
+done:
+  FLUSH_BUF();
+  // if (ismultiline) {
+  //   // sans leading '\n'
+  //   s->sval.p++;
+  //   s->sval.len--;
+  // }
+}
+
+
+static void sstring(Scanner* s) {
+  // Optimistically assumes the string literal is verbatim.
+  // Accumulate number of "extra bytes" encountered from escapes in extralen.
+  // If the string is not verbatim, switch to sstring_buffered.
+  s->insertSemi = true;
+  u32 extralen = 0;
+  bool ismultiline = false;
+
+  while (s->inp < s->inend) {
+    char c = *s->inp++;
+    switch (c) {
+      case '\\':
+        s->inp++;
+        extralen++;
+        break;
+      case '\n':
+        snewline(s);
+        ismultiline = true;
+        extralen++;
+        break;
+      case '"': {
+        s->tokend = s->inp;
+        if (extralen || ismultiline)
+          return sstring_buffered(s, extralen, ismultiline);
+        s->sval.p = (const char*)s->tokstart + 1;
+        s->sval.len = (u32)((uintptr)(s->inp - s->tokstart) - 2); // -2 to skip '"'
+        return;
+      }
+    }
+  }
+
+  // we get here if the string is not terminated
+  s->sval.p = "";
+  s->sval.len = 0;
+  s->tokend = s->inp;
+  serr(s, "unterminated string literal");
 }
 
 
@@ -348,7 +476,7 @@ static bool indent_pop(Scanner* s) {
 }
 
 
-Tok ScannerNext(Scanner* s) {
+void ScannerNext(Scanner* s) {
   s->prevtokend = s->tokend;
   scan_again: {}  // jumped to when comments are skipped
   // dlog("-- '%c' 0x%02X (%zu)", *s->inp, *s->inp, (usize)(s->inp - s->src->body));
@@ -359,7 +487,7 @@ Tok ScannerNext(Scanner* s) {
     if (isblock) {
       s->tok = TRBrace;
       debug_token_production(s);
-      return s->tok;
+      return;
     }
   }
 
@@ -367,8 +495,7 @@ Tok ScannerNext(Scanner* s) {
   bool islnstart = s->inp == s->linestart;
   while (s->inp < s->inend && (charflags[*s->inp] & CH_WHITESPACE)) {
     if (*s->inp == '\n') {
-      s->lineno++;
-      s->linestart = s->inp + 1;
+      snewline(s);
       islnstart = true;
     }
     s->inp++;
@@ -391,7 +518,7 @@ Tok ScannerNext(Scanner* s) {
         s->insertSemi = false;
         s->tok = TLBrace;
         debug_token_production(s);
-        return s->tok;
+        return;
       }
     } else {
       if (s->build->debug)
@@ -403,14 +530,14 @@ Tok ScannerNext(Scanner* s) {
           s->insertSemi = false;
           s->tok = TRBrace;
           debug_token_production(s);
-          return s->tok;
+          return;
         }
       }
       if (s->insertSemi) {
         s->insertSemi = false;
         s->tok = TSemi;
         debug_token_production(s);
-        return s->tok;
+        return;
       }
     }
   }
@@ -425,7 +552,7 @@ Tok ScannerNext(Scanner* s) {
       s->tok = TRBrace;
       s->insertSemi = false;
       debug_token_production(s);
-      return s->tok;
+      return;
     }
     if (s->insertSemi) {
       s->insertSemi = false;
@@ -434,7 +561,7 @@ Tok ScannerNext(Scanner* s) {
       s->tok = TNone;
     }
     debug_token_production(s);
-    return s->tok;
+    return;
   }
 
   bool insertSemi = false; // in a temp var because of scan_again
@@ -546,6 +673,7 @@ Tok ScannerNext(Scanner* s) {
   case ';': s->tok = TSemi;                      break;
   case ':': s->tok = TColon;                     break;
   case '.': s->tok = TDot;                       break;
+  case '"': s->tok = TStrLit; MUSTTAIL return sstring(s);
 
   case '0'...'9':
     snumber(s);
@@ -592,5 +720,4 @@ Tok ScannerNext(Scanner* s) {
 
   s->insertSemi = insertSemi;
   debug_token_production(s);
-  return s->tok;
 }

@@ -44,27 +44,37 @@ struct Scanner {
   const u8*  inend;        // input buffer end
 
   // indentation
-  Indent indent;           // current level
-  Indent indentDst;        // unwind to level
+  Indent indent;    // current level
+  Indent indentDst; // unwind to level
   struct { // previous indentation levels (Indent elements)
     Indent* v;
     u32     len;
     u32     cap;
     Indent  storage[16];
-  } indentStack;
+  } indentStack; // TODO: convert to use Array(Indent*)
 
   // token
-  Tok        tok;           // current token
-  const u8*  tokstart;      // start of current token
-  const u8*  tokend;        // end of current token
-  const u8*  prevtokend;    // end of previous token
-  Sym        name;          // Current name (valid for TId and keywords)
+  Tok       tok;           // current token
+  const u8* tokstart;      // start of current token
+  const u8* tokend;        // end of current token
+  const u8* prevtokend;    // end of previous token
+  Sym       name;          // Current name (valid for TId and keywords)
 
-  u32        lineno;        // source position line
-  const u8*  linestart;     // source position line start pointer (for column)
+  // value
+  union { // depends on value of tok
+    u64                                ival; // integer value
+    struct { const char* p; u32 len; } sval; // points to sbuf_str or src
+  };
+  Str  sbuf;              // temporary buffer for strings that need interpretation
+  char sbuf_storage[256]; // initial storage for sbuf_str
 
-  Comment*   comments_head; // linked list head of comments scanned so far
-  Comment*   comments_tail; // linked list tail of comments scanned so far
+  // source position
+  u32       lineno;    // line number (1-based)
+  const u8* linestart; // line start pointer (for column)
+
+  // comments
+  Comment* nullable comments_head; // linked list head of comments scanned so far
+  Comment* nullable comments_tail; // linked list tail of comments scanned so far
 };
 
 
@@ -76,7 +86,7 @@ error ScannerInit(Scanner*, BuildCtx*, Source*, ParseFlags) WARN_UNUSED_RESULT;
 void ScannerDispose(Scanner*);
 
 // ScannerNext scans the next token
-Tok ScannerNext(Scanner*);
+void ScannerNext(Scanner*);
 
 // ScannerPos returns the source position of s->tok (current token)
 Pos ScannerPos(const Scanner* s);

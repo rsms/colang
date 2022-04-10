@@ -243,8 +243,10 @@ static void* nullable nodeslab_alloc(BuildCtx* b, usize ptr_count) {
 
 
 Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
-  Node* n = nodeslab_alloc(b, nptrs);
-  //Node* n = NodeAlloc(b->mem);
+  Node* n = NULL;
+  // nptrs is USIZE_MAX/sizeof(void) if prior call overflowed
+  if LIKELY(nptrs < USIZE_MAX/sizeof(void))
+    n = nodeslab_alloc(b, nptrs);
   if UNLIKELY(n == NULL) {
     b_errf(b, (PosSpan){NoPos,NoPos}, "failed to allocate memory");
     return NULL;
