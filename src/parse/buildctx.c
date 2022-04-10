@@ -236,7 +236,7 @@ static void* nullable nodeslab_alloc(BuildCtx* b, usize ptr_count) {
   usize avail = countof(b->nodeslab_head.data) - slab->len;
   if (UNLIKELY(avail < ptr_count) && (slab = nodeslab_grow(b)) == NULL)
     return NULL;
-  void* p = &slab->data[b->nodeslab_curr->len];
+  void* p = &slab->data[slab->len];
   slab->len += ptr_count;
   return p;
 }
@@ -253,6 +253,16 @@ Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
   }
   n->pos = pos;
   return NodeInit(n, kind);
+}
+
+
+void _b_free_node(BuildCtx* b, Node* n, usize ptr_count) {
+  NodeSlab* slab = b->nodeslab_curr;
+
+  // if n was the most recently allocated node, reclaim that space
+  if (slab->len < ptr_count || (slab->data + slab->len - ptr_count) != n)
+    return;
+  slab->len -= ptr_count;
 }
 
 
@@ -306,18 +316,19 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
   return b_typeid(b, x) == b_typeid(b, y);
 }
 
-#if 0
-// TODO Type* InternASTType(Build* b, Type* t) {
+
+Type* b_intern_type(BuildCtx* b, Type* t) {
   if (t->kind == NBasicType)
     return t;
-  auto tid = GetTypeID(b, t);
-  auto t2 = SymMapGet(&b->types, tid);
-  if (t2)
-    return t2;
-  SymMapSet(&b->types, tid, t);
+  auto tid = b_typeid(b, t);
+  void** tp = symmap_assign(&b->types, tid);
+  if LIKELY(tp) { // else: memory allocation failure
+    if (*tp) // existing type
+      return *tp;
+    *tp = t;
+  }
   return t;
 }
-#endif
 
 //———————————————————————————————————————————————————————————————————————————————————————
 

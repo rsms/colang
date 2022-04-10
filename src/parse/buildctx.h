@@ -128,10 +128,14 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
       STRUCT_SIZE((KIND##Node*)0, ARRAY_FIELD, count), (pos)) )
 
 #define b_mknodez(b, kind, size, pos) \
-  ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*))/sizeof(void*)) )
+  ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*)) / sizeof(void*)) )
 
 Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
 
+// b_free_node returns a node to b's nodeslab free list
+#define b_free_node(b, n, KIND) \
+  _b_free_node((b),as_Node(n),ALIGN2(sizeof(KIND##Node),sizeof(void*)) / sizeof(void*) )
+void _b_free_node(BuildCtx* b, Node* n, usize nptrs);
 
 // b_clonenode allocates and initializes a AST node that is a copy of another node
 #define b_clonenode(b, src) ((__typeof__(src) nullable)_b_clonenode((b),as_Node(src)))
@@ -152,6 +156,11 @@ static Sym b_typeid(BuildCtx* b, Type* t);
 
 // bctx_typeeq returns true if x & y are equivalent types
 static bool b_typeeq(BuildCtx* b, Type* x, Type* y);
+
+// b_intern_type registers t in b->types.
+// If an existing equivalent (same id) type exists, that is returned instead of t.
+Type* b_intern_type(BuildCtx* b, Type* t);
+
 
 // ----
 

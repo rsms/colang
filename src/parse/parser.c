@@ -1771,6 +1771,21 @@ static Node* PStrLit(Parser* p, PFlag fl) {
     memcpy(n->p, p->sval.p, (usize)p->sval.len);
   }
   nexttok(p); // consume
+
+  // typeof("foo") => [u8 3]
+  auto t = mktype(p, ArrayType, TF_KindArray);
+  t->pos = pos_with_width(n->pos, 0);
+  t->elem = kType_u8;
+  t->size = (u64)p->sval.len;
+  if (t->size <= 32) {
+    // intern small string types
+    n->type = b_intern_type(p->build, as_Type(t));
+    if (n->type != (Type*)t)
+      b_free_node(p->build, t, ArrayType);
+  } else {
+    n->type = as_Type(t);
+  }
+
   return as_Node(n);
 }
 

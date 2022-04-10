@@ -1,4 +1,5 @@
 fun main(x, y int) int
+  hello = "hello"
   message = "
     |hello
     | world
