@@ -1,3 +1,8 @@
+// build LLVM IR from co AST
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
 #include "llvmimpl.h"
 #include "../parse/parse.h"
 
@@ -649,9 +654,10 @@ static void build_pkg(B* b, PkgNode* n) {
   for (u32 i = 0; i < na->len; i++) {
     FileNode* file = as_FileNode(na->v[i]);
     if (i == 0) {
-      usize bufcap = sizeof(b->build->tmpbuf[0]);
-      usize n = path_dir(file->name, b->build->tmpbuf[0], bufcap);
-      LLVMSetSourceFileName(b->mod, b->build->tmpbuf[0], MIN(n, bufcap - 1));
+      Str dir = str_make(b->build->tmpbuf[0], sizeof(b->build->tmpbuf[0]));
+      usize n = path_dir(&dir, file->name, strlen(file->name));
+      LLVMSetSourceFileName(b->mod, dir.v, dir.len);
+      str_free(&dir);
     }
     build_file(b, file);
   }

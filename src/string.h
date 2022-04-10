@@ -88,6 +88,8 @@ bool str_appendu32(Str*, u32 value, u32 base);
 bool str_appendu64(Str*, u32 value, u32 base);
 bool str_appendf64(Str*, f64 value, int ndecimals);
 char* nullable str_cstr(Str*); // writes \0 to v[len] but does not increment len
+static usize str_availcap(const Str*); // free allocated space available at s->v+s->len
+static char* str_end(Str*); // pointer to the end of the string (&s->v[s->len])
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // ABuf is a string append buffer for implementing snprintf-style functions which
@@ -180,6 +182,14 @@ inline static bool str_appendcstr(Str* s, const char* cstr) {
 
 inline static Str str_dupcstr(const char* src) {
   return str_dup(src, strlen(src));
+}
+
+inline static usize str_availcap(const Str* s) {
+  return s->cap - s->len;
+}
+
+inline static char* str_end(Str* s) {
+  return &s->v[s->len];
 }
 
 //————

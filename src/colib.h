@@ -671,6 +671,12 @@ char* strchr(const char* haystack, int needlechar);
 char* strstr(const char* haystack, const char* needle);
 
 // —————————————————————————————————————————————————————————————————————————————————————
+// co filesystem directories
+extern const char* COROOT;  // directory of co installation
+extern const char* COPATH;  // directory for user files
+extern const char* COCACHE; // directory for build cache
+
+// —————————————————————————————————————————————————————————————————————————————————————
 ASSUME_NONNULL_END
 
 #include "error.h"

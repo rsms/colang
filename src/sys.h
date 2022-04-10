@@ -29,22 +29,24 @@ enum FSDirEntType {
   FSDirEnt_WHT     = 14, // BSD whiteout
 } END_ENUM(FSDirEntType);
 
-// sys_getcwd populates buf with the current working directory including a nul terminator.
-// If bufsize is not enough, an error is returned.
-error sys_getcwd(char* buf, usize bufsize);
+// sys_cwd returns the current working directory
+const char* sys_cwd();
+
+// sys_homedir returns the current user's home directory
+const char* sys_homedir();
 
 error sys_dir_open(const char* filename, FSDir* result);
 error sys_dir_open_fd(int fd, FSDir* result);
 error sys_dir_read(FSDir, FSDirEnt* result); // returns 1 on success, 0 on EOF
 error sys_dir_close(FSDir);
 
-// sys_set_exepath sets the path of the current executable.
-// If the path is relative, it is resolved in relation to cwd.
-// Returns err_name_too_long if path is too long.
-error sys_set_exepath(const char* path);
-
-// sys_exepath returns the absolute path of the current executable
+// sys_exepath returns the absolute path of the current executable.
+// Returns an empty string if the path could not be computed.
 const char* sys_exepath();
+
+// sys_init_exepath initializes exepath
+error sys_init_exepath(const char* argv0);
+
 
 #ifndef CO_NO_LIBC
   // sys_stacktrace_fwrite writes a stacktrace (aka backtrace) to fp.

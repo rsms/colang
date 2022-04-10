@@ -9,25 +9,58 @@
   #include <execinfo.h> // backtrace*
   #include <stdlib.h> // free, realpath
   #include <limits.h> // PATH_MAX
+  #include <pwd.h> // getpwuid
   #if defined(__MACH__) && defined(__APPLE__)
     #include <mach-o/dyld.h> // _NSGetExecutablePath
   #endif
 #endif
 
 
-error sys_getcwd(char* buf, usize bufcap) {
-  #ifdef CO_NO_LIBC
-    if (bufcap < 2)
-      return err_name_too_long;
-    buf[0] = '/';
-    buf[1] = 0;
-    return 0;
+static char g_cwdbuf[64];
+static char* g_cwd = NULL;
+
+
+const char* sys_cwd() {
+  if (g_cwd)
+    return g_cwd;
+
+  char* cwd = g_cwdbuf;
+
+  #ifndef CO_NO_LIBC
+    cwd = getcwd(NULL, 0);
+    // note: getcwd returns NULL on memory allocation failure
+    if (cwd)
+      return g_cwd = cwd;
+  #endif
+
+  #if defined(CO_NO_LIBC) && defined(WIN32)
+    memcpy(cwd, "C:\\", 3);
+    cwd[3] = 0;
+  #elif defined(CO_NO_LIBC)
+    cwd[0] = '/';
+    cwd[1] = 0;
+  #endif
+  g_cwd = cwd;
+  return cwd;
+}
+
+
+const char* sys_homedir() {
+  #ifndef CO_NO_LIBC
+    // try getpwuid
+    struct passwd* pw = getpwuid(getuid());
+    if (pw && pw->pw_dir)
+      return pw->pw_dir;
+    // try HOME in env
+    const char* home = getenv("HOME");
+    if (home)
+      return home;
+  #endif
+  // fall back to root path
+  #if defined(WIN32)
+    return "C:\\";
   #else
-    if (buf == NULL) // don't allow libc heap allocation semantics
-      return err_invalid;
-    if (getcwd(buf, bufcap) != buf)
-      return error_from_errno(errno);
-    return 0;
+    return "/";
   #endif
 }
 
@@ -133,30 +166,16 @@ error sys_dir_read(FSDir d, FSDirEnt* ent) {
 //———————————————————————————————————————————————————————————————————————————————————————
 // exepath
 
-static char exepath_buf[1024];
-static const char* exepath = NULL;
+static char exepath_buf[128] = {0};
+static char* exepath = exepath_buf;
 
 
-error sys_set_exepath(const char* path) {
-  usize cwdlen = 0;
-
-  if (!path_isabs(path)) {
-    if (sys_getcwd(exepath_buf, sizeof(exepath_buf)) != 0)
-      return err_name_too_long;
-    cwdlen = strlen(exepath_buf);
-    exepath_buf[cwdlen++] = PATH_SEPARATOR;
-  }
-
-  usize pathlen = strlen(path);
-  if (pathlen + cwdlen > sizeof(exepath_buf)-1)
-    return err_name_too_long;
-
-  memcpy(&exepath_buf[cwdlen], path, pathlen);
-  exepath_buf[cwdlen + pathlen] = 0;
-  exepath = exepath_buf;
-  return 0;
+const char* sys_exepath() {
+  return exepath;
 }
 
+
+// init_exepath_system_api
 #if !defined(CO_NO_LIBC) && defined(__MACH__) && defined(__APPLE__)
   // [from man 3 dyld]
   // _NSGetExecutablePath() copies the path of the main executable into the buffer buf.
@@ -168,64 +187,66 @@ error sys_set_exepath(const char* path) {
   // "real path" to the executable.
   // That is, the path may be a symbolic link and not the real file.
   // With deep directories the total bufsize needed could be more than MAXPATHLEN.
-
-  const char* sys_exepath() {
-    if (exepath)
-      return exepath;
-    char* path = exepath_buf;
-    u32 len = sizeof(exepath_buf);
-
-    while (1) {
-      if (_NSGetExecutablePath(path, &len) == 0) {
-        path = realpath(path, NULL); // copies path with libc allocator
-        break;
-      }
-      if (len >= PATH_MAX) {
-        // Don't keep growing the buffer at this point.
-        // _NSGetExecutablePath may be failing for other reasons.
-        path[0] = '/';
-        path[1] = 0;
-        break;
-      }
-      // not enough space in path
-      if (path == exepath_buf) {
-        path = mem_alloc(mem_mkalloc_libc(), len*2);
-      } else {
-        u32 newlen;
-        if (check_mul_overflow(len, 2u, &newlen))
-          break;
-        path = mem_resize(mem_mkalloc_libc(), path, len, (usize)newlen);
-      }
-      len *= 2;
+  static bool init_exepath_system_api() {
+    u32 cap = sizeof(exepath_buf);
+  try:
+    if (_NSGetExecutablePath(exepath, &cap) == 0) {
+      exepath = realpath(exepath, NULL); // copies path with libc allocator
+      return true;
     }
-
-    if (path == NULL || strlen(path) == 0)
-      path = "/";
-
-    if (exepath == NULL)
-      exepath = path;
-    return exepath;
+    // not enough space in exepath
+    if (exepath == exepath_buf) {
+      exepath = mem_alloc(mem_mkalloc_libc(), cap * 2);
+    } else {
+      exepath = mem_resize(mem_mkalloc_libc(), exepath, cap, cap * 2);
+    }
+    if (exepath) {
+      cap *= 2;
+      if (cap <= 4096)
+        goto try;
+    }
+    return false;
   }
-
 #else
-  // not implemented for current target
-  const char* sys_exepath() {
-    if (exepath)
-      return exepath;
-    #ifdef WIN32
-      return "C:\\";
-    #else
-      return "/";
-    #endif
+  static bool init_exepath_system_api() {
+    return false;
   }
-
   // Linux: readlink /proc/self/exe
   // FreeBSD: sysctl CTL_KERN KERN_PROC KERN_PROC_PATHNAME -1
   // FreeBSD if it has procfs: readlink /proc/curproc/file (FreeBSD doesn't have procfs by default)
   // NetBSD: readlink /proc/curproc/exe
   // DragonFly BSD: readlink /proc/curproc/file
-  // Solaris: getexecname()
+  // Solaris: getexecname() maybe?
   // Windows: GetModuleFileName() with hModule = NULL
   // From https://stackoverflow.com/a/1024937
 #endif
 
+
+error sys_init_exepath(const char* argv0) {
+  // try setting using system API
+  if (init_exepath_system_api())
+    return 0;
+
+  // try setting from env _
+  #ifndef CO_NO_LIBC
+  exepath = getenv("_");
+  if (exepath && path_isabs(exepath))
+    return 0;
+  #endif
+
+  // use CWD + argv0
+  #ifdef CO_NO_LIBC
+    mem_ctx_set_scope(mem_mkalloc_libc());
+  #else
+    // if exepath_buf is not enough, then just fail
+    mem_ctx_set_scope(mem_mkalloc_null());
+  #endif
+  assert(exepath == exepath_buf);
+  Str s = str_make(exepath_buf, sizeof(exepath_buf));
+  if (!path_abs(&s, argv0))
+    return err_nomem;
+  if ((exepath = str_cstr(&s)) == NULL)
+    return err_nomem;
+  // note: no str_free(&s) -- we keep holding on to it
+  return 0;
+}

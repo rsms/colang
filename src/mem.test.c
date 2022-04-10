@@ -32,11 +32,11 @@ DEF_TEST(mem_bufalloc) {
 DEF_TEST(mem_ctx) {
   u8 buf[512];
   Mem m = mem_mkalloc_buf(buf, sizeof(buf));
-  assert(m.a != &_mem_null_alloc);
-  assert(mem_ctx().a == &_mem_null_alloc);
   Mem prev_mem = mem_ctx_set(m);
+  assert(m.a != prev_mem.a);
   assert(mem_ctx().a == m.a);
   mem_ctx_set(prev_mem);
+  assert(mem_ctx().a == prev_mem.a);
 }
 
 
@@ -59,17 +59,18 @@ DEF_TEST(mem_ctx) {
     Mem m = mem_mkalloc_buf(buf, sizeof(buf));
 
     // leave scope "normally"
-    assert(mem_ctx().a == &_mem_null_alloc);
+    Mem prev_mem = mem_ctx();
+    assert(prev_mem.a != m.a);
     mem_ctx_scope(m) {
       void* p = memalloc(8);
       assert(p == buf + MEM_BUFALLOC_OVERHEAD);
       assert(mem_ctx().a == m.a);
     }
-    assert(mem_ctx().a == &_mem_null_alloc);
+    assert(mem_ctx().a == prev_mem.a);
 
     // leave scope "prematurely" by returning from it
     test_mem_ctx_return(m);
-    assert(mem_ctx().a == &_mem_null_alloc);
+    assert(mem_ctx().a == prev_mem.a);
   }
 
 #endif

@@ -1,3 +1,10 @@
+// co command-line program
+//
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
+//
+#ifndef CO_NO_LIBC
+
 #include <stdio.h>
 #include <getopt.h>
 
@@ -11,6 +18,10 @@
 
 static const char* progname = "co";
 static char tmpbuf[4096];
+
+const char* COROOT = "";
+const char* COPATH = "";
+const char* COCACHE = "";
 
 static const char* cli_usage =
   "Co compiler\n"
@@ -53,7 +64,7 @@ static void parse_cliopts(int argc, const char** argv) {
 }
 
 
-#define CHECKERR(expr) \
+#define PANIC_ON_ERROR(expr) \
   ({ error err__ = (expr); \
      err__ != 0 ? panic(#expr ": %s", error_str(err__)) : ((void)0); })
 
@@ -121,63 +132,6 @@ static error parse_pkg(BuildCtx* build) {
 }
 
 
-#ifdef WITH_LLVM
-  static int main2_llvm(BuildCtx* build) {
-    // initialize llvm
-    auto t = logtime_start("[llvm] init:");
-    CHECKERR( llvm_init() );
-    logtime_end(t);
-
-    // build module
-    // build->opt = OptSpeed;
-    CoLLVMBuild buildopt = {
-      .target_triple = llvm_host_triple(),
-      .enable_tsan = false,
-      .enable_lto = false,
-    };
-    CoLLVMModule m;
-    t = logtime_start("[llvm] build module:");
-    CHECKERR( llvm_build(build, &m, &buildopt) );
-    logtime_end(t);
-    //llvm_module_dump(m);
-
-    const char* outfile = cliopt_str(cliopts, "output");
-    const char* outfile_ir = cliopt_str(cliopts, "output-ir");
-    const char* outfile_asm = cliopt_str(cliopts, "output-asm");
-
-    if (outfile_ir && outfile_ir[0])
-      CHECKERR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
-
-    if (outfile_asm && outfile_asm[0])
-      CHECKERR( llvm_module_emit(&m, outfile_asm, CoLLVMEmit_asm, 0) );
-
-    if (!outfile)
-      return 0;
-
-    // generate object code
-    Str outfile_o = str_dupcstr(outfile); str_appendcstr(&outfile_o, ".o");
-    t = logtime_start("[llvm] emit object file:");
-    CHECKERR( llvm_module_emit(&m, str_cstr(&outfile_o), CoLLVMEmit_obj, 0) );
-    logtime_end(t);
-
-    // link executable
-    const char* objfiles[] = { outfile_o.v };
-    CoLLVMLink link = {
-      .target_triple = buildopt.target_triple,
-      .outfile = outfile,
-      .infilec = countof(objfiles),
-      .infilev = objfiles,
-    };
-    t = logtime_start("[llvm] link executable:");
-    CHECKERR( llvm_link(&link) );
-    logtime_end(t);
-
-    //llvm_module_dispose(&m);
-    return 0;
-  }
-#endif
-
-
 static void set_build_opt(BuildCtx* build) {
   const char* opt = cliopt_str(cliopts, "opt");
   if (!opt) {
@@ -199,12 +153,125 @@ static void set_build_opt(BuildCtx* build) {
 }
 
 
+static void init_copath_vars() {
+  //          USE                        DEFAULT
+  // COROOT   Directory of co itself     argv[0]/../..
+  // COPATH   Directory for user files   ~/.co
+  // COCACHE  Directory for build cache  COPATH/cache-VERSION
+
+  Str s = str_make(NULL, 0);
+
+  COROOT = getenv("COROOT");
+  usize coroot_offs = s.len;
+  if (!COROOT || strlen(COROOT) == 0) {
+    // /path/to/build/debug/co => /path/to
+    const char* exepath = sys_exepath();
+    usize dirlen = path_dirlen(exepath, path_dirlen(exepath, strlen(exepath)));
+    // MAX(1) here causes us to use "/" (instead of ".") if path is short
+    safecheckexpr( path_dir(&s, exepath, MAX(1, dirlen)), true);
+    safecheckexpr( str_appendc(&s, '\0'), true);
+  }
+
+  COPATH = getenv("COPATH");
+  usize copath_offs = s.len;
+  if (!COPATH || strlen(COPATH) == 0) {
+    safecheckexpr( path_join(&s, sys_homedir(), ".co"), true);
+    safecheckexpr( str_appendc(&s, '\0'), true);
+  }
+
+  COCACHE = getenv("COCACHE");
+  usize cocache_offs = s.len;
+  if (!COCACHE || strlen(COCACHE) == 0) {
+    const char* copath = COPATH ? COPATH : &s.v[copath_offs];
+    safecheckexpr( path_join(&s, copath, "cache-0.0.1"), true);
+    safecheckexpr( str_appendc(&s, '\0'), true);
+  }
+
+  if (!COROOT)  COROOT = &s.v[coroot_offs];
+  if (!COPATH)  COPATH = &s.v[copath_offs];
+  if (!COCACHE) COCACHE = &s.v[cocache_offs];
+
+  dlog("COROOT  = %s", COROOT);
+  dlog("COPATH  = %s", COPATH);
+  dlog("COCACHE = %s", COCACHE);
+}
+
+
+#ifdef WITH_LLVM
+  static int main2_llvm(BuildCtx* build) {
+    // initialize llvm
+    auto t = logtime_start("[llvm] init:");
+    PANIC_ON_ERROR( llvm_init() );
+    logtime_end(t);
+
+    // build module
+    // build->opt = OptSpeed;
+    CoLLVMBuild buildopt = {
+      .target_triple = llvm_host_triple(),
+      .enable_tsan = false,
+      .enable_lto = false,
+    };
+    CoLLVMModule m;
+    t = logtime_start("[llvm] build module:");
+    PANIC_ON_ERROR( llvm_build(build, &m, &buildopt) );
+    logtime_end(t);
+
+    // #if DEBUG
+    // dlog("═════════════════════════════════════════════════════════════════════");
+    // llvm_module_dump(&m);
+    // dlog("═════════════════════════════════════════════════════════════════════");
+    // #endif
+
+    const char* outfile = cliopt_str(cliopts, "output");
+    const char* outfile_ir = cliopt_str(cliopts, "output-ir");
+    const char* outfile_asm = cliopt_str(cliopts, "output-asm");
+
+    if (outfile_ir && outfile_ir[0])
+      PANIC_ON_ERROR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
+
+    if (outfile_asm && outfile_asm[0])
+      PANIC_ON_ERROR( llvm_module_emit(&m, outfile_asm, CoLLVMEmit_asm, 0) );
+
+    if (!outfile)
+      return 0;
+
+    // generate object code
+    Str outfile_o = str_dupcstr(outfile); str_appendcstr(&outfile_o, ".o");
+    t = logtime_start("[llvm] emit object file:");
+    PANIC_ON_ERROR( llvm_module_emit(&m, str_cstr(&outfile_o), CoLLVMEmit_obj, 0) );
+    logtime_end(t);
+
+    // link executable
+    const char* objfiles[] = { outfile_o.v };
+    CoLLVMLink link = {
+      .target_triple = buildopt.target_triple,
+      .outfile = outfile,
+      .infilec = countof(objfiles),
+      .infilev = objfiles,
+    };
+    t = logtime_start("[llvm] link executable:");
+    PANIC_ON_ERROR( llvm_link(&link) );
+    logtime_end(t);
+
+    //llvm_module_dispose(&m);
+    return 0;
+  }
+#endif
+
+
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
 
+  // set heap memory allocator
+  mem_ctx_set(mem_mkalloc_libc());
+
   // parse command-line options
   parse_cliopts(argc, argv);
+
+  // initialize COPATH et al
+  PANIC_ON_ERROR( sys_init_exepath(argv[0]) );
+  init_copath_vars();
 
   // run unit tests
   #if CO_TESTING_ENABLED
@@ -219,21 +286,9 @@ int main(int argc, const char** argv) {
   // run parser tests (only has effect with CO_TESTING_ENABLED)
   if (parse_test_main(argc, argv)) return 1;
 
-  // select a memory allocator
-  #ifdef CO_NO_LIBC
-    static u8 memv[4096*8];
-    FixBufAllocator fba;
-    Mem mem = FixBufAllocatorInit(&fba, memv, sizeof(memv));
-  #else
-    Mem mem = mem_mkalloc_libc();
-  #endif
-  mem_ctx_set(mem);
-
-  error err;
-
   // setup a build context for the package (can be reused)
   BuildCtx* build = memalloczt(BuildCtx);
-  CHECKERR( begin_pkg(build, cliopt_str(cliopts, "pkgname")) );
+  PANIC_ON_ERROR( begin_pkg(build, cliopt_str(cliopts, "pkgname")) );
   if (symlen(build->pkgid) == 0)
     panic("empty pkgname");
 
@@ -243,6 +298,7 @@ int main(int argc, const char** argv) {
   set_build_opt(build);
 
   // add a source file to the package
+  error err;
   Source src1 = {0};
   const char* filename = cli_args.len ? cli_args.v[0] : "examples/hello.co";
   if (( err = source_open_file(&src1, filename) ))
@@ -254,7 +310,7 @@ int main(int argc, const char** argv) {
   // print_src_checksum(&src1);
 
   // parse
-  CHECKERR( parse_pkg(build) );
+  PANIC_ON_ERROR( parse_pkg(build) );
   if (build->errcount)
     return 1;
 
@@ -265,3 +321,6 @@ int main(int argc, const char** argv) {
     return 0;
   #endif
 }
+
+
+#endif // CO_NO_LIBC

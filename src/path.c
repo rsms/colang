@@ -15,52 +15,43 @@ const char* path_cwdrel(const char* path) {
   if (!path_isabs(path))
     return path;
 
-  char cwd[512];
-  if (sys_getcwd(cwd, sizeof(cwd)) != 0)
-    return path;
-
-  usize pathlen = strlen(path);
-  usize cwdlen = strlen(cwd);
+  const char* cwd = sys_cwd();
 
   // path starts with cwd?
-  if (cwdlen != 0 && cwdlen < pathlen && memcmp(cwd, path, cwdlen) == 0)
+  usize cwdlen = strlen(cwd);
+  if (strlen(path) > cwdlen && path[cwdlen] == PATH_SEPARATOR &&
+      shasprefixn(path, strlen(path), cwd, cwdlen))
+  {
     path = &path[cwdlen + 1]; // e.g. "/foo/bar/baz" => "bar/baz"
+  }
 
   return path;
 }
 
 
-usize path_dir(const char* restrict filename, char* restrict buf, usize bufcap) {
-  usize len = strlen(filename);
+bool path_dir(Str* dst, const char* filename, usize len) {
+  // find last slash
   isize i = slastindexofn(filename, len, PATH_SEPARATOR);
+  if (i == -1) // no directory part in filename
+    return str_appendc(dst, '.');
 
-  if (i < 1)
-    goto nodir;
-  len = (usize)i;
-
-  // remove extra trailing "/"
-  if (filename[len - 1] == PATH_SEPARATOR) {
-    len = strim_end(filename, len, PATH_SEPARATOR);
-    if (len < 1)
-      goto nodir;
+  // remove trailing slashes
+  len = strim_end(filename, (usize)i, PATH_SEPARATOR);
+  if (len == 0) {
+    #ifdef WIN32
+      return str_appendcstr(dst, "C:\\");
+    #else
+      return str_appendc(dst, '/');
+    #endif
   }
 
-  if LIKELY(bufcap > len) {
-    memcpy(buf, filename, len);
-    buf[len] = 0;
-  } else if (bufcap) {
-    buf[0] = 0;
-  }
-  return len;
+  return str_append(dst, filename, len);
+}
 
-nodir:
-  if LIKELY(bufcap > 1) {
-    buf[0] = i == 0 ? '/' : '.';
-    buf[1] = 0;
-  } else if (bufcap) {
-    buf[0] = 0;
-  }
-  return 1;
+
+usize path_dirlen(const char* filename, usize len) {
+  isize i = slastindexofn(filename, len, PATH_SEPARATOR);
+  return strim_end(filename, (usize)MAX(0,i), PATH_SEPARATOR);
 }
 
 
@@ -72,4 +63,50 @@ const char* path_base(const char* path) {
   for (; p != path && *(p-1) != PATH_SEPARATOR; p--) {
   }
   return p;
+}
+
+
+bool path_append(Str* dst, const char* restrict path) {
+  // trim trailing slashes from dst
+  dst->len = strim_end(dst->v, dst->len, PATH_SEPARATOR);
+
+  // trim leading slashes from path
+  usize pathlen = strlen(path);
+  const char* trimmed_path = strim_begin(path, pathlen, PATH_SEPARATOR);
+  pathlen -= (usize)(uintptr)(trimmed_path - path);
+  if (pathlen == 0) // path was empty or only consisted of PATH_SEPARATORs
+    return true;
+
+  bool ok = true;
+  usize dstlen_orig = dst->len;
+
+  // append separator
+  if (dst->len)
+    ok += str_appendc(dst, PATH_SEPARATOR);
+
+  // append path
+  ok += str_append(dst, trimmed_path, pathlen);
+
+  // trim trailing slashes
+  dst->len = strim_end(dst->v, dst->len, PATH_SEPARATOR);
+
+  if UNLIKELY(!ok)
+    dst->len = dstlen_orig; // undo
+  return ok;
+}
+
+
+bool path_join(Str* dst, const char* restrict a, const char* restrict b) {
+  // start with a and then append b
+  bool ok = str_appendcstr(dst, a);
+  return ok && path_append(dst, b);
+}
+
+
+bool path_abs(Str* dst, const char* restrict filename) {
+  if (path_isabs(filename)) {
+    str_appendcstr(dst, filename);
+    return true;
+  }
+  return path_join(dst, sys_cwd(dst), filename);
 }

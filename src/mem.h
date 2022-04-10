@@ -82,7 +82,7 @@ static void* nullable memresizex(void* nullable p, usize oldsize, usize* newsize
 #define memstrdup(args...)  mem_strdup(mem_ctx(),args)
 
 static Mem mem_ctx();
-static Mem mem_ctx_set(Mem m);
+static Mem mem_ctx_set(Mem m); // returns previous memory allocator
 
 // mem_ctx_set_scope(m) -- sets m as mem_ctx until leaving the current scope.
 // mem_ctx_scope(m) -- preceeds a statement or block, defines a new scope.
@@ -108,7 +108,10 @@ static Mem mem_ctx_set(Mem m);
     mem_ctx_set(_memprev), _memprev.a=NULL )
   void _mem_ctx_scope_cleanup(Mem* prev);
 #else
-  #warning compiler does not support cleanup attribute
+  #define mem_ctx_set_scope(mem) \
+    compiler does not support cleanup attribute
+  #define mem_ctx_scope(mem) \
+    compiler does not support cleanup attribute
 #endif
 
 //——— memory utility functions
