@@ -1765,7 +1765,7 @@ static Node* PIntLit(Parser* p, PFlag fl) {
 // StrLit = " ... "   TODO syntax
 //!PrefixParselet TStrLit
 static Node* PStrLit(Parser* p, PFlag fl) {
-  auto n = b_mknodev((p)->build, StrLit, currpos(p), p, p->sval.len);
+  auto n = b_mknodev((p)->build, StrLit, p->tokpos, p, p->sval.len);
   if LIKELY(n) {
     n->len = p->sval.len;
     memcpy(n->p, p->sval.p, (usize)p->sval.len);

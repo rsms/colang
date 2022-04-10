@@ -55,7 +55,7 @@ struct Scanner {
 
   // token
   Tok       tok;        // current token
-  Pos       tokpos;     // position of curren token (only used for string tokens)
+  Pos       tokpos;     // position of curren token (currently only used for TStrLit)
   const u8* tokstart;   // start of current token
   const u8* tokend;     // end of current token
   const u8* prevtokend; // end of previous token
