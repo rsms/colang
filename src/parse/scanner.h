@@ -54,11 +54,12 @@ struct Scanner {
   } indentStack; // TODO: convert to use Array(Indent*)
 
   // token
-  Tok       tok;           // current token
-  const u8* tokstart;      // start of current token
-  const u8* tokend;        // end of current token
-  const u8* prevtokend;    // end of previous token
-  Sym       name;          // Current name (valid for TId and keywords)
+  Tok       tok;        // current token
+  Pos       tokpos;     // position of curren token (only used for string tokens)
+  const u8* tokstart;   // start of current token
+  const u8* tokend;     // end of current token
+  const u8* prevtokend; // end of previous token
+  Sym       name;       // Current name (valid for TId and keywords)
 
   // value
   union { // depends on value of tok

@@ -116,11 +116,16 @@ void ScannerDispose(Scanner* s) {
     mem_free(s->build->mem, c, sizeof(Comment));
 }
 
+static u32 scolumn(const Scanner* s) {
+  if (s->tokstart >= s->linestart)
+    return 1 + (u32)(uintptr)(s->tokstart - s->linestart);
+  return 1;
+}
+
 Pos ScannerPos(const Scanner* s) {
-  // assert(s->tokend >= s->tokstart);
-  u32 col = 1 + (u32)((uintptr)s->tokstart - (uintptr)s->linestart);
+  assert(s->tokend >= s->tokstart);
   u32 span = s->tokend - s->tokstart;
-  return pos_make(s->srcposorigin, s->lineno, col, span);
+  return pos_make(s->srcposorigin, s->lineno, scolumn(s), span);
 }
 
 
@@ -280,32 +285,95 @@ static void snumber(Scanner* s) {
 
 
 static u32 sstring_multiline(Scanner* s, const u8* start, const u8* end) {
-  panic("TODO");
-  return 0;
+  // Note: We perform manual source position calculations in this function
+  // since the scanner is already positioned at the end of the string literal.
+  if UNLIKELY(*start != '\n') {
+    b_errf(s->build, (PosSpan){ pos_with_width(s->tokpos, 2) },
+      "multiline string must start with \"|\" on a new line");
+    return U32_MAX;
+  }
+
+  u32 extralen = 0;
+  const u8* src = start;
+  const u8* ind = start;
+  const u8* linestart = start;
+  u32 indlen = U32_MAX;
+  u32 lineno = pos_line(s->tokpos);
+
+  while (src != end) {
+    if (*src++ != '\n')
+      continue;
+
+    lineno++;
+    linestart = src;
+
+    // find '|', leaving while loop with src positioned just after '|'
+    u8 c = 0;
+    while (src != end) {
+      c = *src++;
+      if (c == '|') break;
+      if UNLIKELY(c != ' ' && c != '\t') {
+        end = src; // trigger error message below
+        break;
+      }
+    }
+    if UNLIKELY(src == end && c != '|') {
+      u32 col = (u32)(uintptr)(src - linestart);
+      PosSpan ps = { pos_make(pos_origin(s->tokpos), lineno, col, 0) };
+      b_errf(s->build, ps, "missing \"|\" after linebreak in multiline string");
+      return U32_MAX;
+    }
+
+    u32 pipeoffs = (u32)(uintptr)((src - 1) - linestart);
+    extralen += pipeoffs;
+
+    if (indlen == U32_MAX) {
+      indlen = pipeoffs;
+      ind = linestart;
+    } else if UNLIKELY(indlen != pipeoffs || memcmp(linestart, ind, pipeoffs) != 0) {
+      u32 col = (u32)(uintptr)(src - linestart);
+      PosSpan ps = { pos_make(pos_origin(s->tokpos), lineno, col, 0) };
+      b_errf(s->build, ps, "inconsitent indentation of multiline string");
+      return U32_MAX;
+    }
+  }
+
+  if UNLIKELY(indlen == U32_MAX) {
+    // no "|" found
+    PosSpan ps = { s->tokpos };
+    b_errf(s->build, ps, "missing \"|\" in multiline string");
+    return U32_MAX;
+  }
+
+  return extralen;
 }
 
 
 static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
   const u8* src = s->tokstart + 1; // +1 to skip initial '"'
   u32 len = CAST_U32((s->inp - 1) - src);
-  s->sval.p = "";
-  s->sval.len = 0;
+  if UNLIKELY(len == U32_MAX) {
+    return serr(s, "string literal too large");
+  }
+
+  // reset sbuf
   s->sbuf.len = 0;
 
   // calculate effective string length for multiline strings
   if (ismultiline) {
-    if UNLIKELY(extralen >= len) {
-      // sstring assumes \n is followed by |, but it isn't the case.
-      // i.e. a string of only linebreaks.
-      return serr(s, "missing \"|\" after linebreak in multiline string");
-    }
     // verify indentation and calculate nbytes used for indentation
     u32 indentextralen = sstring_multiline(s, src, src + len);
-    if UNLIKELY(indentextralen == 0) // an error occured
+    if UNLIKELY(indentextralen == U32_MAX) // an error occured
       return;
-    if (check_add_overflow(extralen, indentextralen, &extralen))
-      return serr(s, "string literal too large");
-    src++; len--;  // sans leading '\n'
+
+    // Add the number of bytes used for multiline syntax to extralen.
+    // Overflow should not be possible since we checked it earlier in this function.
+    assert((u64)extralen + (u64)indentextralen <= (u64)U32_MAX);
+    extralen += indentextralen;
+
+    // sans leading '\n'
+    src++;
+    len--;
   }
 
   assert(extralen <= len);
@@ -316,8 +384,10 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
     serr(s, "failed to allocate memory for string literal");
     return;
   }
+
+  // set sval to point to sbuf
   char* dst = s->sbuf.v;
-  s->sval.p = s->sbuf.v;
+  s->sval.p = dst;
   s->sval.len = len;
 
   const u8* chunkstart = src;
@@ -329,7 +399,7 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
   }
 
   if (ismultiline) {
-    while (*src++ != '|') {}
+    while (src < s->inend && *src++ != '|') {}
     chunkstart = src;
   }
 
@@ -359,11 +429,8 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
   }
 done:
   FLUSH_BUF();
-  // if (ismultiline) {
-  //   // sans leading '\n'
-  //   s->sval.p++;
-  //   s->sval.len--;
-  // }
+  assertf(dst == &s->sbuf.v[len],
+    "dst: actual: %zu, expect: %u", (usize)(uintptr)(dst - s->sbuf.v), len);
 }
 
 
@@ -374,6 +441,7 @@ static void sstring(Scanner* s) {
   s->insertSemi = true;
   u32 extralen = 0;
   bool ismultiline = false;
+  s->tokpos = ScannerPos(s);
 
   while (s->inp < s->inend) {
     char c = *s->inp++;
@@ -383,6 +451,7 @@ static void sstring(Scanner* s) {
         extralen++;
         break;
       case '\n':
+        pos_set_width(&s->tokpos, scolumn(s) - pos_col(s->tokpos));
         snewline(s);
         ismultiline = true;
         extralen++;
@@ -391,8 +460,14 @@ static void sstring(Scanner* s) {
         s->tokend = s->inp;
         if (extralen || ismultiline)
           return sstring_buffered(s, extralen, ismultiline);
+        pos_set_width(&s->tokpos, scolumn(s) - pos_col(s->tokpos) - 1);
+        usize len = (usize)(uintptr)(s->inp - s->tokstart) - 2; // -2 to skip '"'
+        if UNLIKELY(len >= (usize)U32_MAX) {
+          b_errf(s->build, (PosSpan){ s->tokpos }, "string literal too large");
+          return;
+        }
         s->sval.p = (const char*)s->tokstart + 1;
-        s->sval.len = (u32)((uintptr)(s->inp - s->tokstart) - 2); // -2 to skip '"'
+        s->sval.len = (u32)len;
         return;
       }
     }

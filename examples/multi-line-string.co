@@ -1,9 +1,7 @@
-fun main(x, y int) int
+fun main()
   message = "
     |hello
     | world
     |    how
     |  are\nyou?
     |"
-  y = y * 2
-  x * y
