@@ -1,8 +1,5 @@
-// dynamic array
-//
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
-//
 #include "colib.h"
 
 
@@ -119,8 +116,11 @@ bool _array_append(VoidArray* a, usize elemsize, const void* restrict src, u32 l
   if (avail < len && UNLIKELY(!_array_grow(a, mem_ctx(), elemsize, len - avail)))
     return false;
   // src must not be part of a->v, or behavior of memcpy is undefined
-  assert(src < a->v || src >= a->v + a->cap * elemsize);
-  memcpy(a->v + (a->len * elemsize), src, len * elemsize);
+  void* dst = a->v + a->len*elemsize;
+  usize size = len * elemsize;
+  assertf(src < dst || src >= dst + len,
+    "trying to append tail of array to itself: %p in bounds %p ... %p", src, dst, dst + len);
+  memcpy(dst, src, size);
   a->len += len;
   return true;
 }
