@@ -50,6 +50,8 @@ static Pos pos_with_line(Pos p, u32 line);   // returns copy of p with specific 
 static Pos pos_with_col(Pos p, u32 col);    // returns copy of p with specific col
 static Pos pos_with_width(Pos p, u32 width);  // returns copy of p with specific width
 
+static void pos_set_width(Pos* p, u32 width);
+
 // pos_with_adjusted_start returns a copy of p with its start and width adjusted by deltacol.
 // Can not overflow; the result is clamped.
 Pos pos_with_adjusted_start(Pos p, i32 deltacol);
@@ -135,6 +137,11 @@ inline static Pos pos_with_width(Pos p, u32 width) {
   return pos_make_unchecked(
     pos_origin(p), pos_line(p), pos_col(p), MIN(_pos_widthMax, width));
 }
+
+inline static void pos_set_width(Pos* p, u32 width) {
+  *p = pos_with_width(*p, width);
+}
+
 inline static bool pos_isbefore(Pos p, Pos q) { return p < q; }
 inline static bool pos_isafter(Pos p, Pos q) { return p > q; }
 inline static bool pos_isknown(Pos p) {

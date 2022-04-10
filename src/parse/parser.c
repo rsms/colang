@@ -1169,7 +1169,7 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
     PosSpan pos = {0};
     u32 nspace = p->tokstart - p->prevtokend;
     pos.start = pos_with_adjusted_start(n->pos, -(i32)nspace);
-    pos.start = pos_with_width(pos.start, nspace);
+    pos_set_width(&pos.start, nspace);
     b_warnf(p->build, pos, "misleading whitespace in subscript expression");
   }
 
