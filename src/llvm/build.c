@@ -37,7 +37,7 @@ typedef struct B {
   // development debugging support
   #ifdef DEBUG_BUILD_EXPR
   int log_indent;
-  char dname_buf[128];
+  char vname_buf[128];
   #endif
 
   // optimization
@@ -277,6 +277,22 @@ static void builder_dispose(B* b) {
 }
 
 
+// vnamef formats IR value names
+#if defined(DEBUG) && defined(DEBUG_BUILD_EXPR)
+  ATTR_FORMAT(printf, 2, 3)
+  static const char* vnamef(B* b, const char* fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    b->vname_buf[0] = 0;
+    vsnprintf(b->vname_buf, sizeof(b->vname_buf), fmt, ap);
+    va_end(ap);
+    return b->vname_buf;
+  }
+#else
+  #define vnamef(b, fmt, ...) ""
+#endif
+
+
 static bool val_is_ret(LLVMValueRef v) {
   return LLVMGetValueKind(v) == LLVMInstructionValueKind &&
          LLVMGetInstructionOpcode(v) == LLVMRet;
@@ -480,6 +496,12 @@ inline static Val build_expr_noload(B* b, Expr* n, const char* vname) {
 // }
 
 
+static Val build_default_value(B* b, Type* t) {
+  Typ ty = get_type(b, t);
+  return LLVMConstNull(ty);
+}
+
+
 static Val build_store(B* b, Val dst, Val val) {
   #if DEBUG
   Typ dst_type = LLVMTypeOf(dst);
@@ -570,12 +592,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     }
     // give the local a helpful name
     const char* name = pn->name;
-    #if DEBUG
-      char namebuf[128];
-      snprintf(namebuf, sizeof(namebuf), "arg_%s", name);
-      name = namebuf;
-    #endif
-    pn->irval = LLVMBuildAlloca(b->builder, pt, name);
+    pn->irval = LLVMBuildAlloca(b->builder, pt, vnamef(b, "arg_%s", pn->name));
     build_store(b, pn->irval, pv);
   }
 
@@ -686,7 +703,9 @@ static Val build_floatlit(B* b, FloatLitNode* n, const char* vname) {
 
 
 static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  if (NodeIsConst(n))
+    return LLVMConstStringInContext(b->ctx, n->p, n->len, /*DontNullTerminate*/true);
+  panic("TODO mutable string literal");
 }
 
 
@@ -764,8 +783,42 @@ static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
 }
 
+
+static Val build_var_load(B* b, VarNode* n, const char* vname) {
+  Val v = assertnotnull(n->irval);
+  if (NodeIsConst(n) || b->noload)
+    return v;
+  panic("TODO load var value");
+  // vnamef(b, "var_%s", vname)
+  return NULL;
+}
+
+
 static Val build_var(B* b, VarNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  if (n->irval)
+    goto load;
+
+  // build initializer; start by saving noload state
+  bool noload = b->noload;
+  b->noload = false;
+
+  if (NodeIsConst(n)) { // immutable
+    if (n->init) {
+      n->irval = build_expr(b, n->init, vname);
+    } else {
+      n->irval = build_default_value(b, n->type);
+    }
+  } else {
+    panic("TODO build mutable var");
+    Typ ty = get_type(b, n->type);
+    n->irval = LLVMBuildAlloca(b->builder, ty, vnamef(b, "var_%s", vname));
+  }
+
+  // restore noload state
+  b->noload = noload;
+
+load:
+  return build_var_load(b, n, vname);
 }
 
 

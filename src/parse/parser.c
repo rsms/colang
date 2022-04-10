@@ -1766,11 +1766,14 @@ static Node* PIntLit(Parser* p, PFlag fl) {
 //!PrefixParselet TStrLit
 static Node* PStrLit(Parser* p, PFlag fl) {
   auto n = b_mknodev((p)->build, StrLit, p->tokpos, p, p->sval.len);
-  if LIKELY(n) {
-    n->len = p->sval.len;
-    memcpy(n->p, p->sval.p, (usize)p->sval.len);
-  }
   nexttok(p); // consume
+  if UNLIKELY(!n)
+    return bad(p);
+
+  NodeSetConst(n);
+  NodeSetRValue(n);
+  n->len = p->sval.len;
+  memcpy(n->p, p->sval.p, (usize)p->sval.len);
 
   // typeof("foo") => [u8 3]
   auto t = mktype(p, ArrayType, TF_KindArray);
@@ -1785,6 +1788,25 @@ static Node* PStrLit(Parser* p, PFlag fl) {
   } else {
     n->type = as_Type(t);
   }
+
+  //
+  // —— Next up: ——
+  // What is the type of foo?
+  //   foo = "hello"
+  // Is is...
+  //   a) [u8 5]  -- an array
+  //   b) &[u8]   -- a reference to an array (with size inspected at runtime)
+  //   c) &[u8 5] -- a reference to an array with size
+  // Have a look at https://co-lang.org/etc/arrays.html
+  // Another option is to use differing syntax:
+  //   foo = "hello"   // [u8 5]
+  //   bar = &"hello"  // &[u8 5]
+  //
+  // A key challenge for all of this is mutability of variables.
+  // I.e. what does this mean?
+  //   foo = "hello"
+  //   foo = "sam"   // ⟵ only valid if foo is a ref (memory address), not array!
+  //
 
   return as_Node(n);
 }

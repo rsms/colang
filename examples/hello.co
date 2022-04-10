@@ -1,10 +1,4 @@
 fun main(x, y int) int
-  hello = "hello"
-  message = "
-    |hello
-    | world
-    |    how
-    |  are\nyou?
-    |"
+  hello = "hello world"
   y = y * 2
   x * y

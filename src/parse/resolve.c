@@ -191,14 +191,15 @@ static Node* _resolve(R* r, Node* n);
     Node* n2 = _resolve(r, n);
     r->debug_depth--;
 
-    if (is_Expr(n))
-      assertf(((Expr*)n)->type != NULL, "did not assign type to %s", nodename(n));
-
     if (n == n2) {
       dlog2("● %s %s resolved", nodename(n), FMTNODE(n,0));
     } else {
       dlog2("● %s %s resolved => %s", nodename(n), FMTNODE(n,0), FMTNODE(n2,1));
     }
+
+    if (is_Expr(n2))
+      assertf(((Expr*)n2)->type != NULL, "did not assign type to %s", nodename(n2));
+
     return n2;
   }
   #define resolve(r,n) resolve_debug((r),as_Node(n))
@@ -433,7 +434,8 @@ static Node* restype_fun(R* r, FunNode* n) {
     }
     if UNLIKELY(
       n->result && n->result != kType_nil &&
-      !b_typeeq(r->build, n->result, n->body->type) )
+      !b_typeeq(r->build, n->result, n->body->type) &&
+      r->build->errcount == 0)
     {
       // TODO: focus the message on the first return expression of n->body
       // which is of a different type than n->result
@@ -813,6 +815,8 @@ static Node* _resolve(R* r, Node* n) {
     // if we encountered an error, for example undefined identifier,
     // don't bother with type resolution as it is likely going to yield
     // confusing error messages as a cascading issue of prior errors.
+    if (is_Expr(n) && !((Expr*)n)->type)
+      ((Expr*)n)->type = kType_nil;
     return n;
   }
 
