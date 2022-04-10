@@ -348,13 +348,13 @@ ABuf* abuf_fill(ABuf* s, char c, usize len) {
 }
 
 
-ABuf* abuf_repr(ABuf* s, const void* srcp, usize len) {
+ABuf* abuf_repr(ABuf* s, const void* src, usize len) {
   char* p = s->p;
   char* lastp = s->lastp;
   usize nwrite = 0;
 
-  for (usize i = 0; i < len; i++) {
-    u8 c = *(u8*)srcp++;
+  for (const void* end = src + len; src != end; src++) {
+    u8 c = *(u8*)src;
     switch (c) {
       // \xHH
       case '\1'...'\x08':
@@ -391,7 +391,7 @@ ABuf* abuf_repr(ABuf* s, const void* srcp, usize len) {
         } else {
           p = lastp;
         }
-        nwrite++;
+        nwrite += 2;
         break;
       }
       // verbatim
@@ -481,10 +481,10 @@ Str str_dup(const char* src, usize len) {
   for (usize nbytes__ = (initnbytes); ; ) { \
     if UNLIKELY(!str_reserve(s, nbytes__)) \
       return false; \
-    ABuf buf = abuf_make(&s->v[s->len], nbytes__);
+    ABuf buf = abuf_make(&s->v[s->len], str_availcap(s));
 // use buf here
 #define STR_USE_ABUF_END() \
-    if LIKELY(buf.len < nbytes__) { \
+    if LIKELY(buf.len < str_availcap(s)) { \
       s->len += buf.len; \
       break; \
     } \
