@@ -22,6 +22,7 @@ static const UTF8Test utf8_bad_tests[] = {
   { "\xFE" },
   { "\x80" },
   { "\xC0\x0A" },
+  { "\xEBxx" },
 
   // Single UTF-16 surrogates
   { "\xED\xA0\x80", { 0xD800 } },
@@ -42,6 +43,10 @@ static const UTF8Test utf8_bad_tests[] = {
   { "\xED\xAE\x80\xED\xBF\xBF", { 0xDB80, 0xDFFF } },
   { "\xED\xAF\xBF\xED\xB0\x80", { 0xDBFF, 0xDC00 } },
   { "\xED\xAF\xBF\xED\xBF\xBF", { 0xDBFF, 0xDFFF } },
+};
+
+static const Rune utf32_bad_tests[][16] = {
+  { RuneMax+1 },
 };
 
 
@@ -151,21 +156,50 @@ DEF_TEST(utf8_decode) {
 
 DEF_TEST(utf8_encode) {
   u8 outbuf[64];
+  char tmpbuf[128];
+
   for (usize ti = 0; ti < countof(utf8_tests); ti++) {
     auto t = &utf8_tests[ti];
-
-    const Rune* input = t->utf32;
-    usize input_len = utf32len(input, countof(t->utf32));
+    usize nrunes = utf32len(t->utf32, countof(t->utf32));
     u8* dst = outbuf;
     const u8* dst_end = dst + sizeof(outbuf);
 
-    for (usize i = 0; i < input_len; i++) {
+    for (usize i = 0; i < nrunes; i++) {
       u8* start = dst;
-      bool ok = utf8_encode(&dst, dst_end, input[i]);
-      assertf(ok, "succeeded");
+      bool ok = utf8_encode(&dst, dst_end, t->utf32[i]);
+      if (!ok) {
+        fmtrunes(tmpbuf, sizeof(tmpbuf), t->utf32, nrunes);
+        assertf(0,"utf8_tests[%zu]: utf8_encode({ %s }) failed", ti, tmpbuf);
+      }
       assertf(dst > start, "made progress");
       assertf(memcmp(dst, "\xEF\xBF\xBD", 3) != 0,
-        "invalid codepoint input[%zu]=%04X", i, input[i]);
+        "invalid codepoint t->utf32[%zu]=%04X", i, t->utf32[i]);
+    }
+  }
+
+  for (usize ti = 0; ti < countof(utf8_bad_tests); ti++) {
+    auto t = &utf8_bad_tests[ti];
+    usize nrunes = utf32len(t->utf32, countof(t->utf32));
+    for (usize i = 0; i < nrunes; i++) {
+      u8* dst = outbuf;
+      bool ok = utf8_encode(&dst, outbuf + sizeof(outbuf), t->utf32[i]);
+      if (ok) {
+        fmtrunes(tmpbuf, sizeof(tmpbuf), t->utf32, nrunes);
+        assertf(0,"utf8_encode({ %s }) should fail, but succeeded", tmpbuf);
+      }
+    }
+  }
+
+  for (usize ti = 0; ti < countof(utf32_bad_tests); ti++) {
+    const Rune* utf32 = utf32_bad_tests[ti];
+    usize nrunes = utf32len(utf32, countof(utf32_bad_tests[0]));
+    for (usize i = 0; i < nrunes; i++) {
+      u8* dst = outbuf;
+      bool ok = utf8_encode(&dst, outbuf + sizeof(outbuf), utf32[i]);
+      if (ok) {
+        fmtrunes(tmpbuf, sizeof(tmpbuf), utf32, nrunes);
+        assertf(0,"utf8_encode({ %s }) should fail, but succeeded", tmpbuf);
+      }
     }
   }
 }
@@ -196,21 +230,53 @@ DEF_TEST(utf8_len) {
     { "fancy \x1B[38;5;203mred\x1B[39m", 9, 9, UC_LFL_SKIP_ANSI },
   };
   for (usize i = 0; i < countof(tests); i++) {
-    auto t = tests[i];
+    auto t = &tests[i];
 
-    usize len = utf8_len((const u8*)t.input, strlen(t.input), t.flags);
-    if (len != t.expected_len) {
-      sfmt_repr(tmpbuf, sizeof(tmpbuf), t.input, strlen(t.input));
+    usize len = utf8_len((const u8*)t->input, strlen(t->input), t->flags);
+    if (len != t->expected_len) {
+      sfmt_repr(tmpbuf, sizeof(tmpbuf), t->input, strlen(t->input));
       assertf(0,"tests[%zu]: utf8_len(%s) => %zu (expected %zu)",
-        i, tmpbuf, len, t.expected_len);
+        i, tmpbuf, len, t->expected_len);
     }
 
-    len = utf8_printlen((const u8*)t.input, strlen(t.input), t.flags);
-    if (len != t.expected_printlen) {
-      sfmt_repr(tmpbuf, sizeof(tmpbuf), t.input, strlen(t.input));
+    len = utf8_printlen((const u8*)t->input, strlen(t->input), t->flags);
+    if (len != t->expected_printlen) {
+      sfmt_repr(tmpbuf, sizeof(tmpbuf), t->input, strlen(t->input));
       assertf(0,"tests[%zu]: utf8_printlen(%s) => %zu (expected %zu)",
-        i, tmpbuf, len, t.expected_printlen);
+        i, tmpbuf, len, t->expected_printlen);
     }
+  }
+}
+
+
+DEF_TEST(utf8_validate) {
+  char tmpbuf[512];
+
+  for (usize ti = 0; ti < countof(utf8_tests); ti++) {
+    auto t = &utf8_tests[ti];
+    const u8* badbyte = utf8_validate((const u8*)t->utf8, strlen(t->utf8));
+    if (badbyte) {
+      usize tmp1len = (sizeof(tmpbuf)/4)*3;
+      sfmt_repr(tmpbuf, tmp1len, t->utf8, strlen(t->utf8));
+      char* tmp2 = tmpbuf + tmp1len + 1;
+      sfmt_repr(tmp2, sizeof(tmpbuf)-tmp1len-1, badbyte, 1);
+      assertf(0,"utf8_tests[%zu]: utf8_validate(%s) => 0x%02x '%s' (expected NULL)",
+        ti, tmpbuf, *badbyte, tmp2);
+    }
+  }
+
+  for (usize ti = 0; ti < countof(utf8_bad_tests); ti++) {
+    auto t = &utf8_bad_tests[ti];
+    const u8* badbyte = utf8_validate((const u8*)t->utf8, strlen(t->utf8));
+    if (badbyte == NULL) {
+      sfmt_repr(tmpbuf, sizeof(tmpbuf), t->utf8, strlen(t->utf8));
+      assertf(0,"utf8_bad_tests[%zu]: utf8_validate(%s) did not fail", ti, tmpbuf);
+    }
+    // usize tmp1len = (sizeof(tmpbuf)/4)*3;
+    // sfmt_repr(tmpbuf, tmp1len, t->utf8, strlen(t->utf8));
+    // char* tmp2 = tmpbuf + tmp1len + 1;
+    // sfmt_repr(tmp2, sizeof(tmpbuf)-tmp1len-1, badbyte, 1);
+    // dlog("utf8_validate(%s) => 0x%02x '%s'", tmpbuf, *badbyte, tmp2);
   }
 }
 

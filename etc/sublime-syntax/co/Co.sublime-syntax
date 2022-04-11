@@ -659,7 +659,7 @@ contexts:
         - include: statements
 
   string-escaped-char:
-    - match: '\\(\\|[abfnrutv''"]|x\h{2}|u\h{4}|U\h{8}|[0-7]{3})'
+    - match: '\\([0\\abfnrtv''"]|x\h{2}|u\h{4}|U\h{8})'
       scope: constant.character.escape.co
     - match: \\.
       scope: invalid.illegal.unknown-escape.co

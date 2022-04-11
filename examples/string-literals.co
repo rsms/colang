@@ -1,0 +1,39 @@
+// verbatim UTF-8 text
+_ = "hello"
+_ = "hëllo"
+_ = "你好"
+_ = "नमस्ते"
+_ = "مرحبا"
+_ = "A cool cat 😎"
+
+// escape sequences
+_ = "A cool cat \U0001F60E"
+_ = "A cool cat \xF0\x9F\x98\x8E"
+_ = "Square root: \u221A"
+_ = "Lycian An: \U00010299"
+
+// Same text encoded in different ways:
+_ = "日本語"                                // verbatim UTF-8 source text
+_ = "\u65e5\u672c\u8a9e"                   // Unicode code points
+_ = "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e" // UTF-8 bytes
+
+/*
+    U+1F469 woman
+  + U+1F3FD skin tone modifier
+  + U+200D  zero width joiner
+  + U+1F680 rocket ship
+  = astronaut (woman) with skin tone modifier */
+_ = "👩🏽‍🚀" // UTF-8 input text
+_ = "\U0001F469\U0001F3FD\u200D\U0001F680" // Unicode code points
+_ = "\xf0\x9f\x91\xa9\xf0\x9f\x8f\xbd\xe2\x80\x8d\xf0\x9f\x9a\x80" // UTF-8 bytes
+
+// Invalid codepoints
+// _ = "\uD800"     // illegal: surrogate half
+// _ = "\U00110000" // illegal: invalid Unicode code point
+
+// Invalid UTF-8
+// _ = "\xED\xA0\x80" // UTF-16 surrogate half
+// _ = "\x80"         // RuneSelf
+// _ = "\xFF"         // invalid lead byte
+// _ = "\xC0\x0A"     // invalid follow byte
+

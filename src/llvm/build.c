@@ -637,7 +637,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
 
 
 static Val build_global_var(B* b, VarNode* n) {
-  dlog("TODO");
+  dlog("TODO build_global_var");
   return NULL;
 }
 

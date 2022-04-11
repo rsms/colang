@@ -772,6 +772,9 @@ static LocalNode* make_local(
   if (init)
     set_local_init(p, n, init);
 
+  if (n->name == kSym__) // "_" is the "ignore" name
+    return n;
+
   Node* existing = lookupsymShallow(p, n->name);
   if UNLIKELY(existing) {
     b_warnf(p->build, NodePosSpan(name),

@@ -260,7 +260,7 @@ void _b_free_node(BuildCtx* b, Node* n, usize ptr_count) {
   NodeSlab* slab = b->nodeslab_curr;
 
   // if n was the most recently allocated node, reclaim that space
-  if (slab->len < ptr_count || (slab->data + slab->len - ptr_count) != n)
+  if (slab->len < ptr_count || (slab->data + slab->len - ptr_count) != (void*)n)
     return;
   slab->len -= ptr_count;
 }

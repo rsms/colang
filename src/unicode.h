@@ -25,6 +25,11 @@ typedef u8 UnicodeLenFlags; enum {
 #define ascii_isspace(c)    ( (c) == ' ' || (u32)(c) - '\t' < 5 )           /* SP,\{tnvfr} */
 #define ascii_ishexdigit(c) ( ascii_isdigit(c) || ((u32)c | 32) - 'a' < 6 ) /* 0-9A-Fa-f */
 
+// ascii_alphaieq returns true if a and b are the same alpha character regardless of case.
+// i.e. ascii_alphaieq('A', 'a') is true, while ascii_alphaieq('A', 'b') is false.
+// Only valid for arguments in the ranges 'A'...'Z' and 'a'...'z'.
+#define ascii_alphaieq(a, b) (((u8)(a) | 32) == ((u8)(b) | 32))
+
 // utf8_encode writes to *dst the UTF-8 representation of r, advancing *dst by at least one.
 // If r is an invalid Unicode codepoint (i.e. r>RuneMax) RuneSub is used instead.
 // Returns false if there's not enough space at *dst.
@@ -37,8 +42,8 @@ bool utf8_encode(u8** dst, const u8* dstend, Rune r);
 // Returns false if *src contains invalid UTF-8 data; if so, caller should use RuneSub.
 bool utf8_decode(const u8** src, const u8* end, Rune* result);
 
-// utf8_decode4 is a faster validating decoder that requires src to have 4-byte alignment;
-// at least 4 bytes to load at *src. Always advances *src by at least 1 byte.
+// utf8_decode4 is a faster validating decoder that requires src to have
+// at least 4 byte available. Always advances *src by at least 1 byte.
 // Returns false if *src is invalid UTF-8; if so, caller should use RuneSub.
 bool utf8_decode4(const u8** src, Rune* result);
 
@@ -52,5 +57,9 @@ usize utf8_printlen(const u8* s, usize len, UnicodeLenFlags);
 
 // utf8_isvalid returns true if s contains a valid UTF-8 sequence
 bool utf8_isvalid(const u8* s, usize len);
+
+// utf8_validate checks if s is a valid UTF-8 string.
+// Returns a pointer into s of the first invalid byte, or NULL if s is valid.
+const u8* nullable utf8_validate(const u8* s, usize len);
 
 END_INTERFACE

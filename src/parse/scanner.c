@@ -116,6 +116,13 @@ void ScannerDispose(Scanner* s) {
     mem_free(s->build->mem, c, sizeof(Comment));
 }
 
+static u32 scolumn_at(const Scanner* s, const u8* src) {
+  const u8* p = src;
+  while (*p != '\n' && p > s->src->body)
+    p--;
+  return (u32)(uintptr)(src - p);
+}
+
 static u32 scolumn(const Scanner* s) {
   if (s->tokstart >= s->linestart)
     return 1 + (u32)(uintptr)(s->tokstart - s->linestart);
@@ -124,8 +131,8 @@ static u32 scolumn(const Scanner* s) {
 
 Pos ScannerPos(const Scanner* s) {
   assert(s->tokend >= s->tokstart);
-  u32 span = s->tokend - s->tokstart;
-  return pos_make(s->srcposorigin, s->lineno, scolumn(s), span);
+  u32 width = s->tokend - s->tokstart;
+  return pos_make(s->srcposorigin, s->lineno, scolumn(s), width);
 }
 
 
@@ -349,20 +356,70 @@ static u32 sstring_multiline(Scanner* s, const u8* start, const u8* end) {
 }
 
 
-static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
-  const u8* src = s->tokstart + 1; // +1 to skip initial '"'
-  u32 len = CAST_U32((s->inp - 1) - src);
-  if UNLIKELY(len == U32_MAX) {
-    return serr(s, "string literal too large");
+static bool schar_escape(Scanner* s, const u8** srcp, const u8* end, u32* v) {
+  // enters with src positioned just after "\"
+  u8 b = *(*srcp)++;
+  u32 n; // extra bytes to read as an integer
+  switch (b) {
+    case '"':
+    case '\'':
+    case '\\': *v = (u32)b;   return true;
+    case '0':  *v = (u32)0;   return true;
+    case 'a':  *v = (u32)0x7; return true;
+    case 'b':  *v = (u32)0x8; return true;
+    case 't':  *v = (u32)0x9; return true;
+    case 'n':  *v = (u32)0xA; return true;
+    case 'v':  *v = (u32)0xB; return true;
+    case 'f':  *v = (u32)0xC; return true;
+    case 'r':  *v = (u32)0xD; return true;
+    case 'x':  n = 2; break; // \xXX
+    case 'u':  n = 4; break; // \uXXXX
+    case 'U':  n = 8; break; // \UXXXXXXXX
+    default: return false;
   }
 
-  // reset sbuf
-  s->sbuf.len = 0;
+  u32 availsrc = (u32)(uintptr)(end - *srcp);
+  if UNLIKELY(availsrc < n)
+    return false;
+
+  error err = sparse_u32((const char*)*srcp, n, 16, v);
+  *srcp += n;
+  return !err;
+}
+
+
+static void sstring_finalize(Scanner* s) {
+  s->tokend = s->inp;
+  if (scolumn(s) == pos_col(s->tokpos))
+    pos_set_width(&s->tokpos, (u32)(uintptr)(s->tokend - s->tokstart));
+
+  const u8* badbyte = utf8_validate((const u8*)s->sval.p, (usize)s->sval.len);
+
+  if UNLIKELY(badbyte) {
+    Pos p = s->tokpos;
+    if (scolumn(s) == pos_col(s->tokpos) && badbyte != (const u8*)s->sval.p) {
+      // point to the bad data
+      pos_set_width(&p, 0);
+      p = pos_with_col(p, pos_col(p) + (u32)(uintptr)(badbyte - (const u8*)s->sval.p) + 1);
+    }
+    b_errf(s->build, (PosSpan){p}, "invalid UTF-8 data");
+  }
+}
+
+
+static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
+  const u8* src = s->tokstart + 1; // +1 to skip initial '"'
+  u32 maxlen = CAST_U32((s->inp - 1) - src);
+  if UNLIKELY(maxlen == U32_MAX)
+    return serr(s, "string literal too large");
+
+  // track source position
+  u32 lineno = pos_line(s->tokpos);
 
   // calculate effective string length for multiline strings
   if (ismultiline) {
     // verify indentation and calculate nbytes used for indentation
-    u32 indentextralen = sstring_multiline(s, src, src + len);
+    u32 indentextralen = sstring_multiline(s, src, src + maxlen);
     if UNLIKELY(indentextralen == U32_MAX) // an error occured
       return;
 
@@ -373,22 +430,22 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
 
     // sans leading '\n'
     src++;
-    len--;
+    maxlen--;
+    lineno++;
   }
 
-  assert(extralen <= len);
-  len -= extralen;
+  assert(extralen <= maxlen);
+  maxlen -= extralen;
 
   // allocate space needed up front since we already know the size
-  if UNLIKELY(!str_reserve(&s->sbuf, len)) {
+  if UNLIKELY(!str_reserve(&s->sbuf, maxlen)) {
     serr(s, "failed to allocate memory for string literal");
     return;
   }
 
   // set sval to point to sbuf
-  char* dst = s->sbuf.v;
-  s->sval.p = dst;
-  s->sval.len = len;
+  s->sbuf.len = 0; // reset
+  u8* dst = (u8*)s->sbuf.v;
 
   const u8* chunkstart = src;
 
@@ -405,17 +462,40 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
 
   while (src < s->inend) {
     switch (*src) {
-      case '\\':
+      case '\\': {
         FLUSH_BUF();
         src++;
-        switch (*src) {
-          case 'n': *dst++ = 0xA; break;
-          default:  *dst++ = *src; break; // verbatim
+        const u8* src_start = src;
+        u32 value;
+        bool ok = schar_escape(s, &src, s->inend, &value);
+        u32 nbytes_consumed = (u32)(uintptr)(src - src_start);
+        if UNLIKELY(!ok) {
+          Pos p = pos_with_width(s->tokpos, nbytes_consumed + 1); // +1 for '\'
+          p = pos_with_line(p, lineno);
+          p = pos_with_col(p, scolumn_at(s, src_start - 1));
+          b_errf(s->build, (PosSpan){p}, "invalid string escape sequence");
+          return;
         }
-        chunkstart = ++src;
+        *dst++ = value; // optimistically assume \xXX
+        if (nbytes_consumed > 3) {
+          // \uXXXX or \UXXXXXXXX
+          dst--; // undo advance for \xXX
+          if UNLIKELY(!utf8_encode(&dst, dst + 4, value)) {
+            Pos p = pos_with_width(s->tokpos, nbytes_consumed + 1); // +1 for '\'
+            p = pos_with_line(p, lineno);
+            p = pos_with_col(p, scolumn_at(s, src_start - 1));
+            b_errf(s->build, (PosSpan){p}, "invalid Unicode codepoint U+%04X", value);
+            return;
+          }
+        } else {
+          assert(value <= 0xff);
+        }
+        chunkstart = src;
         break;
+      }
       case '\n':
         src++;
+        lineno++;
         FLUSH_BUF();
         // note: sstring_multiline has verified syntax already
         while (*src++ != '|') {}
@@ -429,8 +509,10 @@ static void sstring_buffered(Scanner* s, u32 extralen, bool ismultiline) {
   }
 done:
   FLUSH_BUF();
-  assertf(dst == &s->sbuf.v[len],
-    "dst: actual: %zu, expect: %u", (usize)(uintptr)(dst - s->sbuf.v), len);
+  s->sval.p = s->sbuf.v;
+  s->sval.len = (usize)(uintptr)(dst - (u8*)s->sval.p);
+  assertf(s->sval.len <= maxlen, "dst overflow: %u > %u", s->sval.len, maxlen);
+  return sstring_finalize(s);
 }
 
 
@@ -444,12 +526,26 @@ static void sstring(Scanner* s) {
   s->tokpos = ScannerPos(s);
 
   while (s->inp < s->inend) {
-    char c = *s->inp++;
+    u8 c = *s->inp;
     switch (c) {
-      case '\\':
+      case '\\': {
         s->inp++;
         extralen++;
+        // note: you might wonder why we're setting extralen exactly here for the
+        // cases of \xXX \uXXXX and \UXXXXXXXX.
+        //
+        // extralen is a number to _subtract_ from the string literal as it
+        // appears in the source text. I.e. "foo\nbar\n" is 10 bytes of input but
+        // results in only 8 bytes of actual text data; extralen is 2 because of
+        // the two "\n" escapes. That's easy as we know all "verbatim" \c escapes
+        // results in exactly one byte overhead, but that's not true for \x \u \U
+        // escapes. In particular, \u and \U yields 1-4 bytes of actual text data,
+        // depending on their Unicode value (and thus its UTF-8 encoding.)
+        //
+        // So we know that the overhead is _at least_ 2 bytes, but that's it.
+        //
         break;
+      }
       case '\n':
         pos_set_width(&s->tokpos, scolumn(s) - pos_col(s->tokpos));
         snewline(s);
@@ -457,6 +553,7 @@ static void sstring(Scanner* s) {
         extralen++;
         break;
       case '"': {
+        s->inp++;
         s->tokend = s->inp;
         if (extralen || ismultiline)
           return sstring_buffered(s, extralen, ismultiline);
@@ -468,9 +565,10 @@ static void sstring(Scanner* s) {
         }
         s->sval.p = (const char*)s->tokstart + 1;
         s->sval.len = (u32)len;
-        return;
+        return sstring_finalize(s);
       }
     }
+    s->inp++;
   }
 
   // we get here if the string is not terminated
