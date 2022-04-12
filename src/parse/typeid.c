@@ -38,63 +38,57 @@
 //
 
 
-static void typeid_append(ABuf* s, const Type* t) {
-  if (is_BasicTypeNode(t)) {
-    abuf_c(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
-    return;
-  }
+bool _typeid_append(Str* s, const Type* t) {
+  if (is_BasicTypeNode(t))
+    return str_appendc(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
 
   if (!t->tid) switch (t->kind) {
     case NAliasType:
-      MUSTTAIL return typeid_append(s, as_AliasTypeNode(t)->type);
+      MUSTTAIL return _typeid_append(s, as_AliasTypeNode(t)->type);
 
     case NRefType:
-      abuf_c(s, TypeCodeEncoding(TC_ref));
-      MUSTTAIL return typeid_append(s, assertnotnull(as_RefTypeNode(t)->elem));
+      str_appendc(s, TypeCodeEncoding(TC_ref));
+      MUSTTAIL return _typeid_append(s, assertnotnull(as_RefTypeNode(t)->elem));
 
     case NArrayType:
-      abuf_c(s, TypeCodeEncoding(TC_array));
-      abuf_u32(s, as_ArrayTypeNode(t)->size, 10);
-      abuf_c(s, TypeCodeEncoding(TC_arrayEnd));
-      MUSTTAIL return typeid_append(s, assertnotnull(as_ArrayTypeNode(t)->elem));
+      str_appendc(s, TypeCodeEncoding(TC_array));
+      str_appendu32(s, as_ArrayTypeNode(t)->size, 10);
+      str_appendc(s, TypeCodeEncoding(TC_arrayEnd));
+      MUSTTAIL return _typeid_append(s, assertnotnull(as_ArrayTypeNode(t)->elem));
 
     case NTupleType:
-      abuf_c(s, TypeCodeEncoding(TC_tuple));
+      str_appendc(s, TypeCodeEncoding(TC_tuple));
       for (u32 i = 0; i < as_TupleTypeNode(t)->a.len; i++)
-        typeid_append(s, as_TupleTypeNode(t)->a.v[i]);
-      abuf_c(s, TypeCodeEncoding(TC_tupleEnd));
-      return;
+        _typeid_append(s, as_TupleTypeNode(t)->a.v[i]);
+      return str_appendc(s, TypeCodeEncoding(TC_tupleEnd));
 
     case NStructType:
-      abuf_c(s, TypeCodeEncoding(TC_struct));
+      str_appendc(s, TypeCodeEncoding(TC_struct));
       for (u32 i = 0; i < as_StructTypeNode(t)->fields.len; i++) {
         FieldNode* field = as_StructTypeNode(t)->fields.v[i];
-        typeid_append(s, assertnotnull(field->type));
+        _typeid_append(s, assertnotnull(field->type));
       }
-      abuf_c(s, TypeCodeEncoding(TC_structEnd));
-      return;
+      return str_appendc(s, TypeCodeEncoding(TC_structEnd));
 
     case NFunType: {
       auto ft = as_FunTypeNode(t);
-      abuf_c(s, TypeCodeEncoding(TC_fun));
+      str_appendc(s, TypeCodeEncoding(TC_fun));
       // if (ft->params.len > 0) {
-      //   abuf_c(s, TypeCodeEncoding(TC_struct));
+      //   str_appendc(s, TypeCodeEncoding(TC_struct));
       //   for (u32 i = 0; i < ft->params.len; i++) {
       //     FieldNode* field = ft->params.v[i];
-      //     typeid_append(s, assertnotnull(field->type));
+      //     _typeid_append(s, assertnotnull(field->type));
       //   }
-      //   abuf_c(s, TypeCodeEncoding(TC_structEnd));
-      //   // typeid_append(s, assertnotnull(ft->params->type));
+      //   str_appendc(s, TypeCodeEncoding(TC_structEnd));
+      //   // _typeid_append(s, assertnotnull(ft->params->type));
       if (ft->params) {
-        typeid_append(s, assertnotnull(ft->params->type));
+        _typeid_append(s, assertnotnull(ft->params->type));
       } else {
-        abuf_c(s, TypeCodeEncoding(TC_nil));
+        str_appendc(s, TypeCodeEncoding(TC_nil));
       }
-      if (!ft->result) {
-        abuf_c(s, TypeCodeEncoding(TC_nil));
-        return;
-      }
-      MUSTTAIL return typeid_append(s, ft->result);
+      if (!ft->result)
+        return str_appendc(s, TypeCodeEncoding(TC_nil));
+      MUSTTAIL return _typeid_append(s, ft->result);
     }
 
     default:
@@ -102,12 +96,5 @@ static void typeid_append(ABuf* s, const Type* t) {
       break;
   }
 
-  abuf_append(s, t->tid, symlen(t->tid));
-}
-
-
-usize _typeid_make(char* buf, usize bufsize, const Type* t) {
-  ABuf s = abuf_make(buf, bufsize);
-  typeid_append(&s, t);
-  return abuf_terminate(&s);
+  return str_append(s, t->tid, symlen(t->tid));
 }
