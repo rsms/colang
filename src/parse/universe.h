@@ -46,7 +46,6 @@ extern Type* kType_int;
 extern Type* kType_uint;
 extern Type* kType_nil;
 extern Type* kType_ideal;
-extern Type* kType_str;
 extern Type* kType_auto;
 extern Expr* kExpr_nil;
 extern Expr* kExpr_true;

@@ -75,8 +75,9 @@ struct BuildCtx {
   DiagLevel             diaglevel; // diagnostics filter (some > diaglevel is ignored)
   u32                   errcount;  // total number of errors since last call to build_init
 
-  // temporary buffers for eg string formatting
-  char tmpbuf[2][512];
+  // temporary buffers
+  char       tmpbuf[2][512];
+  Node_union tmpnode;
 };
 
 // BuildCtxInit initializes a BuildCtx structure.
@@ -106,6 +107,10 @@ void b_warnf(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3,
 // b_warnf calls b_diagf with DiagNote
 void b_notef(BuildCtx*, PosSpan, const char* format, ...) ATTR_FORMAT(printf, 3, 4);
 
+// b_err_nomem calls b_diagf with a "out of memory" message and returns a pointer
+// to b->tmpnode that is safe to mutate (but effects of use are UD, of course.)
+Node* b_err_nomem(BuildCtx*, PosSpan);
+
 
 // b_add_source adds src to b->srclist
 void b_add_source(BuildCtx*, Source* src);
@@ -117,34 +122,35 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
 // b_mknode_union allocates a union of nodes, initializing it as the lowest NodeKind.
 // b_mknodev allocates a node with array tail
 // b_mknodez allocates and initializes a node of particular byte size and kind.
+//
+// These functions never return NULL; instead, on memory-allocation failure,
+// an error is reported and b->tmpnode is returned instead.
+//
 #define b_mknode(b, KIND, pos) \
-  ( (KIND##Node* nullable)b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
+  ( (KIND##Node*)b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
 
 #define b_mknode_union(b, KIND, pos) \
-  ( (KIND##Node* nullable)b_mknodez((b), N##KIND##_BEG, sizeof(KIND##Node_union), (pos)) )
+  ( (KIND##Node*)b_mknodez((b), N##KIND##_BEG, sizeof(KIND##Node_union), (pos)) )
 
 #define b_mknodev(b, KIND, pos, ARRAY_FIELD, count) \
-  ( (KIND##Node* nullable)b_mknodez((b), N##KIND, \
+  ( (KIND##Node*)b_mknodez((b), N##KIND, \
       STRUCT_SIZE((KIND##Node*)0, ARRAY_FIELD, count), (pos)) )
 
 #define b_mknodez(b, kind, size, pos) \
   ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*)) / sizeof(void*)) )
 
-Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
+Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
 
 // b_free_node returns a node to b's nodeslab free list
 #define b_free_node(b, n, KIND) \
   _b_free_node((b),as_Node(n),ALIGN2(sizeof(KIND##Node),sizeof(void*)) / sizeof(void*) )
 void _b_free_node(BuildCtx* b, Node* n, usize nptrs);
 
-// b_clonenode allocates and initializes a AST node that is a copy of another node
-#define b_clonenode(b, src) ((__typeof__(src) nullable)_b_clonenode((b),as_Node(src)))
-Node* nullable _b_clonenode(BuildCtx* b, const Node* src);
-
 // b_mkpkgnode creates a package node for b, setting
-// pkg->name = b->pkgid
-// pkg->scope = pkgscope
-PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope);
+//   pkg->name = b->pkgid
+//   pkg->scope = pkgscope
+// Note: returns b->tmpnode on memory-allocation failure.
+PkgNode* b_mkpkgnode(BuildCtx* b, Scope* pkgscope);
 
 
 // b_typeid_assign computes the type id of t, adds it to b->syms and assigns it to t->tid
@@ -157,9 +163,15 @@ static Sym b_typeid(BuildCtx* b, Type* t);
 // bctx_typeeq returns true if x & y are equivalent types
 static bool b_typeeq(BuildCtx* b, Type* x, Type* y);
 
+// b_typelteq returns true if src can be downgraded to dst; if dst <= src.
+// (e.g. true if src can be assigned to a field or local of type dst.)
+static bool b_typelteq(BuildCtx* b, Type* dst, Type* src);
+
 // b_intern_type registers t in b->types.
-// If an existing equivalent (same id) type exists, that is returned instead of t.
-Type* b_intern_type(BuildCtx* b, Type* t);
+// If an existing equivalent (same id) type exists, *tp is updated to that other pointer.
+// Returns true if *tp was updated with a different but equivalent type.
+#define b_intern_type(b, tp) ( assert_is_Type(*(tp)), _b_intern_type((b),(Type**)(tp)) )
+bool _b_intern_type(BuildCtx* b, Type** tp);
 
 
 // ----
@@ -186,6 +198,13 @@ inline static Sym b_typeid(BuildCtx* b, Type* t) {
 bool _b_typeeq(BuildCtx*, Type* x, Type* y);
 inline static bool b_typeeq(BuildCtx* b, Type* x, Type* y) {
   return x == y || _b_typeeq(b, x, y);
+}
+
+// dst <= src -- true if src can be downgraded to dst.
+// e.g. true if src can be assigned to a field or local of type dst.
+bool _b_typelteq(BuildCtx* b, Type* dst, Type* src);
+inline static bool b_typelteq(BuildCtx* b, Type* dst, Type* src) {
+  return dst == src || _b_typelteq(b, dst, src);
 }
 
 

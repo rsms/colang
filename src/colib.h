@@ -454,6 +454,8 @@ static inline WARN_UNUSED_RESULT bool __must_check_unlikely(bool unlikely) {
 // #define PTR_ALIGN_DOWN(p, a)   ((__typeof__(p))ALIGN_DOWN((unsigned long)(p), (a)))
 // #define IS_ALIGNED(x, a)       (((x) & ((__typeof__(x))(a) - 1)) == 0)
 
+// check_*_overflow functions return true if the result overflowed
+
 // a + b => d
 #define check_add_overflow(a, b, d) __must_check_unlikely(({ \
   __typeof__(a) __a = (a); \

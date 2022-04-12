@@ -591,7 +591,6 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
       continue;
     }
     // give the local a helpful name
-    const char* name = pn->name;
     pn->irval = LLVMBuildAlloca(b->builder, pt, vnamef(b, "arg_%s", pn->name));
     build_store(b, pn->irval, pv);
   }

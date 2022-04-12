@@ -392,6 +392,8 @@ static bool is_type_complete(Type* np) {
   switch ((enum NodeKind)np->kind) { case NBad: { return false;
     NCASE(ArrayType)
       return (n->sizeexpr == NULL || n->size > 0) && is_type_complete(n->elem);
+    NCASE(RefType)
+      return is_type_complete(n->elem);
     NCASE(StructType)
       return (n->flags & (NF_CustomInit | NF_PartialType)) == 0;
     NDEFAULTCASE
@@ -611,7 +613,7 @@ static Node* restype_assign(R* r, AssignNode* n) {
   if UNLIKELY(n->type->kind == NArrayType) {
     // storing to a local or field of array type is not allowed
     b_errf(r->build, NodePosSpan(n), "array type %s is not assignable", FMTNODE(n->type,0));
-  } else {
+  } else if (!b_typelteq(r->build, n->type, n->val->type)) {
     // convert rvalue (if it's a different type than dst)
     n->val = ctypecast_implicit(r->build, n->val, n->type, NULL, n);
   }

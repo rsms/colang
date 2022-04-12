@@ -147,6 +147,11 @@ void b_notef(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
   va_end(ap);
 }
 
+Node* b_err_nomem(BuildCtx* b, PosSpan ps) {
+  b_errf(b, ps, "out of memory");
+  return (Node*)&b->tmpnode;
+}
+
 
 void b_add_source(BuildCtx* b, Source* src) {
   if (b->srclist)
@@ -231,26 +236,20 @@ static NodeSlab* nullable nodeslab_grow(BuildCtx* b) {
 }
 
 
-static void* nullable nodeslab_alloc(BuildCtx* b, usize ptr_count) {
+static Node* nodeslab_alloc(BuildCtx* b, usize ptr_count) {
   NodeSlab* slab = b->nodeslab_curr;
   usize avail = countof(b->nodeslab_head.data) - slab->len;
   if (UNLIKELY(avail < ptr_count) && (slab = nodeslab_grow(b)) == NULL)
-    return NULL;
+    return b_err_nomem(b, NoPosSpan);
   void* p = &slab->data[slab->len];
   slab->len += ptr_count;
   return p;
 }
 
 
-Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
-  Node* n = NULL;
-  // nptrs is USIZE_MAX/sizeof(void) if prior call overflowed
-  if LIKELY(nptrs < USIZE_MAX/sizeof(void))
-    n = nodeslab_alloc(b, nptrs);
-  if UNLIKELY(n == NULL) {
-    b_errf(b, (PosSpan){NoPos,NoPos}, "failed to allocate memory");
-    return NULL;
-  }
+Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
+  safecheck(nptrs < USIZE_MAX/sizeof(void)); // prior call overflowed?
+  Node* n = nodeslab_alloc(b, nptrs);
   n->pos = pos;
   return NodeInit(n, kind);
 }
@@ -258,7 +257,6 @@ Node* nullable _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
 
 void _b_free_node(BuildCtx* b, Node* n, usize ptr_count) {
   NodeSlab* slab = b->nodeslab_curr;
-
   // if n was the most recently allocated node, reclaim that space
   if (slab->len < ptr_count || (slab->data + slab->len - ptr_count) != (void*)n)
     return;
@@ -266,20 +264,10 @@ void _b_free_node(BuildCtx* b, Node* n, usize ptr_count) {
 }
 
 
-Node* nullable _b_clonenode(BuildCtx* b, const Node* src) {
-  Node* n = NodeAlloc(b->mem);
-  if UNLIKELY(n == NULL)
-    return NULL;
-  return NodeCopy(n, src);
-}
-
-
-PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
+PkgNode* b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
   auto pkg = b_mknode(b, Pkg, 0);
-  if (LIKELY(pkg != NULL)) {
-    pkg->name = b->pkgid;
-    pkg->scope = pkgscope;
-  }
+  pkg->name = b->pkgid;
+  pkg->scope = pkgscope;
   return pkg;
 }
 
@@ -287,20 +275,13 @@ PkgNode* nullable b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
 Sym b_typeid_assign(BuildCtx* b, Type* t) {
   // Note: built-in types have predefined type ids (defined in universe)
   char buf[128];
-  usize len = typeid_make(buf, sizeof(buf), t);
-  if (LIKELY( len < sizeof(buf) ))
-    return t->tid = symget(&b->syms, buf, len);
-
-  // didn't fit in stack buffer; resort to heap allocation
-  len++;
-  char* s = mem_alloc(b->mem, len);
-  if (!s) {
-    b_errf(b, (PosSpan){0}, "out of memory");
+  Str s = str_make(buf, sizeof(buf));
+  if UNLIKELY(!typeid_append(&s, t)) {
+    b_err_nomem(b, NoPosSpan);
     return kSym__;
   }
-  len = typeid_make(s, len, t);
-  t->tid = symget(&b->syms, s, len);
-  mem_free(b->mem, s, len);
+  t->tid = symget(&b->syms, s.v, s.len);
+  str_free(&s);
   return t->tid;
 }
 
@@ -317,17 +298,41 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
 }
 
 
-Type* b_intern_type(BuildCtx* b, Type* t) {
-  if (t->kind == NBasicType)
-    return t;
-  auto tid = b_typeid(b, t);
-  void** tp = symmap_assign(&b->types, tid);
-  if LIKELY(tp) { // else: memory allocation failure
-    if (*tp) // existing type
-      return *tp;
-    *tp = t;
+bool _b_typelteq(BuildCtx* b, Type* dst, Type* src) {
+  NodeKind k = dst->kind;
+  if (k != src->kind)
+    return false;
+  // &[T] <= &[T N]
+  if (k == NRefType) {
+    Type* dst2 = ((RefTypeNode*)dst)->elem;
+    Type* src2 = ((RefTypeNode*)src)->elem;
+    return (
+      dst2->kind == src2->kind &&
+      dst2->kind == NArrayType &&
+      ((ArrayTypeNode*)dst2)->size == 0 && ((ArrayTypeNode*)dst2)->sizeexpr == NULL
+    );
   }
-  return t;
+  return b_typeeq(b, dst, src);
+}
+
+
+bool _b_intern_type(BuildCtx* b, Type** tp) {
+  if ((*tp)->kind == NBasicType)
+    return false;
+  auto tid = b_typeid(b, *tp);
+  void** vp = symmap_assign(&b->types, tid);
+  if UNLIKELY(vp == NULL) {
+    b_err_nomem(b, NoPosSpan);
+    return false;
+  }
+  if (*vp) {
+    // use existing
+    *tp = *vp;
+    return true;
+  }
+  // add to intern map
+  *vp = *tp;
+  return false;
 }
 
 //———————————————————————————————————————————————————————————————————————————————————————

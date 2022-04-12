@@ -73,6 +73,7 @@ typedef enum PFlag {
   PFlagRValue = 1 << 0, // parsing an rvalue
   PFlagType   = 1 << 1, // parsing a type
   PFlagMut    = 1 << 2, // "mut" outer
+  PFlagVar    = 1 << 3, // "var" outer (explicit mutable local)
 } PFlag;
 
 
@@ -262,17 +263,48 @@ static void advance(Parser* p, const Tok* nullable stoplist) {
 }
 
 // mknode allocates a new ast node
-// T* nullable mknode(Parser*, KIND)
+// T* mknode(Parser*, KIND)
 #define mknode(p, KIND) b_mknode((p)->build, KIND, currpos(p))
 
 // mktype allocates a new ast Type node
-// T* nullable mktype(Parser*, NODE_TYPE, TypeFlags tflags)
+// T* mktype(Parser*, NODE_TYPE, TypeFlags tflags)
 #define mktype(p, KIND, TYPE_FLAGS) ({                      \
   assert(NodeKindIsType(N##KIND));                          \
   KIND##Node* n__ = b_mknode((p)->build, KIND, currpos(p)); \
-  if LIKELY(n__) n__->tflags = (TYPE_FLAGS);                \
+  n__->tflags = (TYPE_FLAGS);                               \
   n__;                                                      \
 })
+
+// mkref_type creates a reference-type node
+#define mkref_type(p, elem)     _mkref_type((p),as_Type(elem),false)
+#define mkref_type_mut(p, elem) _mkref_type((p),as_Type(elem),true)
+static Type* _mkref_type(Parser* p, Type* elem, bool mut) {
+  RefTypeNode* t = mktype(p, RefType, TF_KindPointer);
+  NodeSetConstCond(t, !mut);
+  t->elem = elem;
+  return (Type*)t;
+}
+
+// mkarray_type creates an array-type node, interning small basic ones.
+#define mkarray_type(p, elem, size) _mkarray_type((p),as_Type(elem),(size))
+static ArrayTypeNode* _mkarray_type(Parser* p, Type* elem, u64 size) {
+  ArrayTypeNode* t = b_mknode(p->build, ArrayType, NoPos);
+  t->tflags = TF_KindArray;
+  t->elem = elem;
+  t->size = size;
+  // // intern small array types with basic element type
+  // if (is_BasicTypeNode(elem) && size <= 32) {
+  //   ArrayTypeNode* t1 = t;
+  //   if (b_intern_type(p->build, &t))
+  //     b_free_node(p->build, t1, ArrayType);
+  // }
+  return t;
+}
+
+// // strtype returns the common string type [u8]
+// static Type* strtype(Parser* p) {
+//   return mkref_type(p, mkarray_type(p, kType_u8, 0));
+// }
 
 
 // Node* set_endpos(Parser* p, Node* n)
@@ -734,12 +766,12 @@ static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
     return;
   }
 
-  if (n->type != init->type)
+  if (!b_typelteq(p->build, n->type, init->type))
     n->flags |= NF_PartialType;
 
   if (is_RefTypeNode(n->type)) {
     // check refs
-    if (UNLIKELY( !is_RefTypeNode(init->type) )) {
+    if UNLIKELY( !is_RefTypeNode(init->type) ) {
       // e.g. "x &Foo = a"  (fix: "x &Foo = &a")
       syntaxerrp(p, init->pos, "cannot initialize reference with value");
       b_notef(p->build, NodePosSpan(init),
@@ -748,8 +780,10 @@ static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
     return;
   }
 
-  if (UNLIKELY(init->type->kind == NRefType)) {
-    syntaxerrp(p, init->pos, "cannot initialize value with reference");
+  if UNLIKELY(init->type->kind == NRefType) {
+    syntaxerrp(p, init->pos,
+      "cannot initialize %s of type %s with value of type %s",
+      local_kind_name(n), FMTNODE(n->type,0), FMTNODE(init->type,1));
   }
 }
 
@@ -787,6 +821,19 @@ static LocalNode* make_local(
 
   defsym(p, name->name, n);
   return n;
+}
+
+
+static void promote_local_to_mut(Parser* p, LocalNode* n) {
+  if (n->kind == NParam)
+    return;
+  Type* t = n->type;
+  // &[T N] => &[T]
+  if (t && is_RefTypeNode(t) && is_ArrayTypeNode(((RefTypeNode*)t)->elem)) {
+    ArrayTypeNode* at = (ArrayTypeNode*)((RefTypeNode*)t)->elem;
+    if (at->size || at->sizeexpr)
+      n->type = mkref_type(p, mkarray_type(p, at->elem, 0));
+  }
 }
 
 
@@ -836,11 +883,13 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
   IdNode* name = mknode(p, Id);
   name->name = pident(p);
 
+  SET_FLAG(fl, PFlagVar, !isconst);
+
   // optional type
   Type* typ = NULL;
   if (p->tok != TAssign) {
+    // improved error message (we'd get a generic one from pType)
     if (UNLIKELY(p->tok == TSemi)) {
-      // improved error message (we'd get a generic one from pType)
       Pos epos = syntaxerr(p, "expecting type or assignment of value");
       // help message (fixup)
       if (isconst) {
@@ -930,6 +979,8 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
     NodeTransferPartialType2(n, n->dst, n->val);
     n->type = n->dst->type;
   }
+
+  promote_local_to_mut(p, targetlocal);
 
   return as_Node(n);
 }
@@ -1021,8 +1072,11 @@ static Node* pAssignToTuple(Parser* p, const Parselet* e, PFlag fl, Node* dstn) 
     Expr* target = expectExpr(p, presolve_id(p, dst));
     if (target) {
       NodeClearConst(target);
-      if (is_LocalNode(target))
-        NodeRefLocal((LocalNode*)target);
+      if (is_LocalNode(target)) {
+        LocalNode* targetlocal = (LocalNode*)target;
+        NodeRefLocal(targetlocal);
+        promote_local_to_mut(p, targetlocal);
+      }
       NodeTransferUnresolved(n, init);
       lnodes->v[i] = target;
     } else {
@@ -1260,6 +1314,7 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
     // since we're making a mutable ref, treat it as a local store,
     // making sure the target local is upgraded to "mut".
     NodeClearConst(target);
+    promote_local_to_mut(p, (LocalNode*)target);
   }
 
   // element type of our reference (e.g. "int" in "x = 1; typeof(&x) // &int")
@@ -1770,46 +1825,16 @@ static Node* PIntLit(Parser* p, PFlag fl) {
 static Node* PStrLit(Parser* p, PFlag fl) {
   auto n = b_mknodev((p)->build, StrLit, p->tokpos, p, p->sval.len);
   nexttok(p); // consume
-  if UNLIKELY(!n)
-    return bad(p);
 
   NodeSetConst(n);
   NodeSetRValue(n);
   n->len = p->sval.len;
   memcpy(n->p, p->sval.p, (usize)p->sval.len);
 
-  // typeof("foo") => [u8 3]
-  auto t = mktype(p, ArrayType, TF_KindArray);
-  t->pos = pos_with_width(n->pos, 0);
-  t->elem = kType_u8;
-  t->size = (u64)p->sval.len;
-  if (t->size <= 32) {
-    // intern small string types
-    n->type = b_intern_type(p->build, as_Type(t));
-    if (n->type != (Type*)t)
-      b_free_node(p->build, t, ArrayType);
-  } else {
-    n->type = as_Type(t);
-  }
-
-  //
-  // —— Next up: ——
-  // What is the type of foo?
-  //   foo = "hello"
-  // Is is...
-  //   a) [u8 5]  -- an array
-  //   b) &[u8]   -- a reference to an array (with size inspected at runtime)
-  //   c) &[u8 5] -- a reference to an array with size
-  // Have a look at https://co-lang.org/etc/arrays.html
-  // Another option is to use differing syntax:
-  //   foo = "hello"   // [u8 5]
-  //   bar = &"hello"  // &[u8 5]
-  //
-  // A key challenge for all of this is mutability of variables.
-  // I.e. what does this mean?
-  //   foo = "hello"
-  //   foo = "sam"   // ⟵ only valid if foo is a ref (memory address), not array!
-  //
+  // typeof("foo") => &[u8 3]
+  auto arrayt = mkarray_type(p, kType_u8, (u64)p->sval.len);
+  n->type = mkref_type(p, arrayt);
+  n->type->pos = pos_with_width(n->pos, 0);
 
   return as_Node(n);
 }

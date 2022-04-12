@@ -23,7 +23,8 @@ struct PosSpan {
 };
 
 // NoPos is a valid unknown position; pos_isknown(NoPos) returns false.
-#define NoPos ((Pos)0)
+#define NoPos     ((Pos)0)
+#define NoPosSpan ((PosSpan){0,0})
 
 void posmap_init(PosMap* pm);
 static void posmap_clear(PosMap* pm);

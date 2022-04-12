@@ -111,7 +111,13 @@ void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
     ( UNLIKELY(!(cond)) ? _safefail(fmt, ##args) : ((void)0) )
 
   #define safecheck(cond) \
-    (UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
+    ( UNLIKELY(!(cond)) ? _safefail("safecheck (%s)", #cond) : ((void)0) )
+
+  #define safecheckalloc(ptr) \
+    ({ __typeof__(ptr) ptr__=(ptr); \
+      UNUSED const void* ptr1__=ptr__; /* bug on non-ptr type */ \
+      if UNLIKELY(!ptr__) _safefail("out of memory"); \
+      ptr__; })
 
   #ifdef DEBUG
     #define safecheckexpr(expr, expect) ({                                        \
@@ -139,6 +145,7 @@ void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
   #define safecheck(cond)                ((void)0)
   #define safecheckexpr(expr, expect)    (expr) /* intentionally complain if not used */
   #define safenotnull(a)                 ({ a; }) /* note: (a) causes "unused" warnings */
+  #define safecheckalloc(ptr)            (ptr)
 #endif
 
 // void dlog(const char* fmt, ...)

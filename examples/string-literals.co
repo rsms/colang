@@ -17,14 +17,13 @@ _ = "日本語"                                // verbatim UTF-8 source text
 _ = "\u65e5\u672c\u8a9e"                   // Unicode code points
 _ = "\xe6\x97\xa5\xe6\x9c\xac\xe8\xaa\x9e" // UTF-8 bytes
 
-/*
-    U+1F469 woman
-  + U+1F3FD skin tone modifier
-  + U+200D  zero width joiner
-  + U+1F680 rocket ship
-  = astronaut (woman) with skin tone modifier */
-_ = "👩🏽‍🚀" // UTF-8 input text
-_ = "\U0001F469\U0001F3FD\u200D\U0001F680" // Unicode code points
+/* U+1F469  woman               F0 9F 91 A9
+ + U+1F3FD  skin tone modifier  F0 9F 8F BE
+ + U+200D   zero width joiner   E2 80 8D
+ + U+1F680  rocket ship         F0 9F 9A 80
+ = */
+_ = "👩🏽‍🚀"                                                           // verbatim UTF-8
+_ = "\U0001F469\U0001F3FD\u200D\U0001F680"                         // Unicode code points
 _ = "\xf0\x9f\x91\xa9\xf0\x9f\x8f\xbd\xe2\x80\x8d\xf0\x9f\x9a\x80" // UTF-8 bytes
 
 // Invalid codepoints

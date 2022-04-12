@@ -93,13 +93,6 @@ static Expr* cast_from_intlit(C* c, IntLitNode* n, Type* totype1) {
       RETURN_RES(n, CTypecastErrRangeOver);
   }
 
-  // // make a copy of n before changing its type; literal nodes may be referenced by many
-  // // [EDIT: not currently true]
-  // IntLitNode* n2 = b_clonenode(c->build, n);
-  // if UNLIKELY(!n2)
-  //   RETURN_RES(n, CTypecastErrNoMem);
-  // n = n2;
-
   *c->resultp = CTypecastConverted;
   n->type = as_Type(totype);
   return as_Expr(n);
@@ -126,13 +119,13 @@ Expr* _ctypecast(
   C* c = &ctx;
   *c->resultp = CTypecastErrCompat; // default result
 
-  #if DEBUG
-    char totype_str[256];
-    fmtnode(totype, totype_str, sizeof(totype_str));
-    dlog("ctypecast [%s] %s %s of type %s as %s",
-      (flags & CTypecastFExplicit) ? "explicit" : "implicit",
-      nodename(n), FMTNODE(n,0), FMTNODE(n->type,1), totype_str);
-  #endif
+  // #if DEBUG
+  //   char totype_str[256];
+  //   fmtnode(totype, totype_str, sizeof(totype_str));
+  //   dlog("ctypecast [%s] %s %s of type %s as %s",
+  //     (flags & CTypecastFExplicit) ? "explicit" : "implicit",
+  //     nodename(n), FMTNODE(n,0), FMTNODE(n->type,1), totype_str);
+  // #endif
 
   if (n->kind == NIntLit) {
     n = cast_from_intlit(c, (IntLitNode*)n, totype);

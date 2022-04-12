@@ -200,6 +200,7 @@ struct Repr {
   usize lnstart; // relative to buf.len
   usize wrapcol;
   usize stylelen; // buf.len-stylelen = nbytes written to buf excluding ANSI codes
+  PMap  seenmap;
 
   NodeFmtFlag flags;
   TStyles     styles;
@@ -208,13 +209,14 @@ struct Repr {
   const char* rparen;
 };
 
-#define STYLE_NODE  TS_BOLD        // node name
-#define STYLE_LIT   TS_LIGHTGREEN
-#define STYLE_NAME  TS_LIGHTBLUE   // symbolic names like Id, NamedType, etc.
-#define STYLE_OP    TS_LIGHTORANGE
-#define STYLE_TYPE  TS_BLACK_BG
-#define STYLE_META  TS_DIM
-#define STYLE_ERR   TS_RED
+#define STYLE_NODE   TS_BOLD        // node name
+#define STYLE_LIT    TS_LIGHTGREEN
+#define STYLE_NAME   TS_LIGHTBLUE   // symbolic names like Id, NamedType, etc.
+#define STYLE_OP     TS_LIGHTORANGE
+#define STYLE_TYPE   TS_BLACK_BG
+#define STYLE_META   TS_DIM
+#define STYLE_ERR    TS_RED
+#define STYLE_NODEID TS_DIM
 
 
 // -- repr output writers
@@ -304,90 +306,12 @@ static void _meta_end(Meta* m) {
   }
 }
 
-
-static void write_node_fields(Repr* r, const Node* n);
-static void _write_node1(Repr* r, const Node* nullable n);
-static void write_node(Repr* r, const Node* nullable n) {
-  Str* dst = &r->dst;
-
-  // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
-  bool indent = dst->len && dst->v[dst->len - 1] != '<';
-  if (indent) write_push_indent(r);
-
-  if (n == NULL || n == (Node*)kExpr_nil) {
-    // "nil"
-    write_push_style(r, STYLE_LIT);
-    str_appendcstr(dst, "nil");
-    write_pop_style(r);
-  } else {
-    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
-
-    if (is_BasicTypeNode(n)) {
-      // "name" for BasicType (e.g. "int")
-      write_push_style(r, STYLE_NODE);
-      Sym name = ((BasicTypeNode*)n)->name;
-      str_append(dst, name, symlen(name));
-      write_pop_style(r);
-    } else {
-      // "(Node field1 field2 ...fieldN)" for everything else
-      write_paren_start(r);
-      _write_node1(r, n);
-      write_paren_end(r);
-    }
-
-    if (is_Type(n)) write_pop_style(r);
-  }
-
-  if (indent) write_pop_indent(r);
-}
-
-#define write_node(r,n) write_node((r),as_Node(n))
-
-static void _write_node1(Repr* r, const Node* n) {
-  Str* dst = &r->dst;
-
-  // "<type>" of expressions
-  if (is_Expr(n) && !r->intypeof) {
-    auto typ = ((Expr*)n)->type;
-    write_push_style(r, STYLE_TYPE);
-    if (typ == NULL) {
-      write_push_style(r, STYLE_ERR);
-      str_appendcstr(dst, "<?>");
-      write_pop_style(r);
-    } else {
-      str_push(dst, '<');
-      r->intypeof = true;
-      write_node(r, typ);
-      r->intypeof = false;
-      str_push(dst, '>');
-    }
-    write_pop_style(r);
-    str_push(dst, ' ');
-  }
-
-  // "NodeName"
-  write_push_style(r, STYLE_NODE);
-  str_appendcstr(dst, NodeKindName(n->kind));
-  write_pop_style(r);
-
-  // "[meta]"
-  auto m = meta_begin(r);
-  NodeFlags fl = n->flags;
-  if (fl & NF_Unresolved)  meta_write_entry(m, "unres");
-  if (fl & NF_Const)       meta_write_entry(m, "const");
-  if (fl & NF_Base)        meta_write_entry(m, "base");
-  if (fl & NF_RValue)      meta_write_entry(m, "rval");
-  if (fl & NF_Unused)      meta_write_entry(m, "unused");
-  if (fl & NF_Public)      meta_write_entry(m, "pub");
-  if (fl & NF_Named)       meta_write_entry(m, "named");
-  if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
-  if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
-  meta_end(m);
-
-  write_node_fields(r, n);
-}
+#define write_node(r,n) _write_node((r),as_Node(n))
+static void _write_node(Repr* r, const Node* nullable n);
 
 static void write_array(Repr* r, const NodeArray* a) {
+  if (a->len == 0)
+    return;
   str_push(&r->dst, ' ');
   write_paren_start(r);
   for (u32 i = 0; i < a->len; i++)
@@ -415,6 +339,141 @@ static void write_name(Repr* r, Sym s) {
   write_pop_style(r);
 }
 
+
+static bool maybe_cyclic_node(const Node* n) {
+  switch (n->kind) {
+    case NVar:
+    case NConst:
+    case NParam:
+    case NFun:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static bool reg_cyclic_node(Repr* r, const Node* n, u32* nodeid) {
+  uintptr* vp = pmap_assign(&r->seenmap, n);
+  if (!vp) { // failed to allocate memory
+    *nodeid = U32_MAX;
+    return true;
+  }
+  if (*vp) { // already seen
+    *nodeid = (u32)*vp;
+    return false;
+  }
+  // newfound
+  *nodeid = r->seenmap.len;
+  *vp = (uintptr)r->seenmap.len;
+  return true;
+}
+
+
+static void write_node_attrs(Repr* r, const Node* np);
+static void write_node_fields(Repr* r, const Node* n);
+static void _write_node1(Repr* r, const Node* nullable n);
+
+static void _write_node(Repr* r, const Node* nullable n) {
+  Str* dst = &r->dst;
+
+  // bool is_long_line = printable_len(r) - r->lnstart > r->wrapcol;
+  bool indent = dst->len && dst->v[dst->len - 1] != '<';
+  if (indent) write_push_indent(r);
+
+  if (n == NULL || n == (Node*)kExpr_nil) {
+    // "nil"
+    write_push_style(r, STYLE_LIT);
+    str_appendcstr(dst, "nil");
+    write_pop_style(r);
+  } else {
+    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
+
+    if (is_BasicTypeNode(n)) {
+      // "name" for BasicType (e.g. "int")
+      if (!r->intypeof)
+        write_push_style(r, STYLE_NODE);
+      Sym name = ((BasicTypeNode*)n)->name;
+      str_append(dst, name, symlen(name));
+      if (!r->intypeof)
+        write_pop_style(r);
+    } else {
+      // "(Node field1 field2 ...fieldN)" for everything else
+      write_paren_start(r);
+      _write_node1(r, n);
+      write_paren_end(r);
+    }
+
+    if (is_Type(n)) write_pop_style(r);
+  }
+
+  if (indent) write_pop_indent(r);
+}
+
+static void _write_node1(Repr* r, const Node* n) {
+  Str* dst = &r->dst;
+
+  bool is_newfound = true;
+  u32 nodeid = 0;
+  if (maybe_cyclic_node(n))
+    is_newfound = reg_cyclic_node(r, n, &nodeid);
+
+  // "NodeName"
+  if (!r->intypeof)
+    write_push_style(r, STYLE_NODE);
+  str_appendcstr(dst, NodeKindName(n->kind));
+  if (!r->intypeof)
+    write_pop_style(r);
+
+  // mark nodes that may appear in many places
+  if (nodeid) {
+    write_push_style(r, STYLE_NODEID);
+    str_appendcstr(&r->dst, "#");
+    str_appendu32(&r->dst, nodeid, 16);
+    write_pop_style(r);
+  }
+
+  write_node_attrs(r, n);
+
+  // stop now if we have already "seen" this node
+  if (!is_newfound)
+    return;
+
+  // "<type>" of expressions
+  if (is_Expr(n) && !r->intypeof) {
+    auto typ = ((Expr*)n)->type;
+    str_push(dst, ' ');
+    write_push_style(r, STYLE_TYPE);
+    if (typ == NULL) {
+      write_push_style(r, STYLE_ERR);
+      str_appendcstr(dst, "<?>");
+      write_pop_style(r);
+    } else {
+      str_push(dst, '<');
+      r->intypeof = true;
+      write_node(r, typ);
+      r->intypeof = false;
+      str_push(dst, '>');
+    }
+    write_pop_style(r);
+  }
+
+  // "[meta]"
+  auto m = meta_begin(r);
+  NodeFlags fl = n->flags;
+  if (fl & NF_Unresolved)  meta_write_entry(m, "unres");
+  if (fl & NF_Const)       meta_write_entry(m, "const");
+  if (fl & NF_Base)        meta_write_entry(m, "base");
+  if (fl & NF_RValue)      meta_write_entry(m, "rval");
+  if (fl & NF_Unused)      meta_write_entry(m, "unused");
+  if (fl & NF_Public)      meta_write_entry(m, "pub");
+  if (fl & NF_Named)       meta_write_entry(m, "named");
+  if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
+  if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
+  meta_end(m);
+
+  write_node_fields(r, n);
+}
+
 #define write_TODO(r) _write_TODO(r, __FILE__, __LINE__)
 static void _write_TODO(Repr* r, const char* file, u32 line) {
   str_push(&r->dst, ' ');
@@ -429,123 +488,106 @@ static void _write_TODO(Repr* r, const char* file, u32 line) {
 
 // -- visitor functions
 
-static void write_node_fields(Repr* r, const Node* np) {
+static void write_node_attrs(Repr* r, const Node* np) {
+  switch ((enum NodeKind)np->kind) { case NBad: {
 
-  #define _(NAME)             \
-    return; } case N##NAME: { \
-      UNUSED auto n = (const NAME##Node*)np;
+  NCASE(Pkg)  write_qstr(r, n->name, strlen(n->name));
+  NCASE(File) write_qstr(r, n->name, strlen(n->name));
 
-  #define _G(NAME)                                  \
-    return; } case N##NAME##_BEG ... N##NAME##_END: { \
-      UNUSED auto n = (const NAME##Node*)np;
-
-  switch (np->kind) {
-  case NBad: {
-  _(Field) write_TODO(r);
-
-  _(Pkg)
-    write_qstr(r, n->name, strlen(n->name));
-    if (n->a.len > 0)
-      write_array(r, as_NodeArray(&n->a));
-
-  _(File)
-    write_qstr(r, n->name, strlen(n->name));
-    if (n->a.len > 0)
-      write_array(r, as_NodeArray(&n->a));
-
-  _(Comment) write_TODO(r);
-
-  // expressions
-  _(Nil) UNREACHABLE; // handled by _write_node
-
-  _(BoolLit)
+  // -- expressions --
+  NCASE(Nil) UNREACHABLE; // handled by _write_node
+  NCASE(Return)
+  NCASE(Assign)
+  NCASE(Tuple)
+  NCASE(Array)
+  NCASE(Block)
+  NCASE(TypeCast)
+  NCASE(Id)     write_name(r, n->name);
+  GNCASE(Local) write_name(r, n->name);
+  NCASE(Fun)    write_name(r, n->name ? n->name : kSym__);
+  NCASE(Macro)  write_name(r, n->name ? n->name : kSym__);
+  NCASE(BinOp)
+    write_push_style(r, STYLE_OP);
+    write_str(r, TokName(n->op));
+    write_pop_style(r);
+  GNCASE(UnaryOp)
+    write_push_style(r, STYLE_OP);
+    write_str(r, TokName(n->op));
+    write_pop_style(r);
+  NCASE(BoolLit)
     str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
     str_appendcstr(&r->dst, n->ival ? "true" : "false");
     write_pop_style(r);
-
-  _(IntLit)
+  NCASE(IntLit)
     str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
     str_appendu64(&r->dst, n->ival, 10);
     write_pop_style(r);
-
-  _(FloatLit)
+  NCASE(FloatLit)
     str_push(&r->dst, ' ');
     write_push_style(r, STYLE_LIT);
     str_appendf64(&r->dst, n->fval, -1);
     write_pop_style(r);
-
-  _(StrLit)
+  NCASE(StrLit)
     write_qstr(r, n->p, n->len);
 
-  _(Id)
-    write_name(r, n->name);
-    write_node(r, n->target);
+  // -- types --
+  NCASE(BasicType) UNREACHABLE; // handled by _write_node
+  NCASE(NamedType) write_name(r, n->name);
+  NCASE(AliasType) write_name(r, n->name);
+  NCASE(ArrayType)
+  NCASE(TupleType)
+  NCASE(FunType)
+  NCASE(RefType)
 
-  _(BinOp)
-    write_push_style(r, STYLE_OP);
-    write_str(r, TokName(n->op));
-    write_pop_style(r);
-    write_node(r, n->left);
-    write_node(r, n->right);
+  // -- not implemented --
+  NCASE(Field)      write_TODO(r);
+  NCASE(Call)       write_TODO(r);
+  NCASE(Ref)        write_TODO(r);
+  NCASE(NamedArg)   write_TODO(r);
+  NCASE(Selector)   write_TODO(r);
+  NCASE(Index)      write_TODO(r);
+  NCASE(Slice)      write_TODO(r);
+  NCASE(If)         write_TODO(r);
+  NCASE(Comment)    write_TODO(r);
+  NCASE(TypeType)   write_TODO(r);
+  NCASE(StructType) write_TODO(r);
+  }}
+}
 
-  _G(UnaryOp)
-    write_push_style(r, STYLE_OP);
-    write_str(r, TokName(n->op));
-    write_pop_style(r);
-    write_node(r, n->expr);
+static void write_node_fields(Repr* r, const Node* np) {
+  switch ((enum NodeKind)np->kind) { case NBad: {
 
-  _(Return)
-    write_node(r, n->expr);
+  NCASE(Pkg)  write_array(r, as_NodeArray(&n->a));
+  NCASE(File) write_array(r, as_NodeArray(&n->a));
 
-  _(Assign)
-    write_node(r, n->dst);
-    write_node(r, n->val);
-
-  _(Tuple) write_array(r, as_NodeArray(&n->a));
-  _(Array) write_array(r, as_NodeArray(&n->a));
-
-  _(Block)
+  // -- expressions --
+  NCASE(Id)       write_node(r, n->target);
+  NCASE(BinOp)    write_node(r, n->left); write_node(r, n->right);
+  GNCASE(UnaryOp) write_node(r, n->expr);
+  NCASE(Return)   write_node(r, n->expr);
+  NCASE(Assign)   write_node(r, n->dst); write_node(r, n->val);
+  NCASE(Tuple)    write_array(r, as_NodeArray(&n->a));
+  NCASE(Array)    write_array(r, as_NodeArray(&n->a));
+  NCASE(Block)
     if (n->a.len > 0)
       write_array(r, as_NodeArray(&n->a));
-
-  _(Fun)
-    write_name(r, n->name ? n->name : kSym__);
+  NCASE(Fun)
     write_node(r, n->params);
     write_node(r, n->result);
     write_node(r, n->body);
-
-  _G(Local)
-    write_name(r, n->name);
+  GNCASE(Local)
     if (LocalInitField(n))
       write_node(r, LocalInitField(n));
-
-  _(Macro)    write_TODO(r);
-  _(Call)     write_TODO(r);
-
-  _(TypeCast)
+  NCASE(TypeCast)
     write_node(r, n->type);
     write_node(r, n->expr);
 
-  _(Ref)      write_TODO(r);
-  _(NamedArg) write_TODO(r);
-  _(Selector) write_TODO(r);
-  _(Index)    write_TODO(r);
-  _(Slice)    write_TODO(r);
-  _(If)       write_TODO(r);
-
-  // types
-  _(BasicType) UNREACHABLE; // handled by _write_node
-  _(TypeType)  write_TODO(r);
-  _(NamedType) write_name(r, n->name);
-  _(RefType)   write_node(r, n->elem);
-
-  _(AliasType)
-    write_name(r, n->name);
-    write_node(r, n->type);
-
-  _(ArrayType)
+  // -- types --
+  NCASE(RefType)   write_node(r, n->elem);
+  NCASE(AliasType) write_node(r, n->type);
+  NCASE(ArrayType)
     write_node(r, n->elem);
     if (n->size) {
       str_push(&r->dst, ' ');
@@ -555,18 +597,14 @@ static void write_node_fields(Repr* r, const Node* np) {
     } else if (n->sizeexpr) {
       write_node(r, n->sizeexpr);
     }
-
-  _(TupleType)
+  NCASE(TupleType)
     if (n->a.len > 0)
       write_array(r, as_NodeArray(&n->a));
-
-  _(StructType) write_TODO(r);
-
-  _(FunType)
+  NCASE(FunType)
     write_node(r, n->params ? n->params->type : NULL);
     write_node(r, n->result);
+  NDEFAULTCASE break;
   }}
-  #undef _
 }
 
 
@@ -577,6 +615,7 @@ bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl) {
     .wrapcol = 30,
     .flags = fl,
   };
+  pmap_init(&r.seenmap, mem_ctx(), 64, MAPLF_1);
 
   r.styles = TStylesForStderr();
   if ((fl & NODE_FMT_COLOR) == 0 && (TStylesIsNone(r.styles) || (fl & NODE_FMT_NOCOLOR))) {
@@ -589,6 +628,8 @@ bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl) {
 
   write_node(&r, n);
   *dst = r.dst;
+
+  hmap_dispose(&r.seenmap);
 
   if UNLIKELY(!str_push(dst, 0)) {
     // was not able to allocate more memory

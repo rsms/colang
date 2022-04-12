@@ -52,7 +52,6 @@ const Sym kSym_f128 = &"\x0C\x9A\x7D\x99\x04\x00\x00\x00""f128\0"[8];
 const Sym kSym_int = &"\xD9\xD4\xAC\x6A\x03\x00\x00\x00""int\0"[8];
 const Sym kSym_uint = &"\x60\x48\xFD\x9C\x04\x00\x00\x00""uint\0"[8];
 const Sym kSym_ideal = &"\x3C\x78\xBD\x6C\x05\x00\x00\x00""ideal\0"[8];
-const Sym kSym_str = &"\xF8\xE1\xAF\x23\x03\x00\x00\x00""str\0"[8];
 const Sym kSym_true = &"\x1E\xA2\x73\x61\x04\x00\x00\x00""true\0"[8];
 const Sym kSym_false = &"\xAF\x1E\x0E\xF7\x05\x00\x00\x00""false\0"[8];
 const Sym kSym__ = &"\xAC\x26\xED\xBD\x01\x00\x00\x00""_\0"[8];
@@ -73,19 +72,17 @@ const Sym kSym_i = &"\x09\x8C\x6F\xBF\x01\x00\x00\x00""i\0"[8];
 const Sym kSym_u = &"\x2E\x0F\xF1\x26\x01\x00\x00\x00""u\0"[8];
 const Sym kSym_0 = &"\x81\xEF\x0D\xE6\x01\x00\x00\x00""0\0"[8];
 const Sym kSym_$2a = &"\xC3\x15\x5C\x91\x01\x00\x00\x00""*\0"[8];
-const Sym kSym_$22 = &"\x2E\x7F\x10\xD9\x01\x00\x00\x00""*\0"[8];
 const Sym kSym_a = &"\x3E\xF6\x16\x1D\x01\x00\x00\x00""a\0"[8];
 
 static SymRBNode n_i8 = { kSym_i8, false, NULL, NULL };
 static SymRBNode n_F = { kSym_F, true, NULL, NULL };
 static SymRBNode n_a = { kSym_a, false, &n_F, NULL };
 static SymRBNode n_auto = { kSym_auto, false, &n_i8, &n_a, };
-static SymRBNode n_W = { kSym_W, false, NULL, NULL };
-static SymRBNode n_u = { kSym_u, true, NULL, NULL };
-static SymRBNode n_u16 = { kSym_u16, false, &n_u, NULL };
-static SymRBNode n_str = { kSym_str, true, &n_W, &n_u16, };
+static SymRBNode n_W = { kSym_W, true, NULL, NULL };
+static SymRBNode n_u16 = { kSym_u16, true, NULL, NULL };
+static SymRBNode n_u = { kSym_u, false, &n_W, &n_u16, };
 static SymRBNode n_continue = { kSym_continue, false, NULL, NULL };
-static SymRBNode n_i64 = { kSym_i64, false, &n_str, &n_continue, };
+static SymRBNode n_i64 = { kSym_i64, false, &n_u, &n_continue, };
 static SymRBNode n_defer = { kSym_defer, true, &n_auto, &n_i64, };
 static SymRBNode n_b = { kSym_b, true, NULL, NULL };
 static SymRBNode n_u8 = { kSym_u8, false, &n_b, NULL };
@@ -115,14 +112,13 @@ static SymRBNode n_i16 = { kSym_i16, false, &n_i32, &n_u64, };
 static SymRBNode n__ = { kSym__, true, NULL, NULL };
 static SymRBNode n_i = { kSym_i, false, &n__, NULL };
 static SymRBNode n_S = { kSym_S, false, NULL, NULL };
-static SymRBNode n_enum = { kSym_enum, false, &n_i, &n_S, };
-static SymRBNode n_in = { kSym_in, true, &n_i16, &n_enum, };
+static SymRBNode n_enum = { kSym_enum, true, &n_i, &n_S, };
 static SymRBNode n_struct = { kSym_struct, true, NULL, NULL };
-static SymRBNode n_$22 = { kSym_$22, true, NULL, NULL };
-static SymRBNode n_s = { kSym_s, false, &n_struct, &n_$22, };
+static SymRBNode n_s = { kSym_s, false, &n_struct, NULL };
 static SymRBNode n_nil = { kSym_nil, false, NULL, NULL };
-static SymRBNode n_var = { kSym_var, false, &n_s, &n_nil, };
-static SymRBNode n_else = { kSym_else, false, &n_in, &n_var, };
+static SymRBNode n_var = { kSym_var, true, &n_s, &n_nil, };
+static SymRBNode n_else = { kSym_else, false, &n_enum, &n_var, };
+static SymRBNode n_in = { kSym_in, false, &n_i16, &n_else, };
 static SymRBNode n_return = { kSym_return, true, NULL, NULL };
 static SymRBNode n_0 = { kSym_0, false, &n_return, NULL };
 static SymRBNode n_mut = { kSym_mut, true, NULL, NULL };
@@ -134,7 +130,7 @@ static SymRBNode n_import = { kSym_import, true, NULL, NULL };
 static SymRBNode n_w = { kSym_w, false, &n_import, NULL };
 static SymRBNode n_B = { kSym_B, false, &n_false, &n_w, };
 static SymRBNode n_f32 = { kSym_f32, false, &n_type, &n_B, };
-static SymRBNode n_break = { kSym_break, false, &n_else, &n_f32, };
+static SymRBNode n_break = { kSym_break, false, &n_in, &n_f32, };
 static SymRBNode n_as = { kSym_as, false, &n_switch, &n_break, };
 
 static SymRBNode* _symroot = &n_as;
@@ -159,7 +155,6 @@ static const BasicTypeNode _kType_int = _(int, kSym_i, TF_KindInt | TF_Signed);
 static const BasicTypeNode _kType_uint = _(uint, kSym_u, TF_KindInt);
 static const BasicTypeNode _kType_nil = _(nil, kSym_0, TF_KindVoid);
 static const BasicTypeNode _kType_ideal = _(ideal, kSym_$2a, TF_KindVoid);
-static const BasicTypeNode _kType_str = _(str, kSym_$22, TF_KindPointer);
 static const BasicTypeNode _kType_auto = _(auto, kSym_a, TF_KindVoid);
 #undef _
 Type* kType_bool = (Type*)&_kType_bool;
@@ -180,7 +175,6 @@ Type* kType_int = (Type*)&_kType_int;
 Type* kType_uint = (Type*)&_kType_uint;
 Type* kType_nil = (Type*)&_kType_nil;
 Type* kType_ideal = (Type*)&_kType_ideal;
-Type* kType_str = (Type*)&_kType_str;
 Type* kType_auto = (Type*)&_kType_auto;
 
 static const NilNode _kExpr_nil =
@@ -195,12 +189,13 @@ Expr* kExpr_false = (Expr*)&_kExpr_false;
 
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
-  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:nil tc:ideal tc:str tc:auto sym:_ const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
+  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:nil tc:ideal tc:auto sym:_ const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
 #endif
 
-#define kUniverseScopeLen 22
+#define kUniverseScopeLen 21
 
 //-- END gen_constants()
+
 
 // ---------------------------------------------------------------------------------------
 // sym constant data generator

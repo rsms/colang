@@ -43,7 +43,6 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
   _( ideal     , '*' , TF_KindVoid )/* type of const literal                             */\
 // end DEF_TYPE_CODES_BASIC
 #define DEF_TYPE_CODES_PUB(_)                                                              \
-  _( str       , '"' , TF_KindPointer )                                                    \
   _( auto      , 'a' , TF_KindVoid    ) /* inferred                                      */\
 // end DEF_TYPE_CODES_PUB
 #define DEF_TYPE_CODES_ETC(_)                                                              \

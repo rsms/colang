@@ -380,10 +380,6 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
   return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;
 }
 
-inline static Node* nullable NodeAlloc(Mem mem) {
-  return (Node*)mem_alloc(mem, sizeof(Node_union));
-}
-
 Node* NodeInit(Node* n, NodeKind kind);
 
 #define NodePosSpan(n) _NodePosSpan(as_Node(n))
