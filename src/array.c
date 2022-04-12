@@ -104,7 +104,7 @@ void* nullable _array_push(VoidArray* a, Mem m, usize elemsize) {
 bool _array_reserve(VoidArray* a, Mem m, u32 addl, usize elemsize) {
   u32 len;
   if (check_add_overflow(a->len, addl, &len))
-    return err_overflow;
+    return false;
   if (len >= a->cap)
     return _array_grow(a, m, elemsize, addl);
   return true;
