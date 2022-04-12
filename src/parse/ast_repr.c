@@ -544,7 +544,6 @@ static void write_node_attrs(Repr* r, const Node* np) {
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
   NCASE(Call)       write_TODO(r);
-  NCASE(Ref)        write_TODO(r);
   NCASE(NamedArg)   write_TODO(r);
   NCASE(Selector)   write_TODO(r);
   NCASE(Index)      write_TODO(r);
@@ -583,6 +582,8 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(TypeCast)
     write_node(r, n->type);
     write_node(r, n->expr);
+  NCASE(Ref)
+    write_node(r, n->target);
 
   // -- types --
   NCASE(RefType)   write_node(r, n->elem);
