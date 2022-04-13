@@ -331,19 +331,9 @@ inline static Block get_current_block(B* b) {
 // }
 
 
-// #define noload_scope() \
-//   for (bool prev__ = b->noload, tmp1__ = true; \
-//        b->noload = true, tmp1__; \
-//        tmp1__ = false, b->noload = prev__)
-
-// #define doload_scope() \
-//   for (bool prev__ = b->noload, tmp1__ = true; \
-//        b->noload = false, tmp1__; \
-//        tmp1__ = false, b->noload = prev__)
-
 #define flag_scope(newflags) \
   for (BFlags prev__ = b->flags, tmp1__ = 1; \
-       b->flags = (newflags), tmp1__; \
+       tmp1__ && (b->flags = (newflags), 1); \
        tmp1__ = 0, b->flags = prev__)
 
 
@@ -681,13 +671,13 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return fn;
   }
 
-  // if (/*vname[0] == '_'*/ strcmp(vname, "main") != 0) {
-  //   // Note on LLVMSetVisibility: visibility is different.
-  //   // See https://llvm.org/docs/LangRef.html#visibility-styles
-  //   // LLVMPrivateLinkage is like "static" in C but omit from symbol table
-  //   // LLVMSetLinkage(fn, LLVMPrivateLinkage);
-  //   LLVMSetLinkage(fn, LLVMInternalLinkage); // like "static" in C
-  // }
+  if (/*vname[0] == '_'*/ strcmp(vname, "main") != 0) {
+    // Note on LLVMSetVisibility: visibility is different.
+    // See https://llvm.org/docs/LangRef.html#visibility-styles
+    // LLVMPrivateLinkage is like "static" in C but omit from symbol table
+    // LLVMSetLinkage(fn, LLVMPrivateLinkage);
+    LLVMSetLinkage(fn, LLVMInternalLinkage); // like "static" in C
+  }
 
   // prepare to build function body by saving any current builder position
   Block prevb = get_current_block(b);
@@ -956,11 +946,6 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
   build_store(b, n->irval, init);
 
   return init;
-
-  // // load if rvalue
-  // if (b->flags & BFL_RVAL)
-  //   return build_load(b, ty, n->irval, n->name);
-  // return n->irval;
 }
 
 

@@ -357,15 +357,15 @@ static Node* _resolve_type(R* r, Node* n);
 //static rflag setflags(R* r, rflag flags) { rflag f = r->flags; r->flags = flags; return f;}
 #define flags_scope(FLAGS) \
   for (rflag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
-       r->flags = (FLAGS), tmp1__; \
+       tmp1__ && (r->flags = (FLAGS), 1); \
        tmp1__ = 0, r->flags = prevfl__)
 
 #define typecontext_scope(TYPECONTEXT) \
   for (  Type* new__ = (TYPECONTEXT), \
          *prev__ = (assert(new__ != kType_ideal), r->typecontext), \
          *tmp1__ = kType_nil; \
-       r->typecontext = new__, tmp1__; \
-       tmp1__ = NULL, r->typecontext = prev__)
+       tmp1__ && (r->typecontext = new__, 1); \
+       tmp1__ = NULL, r->typecontext = prev__ )
 
 
 // mark_local_mutable marks any Var or Field n as being mutable
@@ -455,16 +455,113 @@ static Node* restype_fun(R* r, FunNode* n) {
 }
 
 
+static Node* restype_call_type(R* r, CallNode* n) {
+  Type* recvt = (
+    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
+    is_Type(n->receiver) ? (Type*)n->receiver :
+    kType_nil
+  );
+  dlog("TODO type of TypeType");
+  n->type = recvt;
+  return as_Node(n);
+}
+
+
+static Node* restype_call_fun(R* r, CallNode* n) {
+  FunTypeNode* ft = (FunTypeNode*)((Expr*)n->receiver)->type;
+  n->type = ft->result;
+  if (!n->type)
+    n->type = kType_nil;
+
+  // check argument arity
+  u32 nargs = n->args ? n->args->a.len : 0;
+  u32 nparams = ft->params ? ft->params->a.len : 0;
+  if (nargs != nparams) {
+    b_errf(r->build, NodePosSpan(n->args ? (Node*)n->args : (Node*)n),
+      "wrong number of arguments: %u; expecting %u", nargs, nparams);
+    return as_Node(n);
+  }
+
+  if (!n->args)
+    return as_Node(n);
+
+  // resolve arguments in the context of the function's parameters
+  flags_scope(r->flags | RF_ResolveIdeal) {
+    typecontext_scope(ft->params->type) {
+      n->args = as_TupleNode(resolve(r, n->args));
+    }
+  }
+
+  // check argument types against paramter types
+  if UNLIKELY(!b_typeeq(r->build, ft->params->type, n->args->type)) {
+    char tmpbuf[128];
+    b_errf(r->build, NodePosSpan(n->args),
+      "incompatible argument types %s, expecting %s in call to %s",
+      FMTNODE(n->args->type,0), FMTNODE(ft->params->type,1),
+      fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)) );
+    return as_Node(n);
+  }
+
+  return as_Node(n);
+}
+
+
+static Node* restype_call(R* r, CallNode* n) {
+  n->receiver = resolve(r, n->receiver);
+
+  Type* recvt = (
+    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
+    is_Type(n->receiver) ? kType_type :
+    kType_nil
+  );
+
+  if (recvt == kType_type)
+    return restype_call_type(r, n);
+
+  assert(is_FunTypeNode(recvt));
+  return restype_call_fun(r, n);
+}
+
+
 static Node* restype_tuple(R* r, TupleNode* n) {
+  Type* typecontext = r->typecontext; // save typecontext
+  const TypeArray* ctlist = NULL;
+  u32 ctindex = 0;
+
+  if (typecontext) {
+    if (typecontext->kind == NTupleType) {
+      ctlist = &((TupleTypeNode*)typecontext)->a;
+      assert(ctlist->len > 0); // tuples should never be empty
+    } else {
+      b_errf(r->build, NodePosSpan(typecontext),
+        "unexpected context type %s", FMTNODE(typecontext,1));
+      n->type = kType_nil;
+      return as_Node(n);
+    }
+    if UNLIKELY(ctlist->len != n->a.len) {
+      b_errf(r->build, NodePosSpan(n),
+        "%u expressions where %u expressions are expected %s",
+        n->a.len, ctlist->len, FMTNODE(typecontext,1));
+      n->type = kType_nil;
+      return as_Node(n);
+    }
+  }
+
   auto t = mknode(r, TupleType, n->pos);
   if (UNLIKELY(t == NULL) || !check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
     return as_Node(n);
+
   for (u32 i = 0; i < n->a.len; i++) {
-    Node* cn = resolve(r, n->a.v[i]);
-    n->a.v[i] = as_Expr(cn);
-    array_push(&t->a, n->a.v[i]->type);
+    if (ctlist)
+      r->typecontext = ctlist->v[ctindex++];
+
+    Expr* cn = as_Expr(resolve(r, n->a.v[i]));
+    n->a.v[i] = cn;
+    array_push(&t->a, cn->type);
   }
+
   n->type = as_Type(t);
+  r->typecontext = typecontext; // restore typecontext
   return as_Node(n);
 }
 
@@ -491,8 +588,9 @@ static Node* restype_block(R* r, BlockNode* n) {
 
   // Last node, in which case we set the flag to resolve literals so that implicit return
   // values gets properly typed.
-  flags_scope(r->flags | RF_ResolveIdeal)
+  flags_scope(r->flags | RF_ResolveIdeal) {
     n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
+  }
 
   n->type = n->a.v[lasti]->type;
 
@@ -627,30 +725,6 @@ static Node* restype_macro(R* r, MacroNode* n) {
   return as_Node(n);
 }
 
-static Node* restype_call(R* r, CallNode* n) {
-  n->receiver = resolve(r, n->receiver);
-
-  if (n->args)
-    n->args = as_TupleNode(resolve(r, n->args));
-
-  Type* recvt = (
-    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
-    is_Type(n->receiver) ? kType_type :
-    kType_nil
-  );
-
-  if (recvt == kType_type) {
-    n->type = (Type*)n->receiver;
-  } else if (is_FunTypeNode(recvt)) {
-    n->type = ((FunTypeNode*)recvt)->result;
-    if (!n->type)
-      n->type = kType_nil;
-  } else {
-    assertf(0,"unexpected call receiver %s", nodename(n->receiver));
-  }
-
-  return as_Node(n);
-}
 
 static Node* restype_typecast(R* r, TypeCastNode* n) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
