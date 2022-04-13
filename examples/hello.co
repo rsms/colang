@@ -1,5 +1,7 @@
 fun main(x, y int) int
   hello = "hello world"
   hello = "world"
+  foo = hello
+  foo = "hello world"
   y = y * 2
   x * y

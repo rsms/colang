@@ -414,3 +414,51 @@ bool llvm_write_archive(
     return llvm_error_to_errmsg(std::move(err), errmsg);
   return false;
 }
+
+
+LLVMValueRef CoLLVMBuildGlobalString(
+  LLVMBuilderRef B, const char* data, usize len, const char* vname)
+{
+  using namespace llvm;
+
+  IRBuilder<>* builder = unwrap(B);
+  auto& ctx = builder->getContext();
+
+  bool addnull = false;
+  Constant* strconst = ConstantDataArray::getString(ctx, StringRef(data, len), addnull);
+
+  Module* M = builder->GetInsertBlock()->getParent()->getParent();
+
+  auto* GV = new GlobalVariable(
+    *M, strconst->getType(),
+    true,
+    GlobalValue::PrivateLinkage,
+    strconst,
+    vname,
+    nullptr,
+    GlobalVariable::NotThreadLocal,
+    /*AddressSpace*/0);
+  GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+  GV->setAlignment(Align(1));
+  return wrap(GV);
+}
+
+
+u64 CoLLVMArrayTypeLength(LLVMTypeRef array_ty) {
+  return unwrap<ArrayType>(array_ty)->getNumElements();
+}
+
+// GlobalVariable *IRBuilderBase::CreateGlobalString(StringRef Str,
+//                                                   const Twine &Name,
+//                                                   unsigned AddressSpace,
+//                                                   Module *M) {
+//   Constant *StrConstant = ConstantDataArray::getString(Context, Str);
+//   if (!M)
+//     M = BB->getParent()->getParent();
+//   auto *GV = new GlobalVariable(
+//       *M, StrConstant->getType(), true, GlobalValue::PrivateLinkage,
+//       StrConstant, Name, nullptr, GlobalVariable::NotThreadLocal, AddressSpace);
+//   GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+//   GV->setAlignment(Align(1));
+//   return GV;
+// }

@@ -17,9 +17,9 @@ typedef LLVMBasicBlockRef Block;
 
 
 typedef enum {
-  Immutable = 0, // must be 0
-  Mutable   = 1, // must be 1
-} Mutability;
+  BFL_MUT  = 1 << 0,
+  BFL_RVAL = 1 << 1,
+} BFlags;
 
 
 // B is internal data used during IR construction
@@ -36,7 +36,7 @@ typedef struct B {
 
   // development debugging support
   #ifdef DEBUG_BUILD_EXPR
-  int log_indent;
+  int debug_depth;
   char vname_buf[128];
   #endif
 
@@ -47,12 +47,11 @@ typedef struct B {
   LLVMTargetMachineRef target;
 
   // build state
-  bool       noload;        // for NVar
-  Mutability mut;       // true if inside mutable data context
-  u32        fnest;         // function nest depth
-  Val        varalloc;      // memory preallocated for a var's init
-  SymMap     internedTypes; // AST types, keyed by typeid
-  PMap       defaultInits;  // constant initializers (Typ => Val)
+  BFlags flags;         // contextual
+  u32    fnest;         // function nest depth
+  Val    varalloc;      // memory preallocated for a var's init
+  SymMap internedTypes; // AST types, keyed by typeid
+  PMap   defaultInits;  // constant initializers (Typ => Val)
 
   // memory generation check (specific to current function)
   Block mgen_failb;
@@ -91,7 +90,26 @@ typedef struct B {
 
 // development debugging support
 #ifdef DEBUG_BUILD_EXPR
-static char kSpaces[256];
+  //static B b = {0}; // in case panic or dlog2 is called in scope without b
+  #ifdef CO_NO_LIBC
+    #define isatty(fd) false
+  #endif
+  #define dlog2(format, args...) ({                                               \
+    if (isatty(2)) log("\e[1;30m▍\e[0m%*s" format, b->debug_depth*2, "", ##args); \
+    else           log("[resolve] %*s" format, b->debug_depth*2, "", ##args);     \
+    fflush(stderr); })
+  #undef panic
+  #define panic(format, args...) ({ \
+    log("\e[33;1m—————————————————————————————— panic ——————————————————————————————\e[0m");\
+    log(format, ##args); \
+    log("\e[2m%s:%d  %s\e[0m", __FILE__, __LINE__, __PRETTY_FUNCTION__); \
+    log("\e[33;1m———————————————————————— llvm module state ————————————————————————\e[0m");\
+    LLVMDumpModule(b->mod); \
+    log("\e[33;1m—————————————————————————————— trace ——————————————————————————————\e[0m");\
+    sys_stacktrace_fwrite(stderr, /*offset*/0, /*limit*/100); \
+  })
+#else
+  #define dlog2(...) ((void)0)
 #endif
 
 
@@ -188,10 +206,6 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
 
 
 static error builder_init(B* b, CoLLVMModule* m) {
-  #ifdef DEBUG_BUILD_EXPR
-  memset(kSpaces, ' ', sizeof(kSpaces));
-  #endif
-
   LLVMContextRef ctx = LLVMGetModuleContext(m->M);
 
   *b = (B){
@@ -313,23 +327,29 @@ inline static Block get_current_block(B* b) {
 // }
 
 
-#define noload_scope() \
-  for (bool prev__ = b->noload, tmp1__ = true; \
-       b->noload = true, tmp1__; \
-       tmp1__ = false, b->noload = prev__)
+// #define noload_scope() \
+//   for (bool prev__ = b->noload, tmp1__ = true; \
+//        b->noload = true, tmp1__; \
+//        tmp1__ = false, b->noload = prev__)
 
-#define doload_scope() \
-  for (bool prev__ = b->noload, tmp1__ = true; \
-       b->noload = false, tmp1__; \
-       tmp1__ = false, b->noload = prev__)
+// #define doload_scope() \
+//   for (bool prev__ = b->noload, tmp1__ = true; \
+//        b->noload = false, tmp1__; \
+//        tmp1__ = false, b->noload = prev__)
+
+#define flag_scope(newflags) \
+  for (BFlags prev__ = b->flags, tmp1__ = 1; \
+       b->flags = (newflags), tmp1__; \
+       tmp1__ = 0, b->flags = prev__)
+
 
 
 //———————————————————————————————————————————————————————————————————————————————————————
-// begin type functions
+// begin misc helper functions
 
 
 #if DEBUG
-  static const char* fmttyp(Typ t) {
+  static const char* fmttyp(Typ nullable t) {
     if (!t)
       return "(null)";
     static char* p[5] = {NULL};
@@ -343,7 +363,7 @@ inline static Block get_current_block(B* b) {
     return p[i];
   }
 
-  /*static const char* fmtval(Val v) {
+  static const char* fmtval(Val nullable v) {
     if (!v)
       return "(null)";
     static char* p[5] = {NULL};
@@ -375,7 +395,7 @@ inline static Block get_current_block(B* b) {
       s++;
 
     return s;
-  }*/
+  }
 #endif
 
 
@@ -407,7 +427,24 @@ static bool set_interned_type(B* b, Type* tn, Typ tr) {
 static Typ nullable _get_type(B* b, Type* np);
 
 
-static Typ build_funtype(B* b, FunTypeNode* tn) {
+static Typ nullable get_basic_type(B* b, BasicTypeNode* tn) {
+  switch (tn->typecode) {
+    case TC_bool:               return b->t_bool;
+    case TC_i8:  case TC_u8:    return b->t_i8;
+    case TC_i16: case TC_u16:   return b->t_i16;
+    case TC_i32: case TC_u32:   return b->t_i32;
+    case TC_i64: case TC_u64:   return b->t_i64;
+    case TC_f32:                return b->t_f32;
+    case TC_f64:                return b->t_f64;
+    case TC_int: case TC_uint:  return b->t_int;
+    case TC_nil: case TC_ideal: return b->t_void;
+  }
+  assertf(0,"unexpected type code %u", tn->typecode);
+  return b->t_void;
+}
+
+
+static Typ make_fun_type(B* b, FunTypeNode* tn) {
   // first register a marker for the function type to avoid cyclic get_type,
   // i.e. in case result or parameters referst to the same type.
   set_interned_type(b, as_Type(tn), b->t_void);
@@ -433,20 +470,54 @@ static Typ build_funtype(B* b, FunTypeNode* tn) {
 }
 
 
-static Typ nullable get_basic_type(B* b, BasicTypeNode* tn) {
-  switch (tn->typecode) {
-    case TC_bool:               return b->t_bool;
-    case TC_i8:  case TC_u8:    return b->t_i8;
-    case TC_i16: case TC_u16:   return b->t_i16;
-    case TC_i32: case TC_u32:   return b->t_i32;
-    case TC_i64: case TC_u64:   return b->t_i64;
-    case TC_f32:                return b->t_f32;
-    case TC_f64:                return b->t_f64;
-    case TC_int: case TC_uint:  return b->t_int;
-    case TC_nil: case TC_ideal: return b->t_void;
+static Typ make_cslice_type(B* b, Typ elem) {
+  // struct cslice<T> { const T* p; uint len; }
+  Typ types[] = { LLVMPointerType(elem, 0), b->t_int };
+  return LLVMStructTypeInContext(b->ctx, types, countof(types), /*packed*/false);
+}
+
+
+static Typ make_slice_type(B* b, Typ elem) {
+  // struct slice<T> { T* p; uint len; uint cap; }
+  Typ types[] = { LLVMPointerType(elem, 0), b->t_int, b->t_int };
+  return LLVMStructTypeInContext(b->ctx, types, countof(types), /*packed*/false);
+}
+
+
+static Typ make_dynarray_type(B* b, Typ elem) {
+  // struct dynarray<T> { T* p; uint len; uint cap; }
+  return make_slice_type(b, elem);
+}
+
+
+static Typ make_array_type(B* b, ArrayTypeNode* tn) {
+  Typ elemty = get_type(b, tn->elem);
+
+  // [T] => dynarray<T>
+  if (tn->size == 0)
+    return make_dynarray_type(b, elemty);
+
+  // [T N] => T[N]
+  return LLVMArrayType(elemty, tn->size);
+}
+
+
+static Typ make_ref_type(B* b, RefTypeNode* t) {
+  // &[T] => cslice<T>
+  // mut&[T] => slice<T>
+  ArrayTypeNode* arrayt = (ArrayTypeNode*)t->elem;
+  if (t->elem->kind == NArrayType && arrayt->size == 0) {
+    Typ elemty = get_type(b, arrayt->elem);
+    if (NodeIsConst(t))
+      return make_cslice_type(b, elemty);
+    return make_slice_type(b, elemty);
   }
-  assertf(0,"unexpected type code %u", tn->typecode);
-  return b->t_void;
+
+  // &T => T*
+  if (b->build->safe)
+    dlog("TODO safe deref wrapper type");
+  Typ elemty = get_type(b, t->elem);
+  return LLVMPointerType(elemty, 0);
 }
 
 
@@ -454,23 +525,32 @@ static Typ nullable _get_type(B* b, Type* np) {
   if (np->kind == NBasicType)
     return get_basic_type(b, (BasicTypeNode*)np);
 
+  if (np->irval)
+    return np->irval;
+
   Typ t = get_interned_type(b, np);
   if (t)
     return t;
 
   switch ((enum NodeKind)np->kind) { case NBad: {
+    NCASE(FunType)   t = make_fun_type(b, n); break;
+    NCASE(RefType)   t = make_ref_type(b, n); break;
+    NCASE(ArrayType) t = make_array_type(b, n); break;
+
+    // not implemented
     NCASE(TypeType)   panic("TODO %s", nodename(n));
     NCASE(NamedType)  panic("TODO %s", nodename(n));
     NCASE(AliasType)  panic("TODO %s", nodename(n));
-    NCASE(RefType)    panic("TODO %s", nodename(n));
-    NCASE(ArrayType)  panic("TODO %s", nodename(n));
     NCASE(TupleType)  panic("TODO %s", nodename(n));
     NCASE(StructType) panic("TODO %s", nodename(n));
-    NCASE(FunType)    return build_funtype(b, n);
-    NDEFAULTCASE      break;
+
+    NDEFAULTCASE
+      assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
   }}
-  assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
-  return NULL;
+
+  set_interned_type(b, np, t);
+  np->irval = t;
+  return t;
 }
 
 
@@ -479,14 +559,43 @@ static Typ nullable _get_type(B* b, Type* np) {
 // begin value build functions
 
 
-static Val build_expr(B* b, Expr* n, const char* vname);
+static Val _build_expr(B* b, Expr* n, const char* vname);
+#ifdef DEBUG_BUILD_EXPR
+  static Val _build_expr_debug(B* b, Expr* n, const char* vname);
+  #define build_expr(b, n, vname) _build_expr_debug((b),as_Expr(n),(vname))
+#else
+  #define build_expr(b, n, vname) _build_expr((b),as_Expr(n),(vname))
+#endif
 
-inline static Val build_expr_noload(B* b, Expr* n, const char* vname) {
-  bool noload = b->noload; b->noload = true;
-  Val v = build_expr(b, n, vname);
-  b->noload = noload;
-  return v;
+#define build_rval(b, n, vname) _build_rval((b),as_Expr(n),(vname))
+static Val _build_rval(B* b, Expr* n, const char* vname) {
+  if (b->flags & BFL_RVAL)
+    MUSTTAIL return build_expr(b, n, vname);
+  BFlags flags = b->flags;
+  b->flags |= BFL_RVAL;
+  Val val = build_expr(b, n, vname);
+  b->flags = flags;
+  return val;
 }
+
+#define build_lval(b, n, vname) _build_lval((b),as_Expr(n),(vname))
+static Val _build_lval(B* b, Expr* n, const char* vname) {
+  if ((b->flags & BFL_RVAL) == 0)
+    MUSTTAIL return build_expr(b, n, vname);
+  BFlags flags = b->flags;
+  b->flags &= ~BFL_RVAL;
+  Val val = build_expr(b, n, vname);
+  b->flags = flags;
+  return val;
+}
+
+
+// inline static Val build_expr_noload(B* b, Expr* n, const char* vname) {
+//   bool noload = b->noload; b->noload = true;
+//   Val v = build_expr(b, n, vname);
+//   b->noload = noload;
+//   return v;
+// }
 
 // inline static Val build_expr_doload(B* b, Expr* n, const char* vname) {
 //   bool noload = b->noload; b->noload = false;
@@ -505,7 +614,9 @@ static Val build_default_value(B* b, Type* t) {
 static Val build_store(B* b, Val dst, Val val) {
   #if DEBUG
   Typ dst_type = LLVMTypeOf(dst);
-  asserteq(LLVMGetTypeKind(dst_type), LLVMPointerTypeKind);
+  assertf(LLVMGetTypeKind(dst_type) == LLVMPointerTypeKind,
+    "dst_type %s is not a pointer type",
+    fmttyp(LLVMGetElementType(dst_type)) );
   if (LLVMTypeOf(val) != LLVMGetElementType(dst_type)) {
     panic("store destination type %s != source type %s",
       fmttyp(LLVMGetElementType(dst_type)), fmttyp(LLVMTypeOf(val)));
@@ -543,7 +654,6 @@ static Val build_funproto(B* b, FunNode* n, const char* name) {
       LLVMSetValueName2(p, param->name, symlen(param->name));
     }
   }
-
   return fn;
 }
 
@@ -701,10 +811,31 @@ static Val build_floatlit(B* b, FloatLitNode* n, const char* vname) {
 }
 
 
+static Val build_cslice(B* b, Val array_ptr) {
+  // (cslice<T>){ GEP(array_ptr), len(array_ptr) }
+  Typ array_ty = LLVMTypeOf(array_ptr); // i.e. [N x T]*
+  assert_llvm_type_isptrkind(array_ty, LLVMArrayTypeKind);
+  assert(LLVMIsConstant(array_ptr));
+  Typ elem_ty = LLVMGetElementType(array_ty); // i.e. [N x T]
+  Val indices[] = { b->v_i32_0, b->v_i32_0 };
+  Val constfields[] = {
+    LLVMConstGEP2(elem_ty, array_ptr, indices, countof(indices)),
+    LLVMConstInt(b->t_int, CoLLVMArrayTypeLength(elem_ty), /*signext*/false),
+  };
+  bool packed = false;
+  return LLVMConstStructInContext(b->ctx, constfields, countof(constfields), packed);
+}
+
+
 static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
-  if (NodeIsConst(n))
-    return LLVMConstStringInContext(b->ctx, n->p, n->len, /*DontNullTerminate*/true);
-  panic("TODO mutable string literal");
+  if (n->irval)
+    return n->irval;
+  assert(NodeIsConst(n));
+  if (!vname[0])
+    vname = "str";
+  Val gv = CoLLVMBuildGlobalString(b->builder, n->p, n->len, vname); // [N x i8]*
+  n->irval = build_cslice(b, gv); // [N x i8]* => { u8* p=GEP, len=N }
+  return n->irval;
 }
 
 
@@ -718,21 +849,19 @@ static Val build_binop(B* b, BinOpNode* n, const char* vname) {
   BasicTypeNode* tn = as_BasicTypeNode(n->type);
   assert(tn->typecode < TC_NUM_END);
 
-  Val left = build_expr(b, n->left, "");
-  Val right = build_expr(b, n->right, "");
-  assert(LLVMTypeOf(left) == LLVMTypeOf(right));
+  Val left = build_rval(b, n->left, "");
+  Val right = build_rval(b, n->right, "");
+  assertf(LLVMTypeOf(left) == LLVMTypeOf(right),
+    "binop args: %s != %s", fmttyp(LLVMTypeOf(left)), fmttyp(LLVMTypeOf(right)));
 
   u32 op = 0;
   bool isfloat = false;
   assert(n->op < T_PRIM_OPS_END);
   switch (tn->typecode) {
-    case TC_bool:
-      // the boolean type has just two operators defined
-      switch (n->op) {
-        case TEq:  op = LLVMIntEQ; break; // ==
-        case TNEq: op = LLVMIntNE; break; // !=
-      }
-      break;
+    case TC_bool: switch (n->op) {
+      case TEq:  op = LLVMIntEQ; break; // ==
+      case TNEq: op = LLVMIntNE; break; // !=
+    } break;
     case TC_i8: case TC_i16: case TC_i32: case TC_i64: case TC_int:
       op = kOpTableSInt[n->op];
       break;
@@ -743,8 +872,7 @@ static Val build_binop(B* b, BinOpNode* n, const char* vname) {
       isfloat = true;
       op = kOpTableFloat[n->op];
       break;
-    default:
-      break;
+    default: break;
   }
 
   if UNLIKELY(op == 0) {
@@ -783,47 +911,46 @@ static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
 }
 
 
-static Val build_var_load(B* b, VarNode* n, const char* vname) {
-  Val v = assertnotnull(n->irval);
-  if (NodeIsConst(n) || b->noload)
-    return v;
-  panic("TODO load var value");
-  // vnamef(b, "var_%s", vname)
-  return NULL;
-}
-
-
 static Val build_var(B* b, VarNode* n, const char* vname) {
-  if (n->irval)
-    goto load;
-
-  // build initializer; start by saving noload state
-  bool noload = b->noload;
-  b->noload = false;
-
-  if (NodeIsConst(n)) { // immutable
-    if (n->init) {
-      n->irval = build_expr(b, n->init, vname);
-    } else {
-      n->irval = build_default_value(b, n->type);
-    }
-  } else {
-    panic("TODO build mutable var");
-    Typ ty = get_type(b, n->type);
-    n->irval = LLVMBuildAlloca(b->builder, ty, vnamef(b, "var_%s", vname));
+  if (n->irval) {
+    if (!NodeIsConst(n) && (b->flags & BFL_RVAL))
+      return build_load(b, LLVMGetElementType(LLVMTypeOf(n->irval)), n->irval, n->name);
+    return n->irval;
   }
 
-  // restore noload state
-  b->noload = noload;
+  // build initializer
+  Val init;
+  if (n->init) {
+    init = build_rval(b, n->init, vname);
+  } else {
+    init = build_default_value(b, n->type);
+  }
 
-load:
-  return build_var_load(b, n, vname);
+  // immutable var is represented by its initializer (no stack space)
+  if (NodeIsConst(n)) {
+    n->irval = init;
+    return n->irval;
+  }
+
+  // allocate stack space
+  Typ ty = get_type(b, n->type);
+  n->irval = LLVMBuildAlloca(b->builder, ty, vnamef(b, "var_%s", n->name));
+
+  // store initial value
+  build_store(b, n->irval, init);
+
+  return init;
+
+  // // load if rvalue
+  // if (b->flags & BFL_RVAL)
+  //   return build_load(b, ty, n->irval, n->name);
+  // return n->irval;
 }
 
 
 static Val build_param(B* b, ParamNode* n, const char* vname) {
   Val paramval = assertnotnull(n->irval); // note: irval set by build_fun
-  if (NodeIsConst(n) || b->noload)
+  if (NodeIsConst(n) || (b->flags & BFL_RVAL) == 0)
     return paramval;
   assert_llvm_type_isptr(LLVMTypeOf(paramval));
   Typ elem_type = LLVMGetElementType(LLVMTypeOf(paramval));
@@ -833,8 +960,8 @@ static Val build_param(B* b, ParamNode* n, const char* vname) {
 
 static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
   LocalNode* dstn = as_LocalNode(n->dst);
-  Val dst = build_expr_noload(b, n->dst, dstn->name);
-  Val val = build_expr(b, n->val, "");
+  Val dst = build_lval(b, n->dst, dstn->name);
+  Val val = build_rval(b, n->val, "");
   build_store(b, dst, val);
   return val;
 }
@@ -920,7 +1047,7 @@ static Val build_if(B* b, IfNode* n, const char* vname) {
 }
 
 
-static Val build_expr(B* b, Expr* np, const char* vname) {
+static Val _build_expr(B* b, Expr* np, const char* vname) {
   switch ((enum NodeKind)np->kind) { case NBad: {
   NCASE(Nil)        return build_nil(b, n, vname);
   NCASE(BoolLit)    return build_boollit(b, n, vname);
@@ -955,6 +1082,41 @@ static Val build_expr(B* b, Expr* np, const char* vname) {
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
   return NULL;
 }
+
+
+#ifdef DEBUG_BUILD_EXPR
+static Val _build_expr_debug(B* b, Expr* np, const char* vname) {
+  dlog2("○ %s <%s> %s ...", nodename(np), FMTNODE(np->type,0), FMTNODE(np,1));
+
+  b->debug_depth++;
+  Val v = _build_expr(b, np, vname);
+  b->debug_depth--;
+
+  const char* nname = nodename(np);
+  const char* in_typstr = FMTNODE(np->type,0);
+  const char* in_valstr = FMTNODE(np,1);
+  const char* out_typstr = fmttyp(LLVMTypeOf(v));
+  const char* out_valstr = fmtval(v);
+
+  const char* typcolor = "\e[36m";
+  const char* valcolor = "\e[1m";
+
+  if (strlen(out_typstr) < 25 && strlen(out_valstr) < 25) {
+    dlog2("● %s <%s> %s ⟶ %s%s\e[0m : %s%s\e[0m",
+      nname, in_typstr, in_valstr, typcolor, out_typstr, valcolor, out_valstr);
+  } else {
+    if (strlen(out_typstr) < 35) {
+      dlog2("● %s <%s> %s ⟶ %s%s\e[0m :", nname, in_typstr, in_valstr, typcolor, out_typstr);
+    } else {
+      dlog2("● %s <%s> %s ⟶", nname, in_typstr, in_valstr);
+      dlog2("  %s%s\e[0m :", typcolor, out_typstr);
+    }
+    dlog2("  %s%s\e[0m", valcolor, out_valstr);
+  }
+
+  return v;
+}
+#endif
 
 
 // end build functions
