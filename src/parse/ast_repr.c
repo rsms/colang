@@ -501,6 +501,7 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Tuple)
   NCASE(Array)
   NCASE(Block)
+  NCASE(Call)
   NCASE(TypeCast)
   NCASE(Id)     write_name(r, n->name);
   GNCASE(Local) write_name(r, n->name);
@@ -543,7 +544,6 @@ static void write_node_attrs(Repr* r, const Node* np) {
 
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
-  NCASE(Call)       write_TODO(r);
   NCASE(NamedArg)   write_TODO(r);
   NCASE(Selector)   write_TODO(r);
   NCASE(Index)      write_TODO(r);
@@ -579,6 +579,9 @@ static void write_node_fields(Repr* r, const Node* np) {
   GNCASE(Local)
     if (LocalInitField(n))
       write_node(r, LocalInitField(n));
+  NCASE(Call)
+    write_node(r, n->receiver);
+    write_node(r, n->args);
   NCASE(TypeCast)
     write_node(r, n->type);
     write_node(r, n->expr);

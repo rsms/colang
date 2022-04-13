@@ -447,18 +447,3 @@ LLVMValueRef CoLLVMBuildGlobalString(
 u64 CoLLVMArrayTypeLength(LLVMTypeRef array_ty) {
   return unwrap<ArrayType>(array_ty)->getNumElements();
 }
-
-// GlobalVariable *IRBuilderBase::CreateGlobalString(StringRef Str,
-//                                                   const Twine &Name,
-//                                                   unsigned AddressSpace,
-//                                                   Module *M) {
-//   Constant *StrConstant = ConstantDataArray::getString(Context, Str);
-//   if (!M)
-//     M = BB->getParent()->getParent();
-//   auto *GV = new GlobalVariable(
-//       *M, StrConstant->getType(), true, GlobalValue::PrivateLinkage,
-//       StrConstant, Name, nullptr, GlobalVariable::NotThreadLocal, AddressSpace);
-//   GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-//   GV->setAlignment(Align(1));
-//   return GV;
-// }

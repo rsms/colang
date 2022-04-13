@@ -1,0 +1,6 @@
+fun add(x, y int) int
+  x + y
+
+fun main(x, y int) int
+  x = add(x, y)
+  x * y

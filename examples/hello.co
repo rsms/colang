@@ -1,7 +1,9 @@
+fun foo(s &[u8]) int
+  1
+
 fun main(x, y int) int
   hello = "hello world"
   hello = "world"
-  foo = hello
-  foo = "hello world"
+  x = foo(hello)
   y = y * 2
   x * y

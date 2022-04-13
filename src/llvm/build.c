@@ -75,8 +75,9 @@ typedef struct B {
   Typ t_ref; // "mut&T", "&T"
 
   // value constants
-  Val v_i32_0; // i32 0
-  Val v_int_0; // int 0
+  Val v_i32_0;    // (i32)0
+  Val v_int_0;    // (int)0
+  Val v_intptr_0; // (int*)NULL
 
   // metadata values
   Val md_br_likely;
@@ -247,8 +248,11 @@ static error builder_init(B* b, CoLLVMModule* m) {
 
   // initialize common types
   b->t_i8ptr = LLVMPointerType(b->t_i8, 0);
+
+  // initialize common constant values
   b->v_i32_0 = LLVMConstInt(b->t_i32, 0, /*signext*/false);
   b->v_int_0 = LLVMConstInt(b->t_int, 0, /*signext*/false);
+  b->v_intptr_0 = LLVMConstNull(LLVMPointerType(b->t_int, 0));
 
   // FPM: Apply per-function optimizations. (NULL to disable.)
   // Really only useful for JIT; for offline compilation we use module-wide passes.
@@ -613,6 +617,8 @@ static Val build_default_value(B* b, Type* t) {
 
 static Val build_store(B* b, Val dst, Val val) {
   #if DEBUG
+  assertnotnull(dst);
+  assertnotnull(val);
   Typ dst_type = LLVMTypeOf(dst);
   assertf(LLVMGetTypeKind(dst_type) == LLVMPointerTypeKind,
     "dst_type %s is not a pointer type",
@@ -628,6 +634,8 @@ static Val build_store(B* b, Val dst, Val val) {
 
 static Val build_load(B* b, Typ elem_ty, Val src, const char* vname) {
   #if DEBUG
+  assertnotnull(elem_ty);
+  assertnotnull(src);
   Typ src_type = LLVMTypeOf(src);
   asserteq(LLVMGetTypeKind(src_type), LLVMPointerTypeKind);
   if (elem_ty != LLVMGetElementType(src_type)) {
@@ -659,6 +667,9 @@ static Val build_funproto(B* b, FunNode* n, const char* name) {
 
 
 static Val build_fun(B* b, FunNode* n, const char* vname) {
+  if (n->irval)
+    return n->irval;
+
   vname = n->name ? n->name : vname;
 
   // build function prototype
@@ -670,13 +681,13 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return fn;
   }
 
-  if (vname[0] == '_' /*strcmp(vname, "main") != 0*/ ) {
-    // Note on LLVMSetVisibility: visibility is different.
-    // See https://llvm.org/docs/LangRef.html#visibility-styles
-    // LLVMPrivateLinkage is like "static" in C but omit from symbol table
-    // LLVMSetLinkage(fn, LLVMPrivateLinkage);
-    LLVMSetLinkage(fn, LLVMInternalLinkage); // like "static" in C
-  }
+  // if (/*vname[0] == '_'*/ strcmp(vname, "main") != 0) {
+  //   // Note on LLVMSetVisibility: visibility is different.
+  //   // See https://llvm.org/docs/LangRef.html#visibility-styles
+  //   // LLVMPrivateLinkage is like "static" in C but omit from symbol table
+  //   // LLVMSetLinkage(fn, LLVMPrivateLinkage);
+  //   LLVMSetLinkage(fn, LLVMInternalLinkage); // like "static" in C
+  // }
 
   // prepare to build function body by saving any current builder position
   Block prevb = get_current_block(b);
@@ -791,7 +802,9 @@ static void build_pkg(B* b, PkgNode* n) {
 
 
 static Val build_nil(B* b, NilNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  if (b->flags & BFL_RVAL)
+    dlog("TODO build rval nil (depends on outer type)");
+  return b->v_intptr_0;
 }
 
 
@@ -898,9 +911,12 @@ static Val build_postfixop(B* b, PostfixOpNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
 }
 
+
 static Val build_return(B* b, ReturnNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  Val retval = build_rval(b, n->expr, "");
+  return LLVMBuildRet(b->builder, retval);
 }
+
 
 static Val build_const(B* b, ConstNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
@@ -1010,13 +1026,52 @@ static Val build_block(B* b, BlockNode* n, const char* vname) {
 }
 
 
+static Val build_type_call(B* b, CallNode* n, const char* vname) {
+  //Type* tn = (Type*)n->receiver;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+}
+
+
+static Val build_fun_call(B* b, CallNode* n, const char* vname) {
+  Val callee = build_expr(b, n->receiver, "callee");
+
+  Val argsv[16];
+  auto args = array_make(Array(Val), argsv, sizeof(argsv));
+
+  if (n->args) {
+    bool ok = true;
+    ExprArray* a = &n->args->a;
+    for (u32 i = 0; i < a->len; i++) {
+      const char* arg_vname = vnamef(b, "callarg_%u", i);
+      Val arg = build_rval(b, a->v[i], arg_vname);
+      ok &= array_push(&args, arg);
+    }
+    assert(ok);
+  }
+
+  Val v = LLVMBuildCall(b->builder, callee, args.v, args.len, "");
+  array_free(&args);
+  return v;
+}
+
+
+static Val build_call(B* b, CallNode* n, const char* vname) {
+  Expr* recv = (Expr*)n->receiver;
+  if (is_Expr(n->receiver) && is_FunTypeNode(recv->type))
+    return build_fun_call(b, n, vname);
+
+  assertf(
+    (is_Expr(n->receiver) && is_TypeTypeNode(recv->type)) ||
+    is_TypeTypeNode(n->receiver),
+    "n->receiver=%s", nodename(n->receiver));
+  return build_type_call(b, n, vname);
+}
+
+
 static Val build_macro(B* b, MacroNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
 }
 
-static Val build_call(B* b, CallNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
-}
 
 static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
@@ -1095,8 +1150,8 @@ static Val _build_expr_debug(B* b, Expr* np, const char* vname) {
   const char* nname = nodename(np);
   const char* in_typstr = FMTNODE(np->type,0);
   const char* in_valstr = FMTNODE(np,1);
-  const char* out_typstr = fmttyp(LLVMTypeOf(v));
-  const char* out_valstr = fmtval(v);
+  const char* out_typstr = v ? fmttyp(LLVMTypeOf(v)) : "(NULL)";
+  const char* out_valstr = v ? fmtval(v) : "\e[31m(NULL)";
 
   const char* typcolor = "\e[36m";
   const char* valcolor = "\e[1m";

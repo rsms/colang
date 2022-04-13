@@ -191,10 +191,14 @@ static Node* _resolve(R* r, Node* n);
     Node* n2 = _resolve(r, n);
     r->debug_depth--;
 
+    tmpbuf[0] = 0;
+    if (is_Expr(n))
+      fmtnode(((Expr*)n2)->type, tmpbuf, sizeof(tmpbuf));
+
     if (n == n2) {
-      dlog2("● %s %s resolved", nodename(n), FMTNODE(n,0));
+      dlog2("● %s %s resolved : %s", nodename(n), FMTNODE(n,0), tmpbuf);
     } else {
-      dlog2("● %s %s resolved => %s", nodename(n), FMTNODE(n,0), FMTNODE(n2,1));
+      dlog2("● %s %s resolved => %s : %s", nodename(n), FMTNODE(n,0), FMTNODE(n2,1), tmpbuf);
     }
 
     if (is_Expr(n2))
@@ -501,25 +505,13 @@ static Node* restype_field(R* r, FieldNode* n) {
   return as_Node(n);
 }
 
-static Node* restype_comment(R* r, CommentNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
-  return as_Node(n);
-}
-
-static Node* restype_nil(R* r, NilNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
-  return as_Node(n);
-}
-
-static Node* restype_boollit(R* r, BoolLitNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
-  return as_Node(n);
-}
 
 static Node* restype_intlit(R* r, IntLitNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
-  return as_Node(n);
+  Type* t = r->typecontext ? r->typecontext : kType_int;
+  Expr* n2 = ctypecast_implicit(r->build, n, t, NULL, n);
+  return as_Node(n2);
 }
+
 
 static Node* restype_floatlit(R* r, FloatLitNode* n) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
@@ -532,7 +524,15 @@ static Node* restype_strlit(R* r, StrLitNode* n) {
 }
 
 static Node* restype_id(R* r, IdNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  assertnotnull(n->target);
+  n->target = resolve(r, n->target);
+  if (is_Expr(n->target)) {
+    n->type = ((Expr*)n->target)->type;
+  } else if (is_Type(n->target)) {
+    n->type = kType_type;
+  } else {
+    n->type = kType_nil;
+  }
   return as_Node(n);
 }
 
@@ -628,7 +628,27 @@ static Node* restype_macro(R* r, MacroNode* n) {
 }
 
 static Node* restype_call(R* r, CallNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  n->receiver = resolve(r, n->receiver);
+
+  if (n->args)
+    n->args = as_TupleNode(resolve(r, n->args));
+
+  Type* recvt = (
+    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
+    is_Type(n->receiver) ? kType_type :
+    kType_nil
+  );
+
+  if (recvt == kType_type) {
+    n->type = (Type*)n->receiver;
+  } else if (is_FunTypeNode(recvt)) {
+    n->type = ((FunTypeNode*)recvt)->result;
+    if (!n->type)
+      n->type = kType_nil;
+  } else {
+    assertf(0,"unexpected call receiver %s", nodename(n->receiver));
+  }
+
   return as_Node(n);
 }
 
@@ -744,7 +764,7 @@ static Node* _resolve_type(R* r, Node* np) {
   } else if (is_Expr(np) && ((Expr*)np)->type) {
     // Has type already. Constant literals might have ideal type.
     Expr* n = (Expr*)np;
-    if (n->type == kType_ideal && (r->flags & RF_ResolveIdeal)) {
+    if (n->type == kType_ideal && ((r->flags & RF_ResolveIdeal) || NodeIsRValue(n))) {
       dlog2("resolving ideally-typed node %s", nodename(n));
       // continue
     } else {
@@ -759,10 +779,10 @@ static Node* _resolve_type(R* r, Node* np) {
 
   NCASE(Field)      return restype_field(r, n);
   GNCASE(CUnit)     return restype_cunit(r, n);
-  NCASE(Comment)    return restype_comment(r, n);
+  NCASE(Comment)    // not possible
 
-  NCASE(Nil)        return restype_nil(r, n);
-  NCASE(BoolLit)    return restype_boollit(r, n);
+  NCASE(Nil)        // not possible
+  NCASE(BoolLit)    // not possible
   NCASE(IntLit)     return restype_intlit(r, n);
   NCASE(FloatLit)   return restype_floatlit(r, n);
   NCASE(StrLit)     return restype_strlit(r, n);
