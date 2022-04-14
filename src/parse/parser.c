@@ -266,6 +266,9 @@ static void advance(Parser* p, const Tok* nullable stoplist) {
 // T* mknode(Parser*, KIND)
 #define mknode(p, KIND) b_mknode((p)->build, KIND, currpos(p))
 
+#define mknode_array(p, KIND, ARRAY_FIELD, count) \
+  b_mknode_array((p)->build, KIND, currpos(p), ARRAY_FIELD, (count))
+
 // mktype allocates a new ast Type node
 // T* mktype(Parser*, NODE_TYPE, TypeFlags tflags)
 #define mktype(p, KIND, TYPE_FLAGS) ({                      \
@@ -273,6 +276,12 @@ static void advance(Parser* p, const Tok* nullable stoplist) {
   KIND##Node* n__ = b_mknode((p)->build, KIND, currpos(p)); \
   n__->tflags = (TYPE_FLAGS);                               \
   n__;                                                      \
+})
+
+#define mktype_array(p, KIND, TYPE_FLAGS, ARRAY_FIELD, count) ({ \
+  assert(NodeKindIsType(N##KIND)); \
+  KIND##Node* n__ = b_mknode_array((p)->build, KIND, currpos(p), ARRAY_FIELD, (count)); \
+  n__ ? ((n__->tflags = (TYPE_FLAGS)), n__) : NULL; \
 })
 
 // mkref_type creates a reference-type node
@@ -1122,6 +1131,7 @@ static Node* PGroup(Parser* p, PFlag fl) {
 // size      = Expr?
 static Node* pArrayType(Parser* p, PFlag fl) {
   fl |= PFlagType;
+
   auto n = mktype(p, ArrayType, TF_KindArray);
   nexttok(p); // consume "["
 
@@ -1156,7 +1166,8 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 // sep      = "," | ";"
 static Node* pArrayLit(Parser* p, PFlag fl) {
   fl |= PFlagRValue;
-  auto n = mknode(p, Array);
+  auto n = mknode_array(p, Array, a, 8);
+  if UNLIKELY(!n) return bad(p);
   nexttok(p); // consume "["
 
   // is there an array type context?
@@ -1388,77 +1399,80 @@ static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
 // args = arg (sep arg)* sep?
 // arg  = Id "=" Expr | Expr
 // sep  = "," | ";"
-static TupleNode* pArgs(Parser* p, PFlag fl) {
+static NodeFlags pArgs(Parser* p, ExprArray* args, PFlag fl) {
   fl |= PFlagRValue;
-  auto tuple = mknode(p, Tuple);
+  NodeFlags flags = 0;
   u32 index = 0;
   Expr* arg;
 
-parse_arg:
-  if (p->tok == TId) {
-    // save position and consume identifier token
-    Pos pos = currpos(p);
-    Sym name = p->name;
-    nexttok(p);
-    // next token decides argument node type
-    if (got(p, TAssign)) {
-      // named argument (e.g. "name = expr")
-      NamedArgNode* namedarg = b_mknode(p->build, NamedArg, pos);
-      namedarg->name = name;
-      namedarg->value = pExpr(p, PREC_LOWEST, fl);
-      tuple->flags |= NF_Named; // "has named argument"
-      arg = as_Expr(namedarg);
+  for (;;) {
+    if (p->tok == TId) {
+      // save position and consume identifier token
+      Pos pos = currpos(p);
+      Sym name = p->name;
+      nexttok(p);
+      // next token decides argument node type
+      if (got(p, TAssign)) {
+        // named argument (e.g. "name = expr")
+        NamedArgNode* namedarg = b_mknode(p->build, NamedArg, pos);
+        namedarg->name = name;
+        namedarg->value = pExpr(p, PREC_LOWEST, fl);
+        flags |= NF_Named; // "has named argument"
+        arg = as_Expr(namedarg);
+      } else {
+        // plain identifier.
+        // Since we look ahead and consume the TId token up front,
+        // emulate pExpr with PId prefix by continue parsing with parse_infix.
+        IdNode* id = b_mknode(p->build, Id, pos);
+        id->name = name;
+        Node* left = presolve_id(p, id);
+        arg = expectExpr(p, parse_infix(p, PREC_LOWEST, fl, left));
+        if (flags & NF_Named)
+          goto err_pos_after_named;
+      }
     } else {
-      // plain identifier.
-      // Since we look ahead and consume the TId token up front,
-      // emulate pExpr with PId prefix by continue parsing with parse_infix.
-      IdNode* id = b_mknode(p->build, Id, pos);
-      id->name = name;
-      Node* left = presolve_id(p, id);
-      arg = expectExpr(p, parse_infix(p, PREC_LOWEST, fl, left));
-      if (tuple->flags & NF_Named)
+      arg = pExpr(p, PREC_LOWEST, fl);
+      if (flags & NF_Named)
         goto err_pos_after_named;
     }
+
     NodeSetRValue(arg);
-  } else {
-    arg = pExpr(p, PREC_LOWEST, fl);
-    if (tuple->flags & NF_Named)
-      goto err_pos_after_named;
+    flags |= arg->flags & NF_Unresolved;
+    array_push(args, arg);
+
+    switch (p->tok) {
+      case TComma:
+      case TSemi:
+        nexttok(p);
+        if (p->tok == TRParen)
+          break; // trailing "," or ";"
+        // continue reading more
+        index++;
+        break;
+      case TRParen: // ")" ends argument list
+        goto end;
+      default:
+        syntaxerr(p, "expecting , ; or )");
+        Tok stoplist[] = { TRParen, 0 };
+        advance(p, stoplist);
+        want(p, TRParen);
+        goto end;
+    }
   }
-
-  array_push(&tuple->a, arg);
-
-  switch (p->tok) {
-    case TComma:
-    case TSemi:
-      nexttok(p);
-      if (p->tok == TRParen)
-        break; // trailing "," or ";"
-      // continue reading more
-      index++;
-      goto parse_arg;
-    case TRParen: // ")" ends argument list
-      break;
-    default:
-      syntaxerr(p, "expecting , ; or )");
-      Tok stoplist[] = { TRParen, 0 };
-      advance(p, stoplist);
-      want(p, TRParen);
-      break;
-  }
-
-  return set_endpos(p, tuple);
+end:
+  return flags;
 
 err_pos_after_named:
   // e.g. "(a, b=3, c)" -- positional arg c follows named arg b
   syntaxerrp(p, arg->pos, "positional argument following named argument");
-  return set_endpos(p, tuple);
+  return flags;
 }
 
 
 //!Parselet (TLParen MEMBER)
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
-  auto call = mknode(p, Call);
+  auto call = mknode_array(p, Call, args, 8);
+  if UNLIKELY(!call) return bad(p);
   nexttok(p); // consume "("
 
   // receiver
@@ -1466,9 +1480,10 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     receiver = as_Node(use_as_rvalue(p, receiver));
   NodeTransferUnresolved(call, receiver);
   call->receiver = receiver;
+  call->args_pos = currpos(p);
 
   if (got(p, TRParen)) // ")" -- end without arguments
-    return as_Node(call);
+    goto end;
 
   // args
   if (is_BasicTypeNode(receiver)) {
@@ -1494,14 +1509,12 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
       call = (CallNode*)as_Node(tcast->expr);
     }
   } else {
-    auto args = pArgs(p, fl);
-    if (args->a.len > 0) {
-      call->args = args;
-      NodeTransferUnresolved(call, args);
-    }
+    call->flags |= pArgs(p, &call->args, fl);
   }
 
   want(p, TRParen);
+end:
+  call->endpos = currpos(p);
   return as_Node(call);
 }
 
@@ -1620,7 +1633,8 @@ static Node* pStructType(Parser* p, PFlag fl, StructTypeNode* stype) {
 // StructTypeDef = "struct" StructType
 //!PrefixParselet TStruct
 static Node* PStructType(Parser* p, PFlag fl) {
-  auto stype = mktype(p, StructType, TF_KindStruct);
+  auto stype = mktype_array(p, StructType, TF_KindStruct, fields, 4);
+  if UNLIKELY(!stype) return bad(p);
   nexttok(p); // consume "struct"
 
   // TODO: when infix, assign stype->name
@@ -1684,7 +1698,8 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 // Block = "{" Expr* "}"
 // NOTE: it's the callers responsibility to call pushScope & popScope
 static Expr* pBlock(Parser* p, PFlag fl) {
-  auto block = mknode(p, Block);
+  auto block = mknode_array(p, Block, a, 4);
+  if UNLIKELY(!block) return (Expr*)bad(p);
   nexttok(p); // consume "{"
 
   Expr* cn = NULL;
@@ -1779,8 +1794,10 @@ static Node* PPostfixOp(Parser* p, const Parselet* e, PFlag fl, Node* operand) {
 // Selector = Expr "." Id
 //!Parselet (TDot MEMBER)
 static Node* PSelector(Parser* p, const Parselet* e, PFlag fl, Node* left) {
-  auto sel = mknode(p, Selector);
+  auto sel = mknode_array(p, Selector, indices, 4);
+  if UNLIKELY(!sel) return bad(p);
   nexttok(p); // consume "."
+
   sel->operand = use_as_rvalue(p, left);
 
   // member is a name
@@ -1893,7 +1910,8 @@ static TupleNode* pParams(Parser* p) {
   // (T1, T2, ... T3)
   //
   assert(p->tok == TLParen);
-  auto params = mknode(p, Tuple);
+  auto params = mknode_array(p, Tuple, a, 8);
+  if UNLIKELY(!params) return (TupleNode*)bad(p);
   nexttok(p); // consume "("
 
   // empty params? eg "()"
@@ -1914,35 +1932,35 @@ static TupleNode* pParams(Parser* p) {
   array_init(&typeq, typeq_st, sizeof(typeq_st));
 
   while (1) {
-    auto local = mknode(p, Param);
-    NodeSetConst(local);
-    NodeSetUnused(local);
-    array_push(&params->a, as_Expr(local));
+    auto param = mknode(p, Param);
+    NodeSetConst(param);
+    NodeSetUnused(param);
+    array_push(&params->a, as_Expr(param));
 
     if (p->tok == TId) {
       // name eg "x"
-      local->name = p->name;
+      param->name = p->name;
       nexttok(p);
       switch (p->tok) {
         case TRParen:
         case TComma:
         case TSemi:
           // just a lone name, eg "x" in "(x, y)"
-          array_push(&typeq, as_Node(local));
+          array_push(&typeq, as_Node(param));
           break;
 
         default:
           // type follows name, eg "x int"
-          local->type = pType(p, fl);
+          param->type = pType(p, fl);
           hasTypedParam = true;
           // cascade type to predecessors
           for (u32 i = 0; i < typeq.len; i++)
-            ((LocalNode*)typeq.v[i])->type = local->type;
+            ((LocalNode*)typeq.v[i])->type = param->type;
           typeq.len = 0;
       }
     } else {
       // definitely just type, e.g. "fun([]int,bool)"
-      local->type = pType(p, fl);
+      param->type = pType(p, fl);
     }
 
     // end loop?
@@ -2011,7 +2029,8 @@ finish:
 static TupleNode* templateParams(Parser* p) {
   assert(p->tok == TLt);
   PFlag fl = PFlagNone; // lvalue semantics
-  auto params = mknode(p, Tuple);
+  auto params = mknode_array(p, Tuple, a, 8);
+  if UNLIKELY(!params) return (TupleNode*)bad(p);
   nexttok(p); // consume "<"
   do {
     if (UNLIKELY(p->tok != TId)) {
@@ -2256,11 +2275,13 @@ static Expr* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
     Node* g;
     NodeArray* array;
     if (fl & PFlagType) {
-      auto tuple = mktype(p, TupleType, TF_KindArray);
+      auto tuple = mktype_array(p, TupleType, TF_KindArray, a, 4);
+      if UNLIKELY(!tuple) return (Expr*)bad(p);
       array = as_NodeArray(&tuple->a);
       g = as_Node(tuple);
     } else {
-      auto tuple = mknode(p, Tuple);
+      auto tuple = mknode_array(p, Tuple, a, 4);
+      if UNLIKELY(!tuple) return (Expr*)bad(p);
       array = as_NodeArray(&tuple->a);
       g = as_Node(tuple);
     }
@@ -2356,7 +2377,7 @@ error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags fl, FileNode** re
   nexttok(p);
 
   // create FileNode to hold what we parse
-  auto file = mknode(p, File);
+  auto file = mknode_array(p, File, a, 16);
   if (!file)
     return err_nomem;
   file->name = src->filename;

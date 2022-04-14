@@ -3,7 +3,7 @@
 #include "parse.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
-//#define CO_PARSE_RESOLVE_DEBUG
+#define CO_PARSE_RESOLVE_DEBUG
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_id impl
@@ -106,8 +106,8 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
   #include <unistd.h> // isatty
 #endif
 
-typedef u32 rflag;
-enum rflag {
+typedef u32 RFlag;
+enum RFlag {
   RF_ExplicitTypeCast = 1 << 0,
   RF_ResolveIdeal     = 1 << 1,  // set when resolving ideal types
   RF_Eager            = 1 << 2,  // set when resolving eagerly
@@ -119,7 +119,7 @@ enum rflag {
 // resolver state
 typedef struct R {
   BuildCtx* build;
-  rflag     flags;
+  RFlag     flags;
   Scope*    lookupscope; // for looking up undefined symbols (initially build->pkg.scope)
 
   // typecontext is the "expected" type, if any.
@@ -137,21 +137,33 @@ typedef struct R {
 } R;
 
 
+// T* errf(R* r, T* origin_node, const char* fmt, ...)
+#define errf(r, origin_node, fmt, args...) ({ \
+  __typeof__(origin_node) n__ = (origin_node); \
+  b_errf((r)->build, NodePosSpan(n__), fmt, ##args); \
+  n__; \
+})
+
+
 // mknode allocates a new ast node
-// T* nullable mknode(R*, KIND)
-#define mknode(r, KIND, pos) b_mknode((r)->build, KIND, (pos))
+// T* mknode(R*, KIND)
+#define mknode(r, KIND, pos) \
+  b_mknode((r)->build, KIND, (pos))
+
+#define mknode_array(r, KIND, pos, ARRAY_FIELD, count) \
+  b_mknode_array((r)->build, KIND, (pos), ARRAY_FIELD, (count))
 
 
 #define FMTNODE(n,bufno) \
   fmtnode(n, r->build->tmpbuf[bufno], sizeof(r->build->tmpbuf[bufno]))
 
 
-#define check_memalloc(r,n,ok) _check_memalloc((r),as_Node(n),(ok))
-inline static bool _check_memalloc(R* r, Node* n, bool ok) {
-  if UNLIKELY(!ok)
-    b_errf(r->build, NodePosSpan(n), "failed to allocate memory");
-  return ok;
-}
+// #define check_memalloc(r,n,ok) _check_memalloc((r),as_Node(n),(ok))
+// inline static bool _check_memalloc(R* r, Node* n, bool ok) {
+//   if UNLIKELY(!ok)
+//     errf(r, n, "failed to allocate memory");
+//   return ok;
+// }
 
 
 #ifdef CO_PARSE_RESOLVE_DEBUG
@@ -159,7 +171,7 @@ inline static bool _check_memalloc(R* r, Node* n, bool ok) {
     #define isatty(fd) false
   #endif
   #define dlog2(format, args...) ({                                                 \
-    if (isatty(2)) log("\e[1;31m▍\e[0m%*s" format, (r)->debug_depth*2, "", ##args); \
+    if (isatty(2)) log("\e[1;30m▍\e[0m%*s" format, (r)->debug_depth*2, "", ##args); \
     else           log("[resolve] %*s" format, (r)->debug_depth*2, "", ##args);     \
     fflush(stderr); })
 #else
@@ -259,7 +271,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     Node* target = ScopeLookup(r->lookupscope, n->name);
     if UNLIKELY(target == NULL) {
       dlog2("LOOKUP %s FAILED", n->name);
-      b_errf(r->build, NodePosSpan(n), "undefined identifier %s", n->name);
+      errf(r, n, "undefined identifier %s", n->name);
       n->target = kNode_bad;
       return np;
     }
@@ -288,8 +300,6 @@ static Node* _resolve_sym1(R* r, Node* np) {
   GNCASE(ListExpr)
     resolve_sym_array(r, as_NodeArray(&n->a));
     return np;
-
-  NCASE(Block)      panic("TODO %s", nodename(n));
 
   NCASE(Fun)
     if (n->params)
@@ -340,23 +350,25 @@ static Node* _resolve_sym1(R* r, Node* np) {
 #define resolve_type(r,n) _resolve_type((r),as_Node(n))
 static Node* _resolve_type(R* r, Node* n);
 
-// // returns old type
-// static Type* nullable typecontext_set(R* r, Type* nullable newtype) {
-//   if (newtype) {
-//     assert(is_Type(newtype) || is_MacroParamNode(newtype));
-//     assertne(newtype, kType_ideal);
-//   }
-//   dlog2("typecontext_set %s", FMTNODE(newtype,0));
-//   auto oldtype = r->typecontext;
-//   r->typecontext = newtype;
-//   return oldtype;
-// }
+// set_typecontext returns r->typecontext as it was prior to setting t
+static Type* nullable set_typecontext(R* r, Type* nullable t) {
+  if (t) {
+    assert(is_Type(t) || is_MacroParamNode(t));
+    assertne(t, kType_ideal);
+  }
+  Type* prev = r->typecontext;
+  r->typecontext = t;
+  return prev;
+}
 
-//static rflag addflag(R* r, rflag flag) { rflag f = r->flags; r->flags |= flag;  return f; }
-//static rflag rmflag(R* r, rflag flag)  { rflag f = r->flags; r->flags &= ~flag; return f; }
-//static rflag setflags(R* r, rflag flags) { rflag f = r->flags; r->flags = flags; return f;}
+// *_flags returns r->flags as they were prior to altering them
+static RFlag add_flags(R* r, RFlag fl) { RFlag f = r->flags; r->flags |= fl;  return f; }
+//static RFlag rm_flags(R* r, RFlag fl)  { RFlag f = r->flags; r->flags &= ~fl; return f; }
+//static RFlag set_flags(R* r, RFlag fl) { RFlag f = r->flags; r->flags = fl; return f; }
+
+
 #define flags_scope(FLAGS) \
-  for (rflag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
+  for (RFlag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
        tmp1__ && (r->flags = (FLAGS), 1); \
        tmp1__ = 0, r->flags = prevfl__)
 
@@ -366,7 +378,6 @@ static Node* _resolve_type(R* r, Node* n);
          *tmp1__ = kType_nil; \
        tmp1__ && (r->typecontext = new__, 1); \
        tmp1__ = NULL, r->typecontext = prev__ )
-
 
 // mark_local_mutable marks any Var or Field n as being mutable
 #define mark_local_mutable(r,n) _mark_local_mutable((r),as_Node(n))
@@ -405,6 +416,19 @@ static bool is_type_complete(Type* np) {
   }}
 }
 
+
+// find_local_by_name returns the first index of local "name", or -1 if not found
+static isize find_local_by_name(R* r, const ExprArray* locals, Sym name) {
+  assert((usize)locals->len <= (usize)ISIZE_MAX);
+  for (isize i = 0, len = (isize)locals->len; i < len; i++) {
+    LocalNode* n = as_LocalNode(locals->v[i]);
+    if (n->name == name)
+      return i;
+  }
+  return -1;
+}
+
+
 //——————————————————————————————————————
 // node-specific type resolver functions
 
@@ -420,8 +444,6 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 
 static Node* restype_fun(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
-  if UNLIKELY(t == NULL)
-    return as_Node(n);
   n->type = as_Type(t);
 
   if (n->params) {
@@ -445,13 +467,165 @@ static Node* restype_fun(R* r, FunNode* n) {
     {
       // TODO: focus the message on the first return expression of n->body
       // which is of a different type than n->result
-      b_errf(r->build, NodePosSpan(n->body),
+      errf(r, n->body,
         "incompatible result type %s for function returning %s",
         FMTNODE(n->body->type,0), FMTNODE(n->result,1));
     }
   }
 
   return as_Node(n);
+}
+
+
+static bool resolve_expr_array(R* r, ExprArray* a, Node* origin, TypeArray* nullable types) {
+  Type* typecontext = r->typecontext; // save typecontext
+  const TypeArray* ctlist = NULL;
+  u32 ctindex = 0;
+
+  if (typecontext) {
+    if (typecontext->kind == NTupleType) {
+      ctlist = &((TupleTypeNode*)typecontext)->a;
+      assert(ctlist->len > 0); // tuples should never be empty
+    } else {
+      // TODO: improve this error message
+      errf(r, typecontext, "unexpected context type %s", FMTNODE(typecontext,1));
+      return false;
+    }
+    if UNLIKELY(ctlist->len != a->len) {
+      errf(r, origin, "%u expressions where %u expressions are expected %s",
+        a->len, ctlist->len, FMTNODE(typecontext,1));
+      return false;
+    }
+  }
+
+  for (u32 i = 0; i < a->len; i++) {
+    if (ctlist)
+      r->typecontext = ctlist->v[ctindex++];
+
+    Expr* cn = as_Expr(resolve(r, a->v[i]));
+    a->v[i] = cn;
+    if (types)
+      array_push(types, cn->type);
+  }
+
+  r->typecontext = typecontext; // restore typecontext
+  return true;
+}
+
+
+// is_named_params returns true if params are named; ie (x T, y T) but not (T, T)
+static bool is_named_params(TupleNode* params) {
+  if (params->a.len == 0)
+    return false;
+  ParamNode* param0 = as_ParamNode(params->a.v[0]);
+  return param0->name != kSym__;
+}
+
+
+static int named_arg_sortfn(const NamedArgNode** x, const NamedArgNode** y, R* r) {
+  // parameter indices are stored in irval field
+  intptr xi = (intptr)(*x)->irval;
+  intptr yi = (intptr)(*y)->irval;
+  return xi - yi;
+}
+
+
+static bool resolve_positional_call_args(R* r, CallNode* n, TupleNode* params) {
+  Type* typecontext = set_typecontext(r, params->type);
+  RFlag rflags = add_flags(r, RF_ResolveIdeal);
+
+  bool ok = resolve_expr_array(r, &n->args, as_Node(n), NULL);
+
+  r->typecontext = typecontext;
+  r->flags = rflags;
+  return ok;
+}
+
+
+static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
+  // if the parameters aren't named, we can't call them by name
+  // e.g. "fun foo(int) ; foo(x=1)"
+  if UNLIKELY(!is_named_params(params)) {
+    b_errf(r->build, CallNodeArgsPosSpan(n),
+      "%s does not accept named parameters", FMTNODE(n->receiver,0));
+    return false;
+  }
+
+  ExprArray* args = &n->args;
+  TypeArray param_types = as_TupleTypeNode(params->type)->a;
+  asserteq(params->a.len, args->len);
+  asserteq(params->a.len, param_types.len);
+
+  // save-then-update resolver state
+  Type* typecontext = r->typecontext;
+  RFlag rflags = add_flags(r, RF_ResolveIdeal);
+
+  // Start by resolving positional arguments and just looking up position for named args.
+  // The parser guarantees these come before named ones.
+  u32 i = 0;
+  for (; i < args->len && args->v[i]->kind != NNamedArg; i++) {
+    r->typecontext = param_types.v[i];
+    args->v[i] = as_Expr(resolve(r, args->v[i]));
+  }
+
+  // find canonical parameter positions for remaining named arguments
+  assert(i < args->len); // or bug above or wherever NF_Named flag was set
+  u32 named_start_idx = i;
+  for (; i < args->len; i++) {
+    NamedArgNode* namedarg = as_NamedArgNode(args->v[i]);
+    isize param_idx = find_local_by_name(r, &params->a, namedarg->name);
+    if UNLIKELY(param_idx < 0) {
+      b_errf(r->build, CallNodeArgsPosSpan(n),
+        "no parameter named \"%s\" in %s", namedarg->name, FMTNODE(n->receiver,0));
+      goto end;
+    }
+    // ditch the named value
+    Expr* arg = namedarg->value;
+    // temporarily store parameter index for sort function to access
+    arg->irval = (void*)(uintptr)param_idx;
+    // resolve argument
+    r->typecontext = param_types.v[param_idx];
+    args->v[i] = as_Expr(resolve(r, arg));
+  }
+
+  // sort arguments
+  xqsort(&args->v[named_start_idx], args->len - named_start_idx, sizeof(void*),
+    (xqsort_cmp)&named_arg_sortfn, r);
+
+  // clear temporaries
+  for (i = named_start_idx; i < args->len; i++)
+    args->v[i]->irval = NULL;
+
+end:
+  // restore resolver state
+  r->typecontext = typecontext;
+  r->flags = rflags;
+  return true;
+}
+
+
+static void resolve_call_args(R* r, CallNode* n, TupleNode* params) {
+  // resolve arguments in the context of the function's parameters
+  bool ok;
+  if (n->flags & NF_Named) {
+    ok = resolve_named_call_args(r, n, params);
+  } else {
+    ok = resolve_positional_call_args(r, n, params);
+  }
+  if UNLIKELY(!ok)
+    return;
+
+  TypeArray param_types = as_TupleTypeNode(params->type)->a;
+  for (u32 i = 0, len = n->args.len; i < len; i++) {
+    Expr* arg = n->args.v[i];
+    Type* typ = param_types.v[i];
+    if UNLIKELY(!b_typelteq(r->build, arg->type, typ)) {
+      char tmpbuf[128];
+      errf(r, arg, "incompatible argument type %s, expecting %s in call to %s",
+        FMTNODE(arg->type,0), FMTNODE(typ,1), fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)));
+      break;
+    }
+  }
 }
 
 
@@ -473,34 +647,17 @@ static Node* restype_call_fun(R* r, CallNode* n) {
   if (!n->type)
     n->type = kType_nil;
 
-  // check argument arity
-  u32 nargs = n->args ? n->args->a.len : 0;
+  // check argument cardinality
+  u32 nargs = n->args.len;
   u32 nparams = ft->params ? ft->params->a.len : 0;
   if (nargs != nparams) {
-    b_errf(r->build, NodePosSpan(n->args ? (Node*)n->args : (Node*)n),
+    b_errf(r->build, CallNodeArgsPosSpan(n),
       "wrong number of arguments: %u; expecting %u", nargs, nparams);
     return as_Node(n);
   }
 
-  if (!n->args)
-    return as_Node(n);
-
-  // resolve arguments in the context of the function's parameters
-  flags_scope(r->flags | RF_ResolveIdeal) {
-    typecontext_scope(ft->params->type) {
-      n->args = as_TupleNode(resolve(r, n->args));
-    }
-  }
-
-  // check argument types against paramter types
-  if UNLIKELY(!b_typeeq(r->build, ft->params->type, n->args->type)) {
-    char tmpbuf[128];
-    b_errf(r->build, NodePosSpan(n->args),
-      "incompatible argument types %s, expecting %s in call to %s",
-      FMTNODE(n->args->type,0), FMTNODE(ft->params->type,1),
-      fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)) );
-    return as_Node(n);
-  }
+  if (n->args.len > 0)
+    resolve_call_args(r, n, ft->params);
 
   return as_Node(n);
 }
@@ -524,44 +681,13 @@ static Node* restype_call(R* r, CallNode* n) {
 
 
 static Node* restype_tuple(R* r, TupleNode* n) {
-  Type* typecontext = r->typecontext; // save typecontext
-  const TypeArray* ctlist = NULL;
-  u32 ctindex = 0;
-
-  if (typecontext) {
-    if (typecontext->kind == NTupleType) {
-      ctlist = &((TupleTypeNode*)typecontext)->a;
-      assert(ctlist->len > 0); // tuples should never be empty
-    } else {
-      b_errf(r->build, NodePosSpan(typecontext),
-        "unexpected context type %s", FMTNODE(typecontext,1));
-      n->type = kType_nil;
-      return as_Node(n);
-    }
-    if UNLIKELY(ctlist->len != n->a.len) {
-      b_errf(r->build, NodePosSpan(n),
-        "%u expressions where %u expressions are expected %s",
-        n->a.len, ctlist->len, FMTNODE(typecontext,1));
-      n->type = kType_nil;
-      return as_Node(n);
-    }
-  }
-
-  auto t = mknode(r, TupleType, n->pos);
-  if (UNLIKELY(t == NULL) || !check_memalloc(r, n, array_reserve(&t->a, n->a.len)))
+  auto t = mknode_array(r, TupleType, n->pos, a, n->a.len);
+  if UNLIKELY(!t) {
+    n->type = kType_nil;
     return as_Node(n);
-
-  for (u32 i = 0; i < n->a.len; i++) {
-    if (ctlist)
-      r->typecontext = ctlist->v[ctindex++];
-
-    Expr* cn = as_Expr(resolve(r, n->a.v[i]));
-    n->a.v[i] = cn;
-    array_push(&t->a, cn->type);
   }
-
   n->type = as_Type(t);
-  r->typecontext = typecontext; // restore typecontext
+  resolve_expr_array(r, &n->a, as_Node(n), &t->a);
   return as_Node(n);
 }
 
@@ -699,7 +825,7 @@ static Node* restype_assign(R* r, AssignNode* n) {
   Node* leaf = mark_local_mutable(r, n->dst);
   if UNLIKELY(leaf->kind == NConst) {
     Sym name = as_ConstNode(leaf)->name;
-    b_errf(r->build, NodePosSpan(n->dst), "cannot store to constant %s", name);
+    errf(r, n->dst, "cannot store to constant %s", name);
     if (leaf->pos != NoPos)
       b_notef(r->build, NodePosSpan(leaf), "%s defined here", name);
   }
@@ -710,7 +836,7 @@ static Node* restype_assign(R* r, AssignNode* n) {
   // check & convert rvalue type
   if UNLIKELY(n->type->kind == NArrayType) {
     // storing to a local or field of array type is not allowed
-    b_errf(r->build, NodePosSpan(n), "array type %s is not assignable", FMTNODE(n->type,0));
+    errf(r, n, "array type %s is not assignable", FMTNODE(n->type,0));
   } else if (!b_typelteq(r->build, n->type, n->val->type)) {
     // convert rvalue (if it's a different type than dst)
     n->val = ctypecast_implicit(r->build, n->val, n->type, NULL, n);
@@ -756,10 +882,13 @@ static Node* restype_ref(R* r, RefNode* n) {
   return as_Node(n);
 }
 
+
 static Node* restype_namedarg(R* r, NamedArgNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  n->value = as_Expr(resolve(r, n->value));
+  n->type = n->value->type;
   return as_Node(n);
 }
+
 
 static Node* restype_selector(R* r, SelectorNode* n) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;

@@ -57,7 +57,6 @@ struct CUnitNode { Stmt;
   const char*     name;         // reference to str in corresponding BuildCtx
   Scope* nullable scope;
   NodeArray       a;            // array of nodes
-  Node*           a_storage[4]; // in-struct storage for the first few entries of a
 };
 struct PkgNode { CUnitNode; };
 struct FileNode { CUnitNode; };
@@ -105,15 +104,11 @@ struct AssignNode { Expr;
   Expr* val; // value
 };
 struct ListExprNode { Expr;
-  ExprArray a;            // array of nodes
-  Expr*     a_storage[5]; // in-struct storage for the first few entries of a
+  ExprArray a; // array of nodes
 };
 struct TupleNode { ListExprNode; };
 struct ArrayNode { ListExprNode; };
-struct BlockNode { Expr;
-  ExprArray a;            // array of nodes
-  Expr*     a_storage[5]; // in-struct storage for the first few entries of a
-};
+struct BlockNode { ListExprNode; };
 struct FunNode { Expr;
   TupleNode* nullable params; // ParamNode[] -- input params (NULL if none)
   Type* nullable      result; // output results (TupleType for multiple results)
@@ -126,8 +121,9 @@ struct MacroNode { Expr;
   Node*               template;
 };
 struct CallNode { Expr;
-  Node*               receiver; // Type | Fun | Id
-  TupleNode* nullable args;     // NULL if there are no args
+  Node*     receiver; // Type | Fun | Id
+  Pos       args_pos; // start of args (end of args == NodePosSpan(n).end)
+  ExprArray args;
 };
 struct TypeCastNode { Expr;
   Expr* expr;
@@ -135,7 +131,6 @@ struct TypeCastNode { Expr;
 };
 struct LocalNode { Expr;
   u32 nrefs; // reference count
-  u32 index; // argument index (used by function parameters)
   Sym name;
 };
 struct ConstNode { struct LocalNode;
@@ -146,6 +141,7 @@ struct VarNode { struct LocalNode;
 };
 struct ParamNode { struct LocalNode;
   Expr* nullable init; // initial/default value
+  u32   index;         // argument index
 };
 struct MacroParamNode { struct LocalNode;
   Node* nullable init; // initial/default value
@@ -158,7 +154,6 @@ struct NamedArgNode { Expr;
   Expr* value;
 };
 struct SelectorNode { Expr; // Selector = Expr "." ( Ident | Selector )
-  u32      indices_storage[7]; // indices storage
   U32Array indices; // GEP index path
   Expr*    operand;
   Sym      member;  // id
@@ -205,23 +200,16 @@ struct ArrayTypeNode { Type;
   Type*          elem;
 };
 struct TupleTypeNode { Type;
-  TypeArray a;            // Type[]
-  Type*     a_storage[5]; // in-struct storage for the first few elements
+  TypeArray a;
 };
 struct StructTypeNode { Type;
-  Sym nullable name;              // NULL for anonymous structs
-  FieldArray   fields;            // FieldNode[]
-  FieldNode*   fields_storage[4]; // in-struct storage for the first few fields
+  Sym nullable name;   // NULL for anonymous structs
+  FieldArray   fields; // FieldNode[]
 };
 struct FunTypeNode { Type;
   TupleNode* nullable params; // == FunNode.params
   Type* nullable      result; // == FunNode.result (TupleType or single type)
 };
-// struct FunTypeNode { Type;
-//   FieldArray     params;            // FieldNode[]
-//   FieldNode*     params_storage[4]; // in-struct storage for the first few parameters
-//   Type* nullable result;            // TupleType or single type
-// };
 
 
 // forward decl of things defined in universe but referenced by ast.h
@@ -357,10 +345,6 @@ END_INTERFACE
 #include "ast_gen.h"
 BEGIN_INTERFACE
 
-// keep the size of nodes in check. Update this if needed.
-static_assert(sizeof(Node_union) >= 104, "AST size shrunk");
-static_assert(sizeof(Node_union) <= 104, "AST size grew");
-
 // all subtypes of LocalNode must have compatible init fields
 
 #define LocalInitField(n)      ( ((VarNode*)as_LocalNode((Node*)n))->init )
@@ -372,6 +356,9 @@ static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((VarNode*)0)->init), "")
 static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((ParamNode*)0)->init), "");
 static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((MacroParamNode*)0)->init), "");
 
+// CallNodeArgsPosSpan returns a PosSpan for the arguments of a CallNode
+#define CallNodeArgsPosSpan(n) ((PosSpan){(n)->args_pos, NodePosSpan(n).end})
+
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
 const char* NodeKindName(NodeKind);
 
@@ -380,13 +367,8 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
   return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;
 }
 
-Node* NodeInit(Node* n, NodeKind kind);
-
 #define NodePosSpan(n) _NodePosSpan(as_Node(n))
 PosSpan _NodePosSpan(const Node* n);
-
-// returns NULL if copying an array caused memory allocation to fail
-Node* nullable NodeCopy(Node* dst, const Node* src);
 
 // NodeRefLocal increments the reference counter of a Local node.
 // Returns n as a convenience.

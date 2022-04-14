@@ -117,33 +117,45 @@ void b_add_source(BuildCtx*, Source* src);
 error b_add_source_file(BuildCtx*, const char* filename);
 error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files in dir
 
+// All b_mknode* functions report memory-allocation failures via b_err_nomem.
 
 // b_mknode allocates and initializes a AST node (e.g. b_mknode(b, Id, NoPos) => IdNode*)
-// b_mknode_union allocates a union of nodes, initializing it as the lowest NodeKind.
-// b_mknodev allocates a node with array tail
-// b_mknodez allocates and initializes a node of particular byte size and kind.
-//
-// These functions never return NULL; instead, on memory-allocation failure,
-// an error is reported and b->tmpnode is returned instead.
-//
+// Returns b->tmpnode on memory-allocation failure.
 #define b_mknode(b, KIND, pos) \
-  ( (KIND##Node*)b_mknodez((b), N##KIND, sizeof(KIND##Node), (pos)) )
+  ( (KIND##Node*)_b_mknode((b), N##KIND, (pos), _PTRCOUNT(sizeof(KIND##Node))) )
 
+// b_mknode_union allocates a union of nodes, initializing it as the lowest NodeKind.
+// Returns b->tmpnode on memory-allocation failure.
 #define b_mknode_union(b, KIND, pos) \
-  ( (KIND##Node*)b_mknodez((b), N##KIND##_BEG, sizeof(KIND##Node_union), (pos)) )
+  ( (KIND##Node*)_b_mknode((b), N##KIND##_BEG, (pos), _PTRCOUNT(sizeof(KIND##Node_union))) )
 
+// b_mknodev allocates a node with plain array tail,
+// e.g. struct{int field[]}
 #define b_mknodev(b, KIND, pos, ARRAY_FIELD, count) \
-  ( (KIND##Node*)b_mknodez((b), N##KIND, \
-      STRUCT_SIZE((KIND##Node*)0, ARRAY_FIELD, count), (pos)) )
+  ( (KIND##Node* nullable)_b_mknodev( \
+      (b), N##KIND, (pos), _PTRCOUNT(STRUCT_SIZE((KIND##Node*)0, ARRAY_FIELD, (count))) ) )
 
-#define b_mknodez(b, kind, size, pos) \
-  ( _b_mknode((b), (kind), (pos), ALIGN2((size),sizeof(void*)) / sizeof(void*)) )
+// b_mknode_array allocates a node with an Array(T) field, initialized with tail storage,
+// e.g. struct{Array(int) field}
+#define b_mknode_array(b, KIND, pos, ARRAY_FIELD, count) ( \
+  (KIND##Node* nullable)_b_mknode_array( \
+    (b), N##KIND, (pos), \
+    ALIGN2(sizeof(KIND##Node), sizeof(void*)), \
+    offsetof(KIND##Node, ARRAY_FIELD), \
+    sizeof(((KIND##Node*)0)->ARRAY_FIELD.v[0]), \
+    (count) ) \
+)
+
+#define _PTRCOUNT(size) ALIGN2((size),sizeof(void*))/sizeof(void*)
 
 Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
+Node* nullable _b_mknodev(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
+Node* nullable _b_mknode_array(
+  BuildCtx* b, NodeKind kind, Pos pos,
+  usize structsize, uintptr array_offs, usize elemsize, u32 cap);
 
 // b_free_node returns a node to b's nodeslab free list
-#define b_free_node(b, n, KIND) \
-  _b_free_node((b),as_Node(n),ALIGN2(sizeof(KIND##Node),sizeof(void*)) / sizeof(void*) )
+#define b_free_node(b, n, KIND) _b_free_node((b),as_Node(n),_PTRCOUNT(sizeof(KIND##Node)) )
 void _b_free_node(BuildCtx* b, Node* n, usize nptrs);
 
 // b_mkpkgnode creates a package node for b, setting

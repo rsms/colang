@@ -3,55 +3,6 @@
 #include "parse.h"
 
 
-Node* NodeInit(Node* np, NodeKind kind) {
-  np->kind = kind;
-  switch ((enum NodeKind)kind) { case NBad: {
-  GNCASE(CUnit)
-    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
-  NCASE(Block)
-    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
-  GNCASE(ListExpr)
-    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
-  NCASE(Selector)
-    array_init(&n->indices, n->indices_storage, sizeof(n->indices_storage));
-  NCASE(TupleType)
-    array_init(&n->a, n->a_storage, sizeof(n->a_storage));
-  NCASE(StructType)
-    array_init(&n->fields, n->fields_storage, sizeof(n->fields_storage));
-  NDEFAULTCASE
-    break;
-  }}
-  return np;
-}
-
-#define COPY_ARRAY(dst, src) \
-  if UNLIKELY(!array_append((dst), (src)->v, (src)->len)) \
-    return NULL
-
-Node* nullable NodeCopy(Node* np, const Node* src) {
-  panic("FIXME node size");
-  memcpy(np, src, sizeof(Node_union));
-  NodeInit(np, np->kind);
-  switch ((enum NodeKind)np->kind) { case NBad: {
-  GNCASE(CUnit)
-    COPY_ARRAY(&n->a, &((CUnitNode*)src)->a);
-  NCASE(Block)
-    COPY_ARRAY(&n->a, &((BlockNode*)src)->a);
-  GNCASE(ListExpr)
-    COPY_ARRAY(&n->a, &((ListExprNode*)src)->a);
-  NCASE(Selector)
-    COPY_ARRAY(&n->indices, &((SelectorNode*)src)->indices);
-  NCASE(TupleType)
-    COPY_ARRAY(&n->a, &((TupleTypeNode*)src)->a);
-  NCASE(StructType)
-    COPY_ARRAY(&n->fields, &((StructTypeNode*)src)->fields);
-  NDEFAULTCASE
-    break;
-  }}
-  return np;
-}
-
-
 PosSpan _NodePosSpan(const Node* np) {
   assertnotnull(np);
   PosSpan span = { np->pos, np->endpos };
@@ -70,8 +21,8 @@ PosSpan _NodePosSpan(const Node* np) {
     case NCall: {
       auto n = (CallNode*)np;
       span.start = NodePosSpan(n->receiver).start;
-      if (n->args)
-        span.end = NodePosSpan(n->args).end;
+      if (n->args.len > 0)
+        span.end = NodePosSpan(n->args.v[n->args.len - 1]).end;
       break;
     }
     case NTuple: {

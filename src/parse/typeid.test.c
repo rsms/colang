@@ -22,7 +22,8 @@ DEF_TEST(typeid_append) {
   {
     Str s = str_make(buf, sizeof(buf));
     TupleTypeNode t = { .kind = NTupleType };
-    array_init(&t.a, t.a_storage, sizeof(t.a_storage));
+    Type* a_storage[8];
+    array_init(&t.a, a_storage, sizeof(a_storage));
     t.a.v[t.a.len++] = kType_i32;
     t.a.v[t.a.len++] = kType_u32;
     assert(typeid_append(&s, &t));
@@ -35,7 +36,8 @@ DEF_TEST(typeid_append) {
   {
     Str s = str_make(buf, sizeof(buf));
     StructTypeNode t = { .kind = NStructType };
-    array_init(&t.fields, t.fields_storage, sizeof(t.fields_storage));
+    FieldNode* fields_storage[8];
+    array_init(&t.fields, fields_storage, sizeof(fields_storage));
     FieldNode f1 = { .type = kType_i32 };
     FieldNode f2 = { .type = kType_u32 };
     t.fields.v[t.fields.len++] = &f1;

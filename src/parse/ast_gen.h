@@ -30,8 +30,8 @@ enum NodeKind {
     NListExpr_BEG = 16,
       NTuple      = 16, // struct TupleNode
       NArray      = 17, // struct ArrayNode
-    NListExpr_END = 17,
-    NBlock        = 18, // struct BlockNode
+      NBlock      = 18, // struct BlockNode
+    NListExpr_END = 18,
     NFun          = 19, // struct FunNode
     NMacro        = 20, // struct MacroNode
     NCall         = 21, // struct CallNode
@@ -348,7 +348,7 @@ typedef struct FunTypeNode FunTypeNode;
     struct LitExpr*:(Expr*)(n), IdNode*:(Expr*)(n), BinOpNode*:(Expr*)(n), \
     PrefixOpNode*:(Expr*)(n), PostfixOpNode*:(Expr*)(n), struct UnaryOpNode*:(Expr*)(n), \
     ReturnNode*:(Expr*)(n), AssignNode*:(Expr*)(n), TupleNode*:(Expr*)(n), \
-    ArrayNode*:(Expr*)(n), struct ListExprNode*:(Expr*)(n), BlockNode*:(Expr*)(n), \
+    ArrayNode*:(Expr*)(n), BlockNode*:(Expr*)(n), struct ListExprNode*:(Expr*)(n), \
     FunNode*:(Expr*)(n), MacroNode*:(Expr*)(n), CallNode*:(Expr*)(n), \
     TypeCastNode*:(Expr*)(n), ConstNode*:(Expr*)(n), VarNode*:(Expr*)(n), \
     ParamNode*:(Expr*)(n), MacroParamNode*:(Expr*)(n), struct LocalNode*:(Expr*)(n), \
@@ -363,7 +363,7 @@ typedef struct FunTypeNode FunTypeNode;
     const PostfixOpNode*:(const Expr*)(n), const struct UnaryOpNode*:(const Expr*)(n), \
     const ReturnNode*:(const Expr*)(n), const AssignNode*:(const Expr*)(n), \
     const TupleNode*:(const Expr*)(n), const ArrayNode*:(const Expr*)(n), \
-    const struct ListExprNode*:(const Expr*)(n), const BlockNode*:(const Expr*)(n), \
+    const BlockNode*:(const Expr*)(n), const struct ListExprNode*:(const Expr*)(n), \
     const FunNode*:(const Expr*)(n), const MacroNode*:(const Expr*)(n), \
     const CallNode*:(const Expr*)(n), const TypeCastNode*:(const Expr*)(n), \
     const ConstNode*:(const Expr*)(n), const VarNode*:(const Expr*)(n), \
@@ -402,13 +402,14 @@ typedef struct FunTypeNode FunTypeNode;
     const Node*: ({__typeof__(n) n__=(n);assert_is_UnaryOpNode(n__),(const struct UnaryOpNode*)(n__);}))
 
   #define as_ListExprNode(n) _Generic((n), TupleNode*:(struct ListExprNode*)(n), \
-    ArrayNode*:(struct ListExprNode*)(n), \
+    ArrayNode*:(struct ListExprNode*)(n), BlockNode*:(struct ListExprNode*)(n), \
     struct ListExprNode*:(struct ListExprNode*)(n), \
     Expr*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(struct ListExprNode*)(n__);}), \
     Node*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(struct ListExprNode*)(n__);}))
   #define as_const_ListExprNode(n) _Generic((n), \
     const TupleNode*:(const struct ListExprNode*)(n), \
     const ArrayNode*:(const struct ListExprNode*)(n), \
+    const BlockNode*:(const struct ListExprNode*)(n), \
     const struct ListExprNode*:(const struct ListExprNode*)(n), \
     const Expr*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(const struct ListExprNode*)(n__);}), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_ListExprNode(n__),(const struct ListExprNode*)(n__);}))
@@ -628,9 +629,9 @@ typedef struct FunTypeNode FunTypeNode;
   const AssignNode*:(const Type*)((Expr*)(n))->type, AssignNode*:((Expr*)(n))->type, \
   const TupleNode*:(const Type*)((Expr*)(n))->type, TupleNode*:((Expr*)(n))->type, \
   const ArrayNode*:(const Type*)((Expr*)(n))->type, ArrayNode*:((Expr*)(n))->type, \
+  const BlockNode*:(const Type*)((Expr*)(n))->type, BlockNode*:((Expr*)(n))->type, \
   const struct ListExprNode*:(const Type*)((Expr*)(n))->type, \
   struct ListExprNode*:((Expr*)(n))->type, \
-  const BlockNode*:(const Type*)((Expr*)(n))->type, BlockNode*:((Expr*)(n))->type, \
   const FunNode*:(const Type*)((Expr*)(n))->type, FunNode*:((Expr*)(n))->type, \
   const MacroNode*:(const Type*)((Expr*)(n))->type, MacroNode*:((Expr*)(n))->type, \
   const CallNode*:(const Type*)((Expr*)(n))->type, CallNode*:((Expr*)(n))->type, \
@@ -687,6 +688,7 @@ typedef union ListExprNode_union {
   Expr      Expr;
   TupleNode TupleNode;
   ArrayNode ArrayNode;
+  BlockNode BlockNode;
 } ListExprNode_union;
 typedef union LocalNode_union {
   Node           Node;
@@ -705,7 +707,6 @@ typedef union Expr_union {
   ReturnNode         ReturnNode;
   AssignNode         AssignNode;
   ListExprNode_union ListExprNode;
-  BlockNode          BlockNode;
   FunNode            FunNode;
   MacroNode          MacroNode;
   CallNode           CallNode;

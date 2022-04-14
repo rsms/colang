@@ -1018,23 +1018,23 @@ static Val build_type_call(B* b, CallNode* n, const char* vname) {
 
 
 static Val build_fun_call(B* b, CallNode* n, const char* vname) {
-  Val callee = build_expr(b, n->receiver, "callee");
+  Val fn = build_expr(b, n->receiver, "callee");
 
   Val argsv[16];
   auto args = array_make(Array(Val), argsv, sizeof(argsv));
 
-  if (n->args) {
+  if (n->args.len > 0) {
     bool ok = true;
-    ExprArray* a = &n->args->a;
-    for (u32 i = 0; i < a->len; i++) {
+    for (u32 i = 0; i < n->args.len; i++) {
       const char* arg_vname = vnamef(b, "callarg_%u", i);
-      Val arg = build_rval(b, a->v[i], arg_vname);
+      Val arg = build_rval(b, n->args.v[i], arg_vname);
       ok &= array_push(&args, arg);
     }
     assert(ok);
   }
 
-  Val v = LLVMBuildCall(b->builder, callee, args.v, args.len, "");
+  Typ fntype = LLVMGetElementType(LLVMTypeOf(fn));
+  Val v = LLVMBuildCall2(b->builder, fntype, fn, args.v, args.len, "");
   array_free(&args);
   return v;
 }

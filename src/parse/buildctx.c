@@ -46,13 +46,15 @@ error BuildCtxInit(
       s->len = 0;
       memset(s->data, 0, sizeof(s->data));
     }
+    b->pkg.a.len = 0;
   } else {
     if UNLIKELY(symmap_init(&b->types, mem, 1) == NULL)
       return err_nomem;
     sympool_init(&b->syms, universe_syms(), mem, NULL);
     array_init(&b->diagarray, NULL, 0);
     posmap_init(&b->posmap);
-    NodeInit(as_Node(&b->pkg), NPkg);
+    b->pkg.kind = NPkg;
+    array_init(&b->pkg.a, NULL, 0);
   }
 
   if (!ScopeInit(&b->pkgscope, mem, universe_scope()))
@@ -248,10 +250,50 @@ static Node* nodeslab_alloc(BuildCtx* b, usize ptr_count) {
 
 
 Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
-  safecheck(nptrs < USIZE_MAX/sizeof(void)); // prior call overflowed?
+  safecheckf(nptrs < USIZE_MAX/sizeof(void), "overflow");
   Node* n = nodeslab_alloc(b, nptrs);
   n->pos = pos;
-  return NodeInit(n, kind);
+  n->kind = kind;
+  return n;
+}
+
+
+Node* nullable _b_mknodev(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
+  Node* n = _b_mknode(b, kind, pos, nptrs);
+  return UNLIKELY(n == (void*)&b->tmpnode) ? NULL : n;
+}
+
+
+Node* nullable _b_mknode_array(
+  BuildCtx* b, NodeKind kind, Pos pos,
+  usize structsize, uintptr array_offs, usize elemsize, u32 cap)
+{
+  // note: structsize is aligned to sizeof(void*) already
+  usize nbytes;
+  if (check_mul_overflow(elemsize, (usize)cap, &nbytes) ||
+      check_add_overflow(nbytes, structsize, &nbytes))
+  {
+    nbytes = USIZE_MAX;
+    safecheckf(nbytes < USIZE_MAX, "overflow");
+  }
+  nbytes = ALIGN2(nbytes, sizeof(void*));
+  Node* n = nodeslab_alloc(b, nbytes / sizeof(void*));
+  if UNLIKELY(n == (void*)&b->tmpnode)
+    return NULL;
+
+  n->kind = kind;
+  n->pos = pos;
+
+  cap = (u32)((nbytes - structsize) / elemsize);
+  if (cap) {
+    void* p = n;
+    VoidArray* a = p + array_offs;
+    a->v = p + structsize;
+    a->cap = (u32)cap;
+    a->ext = true;
+  }
+
+  return n;
 }
 
 

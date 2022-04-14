@@ -503,6 +503,7 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Block)
   NCASE(Call)
   NCASE(TypeCast)
+  NCASE(Ref)
   NCASE(Id)     write_name(r, n->name);
   GNCASE(Local) write_name(r, n->name);
   NCASE(Fun)    write_name(r, n->name ? n->name : kSym__);
@@ -532,6 +533,9 @@ static void write_node_attrs(Repr* r, const Node* np) {
     write_pop_style(r);
   NCASE(StrLit)
     write_qstr(r, n->p, n->len);
+  NCASE(NamedArg)
+    write_name(r, n->name);
+
 
   // -- types --
   NCASE(BasicType) UNREACHABLE; // handled by _write_node
@@ -544,7 +548,6 @@ static void write_node_attrs(Repr* r, const Node* np) {
 
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
-  NCASE(NamedArg)   write_TODO(r);
   NCASE(Selector)   write_TODO(r);
   NCASE(Index)      write_TODO(r);
   NCASE(Slice)      write_TODO(r);
@@ -581,12 +584,14 @@ static void write_node_fields(Repr* r, const Node* np) {
       write_node(r, LocalInitField(n));
   NCASE(Call)
     write_node(r, n->receiver);
-    write_node(r, n->args);
+    write_array(r, as_NodeArray(&n->args));
   NCASE(TypeCast)
     write_node(r, n->type);
     write_node(r, n->expr);
   NCASE(Ref)
     write_node(r, n->target);
+  NCASE(NamedArg)
+    write_node(r, n->value);
 
   // -- types --
   NCASE(RefType)   write_node(r, n->elem);
