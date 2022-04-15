@@ -1,0 +1,18 @@
+// this function is marked unsafe which means that the
+// caller must be in an unsafe context to call it
+unsafe fun wild() rawptr
+  to_rawptr("hello")
+
+fun example()
+  // the "unsafe" keyword can be used with a block to
+  // enter unsafe mode, so this is okay too
+  unsafe
+    wild()
+  // but trying to call an unsafe function outside
+  // an unsafe context is an error:
+  //wild() // error: call to unsafe function requires
+  //       //        unsafe function or block
+
+// an unsafe function's body is an unsafe context
+unsafe fun example2()
+  wild() // ok
