@@ -233,37 +233,42 @@ enum NodeFlags {
   NF_Named       = 1 << 6, // [Tuple when used as args] has named argument
   NF_PartialType = 1 << 7, // Type resolver should visit even if the node is typed
   NF_CustomInit  = 1 << 8, // struct has fields w/ non-zero initializer
-  // Changing this? Remember to update NodeFlagsStr impl
+  NF_Unsafe      = 1 << 9, // Fun: is unsafe, Expr: unsafe context
 } END_ENUM(NodeFlags)
 
-#define NodeIsUnresolved(n) _NodeIsUnresolved(as_Node(n))
+#define NodeIsUnresolved(n) _NodeIsUnresolved(as_const_Node(n))
 #define NodeSetUnresolved(n) _NodeSetUnresolved(as_Node(n))
 #define NodeClearUnresolved(n) _NodeClearUnresolved(as_Node(n))
 #define NodeTransferUnresolved(parent, child) \
-  _NodeTransferUnresolved(as_Node(parent), as_Node(child))
+  _NodeTransferUnresolved(as_Node(parent), as_const_Node(child))
 #define NodeTransferUnresolved2(parent, c1, c2) \
-  _NodeTransferUnresolved2(as_Node(parent), as_Node(c1), as_Node(c2))
+  _NodeTransferUnresolved2(as_Node(parent), as_const_Node(c1), as_const_Node(c2))
 
-#define NodeIsConst(n) _NodeIsConst(as_Node(n))
+#define NodeIsConst(n) _NodeIsConst(as_const_Node(n))
 #define NodeSetConst(n) _NodeSetConst(as_Node(n))
 #define NodeSetConstCond(n,on) _NodeSetConstCond(as_Node(n),(on))
 #define NodeClearConst(n) _NodeClearConst(as_Node(n))
-#define NodeTransferConst(parent, child) _NodeTransferConst(as_Node(parent), as_Node(child))
-#define NodeTransferMut(parent, child) _NodeTransferMut(as_Node(parent), as_Node(child))
+#define NodeTransferConst(parent, child) \
+  _NodeTransferConst(as_Node(parent), as_const_Node(child))
+#define NodeTransferMut(parent, child) \
+  _NodeTransferMut(as_Node(parent), as_const_Node(child))
 #define NodeTransferMut2(parent, c1, c2) \
-  _NodeTransferMut2(as_Node(parent), as_Node(c1), as_Node(c2))
+  _NodeTransferMut2(as_Node(parent), as_const_Node(c1), as_const_Node(c2))
 
-#define NodeIsUnused(n) _NodeIsUnused(as_Node(n))
+#define NodeIsUnused(n) _NodeIsUnused(as_const_Node(n))
 #define NodeSetUnused(n) _NodeSetUnused(as_Node(n))
 #define NodeClearUnused(n) _NodeClearUnused(as_Node(n))
 
-#define NodeIsPublic(n) _NodeIsPublic(as_Node(n))
+#define NodeIsPublic(n) _NodeIsPublic(as_const_Node(n))
 #define NodeSetPublic(n,on) _NodeSetPublic(as_Node(n),(on))
 
-#define NodeIsNamed(n) _NodeIsNamed(as_Node(n))
+#define NodeIsNamed(n) _NodeIsNamed(as_const_Node(n))
 #define NodeSetNamed(n,on) _NodeSetNamed(as_Node(n),(on))
 
-#define NodeIsRValue(n) _NodeIsRValue(as_Node(n))
+#define NodeIsUnsafe(n) _NodeIsUnsafe(as_const_Node(n))
+#define NodeSetUnsafe(n,on) _NodeSetUnsafe(as_Node(n),(on))
+
+#define NodeIsRValue(n) _NodeIsRValue(as_const_Node(n))
 #define NodeSetRValue(n) _NodeSetRValue(as_Node(n))
 #define NodeSetRValueCond(n,on) _NodeSetRValueCond(as_Node(n),(on))
 #define NodeClearRValue(n) _NodeClearRValue(as_Node(n))
@@ -275,17 +280,18 @@ enum NodeFlags {
   _NodeTransferPartialType2(as_Node(parent), as_Node(c1), as_Node(c2))
 
 // Node{Is,Set,Clear}Unresolved controls the "unresolved" flag of a node
-inline static bool _NodeIsUnresolved(const Node* n) { return (n->flags & NF_Unresolved) != 0; }
+inline static bool _NodeIsUnresolved(const Node* n) {
+  return (n->flags & NF_Unresolved) != 0; }
 inline static void _NodeSetUnresolved(Node* n) { n->flags |= NF_Unresolved; }
 inline static void _NodeClearUnresolved(Node* n) { n->flags &= ~NF_Unresolved; }
-inline static void _NodeTransferUnresolved(Node* parent, Node* child) {
+inline static void _NodeTransferUnresolved(Node* parent, const Node* child) {
   parent->flags |= child->flags & NF_Unresolved;
 }
 // nodeTransferUnresolved2 is like NodeTransferUnresolved but takes two inputs which flags
 // are combined as a set union.
-inline static void _NodeTransferUnresolved2(Node* parent, Node* child1, Node* child2) {
+inline static void _NodeTransferUnresolved2(Node* parent, const Node* c1, const Node* c2) {
   // parent is unresolved if child1 OR child2 is unresolved
-  parent->flags |= (child1->flags & NF_Unresolved) | (child2->flags & NF_Unresolved);
+  parent->flags |= (c1->flags & NF_Unresolved) | (c2->flags & NF_Unresolved);
 }
 
 // Node{Is,Set,Clear}Const controls the "constant value" flag of a node
@@ -293,23 +299,23 @@ inline static bool _NodeIsConst(const Node* n) { return (n->flags & NF_Const) !=
 inline static void _NodeSetConstCond(Node* n, bool on) { SET_FLAG(n->flags, NF_Const, on); }
 inline static void _NodeSetConst(Node* n) { n->flags |= NF_Const; }
 inline static void _NodeClearConst(Node* n) { n->flags &= ~NF_Const; }
-inline static void _NodeTransferConst(Node* parent, Node* child) {
+inline static void _NodeTransferConst(Node* parent, const Node* child) {
   // parent is mutable if n OR child is NOT const, else parent is marked const.
   parent->flags |= child->flags & NF_Const;
 }
-inline static void _NodeTransferMut(Node* parent, Node* child) {
+inline static void _NodeTransferMut(Node* parent, const Node* child) {
   // parent is const if n AND child is const, else parent is marked mutable.
   parent->flags = (parent->flags & ~NF_Const) | (
     (parent->flags & NF_Const) &
     (child->flags & NF_Const)
   );
 }
-inline static void _NodeTransferMut2(Node* parent, Node* child1, Node* child2) {
-  // parent is const if n AND child1 AND child2 is const, else parent is marked mutable.
+inline static void _NodeTransferMut2(Node* parent, const Node* c1, const Node* c2) {
+  // parent is const if n AND c1 AND c1 is const, else parent is marked mutable.
   parent->flags = (parent->flags & ~NF_Const) | (
     (parent->flags & NF_Const) &
-    (child1->flags & NF_Const) &
-    (child2->flags & NF_Const)
+    (c1->flags & NF_Const) &
+    (c2->flags & NF_Const)
   );
 }
 
@@ -326,16 +332,20 @@ inline static void _NodeSetPublic(Node* n, bool on) { SET_FLAG(n->flags, NF_Publ
 inline static bool _NodeIsNamed(const Node* n) { return (n->flags & NF_Named) != 0; }
 inline static void _NodeSetNamed(Node* n, bool on) { SET_FLAG(n->flags, NF_Named, on); }
 
+// Node{Is,Set}Unsafe controls the NF_Unsafe flag of a node
+inline static bool _NodeIsUnsafe(const Node* n) { return (n->flags & NF_Unsafe) != 0; }
+inline static void _NodeSetUnsafe(Node* n, bool on) { SET_FLAG(n->flags, NF_Unsafe, on); }
+
 // Node{Is,Set,Clear}RValue controls the NF_RValue flag of a node
 inline static bool _NodeIsRValue(const Node* n) { return (n->flags & NF_RValue) != 0; }
 inline static void _NodeSetRValue(Node* n) { n->flags |= NF_RValue; }
 inline static void _NodeSetRValueCond(Node* n, bool on) {SET_FLAG(n->flags,NF_RValue,on);}
 inline static void _NodeClearRValue(Node* n) { n->flags &= ~NF_RValue; }
 
-inline static void _NodeTransferCustomInit(Node* parent, Node* child) {
+inline static void _NodeTransferCustomInit(Node* parent, const Node* child) {
   parent->flags |= child->flags & NF_CustomInit;
 }
-inline static void _NodeTransferPartialType2(Node* parent, Node* c1, Node* c2) {
+inline static void _NodeTransferPartialType2(Node* parent, const Node* c1, const Node* c2) {
   parent->flags |= (c1->flags & NF_PartialType) |
                    (c2->flags & NF_PartialType);
 }
@@ -412,10 +422,10 @@ enum NodeFmtFlag {
 
 // nodename returns a node's type name. E.g. "Tuple"
 // const char* nodename(const Node* n)
-#define nodename(n) NodeKindName(as_Node(assertnotnull(n))->kind)
+#define nodename(n) NodeKindName(as_const_Node(assertnotnull(n))->kind)
 
 // fmtnode returns a short representation of n to buf. Returns buf.
-#define fmtnode(n, buf, bufcap) _fmtnode(as_Node(n),(buf),(bufcap))
+#define fmtnode(n, buf, bufcap) _fmtnode(as_const_Node(n),(buf),(bufcap))
 char* _fmtnode(const Node* nullable n, char* buf, usize bufcap);
 
 // fmtast writes an exhaustive representation of n to buf.
@@ -425,7 +435,7 @@ char* _fmtnode(const Node* nullable n, char* buf, usize bufcap);
 // discarded. The output is always null-terminated, unless size is 0.
 // Returns the number of characters that would have been printed if bufcap was
 // unlimited (not including the final `\0').
-#define fmtast(n, str, fl) _fmtast(as_Node(n),(str),(fl))
+#define fmtast(n, str, fl) _fmtast(as_const_Node(n),(str),(fl))
 bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl);
 
 // --------------------------------------------------------------------------------------

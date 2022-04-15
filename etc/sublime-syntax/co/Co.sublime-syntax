@@ -116,7 +116,17 @@ contexts:
         - include: expressions
 
   builtins:
-    - match: \b(append|cap|close|complex|copy|delete|imag|len|make|new|panic|print|println|real|recover)\b
+    - match: |-
+        (?x)
+        \b
+        (alloc
+        |cap
+        |copy
+        |len
+        |log
+        |panic
+        |to_rawptr
+        )\b
       scope: support.function.builtin.co
 
   imports:
@@ -204,69 +214,6 @@ contexts:
         - meta_scope: comment.line.double-slash.co
         - match: \n
           pop: true
-
-  # comments:
-  #   # Special comment e.g. "#!name ..."
-  #   - match: (#)(\!{{identifier}})
-  #     captures:
-  #       1: punctuation.definition.comment.co
-  #       2: meta.keyword.annotation.co
-  #     push:
-  #       - meta_scope: comment.line.co
-  #       - match: \S+
-  #         scope: meta.annotation.co
-  #       # End the annotation scope at EOL, but stretch the comment scope
-  #       # indefinitely to the right.
-  #       - match: $
-  #         set: pop-line-comment
-
-  #   # Special AST comment e.g. "#*!AST flag flag \n lisp *#"
-  #   - match: (#\*)(\!AST)((\s+(?i:types|usecount|refs|attrs))*)
-  #     captures:
-  #       1: comment.block.co
-  #       2: keyword.control.co
-  #       3: meta.variable.function.co
-  #     push:
-  #       - include: scope:source.lisp
-  #       - meta_scope: source.lisp
-  #       - match: \*#
-  #         scope: comment.block.co punctuation.definition.comment.end.co
-  #         pop: true
-
-  #   # Special comment e.g. "#*!name ... *#"
-  #   - match: (#\*)(\!{{identifier}})
-  #     captures:
-  #       1: punctuation.definition.comment.co
-  #       2: meta.keyword.annotation.co
-  #     push:
-  #       - meta_scope: comment.block.co
-  #       - match: \*#
-  #         scope: punctuation.definition.comment.end.co
-  #         pop: true
-  #       - match: \!AST
-  #         scope: keyword.control.co
-  #       - match: \S+
-  #         scope: meta.annotation.co
-  #       - match: ^\s*(\*)(?!#)
-  #         captures:
-  #           1: punctuation.definition.comment.co
-
-  #   # Line comment
-  #   - match: \#(?:[^\*]|$)
-  #     scope: punctuation.definition.comment.co
-  #     push: pop-line-comment
-
-  #   # General comment
-  #   - match: \#\*
-  #     scope: punctuation.definition.comment.begin.co
-  #     push:
-  #       - meta_scope: comment.block.co
-  #       - match: \*#
-  #         scope: punctuation.definition.comment.end.co
-  #         pop: true
-  #       - match: ^\s*(\*)(?!#)
-  #         captures:
-  #           1: punctuation.definition.comment.co
 
   pop-line-comment:
     - meta_scope: comment.line.co
@@ -388,7 +335,25 @@ contexts:
           pop: true
 
   keywords:
-    - match: \b(as|switch|continue|case|if|import|default|else|for|fallthrough|return|goto|break|while)\b
+    - match: |-
+        (?x)
+        \b
+        (as
+        |break
+        |case
+        |continue
+        |default
+        |else
+        |fallthrough
+        |for
+        |goto
+        |if
+        |import
+        |return
+        |switch
+        |unsafe
+        |while
+        )\b
       scope: keyword.control.co
     - match: \b(nil|true|false|iota)\b
       scope: constant.language.co
@@ -451,7 +416,19 @@ contexts:
     - include: basic-types
 
   basic-types:
-    - match: '\b([ui](8|16|32|64|size)|u?int|f32|f64|byte|bool|error|str|rune|auto)\b'
+    - match: |-
+        (?x)\b
+        (bool
+        |[ui](8|16|32|64|128)
+        |u?int
+        |f32|f64|f128
+        |rawptr
+        |byte
+        |str
+        |rune
+        |error
+        |auto
+        )\b
       scope: storage.type.co
 
   functions:

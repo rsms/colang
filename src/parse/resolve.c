@@ -98,6 +98,19 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
   }
 }
 
+
+// unwind_id returns the first non-id target of an id (or n if n is not an id.)
+static Node* unwind_id(Node* n) {
+  for (;;) switch (n->kind) {
+    case NId:
+      n = ((IdNode*)n)->target;
+      break;
+    default:
+      return n;
+  }
+}
+
+
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_ast impl
 #undef resolve_ast
@@ -111,6 +124,7 @@ enum RFlag {
   RF_ExplicitTypeCast = 1 << 0,
   RF_ResolveIdeal     = 1 << 1,  // set when resolving ideal types
   RF_Eager            = 1 << 2,  // set when resolving eagerly
+  RF_Unsafe           = 1 << 3,  // in unsafe context (unsafe function body or unsafe block)
 
   RF_INVALID          = 0xffffffff, // specific flags value that is invalid
   _RF_UNUSED_         = 1 << 31,    // make sure we can never compose RF_INVALID
@@ -367,21 +381,20 @@ static Type* nullable set_typecontext(R* r, Type* nullable t) {
 
 // *_flags returns r->flags as they were prior to altering them
 static RFlag add_flags(R* r, RFlag fl) { RFlag f = r->flags; r->flags |= fl;  return f; }
-//static RFlag rm_flags(R* r, RFlag fl)  { RFlag f = r->flags; r->flags &= ~fl; return f; }
+static RFlag clear_flags(R* r, RFlag fl)  { RFlag f = r->flags; r->flags &= ~fl; return f; }
 //static RFlag set_flags(R* r, RFlag fl) { RFlag f = r->flags; r->flags = fl; return f; }
 
+// #define flags_scope(FLAGS) \
+//   for (RFlag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
+//        tmp1__ && (r->flags = (FLAGS), 1); \
+//        tmp1__ = 0, r->flags = prevfl__)
 
-#define flags_scope(FLAGS) \
-  for (RFlag prevfl__ = r->flags, tmp1__ = RF_INVALID; \
-       tmp1__ && (r->flags = (FLAGS), 1); \
-       tmp1__ = 0, r->flags = prevfl__)
-
-#define typecontext_scope(TYPECONTEXT) \
-  for (  Type* new__ = (TYPECONTEXT), \
-         *prev__ = (assert(new__ != kType_ideal), r->typecontext), \
-         *tmp1__ = kType_nil; \
-       tmp1__ && (r->typecontext = new__, 1); \
-       tmp1__ = NULL, r->typecontext = prev__ )
+// #define typecontext_scope(TYPECONTEXT) \
+//   for (  Type* new__ = (TYPECONTEXT), \
+//          *prev__ = (assert(new__ != kType_ideal), r->typecontext), \
+//          *tmp1__ = kType_nil; \
+//        tmp1__ && (r->typecontext = new__, 1); \
+//        tmp1__ = NULL, r->typecontext = prev__ )
 
 // mark_local_mutable marks any Var or Field n as being mutable
 #define mark_local_mutable(r,n) _mark_local_mutable((r),as_Node(n))
@@ -450,6 +463,9 @@ static Node* restype_fun(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
   n->type = as_Type(t);
 
+  RFlag rflags = r->flags; // save
+  SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n));
+
   if (n->params) {
     n->params = as_TupleNode(resolve(r, n->params));
     t->params = n->params;
@@ -461,9 +477,9 @@ static Node* restype_fun(R* r, FunNode* n) {
   }
 
   if (n->body) {
-    typecontext_scope(n->result) {
-      n->body = as_Expr(resolve(r, n->body));
-    }
+    Type* typecontext = set_typecontext(r, n->result);
+    n->body = as_Expr(resolve(r, n->body));
+    r->typecontext = typecontext;
     if UNLIKELY(
       n->result && n->result != kType_nil &&
       !b_typeeq(r->build, n->result, n->body->type) &&
@@ -477,6 +493,7 @@ static Node* restype_fun(R* r, FunNode* n) {
     }
   }
 
+  r->flags = rflags; // restore
   return as_Node(n);
 }
 
@@ -629,8 +646,6 @@ static void resolve_call_args(R* r, CallNode* n, TupleNode* params) {
         FMTNODE(arg->type,0), FMTNODE(param_typ,1),
         fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)));
       break;
-    } else {
-      dlog("call arg ok: %s -> %s", FMTNODE(arg->type,0), FMTNODE(param_typ,1));
     }
   }
 }
@@ -649,7 +664,14 @@ static Node* restype_call_type(R* r, CallNode* n) {
 
 
 static Node* restype_call_fun(R* r, CallNode* n) {
-  FunTypeNode* ft = (FunTypeNode*)((Expr*)n->receiver)->type;
+  FunNode* fn = as_FunNode(unwind_id(n->receiver));
+  FunTypeNode* ft = (FunTypeNode*)fn->type;
+
+  if (NodeIsUnsafe(fn) && (r->flags & RF_Unsafe) == 0) {
+    b_errf(r->build, NodePosSpan(n),
+      "call to unsafe function %s requires unsafe function or block", fn->name);
+  }
+
   n->type = ft->result;
   if (!n->type)
     n->type = kType_nil;
@@ -714,19 +736,23 @@ static Node* restype_block(R* r, BlockNode* n) {
     return as_Node(n);
   }
 
+  RFlag rflags = r->flags; // save
+  SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n));
+
   // resolve all but the last expression without requiring ideal-type resolution
+  r->flags &= ~RF_ResolveIdeal;
   u32 lasti = n->a.len - 1;
   for (u32 i = 0; i < lasti; i++)
     n->a.v[i] = as_Expr(resolve(r, n->a.v[i]));
 
   // Last node, in which case we set the flag to resolve literals so that implicit return
   // values gets properly typed.
-  flags_scope(r->flags | RF_ResolveIdeal) {
-    n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
-  }
+  r->flags |= RF_ResolveIdeal;
+  n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
 
   n->type = n->a.v[lasti]->type;
 
+  r->flags = rflags; // restore
   return as_Node(n);
 }
 
@@ -773,7 +799,7 @@ static Node* restype_binop(R* r, BinOpNode* n) {
   Expr* y = n->right;
   bool prefer_y = false;
 
-  typecontext_scope(NULL) {
+  Type* typecontext = set_typecontext(r, NULL); {
     if (x->type && x->type != kType_ideal) {
       r->typecontext = x->type;
     } else if (y->type && y->type != kType_ideal) {
@@ -783,6 +809,7 @@ static Node* restype_binop(R* r, BinOpNode* n) {
     x = as_Expr(resolve(r, x));
     y = as_Expr(resolve(r, y));
   }
+  r->typecontext = typecontext;
 
   // if the types differ, attempt an implicit cast
   if UNLIKELY(x->type != y->type) {
@@ -820,13 +847,14 @@ static Node* restype_return(R* r, ReturnNode* n) {
 static Node* restype_assign(R* r, AssignNode* n) {
   // 1. resolve destination (lvalue) and
   // 2. resolve value (rvalue) witin the type context of destination
-  flags_scope(r->flags & ~RF_ResolveIdeal) {
-    auto typecontext = r->typecontext; // save typecontext
-    n->dst = as_Expr(resolve(r, n->dst));
-    r->typecontext = (n->dst->type != kType_ideal) ? n->dst->type : NULL;
-    n->val = as_Expr(resolve(r, n->val));
-    r->typecontext = typecontext; // restore typecontext
-  }
+
+  RFlag rflags = clear_flags(r, RF_ResolveIdeal);
+  n->dst = as_Expr(resolve(r, n->dst));
+  Type* typecontext = r->typecontext; // save
+  r->typecontext = (n->dst->type != kType_ideal) ? n->dst->type : NULL;
+  n->val = as_Expr(resolve(r, n->val));
+  r->typecontext = typecontext; // restore
+  r->flags = rflags; // restore
 
   // clear n's NF_Const flag since storing to var upgrades it to mutable.
   Node* leaf = mark_local_mutable(r, n->dst);

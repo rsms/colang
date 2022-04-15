@@ -86,6 +86,7 @@ typedef u16 Tok;
   _( TConst,    const )       \
   _( TMut,      mut )         \
   _( TVar,      var )         \
+  _( TUnsafe,   unsafe )      \
 // end DEF_TOKENS_KEYWORD
 // Limited to a total of 31 keywords. See parse_scan.c
 

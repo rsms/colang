@@ -866,6 +866,7 @@ void ScannerNext(Scanner* s) {
       case TNil:
       case TStruct:
       case TAuto:
+      case TUnsafe:
         insertSemi = true;
         break;
       default:

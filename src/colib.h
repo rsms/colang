@@ -341,7 +341,7 @@ _Static_assert(sizeof(usize) == sizeof(isize), "");
 
 // SET_FLAG(int flags, int flag, bool on)
 // equivalent to: if (on) flags |= flag; else flags &= ~flag
-#define SET_FLAG(flags, flag, on) (flags ^= (-(!!(on)) ^ (flags)) & (flag))
+#define SET_FLAG(flags, flag, on) ((flags) ^= (-(!!(on)) ^ (flags)) & (flag))
 
 // T ALIGN2<T>(T x, anyuint a)       rounds up x to nearest a (a must be a power of two)
 // T ALIGN2_FLOOR<T>(T x, anyuint a) rounds down x to nearest a

@@ -256,8 +256,9 @@ def gen_as_const_assert(out, name, stname):
 def gen_as_TYPE(out, mode, name, subtypes):
   stname = structname(name, subtypes)
   if mode == "none":
-    out.append('  #define as_%s(n) ((%s*)(n))' % (name, stname))
-    out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, stname))
+    out.append('  #define as_%s(n) ({ void* np__=(n); (%s*)np__; })' % (name, stname))
+    out.append('  #define as_const_%s(n) ({ const void* np__=(n); (const %s*)np__; })' % (
+      name, stname))
   elif mode == "assert":
     gen_as_assert(out, name, stname)
     gen_as_const_assert(out, name, stname)
@@ -305,8 +306,9 @@ def gen_as_TYPE_leafs(out, mode):
     shortname = strip_node_suffix(name)
     if shortname == '' or len(subtypes) > 0: continue
     if mode == "none":
-      out.append('  #define as_%s(n) ((%s*)(n))' % (name, name))
-      out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, name))
+      out.append('  #define as_%s(n) ({ void* np__=(n); (%s*)np__; })' % (name, name))
+      out.append('  #define as_const_%s(n) ({ const void* np__=(n); (const %s*)np__; })' % (
+        name, name))
     else: # mode == "assert" or mode == "generic"
       gen_as_assert(out, name, name)
       gen_as_const_assert(out, name, name)

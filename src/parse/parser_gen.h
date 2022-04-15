@@ -21,6 +21,7 @@ static const Parselet parselets[Tok_MAX] = {
   [TIf] = {PIf, NULL, PREC_MEMBER},
   [TReturn] = {PReturn, NULL, PREC_MEMBER},
   [TFun] = {PFun, NULL, PREC_MEMBER},
+  [TUnsafe] = {PUnsafe, NULL, PREC_MEMBER},
   [TAssign] = {NULL, PAssign, PREC_ASSIGN},
   [TAs] = {NULL, PAs, PREC_LOWEST},
   [TPipePipe] = {NULL, PInfixOp, PREC_LOGICAL_OR},

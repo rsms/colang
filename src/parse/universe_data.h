@@ -35,6 +35,7 @@ const Sym kSym_type = &"\xBE\xAD\x4A\xE8\x04\x00\x00\x88""type\0"[8];
 const Sym kSym_const = &"\xF9\xF3\x7D\x5B\x05\x00\x00\x90""const\0"[8];
 const Sym kSym_mut = &"\xD9\xAA\x8A\xEA\x03\x00\x00\x98""mut\0"[8];
 const Sym kSym_var = &"\x88\xDB\x36\xDB\x03\x00\x00\xA0""var\0"[8];
+const Sym kSym_unsafe = &"\x48\xBC\x54\x9E\x06\x00\x00\xA8""unsafe\0"[8];
 const Sym kSym_bool = &"\x68\xB8\x13\xA1\x04\x00\x00\x00""bool\0"[8];
 const Sym kSym_i8 = &"\x10\x10\x1E\x14\x02\x00\x00\x00""i8\0"[8];
 const Sym kSym_u8 = &"\x62\x07\xF2\x58\x02\x00\x00\x00""u8\0"[8];
@@ -98,12 +99,13 @@ static SymRBNode n_fun = { kSym_fun, true, NULL, NULL };
 static SymRBNode n_$2a = { kSym_$2a, true, NULL, NULL };
 static SymRBNode n_E = { kSym_E, false, &n_fun, &n_$2a, };
 static SymRBNode n_ideal = { kSym_ideal, false, &n_D, &n_E, };
-static SymRBNode n_rawptr = { kSym_rawptr, true, NULL, NULL };
-static SymRBNode n_u128 = { kSym_u128, false, &n_rawptr, NULL };
-static SymRBNode n_u32 = { kSym_u32, true, NULL, NULL };
-static SymRBNode n_uint = { kSym_uint, false, &n_u32, NULL };
-static SymRBNode n_f128 = { kSym_f128, false, &n_u128, &n_uint, };
-static SymRBNode n_i128 = { kSym_i128, false, &n_ideal, &n_f128, };
+static SymRBNode n_rawptr = { kSym_rawptr, false, NULL, NULL };
+static SymRBNode n_f128 = { kSym_f128, false, NULL, NULL };
+static SymRBNode n_u128 = { kSym_u128, true, &n_rawptr, &n_f128, };
+static SymRBNode n_uint = { kSym_uint, true, NULL, NULL };
+static SymRBNode n_unsafe = { kSym_unsafe, false, &n_uint, NULL };
+static SymRBNode n_u32 = { kSym_u32, false, &n_u128, &n_unsafe, };
+static SymRBNode n_i128 = { kSym_i128, false, &n_ideal, &n_u32, };
 static SymRBNode n_switch = { kSym_switch, false, &n_if, &n_i128, };
 static SymRBNode n_bool = { kSym_bool, true, NULL, NULL };
 static SymRBNode n_c = { kSym_c, true, NULL, NULL };
@@ -195,7 +197,7 @@ Expr* kExpr_false = (Expr*)&_kExpr_false;
 
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
-  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:rawptr tc:nil tc:ideal tc:auto sym:_ sym:rawptr const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
+  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar kw:unsafe=TUnsafe tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:rawptr tc:nil tc:ideal tc:auto sym:_ sym:rawptr const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
 #endif
 
 #define kUniverseScopeLen 21

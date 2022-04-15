@@ -69,7 +69,7 @@ Literal = bool_lit | nil_lit | num_lit | str_lit | array_lit
   array_lit = "[" [ Expr (list_sep Expr)* list_sep? ] "]"
 
 PrefixExpr = if | prefix_op | const_def | var_def | type_def | fun_def
-           | tuple | group | block
+           | tuple | group | block | unsafe
   if = "if" condExpr thenExpr [ "else" elseExpr ]
     condExpr = Expr
     thenExpr = Expr
@@ -83,9 +83,10 @@ PrefixExpr = if | prefix_op | const_def | var_def | type_def | fun_def
     params = "(" [ (param list_sep)* paramt list_sep? ] ")"
       param  = Identifier Type?
       paramt = Identifier Type
-  tuple = "(" Expr ("," Expr)+ ","? ")"
-  group = "(" Expr ")"
-  block = "{" Expr (";" Expr)+ ";"? "}"
+  tuple  = "(" Expr ("," Expr)+ ","? ")"
+  group  = "(" Expr ")"
+  block  = "{" Expr (";" Expr)+ ";"? "}"
+  unsafe = "unsafe" (fun_def | block)
 
 InfixExpr = Expr ( binary_op | selector )
   binary_op = binary_operator Expr

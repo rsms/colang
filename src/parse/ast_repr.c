@@ -79,6 +79,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NReturn: // return foo
     return NODE(STR(s, "return "), ((ReturnNode*)n)->expr);
   case NBlock: // block
+    if (NodeIsUnsafe(n)) STR(s, "unsafe ");
     return STR(s, "block");
   case NArray: // array [one two 3]
     return CH(NODEARRAY(STR(s, "array ["), &((ArrayNode*)n)->a), ']');
@@ -95,6 +96,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NRef: // &x, mut&x
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefNode*)n)->target);
   case NFun: // function foo
+    if (NodeIsUnsafe(n)) STR(s, "unsafe ");
     STR(s, "function ");
     if (((FunNode*)n)->name) { SYM(s, ((FunNode*)n)->name); }
     else { CH(s, '_'); }
@@ -306,7 +308,7 @@ static void _meta_end(Meta* m) {
   }
 }
 
-#define write_node(r,n) _write_node((r),as_Node(n))
+#define write_node(r,n) _write_node((r),as_const_Node(n))
 static void _write_node(Repr* r, const Node* nullable n);
 
 static void write_array(Repr* r, const NodeArray* a) {
@@ -469,6 +471,7 @@ static void _write_node1(Repr* r, const Node* n) {
   if (fl & NF_Named)       meta_write_entry(m, "named");
   if (fl & NF_PartialType) meta_write_entry(m, "partialtype");
   if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
+  if (fl & NF_Unsafe)      meta_write_entry(m, "unsafe");
   meta_end(m);
 
   write_node_fields(r, n);

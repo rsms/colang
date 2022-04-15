@@ -1707,7 +1707,7 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
 
 // Block = "{" Expr* "}"
 // NOTE: it's the callers responsibility to call pushScope & popScope
-static Expr* pBlock(Parser* p, PFlag fl) {
+static Expr* pBlock(Parser* p, PFlag fl, bool may_simplify) {
   auto block = mknode_array(p, Block, a, 4);
   if UNLIKELY(!block) return (Expr*)bad(p);
   nexttok(p); // consume "{"
@@ -1734,8 +1734,11 @@ static Expr* pBlock(Parser* p, PFlag fl) {
   set_endpos(p, block);
 
   // simplify a block with a single expression to just that expression
-  if (block->a.len == 1 && is_Expr(block->a.v[0]))
-    return block->a.v[0];
+  if (may_simplify && block->a.len == 1 && is_Expr(block->a.v[0])) {
+    Expr* n = block->a.v[0];
+    b_free_node(p->build, block, Block);
+    return n;
+  }
 
   return as_Expr(block);
 }
@@ -1748,9 +1751,9 @@ static Node* PBlockOrStructType(Parser* p, PFlag fl) {
   if (fl & PFlagType)
     return pStructType(p, fl, mktype(p, StructType, TF_KindStruct));
   pushScope(p);
-  Expr* block_or_single_expr = pBlock(p, fl);
+  Expr* block = pBlock(p, fl, /*may_simplify*/false);
   popScopeAndCheckUnused(p);
-  return as_Node(block_or_single_expr);
+  return as_Node(block);
 }
 
 
@@ -2147,7 +2150,7 @@ static Node* PFun(Parser* p, PFlag fl) {
   if (p->tok == TLBrace) {
     // assign body before parsing so that we can check for it in pBlock
     assert((fl & PFlagType) == 0); // needed for PBlockOrStructType
-    fn->body = pBlock(p, bodyfl);
+    fn->body = pBlock(p, bodyfl, /*may_simplify*/true);
   } else if (got(p, TRArr)) {
     fn->body = parse_next_tuple(p, PREC_LOWEST, bodyfl);
   }
@@ -2166,6 +2169,45 @@ static Node* PFun(Parser* p, PFlag fl) {
   popScopeAndCheckUnused(p); // template parameter scope
   macro->template = as_Node(fn);
   return as_Node(macro);
+}
+
+
+// unsafe = "unsafe" (fun_def | block)
+//
+//!PrefixParselet TUnsafe
+static Node* PUnsafe(Parser* p, PFlag fl) {
+  Pos pos = currpos(p);
+  pos_set_width(&pos, strlen("unsafe"));
+  nexttok(p); // consume keyword
+
+  Node* n;
+
+  switch (p->tok) {
+    case TFun:
+      n = PFun(p, fl);
+      break;
+    case TLBrace:
+      pushScope(p);
+      n = (Node*)pBlock(p, fl, /*may_simplify*/false);
+      popScopeAndCheckUnused(p);
+      pos = pos_union(pos, n->pos);
+      break;
+    default: {
+      // create an implicit block for single-expression unsafe scope
+      // e.g. "x = unsafe foo()" => "x = unsafe { foo() }"
+      auto block = b_mknode_array(p->build, Block, pos, a, 1);
+      if UNLIKELY(!block) return bad(p);
+      block->flags |= NF_Unsafe;
+      Expr* expr = pExpr(p, PREC_LOWEST, fl);
+      block->endpos = expr->endpos;
+      array_push(&block->a, expr);
+      n = (Node*)block;
+    }
+  }
+
+  n->pos = pos;
+  n->flags |= NF_Unsafe;
+  return n;
 }
 
 

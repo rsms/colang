@@ -1,11 +1,12 @@
 // TODO: TypeDefExpr
 // type RawPtr uint
 
-/*unsafe*/ fun to_rawptr(_ &[u8]) rawptr
+unsafe fun to_rawptr(_ &[u8]) rawptr
 
 fun main(x, y int) uint
   hello = "Hello world\n"
-  const p rawptr = to_rawptr(hello)
+  // var s str = hello
+  const p rawptr = unsafe to_rawptr(hello)
   0
 
 

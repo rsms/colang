@@ -923,7 +923,12 @@ static Val build_const(B* b, ConstNode* n, const char* vname) {
   if (!n->irval) {
     // TODO: if anything takes the address of a const, it needs to be stored in memory
     // somewhere. As a global if the referring reference survives the scope or on stack.
-    n->irval = build_rval(b, n->value, n->name);
+    if (NodeIsUnused(n)) {
+      // don't build unused constants
+      n->irval = b->v_int_0;
+    } else {
+      n->irval = build_rval(b, n->value, n->name);
+    }
   }
   return n->irval;
 }
