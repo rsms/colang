@@ -755,7 +755,8 @@ static Node* restype_block(R* r, BlockNode* n) {
   }
 
   RFlag rflags = r->flags; // save
-  SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n));
+  if (NodeIsUnsafe(n))
+    r->flags |= RF_Unsafe;
 
   // resolve all but the last expression without requiring ideal-type resolution
   r->flags &= ~RF_ResolveIdeal;
