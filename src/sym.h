@@ -81,7 +81,7 @@ static u8 symflags(Sym);
 
 // symmap -- maps Sym => void* (veneer on pmap)
 
-typedef HMap SymMap;
+typedef PMap SymMap;
 
 inline static SymMap* nullable symmap_init(SymMap* m, Mem mem, usize hint) {
   return (SymMap*)pmap_init(m, mem, hint, MAPLF_2);

@@ -235,7 +235,7 @@ inline static Node* _resolve_sym(R* r, Node* np) {
   return np;
 }
 
-static void resolve_sym_array(R* r, const NodeArray* a) {
+static void resolve_syms_in_array(R* r, const NodeArray* a) {
   for (u32 i = 0; i < a->len; i++)
     a->v[i] = resolve_sym(r, a->v[i]);
 }
@@ -255,7 +255,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     Scope* lookupscope = r->lookupscope; // save
     if (n->scope)
       r->lookupscope = n->scope;
-    resolve_sym_array(r, &n->a);
+    resolve_syms_in_array(r, &n->a);
     r->lookupscope = lookupscope; // restore
     return np;
 
@@ -298,7 +298,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     return np;
 
   GNCASE(ListExpr)
-    resolve_sym_array(r, as_NodeArray(&n->a));
+    resolve_syms_in_array(r, as_NodeArray(&n->a));
     return np;
 
   NCASE(Fun)
@@ -311,8 +311,12 @@ static Node* _resolve_sym1(R* r, Node* np) {
       n->body = as_Expr(resolve_sym(r, n->body));
     return np;
 
+  NCASE(Call)
+    n->receiver = resolve_sym(r, n->receiver);
+    resolve_syms_in_array(r, as_NodeArray(&n->args));
+    return np;
+
   NCASE(Macro)      panic("TODO %s", nodename(n));
-  NCASE(Call)       panic("TODO %s", nodename(n));
   NCASE(TypeCast)   panic("TODO %s", nodename(n));
 
   GNCASE(Local)
@@ -618,12 +622,15 @@ static void resolve_call_args(R* r, CallNode* n, TupleNode* params) {
   TypeArray param_types = as_TupleTypeNode(params->type)->a;
   for (u32 i = 0, len = n->args.len; i < len; i++) {
     Expr* arg = n->args.v[i];
-    Type* typ = param_types.v[i];
-    if UNLIKELY(!b_typelteq(r->build, arg->type, typ)) {
+    Type* param_typ = param_types.v[i];
+    if UNLIKELY(!b_typelteq(r->build, param_typ, arg->type)) {
       char tmpbuf[128];
       errf(r, arg, "incompatible argument type %s, expecting %s in call to %s",
-        FMTNODE(arg->type,0), FMTNODE(typ,1), fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)));
+        FMTNODE(arg->type,0), FMTNODE(param_typ,1),
+        fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)));
       break;
+    } else {
+      dlog("call arg ok: %s -> %s", FMTNODE(arg->type,0), FMTNODE(param_typ,1));
     }
   }
 }
@@ -857,10 +864,13 @@ static Node* restype_typecast(R* r, TypeCastNode* n) {
   return as_Node(n);
 }
 
+
 static Node* restype_const(R* r, ConstNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  n->value = as_Expr(resolve(r, n->value));
+  n->type = n->value->type;
   return as_Node(n);
 }
+
 
 static Node* restype_var(R* r, VarNode* n) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;

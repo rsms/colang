@@ -1,8 +1,20 @@
-fun write(fd i32, ptr uint, size uint) i32
+// TODO: TypeDefExpr
+// type RawPtr uint
 
-fun main(x, y int) int
-  write(1, size=5, ptr="a")
+/*unsafe*/ fun to_rawptr(_ &[u8]) rawptr
+
+fun main(x, y int) uint
+  hello = "Hello world\n"
+  const p rawptr = to_rawptr(hello)
   0
+
+
+// fun write(fd i32, ptr uint, size uint) i32
+
+// fun main(x, y int) int
+//   hello = "Hello world\n"
+//   write(1, size=5, ptr=hello)
+//   0
 
 
 // fun write(fd i32, ptr uint, size uint) i32

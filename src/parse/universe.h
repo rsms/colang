@@ -20,6 +20,7 @@ BEGIN_INTERFACE
 //   const Sym sym_##name
 #define DEF_SYMS_PUB(X) /* (name) */ \
   X( _ ) \
+  X( rawptr ) \
 // end DEF_SYMS_PUB
 
 
@@ -44,12 +45,15 @@ extern Type* kType_f64;
 extern Type* kType_f128;
 extern Type* kType_int;
 extern Type* kType_uint;
+extern Type* kType_rawptr;
 extern Type* kType_nil;
 extern Type* kType_ideal;
 extern Type* kType_auto;
 extern Expr* kExpr_nil;
 extern Expr* kExpr_true;
 extern Expr* kExpr_false;
+
+extern const FunNode* kBuiltin_rawptr;
 
 void universe_init();
 const Scope* universe_scope();

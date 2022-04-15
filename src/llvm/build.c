@@ -422,16 +422,24 @@ static Typ nullable _get_type(B* b, Type* np);
 
 
 static Typ nullable get_basic_type(B* b, BasicTypeNode* tn) {
-  switch (tn->typecode) {
+  switch ((enum TypeCodeBasic)tn->typecode) {
     case TC_bool:               return b->t_bool;
-    case TC_i8:  case TC_u8:    return b->t_i8;
-    case TC_i16: case TC_u16:   return b->t_i16;
-    case TC_i32: case TC_u32:   return b->t_i32;
-    case TC_i64: case TC_u64:   return b->t_i64;
-    case TC_f32:                return b->t_f32;
-    case TC_f64:                return b->t_f64;
-    case TC_int: case TC_uint:  return b->t_int;
-    case TC_nil: case TC_ideal: return b->t_void;
+    case TC_i8:   case TC_u8:   return b->t_i8;
+    case TC_i16:  case TC_u16:  return b->t_i16;
+    case TC_i32:  case TC_u32:  return b->t_i32;
+    case TC_i64:  case TC_u64:  return b->t_i64;
+    case TC_i128: case TC_u128: return b->t_i128;
+    case TC_int:  case TC_uint: return b->t_int;
+
+    case TC_f32:  return b->t_f32;
+    case TC_f64:  return b->t_f64;
+    case TC_f128: return b->t_f128;
+
+    case TC_rawptr: return b->t_i8ptr;
+
+    case TC_nil:
+    case TC_ideal:
+      return b->t_void;
   }
   assertf(0,"unexpected type code %u", tn->typecode);
   return b->t_void;
@@ -667,6 +675,9 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   n->irval = fn;
 
   if (!n->body) { // external
+    if (n == kBuiltin_rawptr) {
+      dlog("TODO: rawptr");
+    }
     LLVMSetLinkage(fn, LLVMExternalLinkage);
     return fn;
   }
@@ -909,8 +920,14 @@ static Val build_return(B* b, ReturnNode* n, const char* vname) {
 
 
 static Val build_const(B* b, ConstNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  if (!n->irval) {
+    // TODO: if anything takes the address of a const, it needs to be stored in memory
+    // somewhere. As a global if the referring reference survives the scope or on stack.
+    n->irval = build_rval(b, n->value, n->name);
+  }
+  return n->irval;
 }
+
 
 static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
@@ -927,7 +944,7 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
   // build initializer
   Val init;
   if (n->init) {
-    init = build_rval(b, n->init, vname);
+    init = build_rval(b, n->init, n->name);
   } else {
     init = build_default_value(b, n->type);
   }

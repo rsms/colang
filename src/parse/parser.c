@@ -628,8 +628,18 @@ static Type* presolve_typename(Parser* p, NamedTypeNode* tname) {
     }
   #endif
 
-  if (target)
-    return as_Type(target);
+  if (target) {
+    if LIKELY(is_Type(target))
+      return (Type*)target;
+    // target is not a type
+    if (is_Expr(target) && ((Expr*)target)->type) {
+      Type* t = ((Expr*)target)->type;
+      const char* tkindname = TypeKindName(TF_Kind(t->tflags));
+      syntaxerrp(p, tname->pos, "%s %s is not a type", tkindname, name);
+    }
+    syntaxerrp(p, tname->pos, "%s is not a type", name);
+  }
+
   NodeSetUnresolved(tname);
   return as_Type(tname);
 }

@@ -117,7 +117,7 @@ static error parse_pkg(BuildCtx* build) {
     logtime_end(t);
     str.len = 0;
     fmtast(filenode, &str, 0);
-    printf("parse_tu =>\n————————————————————\n%s\n————————————————————\n", str.v);
+    printf("parse_tu =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
     if (build->errcount)
       break;
 
@@ -126,7 +126,7 @@ static error parse_pkg(BuildCtx* build) {
     logtime_end(t);
     str.len = 0;
     fmtast(filenode, &str, 0);
-    printf("resolve_ast =>\n————————————————————\n%s\n————————————————————\n", str.v);
+    printf("resolve_ast =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
 
     array_push(&build->pkg.a, as_Node(filenode));
   }

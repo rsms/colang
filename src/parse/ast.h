@@ -176,7 +176,7 @@ struct IfNode { Expr;
 
 // types
 struct Type { Node ;
-  TypeFlags    tflags; // u16 (Note: used to be TypeKind kind)
+  TypeFlags    tflags;
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
 };
 struct TypeTypeNode { Type; }; // typeof(int) => type

@@ -17,30 +17,31 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 //   const Sym sym_##name
 //   Type*     kType_##name
 //
-// Additionally, entries in DEF_TYPE_CODES_*_PUB are included in universe_syms()
+// Entries in *_PUB are exported as global identifiers by universe_syms()
 //
 // basic: housed in NBasicType, named & exported in the global scope
 #define DEF_TYPE_CODES_BASIC_PUB(_)/* (name, char encoding, TypeFlags)                   */\
   _( bool      , 'b' , TF_KindBool )                                                       \
-  _( i8        , 'c' , TF_KindInt  | TF_Size1 | TF_Signed )                                 \
-  _( u8        , 'B' , TF_KindInt  | TF_Size1 )                                             \
-  _( i16       , 's' , TF_KindInt  | TF_Size2 | TF_Signed )                                 \
-  _( u16       , 'S' , TF_KindInt  | TF_Size2 )                                             \
-  _( i32       , 'w' , TF_KindInt  | TF_Size4 | TF_Signed )                                 \
-  _( u32       , 'W' , TF_KindInt  | TF_Size4 )                                             \
-  _( i64       , 'd' , TF_KindInt  | TF_Size8 | TF_Signed )                                 \
-  _( u64       , 'D' , TF_KindInt  | TF_Size8 )                                             \
-  _( i128      , 'e' , TF_KindInt  | TF_Size16 | TF_Signed )                                 \
-  _( u128      , 'E' , TF_KindInt  | TF_Size16 )                                             \
-  _( f32       , 'f' , TF_KindF32  | TF_Size4  | TF_Signed )                                 \
-  _( f64       , 'F' , TF_KindF64  | TF_Size8  | TF_Signed )                                 \
-  _( f128      , 'F' , TF_KindF128 | TF_Size16 | TF_Signed )                                 \
+  _( i8        , 'c' , TF_KindInt  | TF_Size1 | TF_Signed )                                \
+  _( u8        , 'B' , TF_KindInt  | TF_Size1 )                                            \
+  _( i16       , 's' , TF_KindInt  | TF_Size2 | TF_Signed )                                \
+  _( u16       , 'S' , TF_KindInt  | TF_Size2 )                                            \
+  _( i32       , 'w' , TF_KindInt  | TF_Size4 | TF_Signed )                                \
+  _( u32       , 'W' , TF_KindInt  | TF_Size4 )                                            \
+  _( i64       , 'd' , TF_KindInt  | TF_Size8 | TF_Signed )                                \
+  _( u64       , 'D' , TF_KindInt  | TF_Size8 )                                            \
+  _( i128      , 'e' , TF_KindInt  | TF_Size16 | TF_Signed )                               \
+  _( u128      , 'E' , TF_KindInt  | TF_Size16 )                                           \
+  _( f32       , 'f' , TF_KindF32  | TF_Size4  | TF_Signed )                               \
+  _( f64       , 'F' , TF_KindF64  | TF_Size8  | TF_Signed )                               \
+  _( f128      , 'F' , TF_KindF128 | TF_Size16 | TF_Signed )                               \
   _( int       , 'i' , TF_KindInt            | TF_Signed )                                 \
   _( uint      , 'u' , TF_KindInt )                                                        \
+  _( rawptr    , '*' , TF_KindPointer )                                                    \
 // end DEF_TYPE_CODES_BASIC_PUB
 #define DEF_TYPE_CODES_BASIC(_)                                                            \
   _( nil       , '0' , TF_KindVoid )                                                       \
-  _( ideal     , '*' , TF_KindVoid )/* type of const literal                             */\
+  _( ideal     , '?' , TF_KindVoid )/* type of const literal                             */\
 // end DEF_TYPE_CODES_BASIC
 #define DEF_TYPE_CODES_PUB(_)                                                              \
   _( auto      , 'a' , TF_KindVoid    ) /* inferred                                      */\
@@ -80,6 +81,14 @@ static_assert(TC_i64+1  == TC_u64,  "integer order incorrect");
 static_assert(TC_i128+1 == TC_u128, "integer order incorrect");
 // must be less than 32 basic (numeric) types
 static_assert(TC_BASIC_END <= 32, "there must be no more than 32 basic types");
+
+// enum of basic type codes for compiler warnings in switches
+enum TypeCodeBasic {
+  #define _(name, _encoding, _flags) _TC_BASIC_##name = TC_##name,
+  DEF_TYPE_CODES_BASIC_PUB(_)
+  DEF_TYPE_CODES_BASIC(_)
+  #undef _
+};
 
 enum TypeKind {
   // type kinds (similar to LLVMTypeKind)

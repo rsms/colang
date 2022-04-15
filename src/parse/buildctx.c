@@ -344,16 +344,20 @@ bool _b_typelteq(BuildCtx* b, Type* dst, Type* src) {
   NodeKind k = dst->kind;
   if (k != src->kind)
     return false;
+
   // &[T] <= &[T N]
   if (k == NRefType) {
-    Type* dst2 = ((RefTypeNode*)dst)->elem;
-    Type* src2 = ((RefTypeNode*)src)->elem;
-    return (
-      dst2->kind == src2->kind &&
-      dst2->kind == NArrayType &&
-      ((ArrayTypeNode*)dst2)->size == 0 && ((ArrayTypeNode*)dst2)->sizeexpr == NULL
-    );
+    ArrayTypeNode* larray = (ArrayTypeNode*)((RefTypeNode*)dst)->elem;
+    ArrayTypeNode* rarray = (ArrayTypeNode*)((RefTypeNode*)src)->elem;
+    if (larray->kind == NArrayType) {
+      return (
+        (rarray->kind == NArrayType) &&
+        ( b_typeeq(b, larray->elem, rarray->elem) &
+          (larray->size == 0) & (larray->sizeexpr == NULL) )
+      );
+    }
   }
+
   return b_typeeq(b, dst, src);
 }
 
