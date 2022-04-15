@@ -81,14 +81,8 @@ static Node* simplify_id(IdNode* id, Node* nullable _ign) {
     // Note: no NodeUnrefLocal here
   }
 
-  // when the id is an rvalue, simplify its target no matter what kind it is
-  if (NodeIsRValue(id)) {
-    id->target = tn;
-    id->type = TypeOfNode(tn);
-  }
-
   // if the target is a primitive constant, use that instead of the id node
-  switch (id->target->kind) {
+  switch (tn->kind) {
     case NNil:
     case NBasicType:
     case NBoolLit:
@@ -105,6 +99,14 @@ static Node* unwind_id(Node* n) {
     case NId:
       n = ((IdNode*)n)->target;
       break;
+    // case NConst:
+    //   n = (Node*)((VarNode*)n)->value;
+    //   break;
+    // case NVar:
+    //   if (!NodeIsConst(n) || ((VarNode*)n)->init == NULL)
+    //     return n;
+    //   n = (Node*)((VarNode*)n)->init;
+    //   break;
     default:
       return n;
   }
@@ -254,6 +256,15 @@ static void resolve_syms_in_array(R* r, const NodeArray* a) {
     a->v[i] = resolve_sym(r, a->v[i]);
 }
 
+static Node* lookup_id(R* r, Node* n, Sym name) {
+  Node* target = ScopeLookup(r->lookupscope, name);
+  if LIKELY(target)
+    return target;
+  dlog2("LOOKUP %s FAILED", name);
+  errf(r, n, "undefined identifier %s", name);
+  return kNode_bad;
+}
+
 static Node* _resolve_sym1(R* r, Node* np) {
   NodeClearUnresolved(np); // do this up front to allow tail calls
 
@@ -282,16 +293,18 @@ static Node* _resolve_sym1(R* r, Node* np) {
   NCASE(StrLit)     panic("TODO %s", nodename(n));
 
   NCASE(Id)
-    Node* target = ScopeLookup(r->lookupscope, n->name);
-    if UNLIKELY(target == NULL) {
-      dlog2("LOOKUP %s FAILED", n->name);
-      errf(r, n, "undefined identifier %s", n->name);
-      n->target = kNode_bad;
+    n->target = lookup_id(r, np, n->name);
+    if UNLIKELY(n->target == kNode_bad)
       return np;
-    }
-    if (NodeIsUnused(target)) // must check to avoid editing universe
-      NodeClearUnused(target);
-    return resolve_id(n, target);
+    if (NodeIsUnused(n->target)) // must check to avoid editing universe
+      NodeClearUnused(n->target);
+    return resolve_id(n, n->target);
+
+  NCASE(NamedType)
+    np = lookup_id(r, np, n->name);
+    if (NodeIsUnused(np)) // must check to avoid editing universe
+      NodeClearUnused(np);
+    return np;
 
   NCASE(BinOp)
     n->left  = as_Expr(resolve_sym(r, n->left));
@@ -330,23 +343,23 @@ static Node* _resolve_sym1(R* r, Node* np) {
     resolve_syms_in_array(r, as_NodeArray(&n->args));
     return np;
 
-  NCASE(Macro)      panic("TODO %s", nodename(n));
-  NCASE(TypeCast)   panic("TODO %s", nodename(n));
-
   GNCASE(Local)
     if (LocalInitField(n))
       SetLocalInitField(n, as_Expr(resolve_sym(r, LocalInitField(n))));
     return np;
 
-  NCASE(Ref)        panic("TODO %s", nodename(n));
-  NCASE(NamedArg)   panic("TODO %s", nodename(n));
-  NCASE(Selector)   panic("TODO %s", nodename(n));
-  NCASE(Index)      panic("TODO %s", nodename(n));
-  NCASE(Slice)      panic("TODO %s", nodename(n));
-  NCASE(If)         panic("TODO %s", nodename(n));
+
+  NCASE(Macro)    panic("TODO %s", nodename(n));
+  NCASE(TypeCast) panic("TODO %s", nodename(n));
+  NCASE(Ref)      panic("TODO %s", nodename(n));
+  NCASE(NamedArg) panic("TODO %s", nodename(n));
+  NCASE(Selector) panic("TODO %s", nodename(n));
+  NCASE(Index)    panic("TODO %s", nodename(n));
+  NCASE(Slice)    panic("TODO %s", nodename(n));
+  NCASE(If)       panic("TODO %s", nodename(n));
+  NCASE(TypeExpr) panic("TODO %s", nodename(n));
 
   NCASE(TypeType)   panic("TODO %s", nodename(n));
-  NCASE(NamedType)  panic("TODO %s", nodename(n));
   NCASE(AliasType)  panic("TODO %s", nodename(n));
   NCASE(RefType)    panic("TODO %s", nodename(n));
   NCASE(BasicType)  panic("TODO %s", nodename(n));
@@ -428,6 +441,8 @@ static bool is_type_complete(Type* np) {
       return is_type_complete(n->elem);
     NCASE(StructType)
       return (n->flags & (NF_CustomInit | NF_PartialType)) == 0;
+    NCASE(NamedType)
+      return (n->flags & NF_Unresolved) == 0;
     NDEFAULTCASE
       return (n->flags & NF_PartialType) == 0;
   }}
@@ -446,6 +461,10 @@ static isize find_local_by_name(R* r, const ExprArray* locals, Sym name) {
 }
 
 
+#define TODO_RESTYPE_IMPL \
+  errf(r, n, "\e[33;1mTODO %s\e[0m  %s:%d", __FUNCTION__, __FILE__, __LINE__)
+
+
 //——————————————————————————————————————
 // node-specific type resolver functions
 
@@ -462,9 +481,10 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 static Node* restype_fun(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
   n->type = as_Type(t);
+  t->flags |= (n->flags | NF_Unsafe);
 
   RFlag rflags = r->flags; // save
-  SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n));
+  SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n)); // are we in safe or unsafe context?
 
   if (n->params) {
     n->params = as_TupleNode(resolve(r, n->params));
@@ -664,12 +684,10 @@ static Node* restype_call_type(R* r, CallNode* n) {
 
 
 static Node* restype_call_fun(R* r, CallNode* n) {
-  FunNode* fn = as_FunNode(unwind_id(n->receiver));
-  FunTypeNode* ft = (FunTypeNode*)fn->type;
-
-  if (NodeIsUnsafe(fn) && (r->flags & RF_Unsafe) == 0) {
+  FunTypeNode* ft = (FunTypeNode*)as_Expr(n->receiver)->type;
+  if (NodeIsUnsafe(ft) && (r->flags & RF_Unsafe) == 0) {
     b_errf(r->build, NodePosSpan(n),
-      "call to unsafe function %s requires unsafe function or block", fn->name);
+      "call to unsafe function requires unsafe function or block");
   }
 
   n->type = ft->result;
@@ -758,7 +776,7 @@ static Node* restype_block(R* r, BlockNode* n) {
 
 
 static Node* restype_field(R* r, FieldNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -771,12 +789,12 @@ static Node* restype_intlit(R* r, IntLitNode* n) {
 
 
 static Node* restype_floatlit(R* r, FloatLitNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_strlit(R* r, StrLitNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -828,12 +846,12 @@ static Node* restype_binop(R* r, BinOpNode* n) {
 
 
 static Node* restype_prefixop(R* r, PrefixOpNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_postfixop(R* r, PostfixOpNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -882,13 +900,13 @@ static Node* restype_assign(R* r, AssignNode* n) {
 
 
 static Node* restype_macro(R* r, MacroNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 
 static Node* restype_typecast(R* r, TypeCastNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -901,22 +919,26 @@ static Node* restype_const(R* r, ConstNode* n) {
 
 
 static Node* restype_var(R* r, VarNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  // parser should make sure that var without explicit type has initializer
+  assertnotnull(n->init);
+  n->init = as_Expr(resolve(r, n->init));
+  n->type = n->init->type;
   return as_Node(n);
 }
 
+
 static Node* restype_param(R* r, ParamNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_macroparam(R* r, MacroParamNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_ref(R* r, RefNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -929,67 +951,74 @@ static Node* restype_namedarg(R* r, NamedArgNode* n) {
 
 
 static Node* restype_selector(R* r, SelectorNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_index(R* r, IndexNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_slice(R* r, SliceNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 static Node* restype_if(R* r, IfNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
+static Node* restype_typeexpr(R* r, TypeExprNode* n) {
+  TODO_RESTYPE_IMPL; n->type = kType_nil;
+  return as_Node(n);
+}
+
+
+
 static Node* restype_typetype(R* r, TypeTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_namedtype(R* r, NamedTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_aliastype(R* r, AliasTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_reftype(R* r, RefTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_basictype(R* r, BasicTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_arraytype(R* r, ArrayTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_tupletype(R* r, TupleTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_structtype(R* r, StructTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
 static Node* restype_funtype(R* r, FunTypeNode* n) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+  TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
@@ -1050,6 +1079,7 @@ static Node* _resolve_type(R* r, Node* np) {
   NCASE(Index)      return restype_index(r, n);
   NCASE(Slice)      return restype_slice(r, n);
   NCASE(If)         return restype_if(r, n);
+  NCASE(TypeExpr)   return restype_typeexpr(r, n);
 
   NCASE(TypeType)   return restype_typetype(r, n);
   NCASE(NamedType)  return restype_namedtype(r, n);

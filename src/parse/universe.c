@@ -8,7 +8,7 @@
 
 static Scope   g_scope = {0};
 static SymPool g_universe_syms = {0};
-const FunNode* kBuiltin_rawptr;
+const FunNode* kBuiltin_to_rawptr;
 
 
 static void add_global(Sym name, Node* n) {
@@ -20,6 +20,9 @@ static void add_global(Sym name, Node* n) {
 
 
 static void add_rawptr_fun() {
+  //
+  // unsafe fun to_rawptr<T>(_ &[T]) rawptr
+  //
   static const ArrayTypeNode u8array_type = {
     .kind = NArrayType,
     .tflags = TF_KindArray,
@@ -71,17 +74,17 @@ static void add_rawptr_fun() {
     .tflags = TF_KindFunc,
     .tid = kSym__, // TODO FIXME generate type id for this function signature
     .params = (TupleNode*)&params,
-    .result = (Type*)&_kType_uint,
+    .result = (Type*)&_kType_rawptr,
   };
   static const FunNode fn = {
     .kind = NFun,
-    .name = kSym_rawptr,
+    .name = kSym_to_rawptr,
     .type = (Type*)&fntype,
     .params = (TupleNode*)&params,
-    .result = (Type*)&_kType_uint,
+    .result = (Type*)&_kType_rawptr,
   };
-  kBuiltin_rawptr = &fn;
-  // add_global(kSym_rawptr, (Node*)&fn);
+  kBuiltin_to_rawptr = &fn;
+  add_global(kSym_to_rawptr, (Node*)&fn);
 
   // // xxx
   // static char tmpbuf[4096];

@@ -173,6 +173,9 @@ struct IfNode { Expr;
   Expr*          thenb;
   Expr* nullable elseb; // NULL or expr
 };
+struct TypeExprNode { Expr;
+  Type* elem;
+};
 
 // types
 struct Type { Node ;
@@ -180,12 +183,12 @@ struct Type { Node ;
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
 };
 struct TypeTypeNode { Type; }; // typeof(int) => type
-struct NamedTypeNode { Type; // used for named types which are not yet resolved, like Id
+struct NamedTypeNode { Type; // like Id; used for named types which are not yet resolved
   Sym name;
 };
-struct AliasTypeNode { Type; // like a const var but for types, eg "type foo int"
+struct AliasTypeNode { Type; // eg "type foo int"
   Sym   name;
-  Type* type;
+  Type* elem;
 };
 struct RefTypeNode { Type;
   Type* elem; // e.g. for RefType "&int", elem is "int" (a BasicType)

@@ -1,32 +1,6 @@
-// TODO: TypeDefExpr
-// type RawPtr uint
+// unsafe fun to_rawptr<T>(_ &T) rawptr
 
-unsafe fun to_rawptr(_ &[u8]) rawptr
-
-fun main(x, y int) uint
+fun main(x, y int) rawptr
   hello = "Hello world\n"
-  // var s str = hello
-  const p rawptr = unsafe to_rawptr(hello)
-  0
-
-
-// fun write(fd i32, ptr uint, size uint) i32
-
-// fun main(x, y int) int
-//   hello = "Hello world\n"
-//   write(1, size=5, ptr=hello)
-//   0
-
-
-// fun write(fd i32, ptr uint, size uint) i32
-
-// fun foo(s &[u8]) int
-//   1
-
-// fun main(x, y int) int
-//   hello = "hello world"
-//   hello = "world"
-//   write(1, size=5, ptr=hello)
-//   y = foo(hello)
-//   y = y * 2
-//   x * y
+  var p = unsafe to_rawptr(hello)
+  p

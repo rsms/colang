@@ -129,6 +129,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
       NODE(s, slice->end);
     return CH(s, ']');
   }
+  case NTypeExpr: // type foo
+    return NODE(STR(s, "type "), ((TypeExprNode*)n)->elem);
 
   case NBasicType: // int
     return SYM(s, ((BasicTypeNode*)n)->name);
@@ -138,9 +140,9 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     return STR(s, "type");
   case NNamedType: // foo
     return SYM(s, ((NamedTypeNode*)n)->name);
-  case NAliasType: // foo (alias of bar)
-    STR(SYM(s, ((AliasTypeNode*)n)->name), " (alias of ");
-    return CH(NODE(s, ((AliasTypeNode*)n)->type), ')');
+  case NAliasType: // foo (aka bar)
+    STR(SYM(s, ((AliasTypeNode*)n)->name), " (aka ");
+    return CH(NODE(s, ((AliasTypeNode*)n)->elem), ')');
   case NFunType: // (int int)->bool
     if (((FunTypeNode*)n)->params == NULL) {
       STR(s, "()");
@@ -507,10 +509,13 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Call)
   NCASE(TypeCast)
   NCASE(Ref)
-  NCASE(Id)     write_name(r, n->name);
-  GNCASE(Local) write_name(r, n->name);
-  NCASE(Fun)    write_name(r, n->name ? n->name : kSym__);
-  NCASE(Macro)  write_name(r, n->name ? n->name : kSym__);
+  NCASE(TypeExpr)
+  NCASE(Id)        write_name(r, n->name);
+  GNCASE(Local)    write_name(r, n->name);
+  NCASE(Fun)       write_name(r, n->name ? n->name : kSym__);
+  NCASE(Macro)     write_name(r, n->name ? n->name : kSym__);
+  NCASE(NamedArg)  write_name(r, n->name);
+  NCASE(AliasType) write_name(r, n->name);
   NCASE(BinOp)
     write_push_style(r, STYLE_OP);
     write_str(r, TokName(n->op));
@@ -536,14 +541,11 @@ static void write_node_attrs(Repr* r, const Node* np) {
     write_pop_style(r);
   NCASE(StrLit)
     write_qstr(r, n->p, n->len);
-  NCASE(NamedArg)
-    write_name(r, n->name);
-
 
   // -- types --
   NCASE(BasicType) UNREACHABLE; // handled by _write_node
   NCASE(NamedType) write_name(r, n->name);
-  NCASE(AliasType) write_name(r, n->name);
+  NCASE(TypeType)
   NCASE(ArrayType)
   NCASE(TupleType)
   NCASE(FunType)
@@ -556,7 +558,6 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Slice)      write_TODO(r);
   NCASE(If)         write_TODO(r);
   NCASE(Comment)    write_TODO(r);
-  NCASE(TypeType)   write_TODO(r);
   NCASE(StructType) write_TODO(r);
   }}
 }
@@ -575,6 +576,9 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(Assign)   write_node(r, n->dst); write_node(r, n->val);
   NCASE(Tuple)    write_array(r, as_NodeArray(&n->a));
   NCASE(Array)    write_array(r, as_NodeArray(&n->a));
+  NCASE(NamedArg) write_node(r, n->value);
+  NCASE(Ref)      write_node(r, n->target);
+  NCASE(TypeExpr) write_node(r, n->elem);
   NCASE(Block)
     if (n->a.len > 0)
       write_array(r, as_NodeArray(&n->a));
@@ -591,14 +595,10 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(TypeCast)
     write_node(r, n->type);
     write_node(r, n->expr);
-  NCASE(Ref)
-    write_node(r, n->target);
-  NCASE(NamedArg)
-    write_node(r, n->value);
 
   // -- types --
   NCASE(RefType)   write_node(r, n->elem);
-  NCASE(AliasType) write_node(r, n->type);
+  NCASE(AliasType) write_node(r, n->elem);
   NCASE(ArrayType)
     write_node(r, n->elem);
     if (n->size) {

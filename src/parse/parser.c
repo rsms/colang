@@ -665,7 +665,7 @@ static Type* expectType(Parser* p, Node* nullable n) {
 static Expr* expectExpr(Parser* p, Node* nullable n) {
   if (LIKELY(is_Expr(n) || n == NULL))
     return (Expr*)n;
-  syntaxerrp(p, n->pos, "expected an expression");
+  syntaxerrp(p, n->pos, "expected an expression (got %s)", FMTNODE(n,0));
   return (Expr*)(n ? n : bad(p));
 }
 
@@ -808,12 +808,12 @@ static void set_local_init(Parser* p, LocalNode* n, Expr* init) {
 
 
 static LocalNode* make_local(
-  Parser* p, NodeKind kind, IdNode* name, Expr* nullable init, Type* nullable t)
+  Parser* p, NodeKind kind, IdNode* name, Expr* nullable init, Type* nullable t, Pos pos)
 {
   assert(NodeKindIsLocal(kind));
   asserteq(name->kind, NId);
 
-  LocalNode* n = b_mknode_union((p)->build, Local, currpos(p));
+  LocalNode* n = b_mknode_union((p)->build, Local, pos);
   NodeSetConst(n);
   NodeSetUnused(n);
   NodeSetPublic(n, (p->fnest == 0 && name_is_pub(name->name)));
@@ -896,7 +896,7 @@ static Node* PMut(Parser* p, PFlag fl) {
 //!PrefixParselet TVar TConst
 static Node* PVarOrConst(Parser* p, PFlag fl) {
   bool isconst = p->tok == TConst;
-  // Pos kwpos = currpos(p);
+  Pos pos = currpos(p);
   nexttok(p); // consume "var" or "const"
 
   IdNode* name = mknode(p, Id);
@@ -904,7 +904,7 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
 
   SET_FLAG(fl, PFlagVar, !isconst);
 
-  // optional type
+  // type
   Type* typ = NULL;
   if (p->tok != TAssign) {
     // improved error message (we'd get a generic one from pType)
@@ -928,7 +928,7 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
     }
   }
 
-  // optional init
+  // init
   Expr* init = NULL;
   if (got(p, TAssign)) {
     // e.g. "var name = x"
@@ -941,7 +941,7 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
     syntaxerr(p, "expecting assignment of value");
   }
 
-  LocalNode* local = make_local(p, isconst ? NConst : NVar, name, init, typ);
+  LocalNode* local = make_local(p, isconst ? NConst : NVar, name, init, typ, pos);
   return as_Node(local);
 }
 
@@ -961,10 +961,22 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
     // local definition, e.g. "x = 3" -> (Local (Id x) (Int 3))
     nexttok(p); // consume '='
     Type* ctxtype = set_ctxtype(p, NULL);
-    Expr* init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
+    // Expr* init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
+
+    Node* n = parse_next(p, PREC_LOWEST, fl | PFlagRValue);
+    Expr* init;
+    if (is_Type(n)) {
+      TypeExprNode* texpr = mknode(p, TypeExpr);
+      texpr->elem = (Type*)n;
+      texpr->type = kType_type;
+      init = as_Expr(texpr);
+    } else {
+      init = expectExpr(p, n);
+    }
+
     p->ctxtype = ctxtype;
     // note: make_local copies dst->name & dst->pos
-    return as_Node(make_local(p, NVar, dst, init, init->type));
+    return as_Node(make_local(p, NVar, dst, init, init->type, dst->pos));
   }
 
   // assignment
@@ -1010,30 +1022,8 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
 //!Parselet (TId ASSIGN)
 static Node* PIdTrailing(Parser* p, const Parselet* e, PFlag fl, Node* left) {
   NamedTypeNode* tname = pTypename(p);
-#if 1
   syntaxerrp(p, tname->pos, "unexpected identifier %s", tname->name);
   return bad(p);
-#else
-  if (UNLIKELY(( fl & PFlagRValue) || !is_IdNode(left) )) {
-    // fl & PFlagRValue  Occurs as an expression, e.g. "b" in "x = a b"
-    // !is_IdNode(left)  Identifier following some expression e.g. "b" in "3 b"
-    syntaxerrp(p, tname->pos, "unexpected identifier %s", tname->name);
-    return as_Node(tname);
-  }
-
-  IdNode* id1 = as_IdNode(left);
-  Type* typ = presolve_type(p, tname);
-  Expr* init = NULL;
-
-  if (got(p, TAssign)) {
-    // "a b = expr"
-    Type* ctxtype = set_ctxtype(p, typ);
-    init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
-    p->ctxtype = ctxtype;
-  }
-
-  return as_Node(make_local(p, NVar, id1, init, typ));
-#endif
 }
 
 
@@ -1099,7 +1089,7 @@ static Node* pAssignToTuple(Parser* p, const Parselet* e, PFlag fl, Node* dstn) 
       NodeTransferUnresolved(n, init);
       lnodes->v[i] = target;
     } else {
-      lnodes->v[i] = as_Expr(make_local(p, NVar, dst, init, init->type));
+      lnodes->v[i] = as_Expr(make_local(p, NVar, dst, init, init->type, dst->pos));
       rnodes->v[i] = NULL; // indicate that lnodes->v[i]->init is to be used
     }
   }
@@ -1670,10 +1660,10 @@ static Node* PStructType(Parser* p, PFlag fl) {
 }
 
 
-// TypeDef = "type" Id Type
+// TypeAlias = "type" Id Type
 //
 //!PrefixParselet TType
-static Node* PTypeDef(Parser* p, PFlag fl) {
+static Node* PAliasType(Parser* p, PFlag fl) {
   auto alias = mknode(p, AliasType);
   nexttok(p); // consume "type"
   NodeSetConst(alias);
@@ -1693,13 +1683,13 @@ static Node* PTypeDef(Parser* p, PFlag fl) {
   NodeSetPublic(alias, (p->fnest == 0 && name_is_pub(alias->name)));
 
   p->typename = alias->name;
-  alias->type = pType(p, PFlagNone);
-  NodeTransferUnresolved(alias, alias->type);
+  alias->elem = pType(p, PFlagNone);
+  NodeTransferUnresolved(alias, alias->elem);
 
   // struct with custom initializers must be visited by the type resolver,
   // so be conservative with propagating the type here.
-  if ((alias->type->flags & NF_CustomInit) == 0)
-    alias->type = kType_type;
+  if (alias->elem->flags & (NF_CustomInit | NF_PartialType))
+    alias->flags |= NF_PartialType;
 
   return as_Node(alias);
 }
@@ -2058,7 +2048,7 @@ static TupleNode* templateParams(Parser* p) {
       // TODO: allow types as well as expressions
       init = expectExpr(p, parse_prefix(p, fl | PFlagRValue));
     }
-    auto local = make_local(p, NMacroParam, name, init, kType_nil);
+    auto local = make_local(p, NMacroParam, name, init, kType_nil, name->pos);
     array_push(&params->a, as_Expr(local));
   } while (got(p, TComma) && p->tok != TGt);
   want(p, TGt);
@@ -2228,7 +2218,7 @@ static Node* parse_prefix(Parser* p, PFlag fl) {
   const Parselet* parselet = &parselets[p->tok];
   if (!parselet->fprefix) {
     // dlog("parse_prefix NOT found for %s", TokName(p->tok));
-    syntaxerr(p, "expecting expression");
+    syntaxerr(p, (fl & PFlagType) ? "expecting type" : "expecting expression");
     Node* n = bad(p);
     Tok stoplist[] = { TRParen, TRBrace, TRBrack, TSemi, 0 };
     advance(p, stoplist);
@@ -2269,6 +2259,50 @@ static Node* parse_next(Parser* p, int precedence, PFlag fl) {
   // Note: precedence should match the calling parselet's own precedence
   Node* left = parse_prefix(p, fl);
   return parse_infix(p, precedence, fl, left);
+}
+
+
+// parse_multi_expr parses expressions separated by comma.
+// It enters at the first comma, after the first element (elem0) and keeps on parsing
+// expressions as long as each expression is followed by a comma.
+//
+// For example, in "a, b, c d" parse_multi_expr enters at the first comman with elem0="a"
+// and parses a tuple "(a b c)". It stops before "d" as "c" has no trailing comma.
+//
+// If in_prefix_mode is true, only prefix parselets are used, meaning that in the
+// example "a + b, c + d" only "(b c)" can be parsed successfully with in_prefix_mode=true,
+// while if in_prefix_mode=false, the result would be "((binop a b) (binop c d))".
+//
+// TODO: can we implement this with infix parser instead, with proper precedence?
+//
+static TupleNode* parse_multi_expr(
+  Parser* p, int precedence, PFlag fl, Expr* elem0, bool in_prefix_mode)
+{
+  assert(p->tok == TComma);
+  nexttok(p);
+
+  auto tuple = mknode_array(p, Tuple, a, 4);
+  if UNLIKELY(!tuple) return (TupleNode*)bad(p);
+
+  array_push(&tuple->a, elem0);
+  NodeTransferUnresolved(tuple, elem0);
+
+  if (in_prefix_mode) {
+    do {
+      Expr* cn = expectExpr(p, parse_prefix(p, fl));
+      array_push(&tuple->a, cn);
+      NodeTransferUnresolved(tuple, cn);
+    } while (got(p, TComma));
+  } else {
+    do {
+      Expr* cn = pExpr(p, precedence, fl);
+      array_push(&tuple->a, cn);
+      NodeTransferUnresolved(tuple, cn);
+    } while (got(p, TComma));
+  }
+
+  set_endpos(p, tuple);
+  return tuple;
 }
 
 
@@ -2322,93 +2356,24 @@ static Node* parse_next(Parser* p, int precedence, PFlag fl) {
 static Expr* parse_next_tuple(Parser* p, int precedence, PFlag fl) {
   Node* left = (fl & PFlagRValue) ? parse_next(p, precedence, fl)
                                   : parse_prefix(p, fl);
-  if (got(p, TComma)) {
-    // start a tuple
-    Node* g;
-    NodeArray* array;
-    if (fl & PFlagType) {
-      auto tuple = mktype_array(p, TupleType, TF_KindArray, a, 4);
-      if UNLIKELY(!tuple) return (Expr*)bad(p);
-      array = as_NodeArray(&tuple->a);
-      g = as_Node(tuple);
-    } else {
-      auto tuple = mknode_array(p, Tuple, a, 4);
-      if UNLIKELY(!tuple) return (Expr*)bad(p);
-      array = as_NodeArray(&tuple->a);
-      g = as_Node(tuple);
-    }
-
-    array_push(array, left);
-    NodeTransferUnresolved(g, left);
-    if (fl & PFlagRValue) {
-      do {
-        Node* cn = parse_next(p, precedence, fl);
-        array_push(array, cn);
-        NodeTransferUnresolved(g, cn);
-      } while (got(p, TComma));
-    } else {
-      do {
-        Node* cn = parse_prefix(p, fl);
-        array_push(array, cn);
-        NodeTransferUnresolved(g, cn);
-      } while (got(p, TComma));
-    }
-    set_endpos(p, g);
-    left = g;
-  }
+  Expr* expr = expectExpr(p, left);
+  if (p->tok == TComma)
+    expr = (Expr*)parse_multi_expr(p, precedence, fl, expr, (fl & PFlagRValue));
 
   if (fl & PFlagRValue)
-    return expectExpr(p, left);
+    return expr;
 
   // wrap in possible infix expression, e.g. "left + right"
-  return expectExpr(p, parse_infix(p, precedence, fl, left));
+  return expectExpr(p, parse_infix(p, precedence, fl, (Node*)expr));
 }
 
 
-#if 0
-static Node* exprOrTuple(Parser* p, int precedence, PFlag fl) {
-  auto left = (
-    fl & PFlagRValue ? expr(p, precedence, fl) :
-                       prefixExpr(p, fl) ); // read a prefix expression, like an identifier
-
-  if (got(p, TComma)) {
-    // start a tuple
-    auto g = mknode(p, fl & PFlagType ? NTupleType : NTuple);
-    NodeArray* array = fl & PFlagType ? &g->t.tuple.a : &g->array.a;
-    array_push(array, left);
-    NodeTransferUnresolved(g, left);
-    if (fl & PFlagRValue) {
-      do {
-        Node* cn = expr(p, precedence, fl);
-        NodeArrayAppend(p->build->mem, array, cn);
-        NodeTransferUnresolved(g, cn);
-      } while (got(p, TComma));
-    } else {
-      do {
-        Node* cn = prefixExpr(p, fl);
-        NodeArrayAppend(p->build->mem, array, cn);
-        NodeTransferUnresolved(g, cn);
-      } while (got(p, TComma));
-    }
-    set_endpos(p, g);
-    left = g;
-  }
-
-  if (fl & PFlagRValue)
-    return left;
-
-  // wrap in possible infix expression, e.g. "left + right"
-  return infixExpr(p, precedence, fl, left);
-}
-#endif
-
-
-error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags fl, FileNode** result) {
+error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags pflags, FileNode** result) {
   // clear result now so that we don't have to in error branches
   *result = NULL;
 
   // initialize scanner state
-  if ((p->err = ScannerInit((Scanner*)p, b, src, fl)))
+  if ((p->err = ScannerInit((Scanner*)p, b, src, pflags)))
     return p->err;
 
   // initialize parser state
@@ -2434,14 +2399,28 @@ error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags fl, FileNode** re
     return err_nomem;
   file->name = src->filename;
 
-  // do while have a valid token...
+  PFlag fl = 0;
+
+  // while we have a valid token...
   while (p->tok != TNone && p->err == 0) {
-    Node* n = as_Node(parse_next_tuple(p, PREC_LOWEST, PFlagNone));
+    // find & call prefix parselet for the current token
+    Node* n = parse_prefix(p, fl);
+
+    // if we got a trailing comma, parse as a tuple. e.g. "x,y = a,b"
+    if (p->tok == TComma) {
+      Expr* expr = expectExpr(p, n);
+      n = (Node*)parse_multi_expr(p, PREC_LOWEST, fl, expr, /*in_prefix_mode*/true);
+    }
+
+    // wrap in possible infix expression, e.g. "left + right"
+    n = parse_infix(p, PREC_LOWEST, fl, n);
+
+    // add to file
     array_push(&file->a, n);
     NodeTransferUnresolved(file, n);
 
-    // if we didn't end on EOF and we didn'd find a semicolon, report error
-    if (UNLIKELY( p->tok != TNone && !got(p, TSemi) )) {
+    // if we didn't end on EOF and we didn't find a semicolon, report error
+    if UNLIKELY( p->tok != TNone && !got(p, TSemi) ) {
       syntaxerr(p, "after top level declaration");
       if (n && is_IdNode(n)) {
         b_notef(b, (PosSpan){n->pos,NoPos},

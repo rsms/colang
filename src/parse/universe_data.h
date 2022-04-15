@@ -57,6 +57,7 @@ const Sym kSym_ideal = &"\x3C\x78\xBD\x6C\x05\x00\x00\x00""ideal\0"[8];
 const Sym kSym_true = &"\x1E\xA2\x73\x61\x04\x00\x00\x00""true\0"[8];
 const Sym kSym_false = &"\xAF\x1E\x0E\xF7\x05\x00\x00\x00""false\0"[8];
 const Sym kSym__ = &"\xAC\x26\xED\xBD\x01\x00\x00\x00""_\0"[8];
+const Sym kSym_to_rawptr = &"\x27\xB0\x1C\xF4\x09\x00\x00\x00""to_rawptr\0"[8];
 const Sym kSym_b = &"\x37\xB8\xD4\x56\x01\x00\x00\x00""b\0"[8];
 const Sym kSym_c = &"\x6F\x1F\xBB\xA5\x01\x00\x00\x00""c\0"[8];
 const Sym kSym_B = &"\xE8\x8A\xC4\xF7\x01\x00\x00\x00""B\0"[8];
@@ -99,9 +100,9 @@ static SymRBNode n_fun = { kSym_fun, true, NULL, NULL };
 static SymRBNode n_$2a = { kSym_$2a, true, NULL, NULL };
 static SymRBNode n_E = { kSym_E, false, &n_fun, &n_$2a, };
 static SymRBNode n_ideal = { kSym_ideal, false, &n_D, &n_E, };
-static SymRBNode n_rawptr = { kSym_rawptr, false, NULL, NULL };
-static SymRBNode n_f128 = { kSym_f128, false, NULL, NULL };
-static SymRBNode n_u128 = { kSym_u128, true, &n_rawptr, &n_f128, };
+static SymRBNode n_rawptr = { kSym_rawptr, true, NULL, NULL };
+static SymRBNode n_f128 = { kSym_f128, true, NULL, NULL };
+static SymRBNode n_u128 = { kSym_u128, false, &n_rawptr, &n_f128, };
 static SymRBNode n_uint = { kSym_uint, true, NULL, NULL };
 static SymRBNode n_unsafe = { kSym_unsafe, false, &n_uint, NULL };
 static SymRBNode n_u32 = { kSym_u32, false, &n_u128, &n_unsafe, };
@@ -131,11 +132,12 @@ static SymRBNode n_mut = { kSym_mut, true, NULL, NULL };
 static SymRBNode n_d = { kSym_d, true, NULL, NULL };
 static SymRBNode n_e = { kSym_e, false, &n_mut, &n_d, };
 static SymRBNode n_type = { kSym_type, false, &n_0, &n_e, };
-static SymRBNode n_false = { kSym_false, false, NULL, NULL };
-static SymRBNode n_import = { kSym_import, true, NULL, NULL };
-static SymRBNode n_w = { kSym_w, false, &n_import, NULL };
-static SymRBNode n_B = { kSym_B, false, &n_false, &n_w, };
-static SymRBNode n_f32 = { kSym_f32, false, &n_type, &n_B, };
+static SymRBNode n_to_rawptr = { kSym_to_rawptr, false, NULL, NULL };
+static SymRBNode n_B = { kSym_B, true, NULL, NULL };
+static SymRBNode n_w = { kSym_w, true, NULL, NULL };
+static SymRBNode n_import = { kSym_import, false, &n_B, &n_w, };
+static SymRBNode n_false = { kSym_false, false, &n_to_rawptr, &n_import, };
+static SymRBNode n_f32 = { kSym_f32, false, &n_type, &n_false, };
 static SymRBNode n_break = { kSym_break, false, &n_in, &n_f32, };
 static SymRBNode n_as = { kSym_as, false, &n_switch, &n_break, };
 
@@ -197,7 +199,7 @@ Expr* kExpr_false = (Expr*)&_kExpr_false;
 
 #ifndef NDEBUG
 __attribute__((used)) static const char* const debugSymCheck =
-  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar kw:unsafe=TUnsafe tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:rawptr tc:nil tc:ideal tc:auto sym:_ sym:rawptr const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
+  "kw:as=TAs kw:auto=TAuto kw:break=TBreak kw:continue=TContinue kw:defer=TDefer kw:else=TElse kw:enum=TEnum kw:for=TFor kw:fun=TFun kw:if=TIf kw:import=TImport kw:in=TIn kw:nil=TNil kw:return=TReturn kw:struct=TStruct kw:switch=TSwitch kw:type=TType kw:const=TConst kw:mut=TMut kw:var=TVar kw:unsafe=TUnsafe tc:bool tc:i8 tc:u8 tc:i16 tc:u16 tc:i32 tc:u32 tc:i64 tc:u64 tc:i128 tc:u128 tc:f32 tc:f64 tc:f128 tc:int tc:uint tc:rawptr tc:nil tc:ideal tc:auto sym:_ sym:to_rawptr const:nil,Nil,nil= const:true,BoolLit,bool=.ival=1 const:false,BoolLit,bool=.ival=0";
 #endif
 
 #define kUniverseScopeLen 21

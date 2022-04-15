@@ -542,7 +542,6 @@ static Typ nullable _get_type(B* b, Type* np) {
     // not implemented
     NCASE(TypeType)   panic("TODO %s", nodename(n));
     NCASE(NamedType)  panic("TODO %s", nodename(n));
-    NCASE(AliasType)  panic("TODO %s", nodename(n));
     NCASE(TupleType)  panic("TODO %s", nodename(n));
     NCASE(StructType) panic("TODO %s", nodename(n));
 
@@ -675,9 +674,6 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   n->irval = fn;
 
   if (!n->body) { // external
-    if (n == kBuiltin_rawptr) {
-      dlog("TODO: rawptr");
-    }
     LLVMSetLinkage(fn, LLVMExternalLinkage);
     return fn;
   }
@@ -855,7 +851,9 @@ static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
 
 static Val build_id(B* b, IdNode* n, const char* vname) {
   assertnotnull(n->target); // must be resolved
-  return build_expr(b, as_Expr(n->target), n->name);
+  if (!n->irval)
+    n->irval = build_expr(b, as_Expr(n->target), n->name);
+  return n->irval;
 }
 
 
@@ -920,16 +918,17 @@ static Val build_return(B* b, ReturnNode* n, const char* vname) {
 
 
 static Val build_const(B* b, ConstNode* n, const char* vname) {
-  if (!n->irval) {
-    // TODO: if anything takes the address of a const, it needs to be stored in memory
-    // somewhere. As a global if the referring reference survives the scope or on stack.
-    if (NodeIsUnused(n)) {
-      // don't build unused constants
-      n->irval = b->v_int_0;
-    } else {
-      n->irval = build_rval(b, n->value, n->name);
-    }
-  }
+  if (n->irval)
+    return n->irval;
+
+  // don't build unused constants
+  if (NodeIsUnused(n) && b->build->opt > OptNone)
+    return b->v_int_0;
+
+  // TODO: if anything takes the address of a const, it needs to be stored in memory
+  // somewhere. As a global if the referring reference survives the scope or on stack.
+
+  n->irval = build_rval(b, n->value, n->name);
   return n->irval;
 }
 
@@ -945,6 +944,10 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
       return build_load(b, LLVMGetElementType(LLVMTypeOf(n->irval)), n->irval, n->name);
     return n->irval;
   }
+
+  // don't build unused variables
+  if (NodeIsUnused(n) && b->build->opt > OptNone)
+    return b->v_int_0;
 
   // build initializer
   Val init;
@@ -1039,22 +1042,47 @@ static Val build_type_call(B* b, CallNode* n, const char* vname) {
 }
 
 
-static Val build_fun_call(B* b, CallNode* n, const char* vname) {
-  Val fn = build_expr(b, n->receiver, "callee");
+static Val build_call_builtin(B* b, CallNode* n, Expr* recv, const char* vname) {
+  // to_rawptr is currently the only builtin
+  assert(recv == (Expr*)kBuiltin_to_rawptr);
 
+  // to_rawptr prototype:
+  //   unsafe fun to_rawptr<T>(_ &T) rawptr
+  assert(n->args.len == 1);
+  Val ref = build_expr(b, n->args.v[0], "");
+
+  dlog("ref %s : %s", fmttyp(LLVMTypeOf(ref)), fmtval(ref));
+  dlog("LLVMIsConstant(ref) %d", LLVMIsConstant(ref));
+
+  // note: LLVMBuildExtractValue uses LLVMConstExtractValue if ref is constant
+  return LLVMBuildExtractValue(b->builder, ref, 0, vname);
+}
+
+
+static Val build_fun_call(B* b, CallNode* n, const char* vname) {
+  // remove any constant-expression name indirection.
+  // e.g.  "fun foo(); bar = foo; bar()"  =>  "fun foo(); ...; foo()"
+  Expr* recv = NodeEval(b->build, as_Expr(n->receiver), NULL, 0);
+
+  // is this a builtin?
+  if (recv == (Expr*)kBuiltin_to_rawptr)
+    return build_call_builtin(b, n, recv, vname);
+
+  // build callee
+  Val fn = build_expr(b, recv, "callee");
+
+  // build arguments
   Val argsv[16];
   auto args = array_make(Array(Val), argsv, sizeof(argsv));
-
-  if (n->args.len > 0) {
-    bool ok = true;
-    for (u32 i = 0; i < n->args.len; i++) {
-      const char* arg_vname = vnamef(b, "callarg_%u", i);
-      Val arg = build_rval(b, n->args.v[i], arg_vname);
-      ok &= array_push(&args, arg);
-    }
-    assert(ok);
+  bool ok = true;
+  for (u32 i = 0; i < n->args.len; i++) {
+    const char* arg_vname = vnamef(b, "callarg_%u", i);
+    Val arg = build_rval(b, n->args.v[i], arg_vname);
+    ok &= array_push(&args, arg);
   }
+  assert(ok);
 
+  // build call
   Typ fntype = LLVMGetElementType(LLVMTypeOf(fn));
   Val v = LLVMBuildCall2(b->builder, fntype, fn, args.v, args.len, "");
   array_free(&args);

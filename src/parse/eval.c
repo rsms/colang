@@ -263,7 +263,8 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
 
   Expr* n_orig = n;
 
-  //dlog("eval %s %s", NodeKindName(n->kind), fmtast(n));
+  // char tmpbuf[256];
+  // dlog("eval %s %s", NodeKindName(n->kind), fmtnode(n, tmpbuf, sizeof(tmpbuf)));
 
   switch (n->kind) {
 
@@ -271,6 +272,8 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
       return _eval(e, targetType, as_Expr(((IdNode*)(n))->target));
 
     case NLocal_BEG ... NLocal_END:
+      if (!NodeIsConst(n))
+        return n;
       return _eval(e, targetType, LocalInitField((LocalNode*)n));
 
     case NBoolLit:
@@ -301,10 +304,9 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
     }
 
     default:
-      if (e.fl & NodeEvalMustSucceed) {
+      if (e.fl & NodeEvalMustSucceed)
         b_errf(e.b, NodePosSpan(n), "%s is not a compile-time expression", FMTNODE(e.b,n,0));
-      }
-      return NULL;
+      goto end;
 
   } // switch (n->kind)
 
@@ -314,6 +316,7 @@ static Expr* nullable _eval(E e, Type* nullable targetType, Expr* nullable n) {
   n->pos = n_orig->pos;
   n->endpos = n_orig->endpos;
 
+end:
   if (targetType)
     return ctypecast_implicit(e.b, n, targetType, NULL, NULL);
 

@@ -43,8 +43,8 @@ bool _typeid_append(Str* s, const Type* t) {
     return str_appendc(s, TypeCodeEncoding(as_BasicTypeNode(t)->typecode));
 
   if (!t->tid) switch (t->kind) {
-    case NAliasType:
-      MUSTTAIL return _typeid_append(s, as_AliasTypeNode(t)->type);
+    case NTypeExpr:
+      MUSTTAIL return _typeid_append(s, as_TypeExprNode(t)->type);
 
     case NRefType:
       str_appendc(s, TypeCodeEncoding(TC_ref));

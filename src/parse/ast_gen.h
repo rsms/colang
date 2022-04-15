@@ -48,19 +48,20 @@ enum NodeKind {
     NIndex        = 30, // struct IndexNode
     NSlice        = 31, // struct SliceNode
     NIf           = 32, // struct IfNode
-  NExpr_END       = 32,
-  NType_BEG       = 33,
-    NTypeType     = 33, // struct TypeTypeNode
-    NNamedType    = 34, // struct NamedTypeNode
-    NAliasType    = 35, // struct AliasTypeNode
-    NRefType      = 36, // struct RefTypeNode
-    NBasicType    = 37, // struct BasicTypeNode
-    NArrayType    = 38, // struct ArrayTypeNode
-    NTupleType    = 39, // struct TupleTypeNode
-    NStructType   = 40, // struct StructTypeNode
-    NFunType      = 41, // struct FunTypeNode
-  NType_END       = 41,
-  NodeKind_MAX    = 41,
+    NTypeExpr     = 33, // struct TypeExprNode
+  NExpr_END       = 33,
+  NType_BEG       = 34,
+    NTypeType     = 34, // struct TypeTypeNode
+    NNamedType    = 35, // struct NamedTypeNode
+    NAliasType    = 36, // struct AliasTypeNode
+    NRefType      = 37, // struct RefTypeNode
+    NBasicType    = 38, // struct BasicTypeNode
+    NArrayType    = 39, // struct ArrayTypeNode
+    NTupleType    = 40, // struct TupleTypeNode
+    NStructType   = 41, // struct StructTypeNode
+    NFunType      = 42, // struct FunTypeNode
+  NType_END       = 42,
+  NodeKind_MAX    = 42,
 } END_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -99,6 +100,7 @@ typedef struct SelectorNode SelectorNode;
 typedef struct IndexNode IndexNode;
 typedef struct SliceNode SliceNode;
 typedef struct IfNode IfNode;
+typedef struct TypeExprNode TypeExprNode;
 typedef struct TypeTypeNode TypeTypeNode;
 typedef struct NamedTypeNode NamedTypeNode;
 typedef struct AliasTypeNode AliasTypeNode;
@@ -160,6 +162,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_IndexNode(n) ((n)->kind==NIndex)
 #define is_SliceNode(n) ((n)->kind==NSlice)
 #define is_IfNode(n) ((n)->kind==NIf)
+#define is_TypeExprNode(n) ((n)->kind==NTypeExpr)
 #define is_Type(n) NodeKindIsType((n)->kind)
 #define is_TypeTypeNode(n) ((n)->kind==NTypeType)
 #define is_NamedTypeNode(n) ((n)->kind==NNamedType)
@@ -221,6 +224,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_IndexNode(n) asserteq(assertnotnull(n)->kind,NIndex)
 #define assert_is_SliceNode(n) asserteq(assertnotnull(n)->kind,NSlice)
 #define assert_is_IfNode(n) asserteq(assertnotnull(n)->kind,NIf)
+#define assert_is_TypeExprNode(n) asserteq(assertnotnull(n)->kind,NTypeExpr)
 #define assert_is_Type(n) _assert_is1(Type,(n))
 #define assert_is_TypeTypeNode(n) asserteq(assertnotnull(n)->kind,NTypeType)
 #define assert_is_NamedTypeNode(n) asserteq(assertnotnull(n)->kind,NNamedType)
@@ -306,6 +310,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_SliceNode(n) ({__typeof__(n) n__=(n);assert_is_SliceNode(n__),(const SliceNode*)(n__);})
   #define as_IfNode(n) ({__typeof__(n) n__=(n);assert_is_IfNode(n__),(IfNode*)(n__);})
   #define as_const_IfNode(n) ({__typeof__(n) n__=(n);assert_is_IfNode(n__),(const IfNode*)(n__);})
+  #define as_TypeExprNode(n) ({__typeof__(n) n__=(n);assert_is_TypeExprNode(n__),(TypeExprNode*)(n__);})
+  #define as_const_TypeExprNode(n) ({__typeof__(n) n__=(n);assert_is_TypeExprNode(n__),(const TypeExprNode*)(n__);})
   #define as_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(TypeTypeNode*)(n__);})
   #define as_const_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(const TypeTypeNode*)(n__);})
   #define as_NamedTypeNode(n) ({__typeof__(n) n__=(n);assert_is_NamedTypeNode(n__),(NamedTypeNode*)(n__);})
@@ -353,7 +359,8 @@ typedef struct FunTypeNode FunTypeNode;
     TypeCastNode*:(Expr*)(n), ConstNode*:(Expr*)(n), VarNode*:(Expr*)(n), \
     ParamNode*:(Expr*)(n), MacroParamNode*:(Expr*)(n), struct LocalNode*:(Expr*)(n), \
     RefNode*:(Expr*)(n), NamedArgNode*:(Expr*)(n), SelectorNode*:(Expr*)(n), \
-    IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), IfNode*:(Expr*)(n), Expr*:(Expr*)(n), \
+    IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), IfNode*:(Expr*)(n), \
+    TypeExprNode*:(Expr*)(n), Expr*:(Expr*)(n), \
     Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(Expr*)(n__);}))
   #define as_const_Expr(n) _Generic((n), const NilNode*:(const Expr*)(n), \
     const BoolLitNode*:(const Expr*)(n), const IntLitNode*:(const Expr*)(n), \
@@ -371,7 +378,8 @@ typedef struct FunTypeNode FunTypeNode;
     const struct LocalNode*:(const Expr*)(n), const RefNode*:(const Expr*)(n), \
     const NamedArgNode*:(const Expr*)(n), const SelectorNode*:(const Expr*)(n), \
     const IndexNode*:(const Expr*)(n), const SliceNode*:(const Expr*)(n), \
-    const IfNode*:(const Expr*)(n), const Expr*:(const Expr*)(n), \
+    const IfNode*:(const Expr*)(n), const TypeExprNode*:(const Expr*)(n), \
+    const Expr*:(const Expr*)(n), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(const Expr*)(n__);}))
 
   #define as_LitExpr(n) _Generic((n), NilNode*:(struct LitExpr*)(n), \
@@ -510,6 +518,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_SliceNode(n) ({ const void* np__=(n); (const SliceNode*)np__; })
   #define as_IfNode(n) ({ void* np__=(n); (IfNode*)np__; })
   #define as_const_IfNode(n) ({ const void* np__=(n); (const IfNode*)np__; })
+  #define as_TypeExprNode(n) ({ void* np__=(n); (TypeExprNode*)np__; })
+  #define as_const_TypeExprNode(n) ({ const void* np__=(n); (const TypeExprNode*)np__; })
   #define as_TypeTypeNode(n) ({ void* np__=(n); (TypeTypeNode*)np__; })
   #define as_const_TypeTypeNode(n) ({ const void* np__=(n); (const TypeTypeNode*)np__; })
   #define as_NamedTypeNode(n) ({ void* np__=(n); (NamedTypeNode*)np__; })
@@ -588,6 +598,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_IndexNode(n) ({__typeof__(n) n__=(n);is_IndexNode(n__)?(IndexNode*)(n__):NULL;})
 #define maybe_SliceNode(n) ({__typeof__(n) n__=(n);is_SliceNode(n__)?(SliceNode*)(n__):NULL;})
 #define maybe_IfNode(n) ({__typeof__(n) n__=(n);is_IfNode(n__)?(IfNode*)(n__):NULL;})
+#define maybe_TypeExprNode(n) ({__typeof__(n) n__=(n);is_TypeExprNode(n__)?(TypeExprNode*)(n__):NULL;})
 #define maybe_Type(n) ({__typeof__(n) n__=(n);is_Type(n__)?as_Type(n__):NULL;})
 #define maybe_TypeTypeNode(n) ({__typeof__(n) n__=(n);is_TypeTypeNode(n__)?(TypeTypeNode*)(n__):NULL;})
 #define maybe_NamedTypeNode(n) ({__typeof__(n) n__=(n);is_NamedTypeNode(n__)?(NamedTypeNode*)(n__):NULL;})
@@ -648,7 +659,8 @@ typedef struct FunTypeNode FunTypeNode;
   SelectorNode*:((Expr*)(n))->type, const IndexNode*:(const Type*)((Expr*)(n))->type, \
   IndexNode*:((Expr*)(n))->type, const SliceNode*:(const Type*)((Expr*)(n))->type, \
   SliceNode*:((Expr*)(n))->type, const IfNode*:(const Type*)((Expr*)(n))->type, \
-  IfNode*:((Expr*)(n))->type, const Expr*:(const Type*)((Expr*)(n))->type, \
+  IfNode*:((Expr*)(n))->type, const TypeExprNode*:(const Type*)((Expr*)(n))->type, \
+  TypeExprNode*:((Expr*)(n))->type, const Expr*:(const Type*)((Expr*)(n))->type, \
   Expr*:((Expr*)(n))->type, BadNode*:NULL, FieldNode*:NULL, Stmt*:NULL, \
   struct CUnitNode*:NULL, PkgNode*:NULL, FileNode*:NULL, CommentNode*:NULL, \
   const Node*:({__typeof__(n) n__=(n); is_Type(n__) ? (const Type*)kType_type \
@@ -718,6 +730,7 @@ typedef union Expr_union {
   IndexNode          IndexNode;
   SliceNode          SliceNode;
   IfNode             IfNode;
+  TypeExprNode       TypeExprNode;
 } Expr_union;
 typedef union Type_union {
   Node           Node;
