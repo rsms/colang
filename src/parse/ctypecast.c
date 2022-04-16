@@ -103,6 +103,8 @@ Expr* _ctypecast(
   BuildCtx* b, Expr* n, Type* totype,
   CTypecastResult* nullable resp, Node* nullable report_usernode, CTypecastFlags flags)
 {
+  totype = unbox_id_type(totype);
+
   // if type of n is already totype, stop now
   if (n->type && b_typeeq(b, n->type, totype)) {
     if (resp)

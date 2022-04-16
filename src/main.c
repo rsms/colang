@@ -107,11 +107,19 @@ static error begin_pkg(BuildCtx* build, const char* pkgid) {
 
 static error parse_pkg(BuildCtx* build) {
   Parser p = {0};
+
+  ParseFlags pflags = 0;
+  if (build->opt > '0' && !build->debug) {
+    // speed up & simplify AST at the cost of error message quality
+    pflags |= ParseOpt;
+  }
+
   Str str = str_make(tmpbuf, sizeof(tmpbuf)); // for debug logging
+
   for (Source* src = build->srclist; src != NULL; src = src->next) {
     auto t = logtime_start("parse");
     FileNode* filenode;
-    error err = parse_tu(&p, build, src, 0, &filenode);
+    error err = parse_tu(&p, build, src, pflags, &filenode);
     if (err)
       return err;
     logtime_end(t);

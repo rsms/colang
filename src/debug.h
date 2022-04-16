@@ -67,7 +67,7 @@ void _panic(const char* file, int line, const char* fun, const char* fmt, ...);
   #define assertne(a,b)    assertop((a),!=,(b))
   #define assertlt(a,b)    assertop((a),<, (b))
   #define assertgt(a,b)    assertop((a),>, (b))
-  #define assertnull(a)    assertop((a),==,NULL)
+  #define assertnull(a)    assert((a)==NULL)
 
   #define assertnotnull(a) ({                                         \
     __typeof__(a) val__ = (a);                                        \

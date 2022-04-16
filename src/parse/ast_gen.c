@@ -8,9 +8,9 @@ const char* NodeKindName(NodeKind k) {
     "FloatLit", "StrLit", "Id", "BinOp", "PrefixOp", "PostfixOp", "Return",
     "Assign", "Tuple", "Array", "Block", "Fun", "Macro", "Call", "TypeCast",
     "Const", "Var", "Param", "MacroParam", "Ref", "NamedArg", "Selector",
-    "Index", "Slice", "If", "TypeExpr", "TypeType", "NamedType", "AliasType",
+    "Index", "Slice", "If", "TypeExpr", "TypeType", "IdType", "AliasType",
     "RefType", "BasicType", "ArrayType", "TupleType", "StructType", "FunType",
-    "?"
+    "MacroParamType", "?"
   };
   return kNodeNameTable[MIN(NodeKind_MAX+1,k)];
 }

@@ -1,6 +1,9 @@
-// unsafe fun to_rawptr<T>(_ &T) rawptr
+fun foo(s &[u8]) int
+  1
 
-fun main(x, y int) rawptr
-  hello = "Hello world\n"
-  var p = unsafe to_rawptr(hello)
-  p
+fun main(x, y int) int
+  hello = "hello world"
+  hello = "world"
+  y = foo(hello)
+  y = y * 2
+  x * y

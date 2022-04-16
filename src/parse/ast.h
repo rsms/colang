@@ -18,19 +18,26 @@ typedef struct LocalNode LocalNode; // Const | Var | Param
 typedef struct CUnitNode CUnitNode;
 typedef struct ListExprNode ListExprNode;
 typedef struct UnaryOpNode UnaryOpNode;
+typedef struct ParamNode ParamNode;
+typedef struct MacroParamNode MacroParamNode;
 
 typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
 
-typedef Array(Node*)      NodeArray;
-typedef Array(Expr*)      ExprArray;
-typedef Array(Type*)      TypeArray;
-typedef Array(FieldNode*) FieldArray;
+typedef Array(Node*)           NodeArray;
+typedef Array(Expr*)           ExprArray;
+typedef Array(Type*)           TypeArray;
+typedef Array(FieldNode*)      FieldArray;
+typedef Array(ParamNode*)      ParamArray;
+typedef Array(MacroParamNode*) MacroParamArray;
+
 
 #define as_NodeArray(n) _Generic((n), \
   const ExprArray*:(const NodeArray*)(n), ExprArray*:(NodeArray*)(n), \
   const TypeArray*:(const NodeArray*)(n), TypeArray*:(NodeArray*)(n), \
   const FieldArray*:(const NodeArray*)(n), FieldArray*:(NodeArray*)(n), \
+  const ParamArray*:(const NodeArray*)(n), ParamArray*:(NodeArray*)(n), \
+  const MacroParamArray*:(const NodeArray*)(n), MacroParamArray*:(NodeArray*)(n), \
   const NodeArray*:(n), NodeArray*:(n) )
 
 struct Node {
@@ -83,7 +90,7 @@ struct StrLitNode   { LitExpr;
 
 struct IdNode { Expr;
   Sym            name;
-  Node* nullable target; // TODO: change type to Expr
+  Expr* nullable target;
 };
 struct BinOpNode { Expr;
   Tok   op;
@@ -110,15 +117,17 @@ struct TupleNode { ListExprNode; };
 struct ArrayNode { ListExprNode; };
 struct BlockNode { ListExprNode; };
 struct FunNode { Expr;
-  TupleNode* nullable params; // ParamNode[] -- input params (NULL if none)
-  Type* nullable      result; // output results (TupleType for multiple results)
-  Sym   nullable      name;   // NULL for lambda
-  Expr* nullable      body;   // NULL for fun-declaration
+  ParamArray     params; // input params (NULL if none)
+  PosSpan        params_pos;
+  Type* nullable result; // output results (TupleType for multiple results)
+  Sym   nullable name;   // NULL for lambda
+  Expr* nullable body;   // NULL for fun-declaration
 };
 struct MacroNode { Expr;
-  Sym nullable        name;
-  TupleNode* nullable params;  // input params (LocalNodes)
-  Node*               template;
+  Sym nullable    name;
+  MacroParamArray params;
+  Node*           template;
+  PosSpan         params_pos;
 };
 struct CallNode { Expr;
   Node*     receiver; // Type | Fun | Id
@@ -133,17 +142,17 @@ struct LocalNode { Expr;
   u32 nrefs; // reference count
   Sym name;
 };
-struct ConstNode { struct LocalNode;
+struct ConstNode { LocalNode;
   Expr* value; // value
 };
-struct VarNode { struct LocalNode;
+struct VarNode { LocalNode;
   Expr* nullable init; // initial/default value
 };
-struct ParamNode { struct LocalNode;
-  Expr* nullable init; // initial/default value
-  u32   index;         // argument index
+struct ParamNode { LocalNode;
+  Expr* nullable init;  // initial/default value
+  u32            index; // argument index
 };
-struct MacroParamNode { struct LocalNode;
+struct MacroParamNode { LocalNode;
   Node* nullable init; // initial/default value
 };
 struct RefNode { Expr;
@@ -183,8 +192,9 @@ struct Type { Node ;
   Sym nullable tid;    // initially NULL for user-defined types, computed as needed
 };
 struct TypeTypeNode { Type; }; // typeof(int) => type
-struct NamedTypeNode { Type; // like Id; used for named types which are not yet resolved
-  Sym name;
+struct IdTypeNode { Type; // like Id but for types
+  Sym   name;
+  Type* target;
 };
 struct AliasTypeNode { Type; // eg "type foo int"
   Sym   name;
@@ -210,8 +220,12 @@ struct StructTypeNode { Type;
   FieldArray   fields; // FieldNode[]
 };
 struct FunTypeNode { Type;
-  TupleNode* nullable params; // == FunNode.params
-  Type* nullable      result; // == FunNode.result (TupleType or single type)
+  ParamArray*    params; // == FunNode.params
+  Type* nullable result; // == FunNode.result (TupleType or single type)
+};
+struct MacroParamTypeNode { Type;
+  MacroParamNode* param;
+  // TODO: constraints
 };
 
 
@@ -396,6 +410,14 @@ inline static u32 NodeUnrefLocal(LocalNode* n) {
   return --n->nrefs;
 }
 
+static Type* nullable unbox_id_type(Type* nullable t);
+Type* unbox_id_type1(IdTypeNode* t);
+inline static Type* unbox_id_type(Type* nullable t) {
+  if (t && is_IdTypeNode(t))
+    return unbox_id_type1((IdTypeNode*)t);
+  return t;
+}
+
 // CONVERT_NODE_KIND(T1 n, T2) => {T2}Node
 //
 // Be careful using this!
@@ -512,7 +534,7 @@ static Node* example(Node* np) {
   NCASE(If)         panic("TODO %s", nodename(n));
 
   NCASE(TypeType)   panic("TODO %s", nodename(n));
-  NCASE(NamedType)  panic("TODO %s", nodename(n));
+  NCASE(IdType)     panic("TODO %s", nodename(n));
   NCASE(AliasType)  panic("TODO %s", nodename(n));
   NCASE(RefType)    panic("TODO %s", nodename(n));
   NCASE(BasicType)  panic("TODO %s", nodename(n));

@@ -2,7 +2,7 @@
 static const Parselet parselets[Tok_MAX] = {
   [TNil] = {PNil, NULL, PREC_MEMBER},
   [TAuto] = {PAuto, NULL, PREC_MEMBER},
-  [TId] = {PId, PIdTrailing, PREC_ASSIGN},
+  [TId] = {PId, NULL, PREC_MEMBER},
   [TMut] = {PMut, NULL, PREC_MEMBER},
   [TVar] = {PVarOrConst, NULL, PREC_MEMBER},
   [TConst] = {PVarOrConst, NULL, PREC_MEMBER},

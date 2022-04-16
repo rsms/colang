@@ -132,24 +132,20 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NTypeExpr: // type foo
     return NODE(STR(s, "type "), ((TypeExprNode*)n)->elem);
 
+
   case NBasicType: // int
     return SYM(s, ((BasicTypeNode*)n)->name);
   case NRefType: // &T, mut&T
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefTypeNode*)n)->elem);
   case NTypeType: // type
     return STR(s, "type");
-  case NNamedType: // foo
-    return SYM(s, ((NamedTypeNode*)n)->name);
+  case NIdType: // foo
+    return CH(SYM(STR(s, "idtype("), ((IdTypeNode*)n)->name), ')');
   case NAliasType: // foo (aka bar)
     STR(SYM(s, ((AliasTypeNode*)n)->name), " (aka ");
     return CH(NODE(s, ((AliasTypeNode*)n)->elem), ')');
   case NFunType: // (int int)->bool
-    if (((FunTypeNode*)n)->params == NULL) {
-      STR(s, "()");
-    } else {
-      // TODO: include names?
-      NODE(s, ((FunTypeNode*)n)->params->type);
-    }
+    CH(NODEARRAY(CH(s, '('), ((FunTypeNode*)n)->params), ')');
     return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
   case NTupleType: // (int bool Foo)
     return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
@@ -174,6 +170,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     }
     return CH(s, '}');
   }
+  case NMacroParamType:
+    return STR(s, "type");
 
   case NComment:
     assertf(0, "unexpected node %s", nodename(n));
@@ -215,7 +213,7 @@ struct Repr {
 
 #define STYLE_NODE   TS_BOLD        // node name
 #define STYLE_LIT    TS_LIGHTGREEN
-#define STYLE_NAME   TS_LIGHTBLUE   // symbolic names like Id, NamedType, etc.
+#define STYLE_NAME   TS_LIGHTBLUE   // symbolic names like Id, IdType, etc.
 #define STYLE_OP     TS_LIGHTORANGE
 #define STYLE_TYPE   TS_BLACK_BG
 #define STYLE_META   TS_DIM
@@ -350,6 +348,7 @@ static bool maybe_cyclic_node(const Node* n) {
     case NConst:
     case NParam:
     case NFun:
+    case NMacro:
       return true;
     default:
       return false;
@@ -508,14 +507,13 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Block)
   NCASE(Call)
   NCASE(TypeCast)
-  NCASE(Ref)
   NCASE(TypeExpr)
-  NCASE(Id)        write_name(r, n->name);
-  GNCASE(Local)    write_name(r, n->name);
-  NCASE(Fun)       write_name(r, n->name ? n->name : kSym__);
-  NCASE(Macro)     write_name(r, n->name ? n->name : kSym__);
-  NCASE(NamedArg)  write_name(r, n->name);
-  NCASE(AliasType) write_name(r, n->name);
+  NCASE(Ref)
+  NCASE(Id)       write_name(r, n->name);
+  GNCASE(Local)   write_name(r, n->name);
+  NCASE(Fun)      write_name(r, n->name ? n->name : kSym__);
+  NCASE(Macro)    write_name(r, n->name ? n->name : kSym__);
+  NCASE(NamedArg) write_name(r, n->name);
   NCASE(BinOp)
     write_push_style(r, STYLE_OP);
     write_str(r, TokName(n->op));
@@ -544,7 +542,8 @@ static void write_node_attrs(Repr* r, const Node* np) {
 
   // -- types --
   NCASE(BasicType) UNREACHABLE; // handled by _write_node
-  NCASE(NamedType) write_name(r, n->name);
+  NCASE(AliasType) write_name(r, n->name);
+  NCASE(IdType)    write_name(r, n->name);
   NCASE(TypeType)
   NCASE(ArrayType)
   NCASE(TupleType)
@@ -583,9 +582,12 @@ static void write_node_fields(Repr* r, const Node* np) {
     if (n->a.len > 0)
       write_array(r, as_NodeArray(&n->a));
   NCASE(Fun)
-    write_node(r, n->params);
+    write_array(r, as_NodeArray(&n->params));
     write_node(r, n->result);
     write_node(r, n->body);
+  NCASE(Macro)
+    write_array(r, as_NodeArray(&n->params));
+    write_node(r, n->template);
   GNCASE(Local)
     if (LocalInitField(n))
       write_node(r, LocalInitField(n));
@@ -599,6 +601,7 @@ static void write_node_fields(Repr* r, const Node* np) {
   // -- types --
   NCASE(RefType)   write_node(r, n->elem);
   NCASE(AliasType) write_node(r, n->elem);
+  NCASE(IdType)    write_node(r, n->target);
   NCASE(ArrayType)
     write_node(r, n->elem);
     if (n->size) {
@@ -610,10 +613,9 @@ static void write_node_fields(Repr* r, const Node* np) {
       write_node(r, n->sizeexpr);
     }
   NCASE(TupleType)
-    if (n->a.len > 0)
-      write_array(r, as_NodeArray(&n->a));
+    write_array(r, as_NodeArray(&n->a));
   NCASE(FunType)
-    write_node(r, n->params ? n->params->type : NULL);
+    write_array(r, as_NodeArray(n->params));
     write_node(r, n->result);
   NDEFAULTCASE break;
   }}

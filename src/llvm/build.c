@@ -108,6 +108,7 @@ typedef struct B {
     LLVMDumpModule(b->mod); \
     log("\e[33;1m—————————————————————————————— trace ——————————————————————————————\e[0m");\
     sys_stacktrace_fwrite(stderr, /*offset*/0, /*limit*/100); \
+    abort(); \
   })
 #else
   #define dlog2(...) ((void)0)
@@ -454,13 +455,13 @@ static Typ make_fun_type(B* b, FunTypeNode* tn) {
   Typ rettype = get_type(b, tn->result);
   Typ paramsv[16];
   auto paramtypes = array_make(Array(Typ), paramsv, sizeof(paramsv));
+  CHECKNOMEM(!array_reserve(&paramtypes, tn->params->len));
+  paramtypes.len = tn->params->len;
 
-  if (tn->params) {
-    for (u32 i = 0; i < tn->params->a.len; i++) {
-      Typ t = get_type(b, assertnotnull(tn->params->a.v[i]->type));
-      assertf(t != b->t_void, "invalid type: %s", fmttyp(t));
-      CHECKNOMEM(!array_push(&paramtypes, t));
-    }
+  for (u32 i = 0; i < tn->params->len; i++) {
+    Typ t = get_type(b, assertnotnull(tn->params->v[i]->type));
+    assertf(t != b->t_void, "invalid type: %s", fmttyp(t));
+    paramtypes.v[i] = t;
   }
 
   bool isVarArg = false;
@@ -538,15 +539,16 @@ static Typ nullable _get_type(B* b, Type* np) {
     NCASE(FunType)   t = make_fun_type(b, n); break;
     NCASE(RefType)   t = make_ref_type(b, n); break;
     NCASE(ArrayType) t = make_array_type(b, n); break;
+    NCASE(IdType)    return _get_type(b, n->target);
 
     // not implemented
     NCASE(TypeType)   panic("TODO %s", nodename(n));
-    NCASE(NamedType)  panic("TODO %s", nodename(n));
     NCASE(TupleType)  panic("TODO %s", nodename(n));
     NCASE(StructType) panic("TODO %s", nodename(n));
 
     NDEFAULTCASE
-      assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
+      assertf(0,"invalid node kind: %s n@%p->kind = %u",
+        NodeKindName(np->kind), np, np->kind);
   }}
 
   set_interned_type(b, np, t);
@@ -653,8 +655,8 @@ static Val build_funproto(B* b, FunNode* n, const char* name) {
 
   // set argument names (for debugging)
   if (b->prettyIR) {
-    for (u32 i = 0, len = n->params ? n->params->a.len : 0; i < len; i++) {
-      ParamNode* param = as_ParamNode(n->params->a.v[i]);
+    for (u32 i = 0; i < n->params.len; i++) {
+      ParamNode* param = as_ParamNode(n->params.v[i]);
       Val p = LLVMGetParam(fn, i);
       LLVMSetValueName2(p, param->name, symlen(param->name));
     }
@@ -699,8 +701,8 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   LLVMPositionBuilderAtEnd(b->builder, entryb);
 
   // create local storage for mutable parameters
-  for (u32 i = 0, len = n->params ? n->params->a.len : 0; i < len; i++) {
-    ParamNode* pn = as_ParamNode(n->params->a.v[i]);
+  for (u32 i = 0; i < n->params.len; i++) {
+    ParamNode* pn = as_ParamNode(n->params.v[i]);
     Val pv = LLVMGetParam(fn, i);
     Typ pt = LLVMTypeOf(pv);
     if (NodeIsConst(pn) /*&& !arg_type_needs_alloca(pt)*/) {
@@ -1050,9 +1052,6 @@ static Val build_call_builtin(B* b, CallNode* n, Expr* recv, const char* vname) 
   //   unsafe fun to_rawptr<T>(_ &T) rawptr
   assert(n->args.len == 1);
   Val ref = build_expr(b, n->args.v[0], "");
-
-  dlog("ref %s : %s", fmttyp(LLVMTypeOf(ref)), fmtval(ref));
-  dlog("LLVMIsConstant(ref) %d", LLVMIsConstant(ref));
 
   // note: LLVMBuildExtractValue uses LLVMConstExtractValue if ref is constant
   return LLVMBuildExtractValue(b->builder, ref, 0, vname);

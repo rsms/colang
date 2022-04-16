@@ -2,66 +2,67 @@
 ASSUME_NONNULL_BEGIN
 
 enum NodeKind {
-  NBad            =  0, // struct BadNode
-  NField          =  1, // struct FieldNode
-  NStmt_BEG       =  2,
-    NCUnit_BEG    =  2,
-      NPkg        =  2, // struct PkgNode
-      NFile       =  3, // struct FileNode
-    NCUnit_END    =  3,
-    NComment      =  4, // struct CommentNode
-  NStmt_END       =  4,
-  NExpr_BEG       =  5,
-    NLitExpr_BEG  =  5,
-      NNil        =  5, // struct NilNode
-      NBoolLit    =  6, // struct BoolLitNode
-      NIntLit     =  7, // struct IntLitNode
-      NFloatLit   =  8, // struct FloatLitNode
-      NStrLit     =  9, // struct StrLitNode
-    NLitExpr_END  =  9,
-    NId           = 10, // struct IdNode
-    NBinOp        = 11, // struct BinOpNode
-    NUnaryOp_BEG  = 12,
-      NPrefixOp   = 12, // struct PrefixOpNode
-      NPostfixOp  = 13, // struct PostfixOpNode
-    NUnaryOp_END  = 13,
-    NReturn       = 14, // struct ReturnNode
-    NAssign       = 15, // struct AssignNode
-    NListExpr_BEG = 16,
-      NTuple      = 16, // struct TupleNode
-      NArray      = 17, // struct ArrayNode
-      NBlock      = 18, // struct BlockNode
-    NListExpr_END = 18,
-    NFun          = 19, // struct FunNode
-    NMacro        = 20, // struct MacroNode
-    NCall         = 21, // struct CallNode
-    NTypeCast     = 22, // struct TypeCastNode
-    NLocal_BEG    = 23,
-      NConst      = 23, // struct ConstNode
-      NVar        = 24, // struct VarNode
-      NParam      = 25, // struct ParamNode
-      NMacroParam = 26, // struct MacroParamNode
-    NLocal_END    = 26,
-    NRef          = 27, // struct RefNode
-    NNamedArg     = 28, // struct NamedArgNode
-    NSelector     = 29, // struct SelectorNode
-    NIndex        = 30, // struct IndexNode
-    NSlice        = 31, // struct SliceNode
-    NIf           = 32, // struct IfNode
-    NTypeExpr     = 33, // struct TypeExprNode
-  NExpr_END       = 33,
-  NType_BEG       = 34,
-    NTypeType     = 34, // struct TypeTypeNode
-    NNamedType    = 35, // struct NamedTypeNode
-    NAliasType    = 36, // struct AliasTypeNode
-    NRefType      = 37, // struct RefTypeNode
-    NBasicType    = 38, // struct BasicTypeNode
-    NArrayType    = 39, // struct ArrayTypeNode
-    NTupleType    = 40, // struct TupleTypeNode
-    NStructType   = 41, // struct StructTypeNode
-    NFunType      = 42, // struct FunTypeNode
-  NType_END       = 42,
-  NodeKind_MAX    = 42,
+  NBad              =  0, // struct BadNode
+  NField            =  1, // struct FieldNode
+  NStmt_BEG         =  2,
+    NCUnit_BEG      =  2,
+      NPkg          =  2, // struct PkgNode
+      NFile         =  3, // struct FileNode
+    NCUnit_END      =  3,
+    NComment        =  4, // struct CommentNode
+  NStmt_END         =  4,
+  NExpr_BEG         =  5,
+    NLitExpr_BEG    =  5,
+      NNil          =  5, // struct NilNode
+      NBoolLit      =  6, // struct BoolLitNode
+      NIntLit       =  7, // struct IntLitNode
+      NFloatLit     =  8, // struct FloatLitNode
+      NStrLit       =  9, // struct StrLitNode
+    NLitExpr_END    =  9,
+    NId             = 10, // struct IdNode
+    NBinOp          = 11, // struct BinOpNode
+    NUnaryOp_BEG    = 12,
+      NPrefixOp     = 12, // struct PrefixOpNode
+      NPostfixOp    = 13, // struct PostfixOpNode
+    NUnaryOp_END    = 13,
+    NReturn         = 14, // struct ReturnNode
+    NAssign         = 15, // struct AssignNode
+    NListExpr_BEG   = 16,
+      NTuple        = 16, // struct TupleNode
+      NArray        = 17, // struct ArrayNode
+      NBlock        = 18, // struct BlockNode
+    NListExpr_END   = 18,
+    NFun            = 19, // struct FunNode
+    NMacro          = 20, // struct MacroNode
+    NCall           = 21, // struct CallNode
+    NTypeCast       = 22, // struct TypeCastNode
+    NLocal_BEG      = 23,
+      NConst        = 23, // struct ConstNode
+      NVar          = 24, // struct VarNode
+      NParam        = 25, // struct ParamNode
+      NMacroParam   = 26, // struct MacroParamNode
+    NLocal_END      = 26,
+    NRef            = 27, // struct RefNode
+    NNamedArg       = 28, // struct NamedArgNode
+    NSelector       = 29, // struct SelectorNode
+    NIndex          = 30, // struct IndexNode
+    NSlice          = 31, // struct SliceNode
+    NIf             = 32, // struct IfNode
+    NTypeExpr       = 33, // struct TypeExprNode
+  NExpr_END         = 33,
+  NType_BEG         = 34,
+    NTypeType       = 34, // struct TypeTypeNode
+    NIdType         = 35, // struct IdTypeNode
+    NAliasType      = 36, // struct AliasTypeNode
+    NRefType        = 37, // struct RefTypeNode
+    NBasicType      = 38, // struct BasicTypeNode
+    NArrayType      = 39, // struct ArrayTypeNode
+    NTupleType      = 40, // struct TupleTypeNode
+    NStructType     = 41, // struct StructTypeNode
+    NFunType        = 42, // struct FunTypeNode
+    NMacroParamType = 43, // struct MacroParamTypeNode
+  NType_END         = 43,
+  NodeKind_MAX      = 43,
 } END_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -102,7 +103,7 @@ typedef struct SliceNode SliceNode;
 typedef struct IfNode IfNode;
 typedef struct TypeExprNode TypeExprNode;
 typedef struct TypeTypeNode TypeTypeNode;
-typedef struct NamedTypeNode NamedTypeNode;
+typedef struct IdTypeNode IdTypeNode;
 typedef struct AliasTypeNode AliasTypeNode;
 typedef struct RefTypeNode RefTypeNode;
 typedef struct BasicTypeNode BasicTypeNode;
@@ -110,6 +111,7 @@ typedef struct ArrayTypeNode ArrayTypeNode;
 typedef struct TupleTypeNode TupleTypeNode;
 typedef struct StructTypeNode StructTypeNode;
 typedef struct FunTypeNode FunTypeNode;
+typedef struct MacroParamTypeNode MacroParamTypeNode;
 
 // bool NodeKindIs<kind>(NodeKind)
 #define NodeKindIsStmt(k) (NStmt_BEG <= (k) && (k) <= NStmt_END)
@@ -165,7 +167,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_TypeExprNode(n) ((n)->kind==NTypeExpr)
 #define is_Type(n) NodeKindIsType((n)->kind)
 #define is_TypeTypeNode(n) ((n)->kind==NTypeType)
-#define is_NamedTypeNode(n) ((n)->kind==NNamedType)
+#define is_IdTypeNode(n) ((n)->kind==NIdType)
 #define is_AliasTypeNode(n) ((n)->kind==NAliasType)
 #define is_RefTypeNode(n) ((n)->kind==NRefType)
 #define is_BasicTypeNode(n) ((n)->kind==NBasicType)
@@ -173,6 +175,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define is_TupleTypeNode(n) ((n)->kind==NTupleType)
 #define is_StructTypeNode(n) ((n)->kind==NStructType)
 #define is_FunTypeNode(n) ((n)->kind==NFunType)
+#define is_MacroParamTypeNode(n) ((n)->kind==NMacroParamType)
 
 // void assert_is_<kind>(const Node*)
 #ifdef DEBUG
@@ -227,7 +230,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_TypeExprNode(n) asserteq(assertnotnull(n)->kind,NTypeExpr)
 #define assert_is_Type(n) _assert_is1(Type,(n))
 #define assert_is_TypeTypeNode(n) asserteq(assertnotnull(n)->kind,NTypeType)
-#define assert_is_NamedTypeNode(n) asserteq(assertnotnull(n)->kind,NNamedType)
+#define assert_is_IdTypeNode(n) asserteq(assertnotnull(n)->kind,NIdType)
 #define assert_is_AliasTypeNode(n) asserteq(assertnotnull(n)->kind,NAliasType)
 #define assert_is_RefTypeNode(n) asserteq(assertnotnull(n)->kind,NRefType)
 #define assert_is_BasicTypeNode(n) asserteq(assertnotnull(n)->kind,NBasicType)
@@ -235,6 +238,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define assert_is_TupleTypeNode(n) asserteq(assertnotnull(n)->kind,NTupleType)
 #define assert_is_StructTypeNode(n) asserteq(assertnotnull(n)->kind,NStructType)
 #define assert_is_FunTypeNode(n) asserteq(assertnotnull(n)->kind,NFunType)
+#define assert_is_MacroParamTypeNode(n) asserteq(assertnotnull(n)->kind,NMacroParamType)
 
 // T* as_T(Node* n)
 // const T* as_const_T(const Node* n)
@@ -314,8 +318,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_TypeExprNode(n) ({__typeof__(n) n__=(n);assert_is_TypeExprNode(n__),(const TypeExprNode*)(n__);})
   #define as_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(TypeTypeNode*)(n__);})
   #define as_const_TypeTypeNode(n) ({__typeof__(n) n__=(n);assert_is_TypeTypeNode(n__),(const TypeTypeNode*)(n__);})
-  #define as_NamedTypeNode(n) ({__typeof__(n) n__=(n);assert_is_NamedTypeNode(n__),(NamedTypeNode*)(n__);})
-  #define as_const_NamedTypeNode(n) ({__typeof__(n) n__=(n);assert_is_NamedTypeNode(n__),(const NamedTypeNode*)(n__);})
+  #define as_IdTypeNode(n) ({__typeof__(n) n__=(n);assert_is_IdTypeNode(n__),(IdTypeNode*)(n__);})
+  #define as_const_IdTypeNode(n) ({__typeof__(n) n__=(n);assert_is_IdTypeNode(n__),(const IdTypeNode*)(n__);})
   #define as_AliasTypeNode(n) ({__typeof__(n) n__=(n);assert_is_AliasTypeNode(n__),(AliasTypeNode*)(n__);})
   #define as_const_AliasTypeNode(n) ({__typeof__(n) n__=(n);assert_is_AliasTypeNode(n__),(const AliasTypeNode*)(n__);})
   #define as_RefTypeNode(n) ({__typeof__(n) n__=(n);assert_is_RefTypeNode(n__),(RefTypeNode*)(n__);})
@@ -330,6 +334,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_StructTypeNode(n) ({__typeof__(n) n__=(n);assert_is_StructTypeNode(n__),(const StructTypeNode*)(n__);})
   #define as_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(FunTypeNode*)(n__);})
   #define as_const_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(const FunTypeNode*)(n__);})
+  #define as_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamTypeNode(n__),(MacroParamTypeNode*)(n__);})
+  #define as_const_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamTypeNode(n__),(const MacroParamTypeNode*)(n__);})
   #define as_Stmt(n) _Generic((n), PkgNode*:(Stmt*)(n), FileNode*:(Stmt*)(n), \
     struct CUnitNode*:(Stmt*)(n), CommentNode*:(Stmt*)(n), Stmt*:(Stmt*)(n), \
     Node*: ({__typeof__(n) n__=(n);assert_is_Stmt(n__),(Stmt*)(n__);}))
@@ -436,17 +442,17 @@ typedef struct FunTypeNode FunTypeNode;
     const Expr*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(const struct LocalNode*)(n__);}), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_LocalNode(n__),(const struct LocalNode*)(n__);}))
 
-  #define as_Type(n) _Generic((n), TypeTypeNode*:(Type*)(n), NamedTypeNode*:(Type*)(n), \
+  #define as_Type(n) _Generic((n), TypeTypeNode*:(Type*)(n), IdTypeNode*:(Type*)(n), \
     AliasTypeNode*:(Type*)(n), RefTypeNode*:(Type*)(n), BasicTypeNode*:(Type*)(n), \
     ArrayTypeNode*:(Type*)(n), TupleTypeNode*:(Type*)(n), StructTypeNode*:(Type*)(n), \
-    FunTypeNode*:(Type*)(n), Type*:(Type*)(n), \
+    FunTypeNode*:(Type*)(n), MacroParamTypeNode*:(Type*)(n), Type*:(Type*)(n), \
     Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(Type*)(n__);}))
   #define as_const_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
-    const NamedTypeNode*:(const Type*)(n), const AliasTypeNode*:(const Type*)(n), \
+    const IdTypeNode*:(const Type*)(n), const AliasTypeNode*:(const Type*)(n), \
     const RefTypeNode*:(const Type*)(n), const BasicTypeNode*:(const Type*)(n), \
     const ArrayTypeNode*:(const Type*)(n), const TupleTypeNode*:(const Type*)(n), \
     const StructTypeNode*:(const Type*)(n), const FunTypeNode*:(const Type*)(n), \
-    const Type*:(const Type*)(n), \
+    const MacroParamTypeNode*:(const Type*)(n), const Type*:(const Type*)(n), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(const Type*)(n__);}))
 
 #else // !defined(DEBUG)
@@ -522,8 +528,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_TypeExprNode(n) ({ const void* np__=(n); (const TypeExprNode*)np__; })
   #define as_TypeTypeNode(n) ({ void* np__=(n); (TypeTypeNode*)np__; })
   #define as_const_TypeTypeNode(n) ({ const void* np__=(n); (const TypeTypeNode*)np__; })
-  #define as_NamedTypeNode(n) ({ void* np__=(n); (NamedTypeNode*)np__; })
-  #define as_const_NamedTypeNode(n) ({ const void* np__=(n); (const NamedTypeNode*)np__; })
+  #define as_IdTypeNode(n) ({ void* np__=(n); (IdTypeNode*)np__; })
+  #define as_const_IdTypeNode(n) ({ const void* np__=(n); (const IdTypeNode*)np__; })
   #define as_AliasTypeNode(n) ({ void* np__=(n); (AliasTypeNode*)np__; })
   #define as_const_AliasTypeNode(n) ({ const void* np__=(n); (const AliasTypeNode*)np__; })
   #define as_RefTypeNode(n) ({ void* np__=(n); (RefTypeNode*)np__; })
@@ -538,6 +544,8 @@ typedef struct FunTypeNode FunTypeNode;
   #define as_const_StructTypeNode(n) ({ const void* np__=(n); (const StructTypeNode*)np__; })
   #define as_FunTypeNode(n) ({ void* np__=(n); (FunTypeNode*)np__; })
   #define as_const_FunTypeNode(n) ({ const void* np__=(n); (const FunTypeNode*)np__; })
+  #define as_MacroParamTypeNode(n) ({ void* np__=(n); (MacroParamTypeNode*)np__; })
+  #define as_const_MacroParamTypeNode(n) ({ const void* np__=(n); (const MacroParamTypeNode*)np__; })
   #define as_Stmt(n) ({ void* np__=(n); (Stmt*)np__; })
   #define as_const_Stmt(n) ({ const void* np__=(n); (const Stmt*)np__; })
   #define as_CUnitNode(n) ({ void* np__=(n); (struct CUnitNode*)np__; })
@@ -601,7 +609,7 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_TypeExprNode(n) ({__typeof__(n) n__=(n);is_TypeExprNode(n__)?(TypeExprNode*)(n__):NULL;})
 #define maybe_Type(n) ({__typeof__(n) n__=(n);is_Type(n__)?as_Type(n__):NULL;})
 #define maybe_TypeTypeNode(n) ({__typeof__(n) n__=(n);is_TypeTypeNode(n__)?(TypeTypeNode*)(n__):NULL;})
-#define maybe_NamedTypeNode(n) ({__typeof__(n) n__=(n);is_NamedTypeNode(n__)?(NamedTypeNode*)(n__):NULL;})
+#define maybe_IdTypeNode(n) ({__typeof__(n) n__=(n);is_IdTypeNode(n__)?(IdTypeNode*)(n__):NULL;})
 #define maybe_AliasTypeNode(n) ({__typeof__(n) n__=(n);is_AliasTypeNode(n__)?(AliasTypeNode*)(n__):NULL;})
 #define maybe_RefTypeNode(n) ({__typeof__(n) n__=(n);is_RefTypeNode(n__)?(RefTypeNode*)(n__):NULL;})
 #define maybe_BasicTypeNode(n) ({__typeof__(n) n__=(n);is_BasicTypeNode(n__)?(BasicTypeNode*)(n__):NULL;})
@@ -609,19 +617,21 @@ typedef struct FunTypeNode FunTypeNode;
 #define maybe_TupleTypeNode(n) ({__typeof__(n) n__=(n);is_TupleTypeNode(n__)?(TupleTypeNode*)(n__):NULL;})
 #define maybe_StructTypeNode(n) ({__typeof__(n) n__=(n);is_StructTypeNode(n__)?(StructTypeNode*)(n__):NULL;})
 #define maybe_FunTypeNode(n) ({__typeof__(n) n__=(n);is_FunTypeNode(n__)?(FunTypeNode*)(n__):NULL;})
+#define maybe_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);is_MacroParamTypeNode(n__)?(MacroParamTypeNode*)(n__):NULL;})
 
 // Type* nullable TypeOfNode(Node* n)
 // Type* TypeOfNode(Type* n)
 #define TypeOfNode(n) _Generic((n), const TypeTypeNode*:(const Type*)kType_type, \
-  TypeTypeNode*:kType_type, const NamedTypeNode*:(const Type*)kType_type, \
-  NamedTypeNode*:kType_type, const AliasTypeNode*:(const Type*)kType_type, \
+  TypeTypeNode*:kType_type, const IdTypeNode*:(const Type*)kType_type, \
+  IdTypeNode*:kType_type, const AliasTypeNode*:(const Type*)kType_type, \
   AliasTypeNode*:kType_type, const RefTypeNode*:(const Type*)kType_type, \
   RefTypeNode*:kType_type, const BasicTypeNode*:(const Type*)kType_type, \
   BasicTypeNode*:kType_type, const ArrayTypeNode*:(const Type*)kType_type, \
   ArrayTypeNode*:kType_type, const TupleTypeNode*:(const Type*)kType_type, \
   TupleTypeNode*:kType_type, const StructTypeNode*:(const Type*)kType_type, \
   StructTypeNode*:kType_type, const FunTypeNode*:(const Type*)kType_type, \
-  FunTypeNode*:kType_type, const Type*:(const Type*)kType_type, Type*:kType_type, \
+  FunTypeNode*:kType_type, const MacroParamTypeNode*:(const Type*)kType_type, \
+  MacroParamTypeNode*:kType_type, const Type*:(const Type*)kType_type, Type*:kType_type, \
   const NilNode*:(const Type*)((Expr*)(n))->type, NilNode*:((Expr*)(n))->type, \
   const BoolLitNode*:(const Type*)((Expr*)(n))->type, BoolLitNode*:((Expr*)(n))->type, \
   const IntLitNode*:(const Type*)((Expr*)(n))->type, IntLitNode*:((Expr*)(n))->type, \
@@ -733,16 +743,17 @@ typedef union Expr_union {
   TypeExprNode       TypeExprNode;
 } Expr_union;
 typedef union Type_union {
-  Node           Node;
-  TypeTypeNode   TypeTypeNode;
-  NamedTypeNode  NamedTypeNode;
-  AliasTypeNode  AliasTypeNode;
-  RefTypeNode    RefTypeNode;
-  BasicTypeNode  BasicTypeNode;
-  ArrayTypeNode  ArrayTypeNode;
-  TupleTypeNode  TupleTypeNode;
-  StructTypeNode StructTypeNode;
-  FunTypeNode    FunTypeNode;
+  Node               Node;
+  TypeTypeNode       TypeTypeNode;
+  IdTypeNode         IdTypeNode;
+  AliasTypeNode      AliasTypeNode;
+  RefTypeNode        RefTypeNode;
+  BasicTypeNode      BasicTypeNode;
+  ArrayTypeNode      ArrayTypeNode;
+  TupleTypeNode      TupleTypeNode;
+  StructTypeNode     StructTypeNode;
+  FunTypeNode        FunTypeNode;
+  MacroParamTypeNode MacroParamTypeNode;
 } Type_union;
 typedef union Node_union {
   BadNode    BadNode;

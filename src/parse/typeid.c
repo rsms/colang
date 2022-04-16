@@ -44,7 +44,10 @@ bool _typeid_append(Str* s, const Type* t) {
 
   if (!t->tid) switch (t->kind) {
     case NTypeExpr:
-      MUSTTAIL return _typeid_append(s, as_TypeExprNode(t)->type);
+      MUSTTAIL return _typeid_append(s, ((TypeExprNode*)t)->type);
+
+    case NIdType:
+      MUSTTAIL return _typeid_append(s, assertnotnull(((IdTypeNode*)t)->target));
 
     case NRefType:
       str_appendc(s, TypeCodeEncoding(TC_ref));
@@ -73,19 +76,10 @@ bool _typeid_append(Str* s, const Type* t) {
     case NFunType: {
       auto ft = as_FunTypeNode(t);
       str_appendc(s, TypeCodeEncoding(TC_fun));
-      // if (ft->params.len > 0) {
-      //   str_appendc(s, TypeCodeEncoding(TC_struct));
-      //   for (u32 i = 0; i < ft->params.len; i++) {
-      //     FieldNode* field = ft->params.v[i];
-      //     _typeid_append(s, assertnotnull(field->type));
-      //   }
-      //   str_appendc(s, TypeCodeEncoding(TC_structEnd));
-      //   // _typeid_append(s, assertnotnull(ft->params->type));
-      if (ft->params) {
-        _typeid_append(s, assertnotnull(ft->params->type));
-      } else {
-        str_appendc(s, TypeCodeEncoding(TC_nil));
-      }
+      str_appendc(s, TypeCodeEncoding(TC_tuple));
+      for (u32 i = 0; i < ft->params->len; i++)
+        _typeid_append(s, assertnotnull(ft->params->v[i]->type));
+      str_appendc(s, TypeCodeEncoding(TC_tupleEnd));
       if (!ft->result)
         return str_appendc(s, TypeCodeEncoding(TC_nil));
       MUSTTAIL return _typeid_append(s, ft->result);

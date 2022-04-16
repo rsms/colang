@@ -4,7 +4,7 @@
 #include "universe_data.h"
 
 // DEBUG_UNIVERSE_DUMP_SCOPE -- define to log universe_scope state
-#define DEBUG_UNIVERSE_DUMP_SCOPE
+//#define DEBUG_UNIVERSE_DUMP_SCOPE
 
 static Scope   g_scope = {0};
 static SymPool g_universe_syms = {0};
@@ -59,11 +59,22 @@ static void add_rawptr_fun() {
       .ext = true,
     },
   };
-  static const TupleNode params = {
-    .kind = NTuple,
-    .type = (Type*)&paramstype,
-    .a = {
-      .v = (Expr**)paramsv,
+  // static const TupleNode params = {
+  //   .kind = NTuple,
+  //   .type = (Type*)&paramstype,
+  //   .a = {
+  //     .v = (Expr**)paramsv,
+  //     .len = countof(paramsv),
+  //     .cap = countof(paramsv),
+  //     .ext = true,
+  //   },
+  // };
+  static FunNode fn = {
+    .kind = NFun,
+    .name = kSym_to_rawptr,
+    .result = (Type*)&_kType_rawptr,
+    .params = {
+      .v = (ParamNode**)paramsv,
       .len = countof(paramsv),
       .cap = countof(paramsv),
       .ext = true,
@@ -73,16 +84,11 @@ static void add_rawptr_fun() {
     .kind = NFunType,
     .tflags = TF_KindFunc,
     .tid = kSym__, // TODO FIXME generate type id for this function signature
-    .params = (TupleNode*)&params,
     .result = (Type*)&_kType_rawptr,
+    .params = &fn.params,
   };
-  static const FunNode fn = {
-    .kind = NFun,
-    .name = kSym_to_rawptr,
-    .type = (Type*)&fntype,
-    .params = (TupleNode*)&params,
-    .result = (Type*)&_kType_rawptr,
-  };
+
+  fn.type = (Type*)&fntype;
   kBuiltin_to_rawptr = &fn;
   add_global(kSym_to_rawptr, (Node*)&fn);
 

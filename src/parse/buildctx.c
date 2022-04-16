@@ -332,6 +332,8 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
   // invariant: x != y
   assertnotnull(x);
   assertnotnull(y);
+  x = unbox_id_type(x);
+  y = unbox_id_type(y);
   if (x->kind != y->kind)
     return false;
   if (is_BasicTypeNode(x)) // all BasicTypeNodes have precomputed type id
@@ -341,6 +343,9 @@ bool _b_typeeq(BuildCtx* b, Type* x, Type* y) {
 
 
 bool _b_typelteq(BuildCtx* b, Type* dst, Type* src) {
+  dst = unbox_id_type(dst);
+  src = unbox_id_type(src);
+
   NodeKind k = dst->kind;
   if (k != src->kind)
     return false;

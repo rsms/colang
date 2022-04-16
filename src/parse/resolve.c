@@ -8,26 +8,14 @@
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_id impl
 
-static Node* simplify_id(IdNode* id, Node* nullable target);
 
-
-Node* resolve_id(IdNode* id, Node* nullable target) {
+Expr* resolve_id_expr(IdNode* id, Expr* target) {
   assertnotnull(id->name);
-
-  if (target == NULL) {
-    if (id->target) {
-      // simplify already-resolved id, which must be flagged as an rvalue
-      assert(NodeIsRValue(id));
-      MUSTTAIL return simplify_id(id, target);
-    }
-    // mark id as unresolved
-    NodeSetUnresolved(id);
-    return as_Node(id);
-  }
-
   assertnull(id->target);
+
+  id->flags &= ~NF_Unresolved;
+  id->type = unbox_id_type(TypeOfNode(target));
   id->target = target;
-  id->type = TypeOfNode(target);
 
   switch (target->kind) {
     case NMacro:
@@ -45,72 +33,22 @@ Node* resolve_id(IdNode* id, Node* nullable target) {
   // set id const == target const
   id->flags = (id->flags & ~NF_Const) | (target->flags & NF_Const);
 
-  MUSTTAIL return simplify_id(id, target);
-}
-
-// simplify_id returns an Id's target if it's a simple constant, or the id itself.
-// This reduces the complexity of common code.
-//
-// For example:
-//   var x bool
-//   x = true
-// Without simplifying these ids the AST would look like this:
-//   (Local x (Id bool -> (BasicType bool)))
-//   (Assign (Id x -> (Local x)) (Id true -> (BoolLit true)))
-// With simplify_id, the AST would instead look like this:
-//   (Local (Id x) (BasicType bool))
-//   (Assign (Local x) (BoolLit true))
-//
-// Note:
-//   We would need to make sure post_resolve_id uses the same algorithm to get the
-//   same outcome for cases like this:
-//     fun foo()   | (Fun foo
-//       x = true  |   (Assign (Id x -> ?) (BoolLit true)) )
-//     var x bool  | (Local x (BasicType bool))
-//
-static Node* simplify_id(IdNode* id, Node* nullable _ign) {
-  assertnotnull(id->target);
-
-  // unwind local targeting a type
-  Node* tn = id->target;
-  while (NodeIsConst(tn) &&
-         (is_VarNode(tn) || is_ConstNode(tn)) &&
-         LocalInitField(tn) != NULL )
-  {
-    tn = as_Node(LocalInitField(tn));
-    // Note: no NodeUnrefLocal here
-  }
-
-  // if the target is a primitive constant, use that instead of the id node
-  switch (tn->kind) {
-    case NNil:
-    case NBasicType:
-    case NBoolLit:
-      return id->target;
-    default:
-      return (Node*)id;
-  }
+  return (Expr*)id;
 }
 
 
-// unwind_id returns the first non-id target of an id (or n if n is not an id.)
-static Node* unwind_id(Node* n) {
-  for (;;) switch (n->kind) {
-    case NId:
-      n = ((IdNode*)n)->target;
-      break;
-    // case NConst:
-    //   n = (Node*)((VarNode*)n)->value;
-    //   break;
-    // case NVar:
-    //   if (!NodeIsConst(n) || ((VarNode*)n)->init == NULL)
-    //     return n;
-    //   n = (Node*)((VarNode*)n)->init;
-    //   break;
-    default:
-      return n;
-  }
+Type* resolve_id_type(IdTypeNode* id, Type* target) {
+  assertnotnull(id->name);
+  assertnull(id->target);
+
+  id->target = target;
+  id->flags &= ~NF_Unresolved;
+  id->flags &= ~NF_Const;
+  id->flags &= (target->flags & (NF_Const | NF_Unresolved));
+
+  return (Type*)id;
 }
+
 
 
 //———————————————————————————————————————————————————————————————————————————————————————
@@ -256,21 +194,12 @@ static void resolve_syms_in_array(R* r, const NodeArray* a) {
     a->v[i] = resolve_sym(r, a->v[i]);
 }
 
-static Node* lookup_id(R* r, Node* n, Sym name) {
-  Node* target = ScopeLookup(r->lookupscope, name);
-  if LIKELY(target)
-    return target;
-  dlog2("LOOKUP %s FAILED", name);
-  errf(r, n, "undefined identifier %s", name);
-  return kNode_bad;
-}
-
 static Node* _resolve_sym1(R* r, Node* np) {
   NodeClearUnresolved(np); // do this up front to allow tail calls
 
   // resolve type first
   if (is_Expr(np) && ((Expr*)np)->type && NodeIsUnresolved(((Expr*)np)->type))
-    ((Expr*)np)->type = as_Type(resolve_sym(r, ((Expr*)np)->type));
+    ((Expr*)np)->type = unbox_id_type(as_Type(resolve_sym(r, ((Expr*)np)->type)));
 
   switch ((enum NodeKind)np->kind) { case NBad: {
 
@@ -292,19 +221,29 @@ static Node* _resolve_sym1(R* r, Node* np) {
   NCASE(FloatLit)   panic("TODO %s", nodename(n));
   NCASE(StrLit)     panic("TODO %s", nodename(n));
 
-  NCASE(Id)
-    n->target = lookup_id(r, np, n->name);
-    if UNLIKELY(n->target == kNode_bad)
-      return np;
-    if (NodeIsUnused(n->target)) // must check to avoid editing universe
-      NodeClearUnused(n->target);
-    return resolve_id(n, n->target);
+  NCASE(Id) {
+    Node* target = ScopeLookup(r->lookupscope, n->name);
+    if (UNLIKELY(!target) || UNLIKELY(!is_Expr(target))) {
+      dlog2("LOOKUP expr \"%s\" FAILED", n->name);
+      errf(r, n, "undefined identifier %s", n->name);
+      target = (Node*)kExpr_nil;
+    }
+    if (NodeIsUnused(target)) // must check to avoid editing universe
+      NodeClearUnused(target);
+    return (Node*)resolve_id_expr(n, (Expr*)target);
+  }
 
-  NCASE(NamedType)
-    np = lookup_id(r, np, n->name);
-    if (NodeIsUnused(np)) // must check to avoid editing universe
-      NodeClearUnused(np);
-    return np;
+  NCASE(IdType) {
+    Node* target = ScopeLookup(r->lookupscope, n->name);
+    if (UNLIKELY(!target) || UNLIKELY(!is_Type(target))) {
+      dlog2("LOOKUP type \"%s\" FAILED", n->name);
+      errf(r, n, "undefined identifier %s", n->name);
+      target = (Node*)kType_nil;
+    }
+    if (NodeIsUnused(target)) // must check to avoid editing universe
+      NodeClearUnused(target);
+    return (Node*)resolve_id_type(n, (Type*)target);
+  }
 
   NCASE(BinOp)
     n->left  = as_Expr(resolve_sym(r, n->left));
@@ -329,8 +268,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     return np;
 
   NCASE(Fun)
-    if (n->params)
-      n->params = as_TupleNode(resolve_sym(r, n->params));
+    resolve_syms_in_array(r, as_NodeArray(&n->params));
     if (n->result)
       n->result = as_Type(resolve_sym(r, n->result));
     // Note: Don't update lookupscope as a function's parameters should always be resolved
@@ -388,7 +326,7 @@ static Type* nullable set_typecontext(R* r, Type* nullable t) {
     assertne(t, kType_ideal);
   }
   Type* prev = r->typecontext;
-  r->typecontext = t;
+  r->typecontext = unbox_id_type(t);
   return prev;
 }
 
@@ -421,7 +359,7 @@ static Node* _mark_local_mutable(R* r, Node* n) {
         n = as_Node(as_SelectorNode(n)->operand);
         break;
       case NId:
-        n = assertnotnull( ((IdNode*)n)->target );
+        n = as_Node(assertnotnull( ((IdNode*)n)->target ));
         break;
       case NVar:
       case NField:
@@ -441,7 +379,7 @@ static bool is_type_complete(Type* np) {
       return is_type_complete(n->elem);
     NCASE(StructType)
       return (n->flags & (NF_CustomInit | NF_PartialType)) == 0;
-    NCASE(NamedType)
+    NCASE(IdType)
       return (n->flags & NF_Unresolved) == 0;
     NDEFAULTCASE
       return (n->flags & NF_PartialType) == 0;
@@ -449,12 +387,11 @@ static bool is_type_complete(Type* np) {
 }
 
 
-// find_local_by_name returns the first index of local "name", or -1 if not found
-static isize find_local_by_name(R* r, const ExprArray* locals, Sym name) {
-  assert((usize)locals->len <= (usize)ISIZE_MAX);
-  for (isize i = 0, len = (isize)locals->len; i < len; i++) {
-    LocalNode* n = as_LocalNode(locals->v[i]);
-    if (n->name == name)
+// find_param_by_name returns the first index of local "name", or -1 if not found
+static isize find_param_by_name(R* r, const ParamArray* params, Sym name) {
+  assert((usize)params->len <= (usize)ISIZE_MAX);
+  for (isize i = 0, len = (isize)params->len; i < len; i++) {
+    if (params->v[i]->name == name)
       return i;
   }
   return -1;
@@ -481,19 +418,20 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 static Node* restype_fun(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
   n->type = as_Type(t);
-  t->flags |= (n->flags | NF_Unsafe);
+  t->flags |= (n->flags & NF_Unsafe);
 
   RFlag rflags = r->flags; // save
   SET_FLAG(r->flags, RF_Unsafe, NodeIsUnsafe(n)); // are we in safe or unsafe context?
 
-  if (n->params) {
-    n->params = as_TupleNode(resolve(r, n->params));
-    t->params = n->params;
+  for (u32 i = 0; i < n->params.len; i++) {
+    UNUSED Node* cn = resolve(r, n->params.v[i]);
+    assert(cn == (Node*)n->params.v[i]);
   }
+  t->params = &n->params;
 
   if (n->result) {
     n->result = as_Type(resolve(r, n->result));
-    t->result = n->result;
+    t->result = unbox_id_type(n->result);
   }
 
   if (n->body) {
@@ -518,48 +456,9 @@ static Node* restype_fun(R* r, FunNode* n) {
 }
 
 
-static bool resolve_expr_array(R* r, ExprArray* a, Node* origin, TypeArray* nullable types) {
-  Type* typecontext = r->typecontext; // save typecontext
-  const TypeArray* ctlist = NULL;
-  u32 ctindex = 0;
-
-  if (typecontext) {
-    if (typecontext->kind == NTupleType) {
-      ctlist = &((TupleTypeNode*)typecontext)->a;
-      assert(ctlist->len > 0); // tuples should never be empty
-    } else {
-      // TODO: improve this error message
-      errf(r, typecontext, "unexpected context type %s", FMTNODE(typecontext,1));
-      return false;
-    }
-    if UNLIKELY(ctlist->len != a->len) {
-      errf(r, origin, "%u expressions where %u expressions are expected %s",
-        a->len, ctlist->len, FMTNODE(typecontext,1));
-      return false;
-    }
-  }
-
-  for (u32 i = 0; i < a->len; i++) {
-    if (ctlist)
-      r->typecontext = ctlist->v[ctindex++];
-
-    Expr* cn = as_Expr(resolve(r, a->v[i]));
-    a->v[i] = cn;
-    if (types)
-      array_push(types, cn->type);
-  }
-
-  r->typecontext = typecontext; // restore typecontext
-  return true;
-}
-
-
 // is_named_params returns true if params are named; ie (x T, y T) but not (T, T)
-static bool is_named_params(TupleNode* params) {
-  if (params->a.len == 0)
-    return false;
-  ParamNode* param0 = as_ParamNode(params->a.v[0]);
-  return param0->name != kSym__;
+static bool is_named_params(ParamArray* params) {
+  return params->len > 0 && params->v[0]->name != kSym__;
 }
 
 
@@ -571,19 +470,22 @@ static int named_arg_sortfn(const NamedArgNode** x, const NamedArgNode** y, R* r
 }
 
 
-static bool resolve_positional_call_args(R* r, CallNode* n, TupleNode* params) {
-  Type* typecontext = set_typecontext(r, params->type);
+static bool resolve_positional_call_args(R* r, CallNode* n, ParamArray* params) {
   RFlag rflags = add_flags(r, RF_ResolveIdeal);
+  Type* typecontext = r->typecontext;
 
-  bool ok = resolve_expr_array(r, &n->args, as_Node(n), NULL);
+  for (u32 i = 0; i < n->args.len; i++) {
+    r->typecontext = unbox_id_type(params->v[i]->type);
+    n->args.v[i] = as_Expr(resolve(r, n->args.v[i]));
+  }
 
   r->typecontext = typecontext;
   r->flags = rflags;
-  return ok;
+  return true;
 }
 
 
-static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
+static bool resolve_named_call_args(R* r, CallNode* n, ParamArray* params) {
   // if the parameters aren't named, we can't call them by name
   // e.g. "fun foo(int) ; foo(x=1)"
   if UNLIKELY(!is_named_params(params)) {
@@ -593,9 +495,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
   }
 
   ExprArray* args = &n->args;
-  TypeArray param_types = as_TupleTypeNode(params->type)->a;
-  asserteq(params->a.len, args->len);
-  asserteq(params->a.len, param_types.len);
+  asserteq(params->len, args->len);
 
   // save-then-update resolver state
   Type* typecontext = r->typecontext;
@@ -605,7 +505,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
   // The parser guarantees these come before named ones.
   u32 i = 0;
   for (; i < args->len && args->v[i]->kind != NNamedArg; i++) {
-    r->typecontext = param_types.v[i];
+    r->typecontext = unbox_id_type(params->v[i]->type);
     args->v[i] = as_Expr(resolve(r, args->v[i]));
   }
 
@@ -614,7 +514,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
   u32 named_start_idx = i;
   for (; i < args->len; i++) {
     NamedArgNode* namedarg = as_NamedArgNode(args->v[i]);
-    isize param_idx = find_local_by_name(r, &params->a, namedarg->name);
+    isize param_idx = find_param_by_name(r, params, namedarg->name);
     if UNLIKELY(param_idx < 0) {
       b_errf(r->build, CallNodeArgsPosSpan(n),
         "no parameter named \"%s\" in %s", namedarg->name, FMTNODE(n->receiver,0));
@@ -625,7 +525,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, TupleNode* params) {
     // temporarily store parameter index for sort function to access
     arg->irval = (void*)(uintptr)param_idx;
     // resolve argument
-    r->typecontext = param_types.v[param_idx];
+    r->typecontext = unbox_id_type(params->v[param_idx]->type);
     args->v[i] = as_Expr(resolve(r, arg));
   }
 
@@ -645,7 +545,7 @@ end:
 }
 
 
-static void resolve_call_args(R* r, CallNode* n, TupleNode* params) {
+static void resolve_call_args(R* r, CallNode* n, ParamArray* params) {
   // resolve arguments in the context of the function's parameters
   bool ok;
   if (n->flags & NF_Named) {
@@ -656,10 +556,9 @@ static void resolve_call_args(R* r, CallNode* n, TupleNode* params) {
   if UNLIKELY(!ok)
     return;
 
-  TypeArray param_types = as_TupleTypeNode(params->type)->a;
   for (u32 i = 0, len = n->args.len; i < len; i++) {
     Expr* arg = n->args.v[i];
-    Type* param_typ = param_types.v[i];
+    Type* param_typ = assertnotnull(params->v[i]->type);
     if UNLIKELY(!b_typelteq(r->build, param_typ, arg->type)) {
       char tmpbuf[128];
       errf(r, arg, "incompatible argument type %s, expecting %s in call to %s",
@@ -678,28 +577,27 @@ static Node* restype_call_type(R* r, CallNode* n) {
     kType_nil
   );
   dlog("TODO type of TypeType");
-  n->type = recvt;
+  n->type = unbox_id_type(recvt);
   return as_Node(n);
 }
 
 
 static Node* restype_call_fun(R* r, CallNode* n) {
   FunTypeNode* ft = (FunTypeNode*)as_Expr(n->receiver)->type;
+
   if (NodeIsUnsafe(ft) && (r->flags & RF_Unsafe) == 0) {
     b_errf(r->build, NodePosSpan(n),
       "call to unsafe function requires unsafe function or block");
   }
 
-  n->type = ft->result;
+  n->type = ft->result; // note: already unbox_id_type'ed
   if (!n->type)
     n->type = kType_nil;
 
   // check argument cardinality
-  u32 nargs = n->args.len;
-  u32 nparams = ft->params ? ft->params->a.len : 0;
-  if (nargs != nparams) {
+  if (n->args.len != ft->params->len) {
     b_errf(r->build, CallNodeArgsPosSpan(n),
-      "wrong number of arguments: %u; expecting %u", nargs, nparams);
+      "wrong number of arguments: %u; expecting %u", n->args.len, ft->params->len);
     return as_Node(n);
   }
 
@@ -722,7 +620,13 @@ static Node* restype_call(R* r, CallNode* n) {
   if (recvt == kType_type)
     return restype_call_type(r, n);
 
-  assert(is_FunTypeNode(recvt));
+  if UNLIKELY(!is_FunTypeNode(recvt)) {
+    b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
+      TypeKindName(TF_Kind(recvt->tflags)), FMTNODE(n->receiver,0));
+    n->type = kType_nil;
+    return (Node*)n;
+  }
+
   return restype_call_fun(r, n);
 }
 
@@ -734,7 +638,37 @@ static Node* restype_tuple(R* r, TupleNode* n) {
     return as_Node(n);
   }
   n->type = as_Type(t);
-  resolve_expr_array(r, &n->a, as_Node(n), &t->a);
+
+  Type* typecontext = r->typecontext; // save
+
+  // do we have a tuple context type?
+  const TypeArray* ctx_types = NULL;
+  if (typecontext) {
+    if (typecontext->kind == NTupleType) {
+      ctx_types = &((TupleTypeNode*)typecontext)->a;
+      assert(ctx_types->len > 0); // tuples should never be empty
+    } else {
+      // TODO: improve this error message
+      errf(r, typecontext, "unexpected context type %s", FMTNODE(typecontext,1));
+      return as_Node(n);
+    }
+    if UNLIKELY(ctx_types->len != n->a.len) {
+      errf(r, n, "%u expressions where %u expressions are expected %s",
+        n->a.len, ctx_types->len, FMTNODE(typecontext,1));
+      return as_Node(n);
+    }
+  }
+
+  for (u32 i = 0; i < n->a.len; i++) {
+    if (ctx_types)
+      r->typecontext = unbox_id_type(ctx_types->v[i]);
+    Expr* cn = as_Expr(resolve(r, n->a.v[i]));
+    cn->type = unbox_id_type(cn->type);
+    array_push(&t->a, cn->type);
+    n->a.v[i] = cn;
+  }
+
+  r->typecontext = typecontext; // restore
   return as_Node(n);
 }
 
@@ -769,7 +703,7 @@ static Node* restype_block(R* r, BlockNode* n) {
   r->flags |= RF_ResolveIdeal;
   n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
 
-  n->type = n->a.v[lasti]->type;
+  n->type = unbox_id_type(n->a.v[lasti]->type);
 
   r->flags = rflags; // restore
   return as_Node(n);
@@ -801,14 +735,8 @@ static Node* restype_strlit(R* r, StrLitNode* n) {
 
 static Node* restype_id(R* r, IdNode* n) {
   assertnotnull(n->target);
-  n->target = resolve(r, n->target);
-  if (is_Expr(n->target)) {
-    n->type = ((Expr*)n->target)->type;
-  } else if (is_Type(n->target)) {
-    n->type = kType_type;
-  } else {
-    n->type = kType_nil;
-  }
+  n->target = as_Expr(resolve(r, n->target));
+  n->type = unbox_id_type(((Expr*)n->target)->type);
   return as_Node(n);
 }
 
@@ -820,9 +748,9 @@ static Node* restype_binop(R* r, BinOpNode* n) {
 
   Type* typecontext = set_typecontext(r, NULL); {
     if (x->type && x->type != kType_ideal) {
-      r->typecontext = x->type;
+      r->typecontext = unbox_id_type(x->type);
     } else if (y->type && y->type != kType_ideal) {
-      r->typecontext = y->type;
+      r->typecontext = unbox_id_type(y->type);
       prefer_y = true;
     }
     x = as_Expr(resolve(r, x));
@@ -831,7 +759,7 @@ static Node* restype_binop(R* r, BinOpNode* n) {
   r->typecontext = typecontext;
 
   // if the types differ, attempt an implicit cast
-  if UNLIKELY(x->type != y->type) {
+  if UNLIKELY(!b_typeeq(r->build, x->type, y->type)) {
     // note: ctypecast_implicit does a full b_typeeq check before attempting cast
     Expr** xp = prefer_y ? &y : &x;
     Expr** yp = prefer_y ? &x : &y;
@@ -840,7 +768,7 @@ static Node* restype_binop(R* r, BinOpNode* n) {
 
   n->left = x;
   n->right = y;
-  n->type = x->type;
+  n->type = unbox_id_type(x->type);
 
   return as_Node(n);
 }
@@ -858,7 +786,7 @@ static Node* restype_postfixop(R* r, PostfixOpNode* n) {
 
 static Node* restype_return(R* r, ReturnNode* n) {
   n->expr = as_Expr(resolve(r, n->expr));
-  n->type = n->expr->type;
+  n->type = unbox_id_type(n->expr->type);
   return as_Node(n);
 }
 
@@ -870,7 +798,7 @@ static Node* restype_assign(R* r, AssignNode* n) {
   RFlag rflags = clear_flags(r, RF_ResolveIdeal);
   n->dst = as_Expr(resolve(r, n->dst));
   Type* typecontext = r->typecontext; // save
-  r->typecontext = (n->dst->type != kType_ideal) ? n->dst->type : NULL;
+  r->typecontext = (n->dst->type != kType_ideal) ? unbox_id_type(n->dst->type) : NULL;
   n->val = as_Expr(resolve(r, n->val));
   r->typecontext = typecontext; // restore
   r->flags = rflags; // restore
@@ -885,7 +813,7 @@ static Node* restype_assign(R* r, AssignNode* n) {
   }
 
   // the type of the assignment expression is the type of the destination (var/field)
-  n->type = n->dst->type;
+  n->type = unbox_id_type(n->dst->type);
 
   // check & convert rvalue type
   if UNLIKELY(n->type->kind == NArrayType) {
@@ -901,7 +829,9 @@ static Node* restype_assign(R* r, AssignNode* n) {
 
 
 static Node* restype_macro(R* r, MacroNode* n) {
-  TODO_RESTYPE_IMPL; n->type = kType_nil;
+  // TODO_RESTYPE_IMPL;
+  dlog("TODO restype_macro");
+  n->type = kType_nil;
   return as_Node(n);
 }
 
@@ -914,7 +844,7 @@ static Node* restype_typecast(R* r, TypeCastNode* n) {
 
 static Node* restype_const(R* r, ConstNode* n) {
   n->value = as_Expr(resolve(r, n->value));
-  n->type = n->value->type;
+  n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }
 
@@ -923,7 +853,7 @@ static Node* restype_var(R* r, VarNode* n) {
   // parser should make sure that var without explicit type has initializer
   assertnotnull(n->init);
   n->init = as_Expr(resolve(r, n->init));
-  n->type = n->init->type;
+  n->type = unbox_id_type(n->init->type);
   return as_Node(n);
 }
 
@@ -946,7 +876,7 @@ static Node* restype_ref(R* r, RefNode* n) {
 
 static Node* restype_namedarg(R* r, NamedArgNode* n) {
   n->value = as_Expr(resolve(r, n->value));
-  n->type = n->value->type;
+  n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }
 
@@ -983,7 +913,7 @@ static Node* restype_typetype(R* r, TypeTypeNode* n) {
   return as_Node(n);
 }
 
-static Node* restype_namedtype(R* r, NamedTypeNode* n) {
+static Node* restype_namedtype(R* r, IdTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
@@ -1041,7 +971,7 @@ static Node* _resolve_type(R* r, Node* np) {
     } else {
       // make sure its type is resolved
       if (!is_type_complete(n->type))
-        n->type = as_Type(resolve(r, n->type));
+        n->type = unbox_id_type(as_Type(resolve(r, n->type)));
       return np;
     }
   }
@@ -1083,7 +1013,7 @@ static Node* _resolve_type(R* r, Node* np) {
   NCASE(TypeExpr)   return restype_typeexpr(r, n);
 
   NCASE(TypeType)   return restype_typetype(r, n);
-  NCASE(NamedType)  return restype_namedtype(r, n);
+  NCASE(IdType)  return restype_namedtype(r, n);
   NCASE(AliasType)  return restype_aliastype(r, n);
   NCASE(RefType)    return restype_reftype(r, n);
   NCASE(BasicType)  return restype_basictype(r, n);

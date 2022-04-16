@@ -49,6 +49,13 @@ PosSpan _NodePosSpan(const Node* np) {
 }
 
 
+Type* unbox_id_type1(IdTypeNode* t) {
+  if (t->target)
+    return unbox_id_type(t->target);
+  return (Type*)t;
+}
+
+
 bool ScopeInit(Scope* s, Mem mem, const Scope* nullable parent) {
   s->parent = parent;
   if (hmap_isvalid(&s->bindings)) {
