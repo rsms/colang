@@ -513,6 +513,7 @@ static Node* nullable lookupsym(Parser* p, Sym key) {
   return lookupsymPkg(p, key);
 }
 
+
 static Node* nullable lookupsymShallow(Parser* p, Sym key) {
   uintptr i = p->scopestack.len;
   uintptr base = p->scopestack.base;
@@ -529,6 +530,22 @@ static Node* nullable lookupsymShallow(Parser* p, Sym key) {
   }
   return NULL;
 }
+
+
+#ifdef DEBUG_LOOKUPSYM
+  static Node* nullable lookupsym_debug(Parser* p, Sym key) {
+    dlog("lookup \"%s\" ...", key);
+    Node* n = lookupsym(p, key);
+    if (n) {
+      dlog("lookup \"%s\" => %s %s (%p)", key, nodename(n), FMTNODE(n,0), n);
+    } else {
+      dlog("lookup \"%s\" => (not found)", key);
+    }
+    return n;
+  }
+  #define lookupsym lookupsym_debug
+#endif
+
 
 #define defsym(p, s, n) _defsym((p), (s), as_Node(assertnotnull(n)))
 
@@ -600,15 +617,6 @@ static Expr* presolve_id_expr(Parser* p, IdNode* id) {
   assertnull(id->target);
   Node* target = lookupsym(p, assertnotnull(id->name));
 
-  #ifdef DEBUG_LOOKUPSYM
-    if (target) {
-      dlog("lookup expr \"%s\" => %s %s (%p)",
-        id->name, nodename(target), FMTNODE(target,0), target);
-    } else {
-      dlog("lookup expr \"%s\" => (not found; unresolved)", id->name);
-    }
-  #endif
-
   if LIKELY(target && is_Expr(target))
     return resolve_id_expr(id, (Expr*)target);
 
@@ -629,15 +637,6 @@ static Expr* presolve_id_expr(Parser* p, IdNode* id) {
 static Type* presolve_id_type(Parser* p, IdTypeNode* id) {
   assertnull(id->target);
   Node* target = lookupsym(p, assertnotnull(id->name));
-
-  #ifdef DEBUG_LOOKUPSYM
-    if (target) {
-      dlog("lookup type \"%s\" => %s %s (%p)",
-        id->name, nodename(target), FMTNODE(target,0), target);
-    } else {
-      dlog("lookup type \"%s\" => (not found; unresolved)", id->name);
-    }
-  #endif
 
   // special case for nil since "nil" in universe is kExpr_nil
   if (target == (Node*)kExpr_nil)
@@ -747,57 +746,46 @@ static Node* PAuto(Parser* p, PFlag fl) {
 }
 
 
-static Sym pident(Parser* p) {
-  if UNLIKELY(p->tok != TId) {
-    syntaxerr(p, "expecting identifier");
-    return kSym__;
-  }
-  Sym name = p->name;
-  nexttok(p);
-  return name;
-}
-
-
-static Type* pIdType(Parser* p, PFlag fl) {
-  if (p->flags & ParseOpt) {
-    Node* target = lookupsym(p, p->name);
-    if (target && is_Type(target)) {
-      nexttok(p);
-      return (Type*)target;
-    }
-  }
-  IdTypeNode* n = mknode(p, IdType);
-  n->name = pident(p);
-  return presolve_id_type(p, n);
-}
-
-
-static Expr* pIdExpr(Parser* p, PFlag fl) {
-  if ((p->flags & ParseOpt) && (fl & PFlagRValue)) {
-    Node* target = lookupsym(p, p->name);
-    if (target && is_Expr(target)) {
-      nexttok(p);
-      return (Expr*)target;
-    }
-  }
-  IdNode* id = mknode(p, Id);
-  id->name = pident(p);
-  if ((fl & PFlagRValue) || p->tok == TSemi) {
-    NodeSetRValue(id);
-    return presolve_id_expr(p, id);
-  }
-  return as_Expr(id);
-}
-
-
 // PId -- identifier (as prefix)
 // When parsing an rvalue identifier, PFlagRValue is set in fl
 //
 //!PrefixParselet TId
 static Node* PId(Parser* p, PFlag fl) {
-  if (fl & PFlagType)
-    return (Node*)pIdType(p, fl);
-  return (Node*)pIdExpr(p, fl);
+  Node* target = (fl & PFlagRValue) ? lookupsym(p, p->name) : NULL;
+  Node* n;
+  if (target) {
+    if (is_MacroParamNode(target) && (fl & PFlagType)) {
+      auto mpt = mknode(p, MacroParamType);
+      mpt->param = (MacroParamNode*)target;
+      n = (Node*)mpt;
+    } else if (p->flags & ParseOpt) {
+      if (fl & PFlagType)
+        expectType(p, target);
+      n = target;
+    } else if (is_Type(target)) {
+      auto id = mknode(p, IdType);
+      id->name = p->name;
+      n = (Node*)resolve_id_type(id, (Type*)target);
+    } else {
+      assert_is_Expr(target);
+      auto id = mknode(p, Id);
+      id->name = p->name;
+      n = (Node*)resolve_id_expr(id, (Expr*)target);
+    }
+  } else {
+    if (fl & PFlagType) {
+      IdTypeNode* id = mknode(p, IdType);
+      id->name = p->name;
+      n = (Node*)id;
+    } else {
+      IdNode* id = mknode(p, Id);
+      id->name = p->name;
+      n = (Node*)id;
+    }
+    NodeSetUnresolved(n);
+  }
+  nexttok(p); // consume TId
+  return n;
 }
 
 
@@ -933,7 +921,9 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
   nexttok(p); // consume "var" or "const"
 
   IdNode* name = mknode(p, Id);
-  name->name = pident(p);
+  name->name = p->name;
+  if UNLIKELY(!got(p, TId))
+    syntaxerr(p, "expecting identifier");
 
   SET_FLAG(fl, PFlagVar, !isconst);
 
@@ -981,20 +971,19 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
 
 // e.g. "a = x"
 // returns LocalNode or AssignNode
-static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
-  IdNode* dst = as_IdNode(dstn);
-  Expr* target = dst->target;
+static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* idn) {
+  IdNode* id = as_IdNode(idn);
+  Expr* target = id->target;
 
   if (!target) {
-    presolve_id_expr(p, dst);
-    target = dst->target;
+    presolve_id_expr(p, id);
+    target = id->target;
   }
 
   if (!target || !is_LocalNode(target)) {
     // local definition, e.g. "x = 3" -> (Local (Id x) (Int 3))
     nexttok(p); // consume '='
     Type* ctxtype = set_ctxtype(p, NULL);
-    // Expr* init = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
 
     Node* n = parse_next(p, PREC_LOWEST, fl | PFlagRValue);
     Expr* init;
@@ -1008,18 +997,18 @@ static Node* pAssignToId(Parser* p, const Parselet* e, PFlag fl, Node* dstn) {
     }
 
     p->ctxtype = ctxtype;
-    // note: make_local copies dst->name & dst->pos
-    return as_Node(make_local(p, NVar, dst, init, init->type, dst->pos));
+    // note: make_local copies id->name & id->pos
+    return as_Node(make_local(p, NVar, id, init, init->type, id->pos));
   }
 
   // assignment
   LocalNode* targetlocal = (LocalNode*)target;
   if UNLIKELY(is_ConstNode(targetlocal)) {
-    b_errf(p->build, NodePosSpan(dst),
+    b_errf(p->build, NodePosSpan(id),
       "cannot assign to constant %s", targetlocal->name);
     b_notef(p->build, NodePosSpan(targetlocal),
       "constant %s defined here", targetlocal->name);
-    b_notef(p->build, NodePosSpan(dst),
+    b_notef(p->build, NodePosSpan(id),
       "to define a new shadowing variable, use explicit mutability keyword"
       " mut or const. For example: mut %s = ...",
       targetlocal->name);
@@ -1513,10 +1502,13 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
   }
   NodeTransferUnresolved(call, receiver);
   call->receiver = receiver;
-  call->args_pos = currpos(p);
+  call->args_pos = call->pos;
 
-  if (got(p, TRParen)) // ")" -- end without arguments
-    goto end;
+  if (p->tok == TRParen) { // e.g. "()"
+    call->endpos = currpos(p);
+    nexttok(p); // consume ")"
+    return as_Node(call);
+  }
 
   // args
   if (is_BasicTypeNode(receiver)) {
@@ -1545,9 +1537,8 @@ static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
     call->flags |= pArgs(p, &call->args, fl);
   }
 
-  want(p, TRParen);
-end:
   call->endpos = currpos(p);
+  want(p, TRParen);
   return as_Node(call);
 }
 
@@ -1556,7 +1547,8 @@ end:
 static FieldNode* pField(Parser* p) {
   asserteq(p->tok, TId);
   auto field = mknode(p, Field);
-  field->name = pident(p);
+  field->name = p->name;
+  nexttok(p);
 
   if (UNLIKELY(p->tok == TSemi)) {
     // e.g. just "type" (name is implicit)
@@ -2058,7 +2050,7 @@ finish:
 
 
 // parse template parameters, e.g. "<T, R=T>"
-static void pTemplateParams(Parser* p, MacroNode* macro) {
+static void pMacroParams(Parser* p, MacroNode* macro) {
   macro->params_pos.start = currpos(p);
   assert(p->tok == TLt);
   nexttok(p); // consume "<"
@@ -2082,14 +2074,17 @@ static void pTemplateParams(Parser* p, MacroNode* macro) {
     NodeSetConst(param);
     NodeSetUnused(param);
     param->name = p->name;
+    param->type = kType_nil;
     nexttok(p); // consume id
     array_push(&macro->params, param);
 
-    param->type = kType_nil; // TODO: MacroParamTypeNode
+    // TODO: constraints
 
     // default value? e.g. "T=something"
     if (got(p, TAssign))
       param->init = parse_prefix(p, fl | PFlagRValue);
+
+    defsym(p, param->name, param);
 
   } while (got(p, TComma) && p->tok != TGt);
 
@@ -2126,22 +2121,21 @@ static Node* PFun(Parser* p, PFlag fl) {
     nexttok(p);
   }
 
-  // template parameters, e.g. "fun foo<T, R>(...)" => NMacro
+  // macro parameters, e.g. "fun foo<T, R>(...)" => NMacro
   MacroNode* macro = NULL;
   if (p->tok == TLt) {
     macro = mknode_array(p, Macro, params, 2);
     if UNLIKELY(!macro) return bad(p);
-    if (fn->name)
-      defsym(p, fn->name, macro);
     pushScope(p);
     macro->pos = fn->pos;
     macro->name = fn->name;
-    pTemplateParams(p, macro);
+    pMacroParams(p, macro);
     macro->endpos = macro->params_pos.end;
-  }
-
-  if (fn->name)
+    if (fn->name)
+      defsym(p, fn->name, macro);
+  } else if (fn->name) {
     defsym(p, fn->name, fn);
+  }
 
   // function parameters
   pushScope(p); // body AND parameter scope

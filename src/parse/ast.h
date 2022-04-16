@@ -225,7 +225,6 @@ struct FunTypeNode { Type;
 };
 struct MacroParamTypeNode { Type;
   MacroParamNode* param;
-  // TODO: constraints
 };
 
 

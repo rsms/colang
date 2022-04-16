@@ -549,6 +549,7 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(TupleType)
   NCASE(FunType)
   NCASE(RefType)
+  NCASE(MacroParamType)
 
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
@@ -617,6 +618,7 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(FunType)
     write_array(r, as_NodeArray(n->params));
     write_node(r, n->result);
+
   NDEFAULTCASE break;
   }}
 }

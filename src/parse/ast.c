@@ -21,8 +21,10 @@ PosSpan _NodePosSpan(const Node* np) {
     case NCall: {
       auto n = (CallNode*)np;
       span.start = NodePosSpan(n->receiver).start;
-      if (n->args.len > 0)
-        span.end = NodePosSpan(n->args.v[n->args.len - 1]).end;
+      if (n->args.len > 0) {
+        Pos last_arg_end = NodePosSpan(n->args.v[n->args.len - 1]).end;
+        span.end = pos_union(span.end, last_arg_end);
+      }
       break;
     }
     case NTuple: {

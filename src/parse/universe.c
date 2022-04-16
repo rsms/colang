@@ -45,20 +45,20 @@ static void add_rawptr_fun() {
     &param1,
     // &param2,
   };
-  static const Type* paramstypev[countof(paramsv)] = {
-    (Type*)&u8array_ref_type,
-    // (Type*)&_kType_int,
-  };
-  static const TupleTypeNode paramstype = {
-    .kind = NTupleType,
-    .tflags = TF_KindStruct,
-    .a = {
-      .v = (Type**)paramstypev,
-      .len = countof(paramstypev),
-      .cap = countof(paramstypev),
-      .ext = true,
-    },
-  };
+  // static const Type* paramstypev[countof(paramsv)] = {
+  //   (Type*)&u8array_ref_type,
+  //   // (Type*)&_kType_int,
+  // };
+  // static const TupleTypeNode paramstype = {
+  //   .kind = NTupleType,
+  //   .tflags = TF_KindStruct,
+  //   .a = {
+  //     .v = (Type**)paramstypev,
+  //     .len = countof(paramstypev),
+  //     .cap = countof(paramstypev),
+  //     .ext = true,
+  //   },
+  // };
   // static const TupleNode params = {
   //   .kind = NTuple,
   //   .type = (Type*)&paramstype,

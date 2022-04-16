@@ -158,8 +158,11 @@ static Node* _resolve(R* r, Node* n);
     r->debug_depth--;
 
     tmpbuf[0] = 0;
-    if (is_Expr(n))
+    if (is_Expr(n)) {
       fmtnode(((Expr*)n2)->type, tmpbuf, sizeof(tmpbuf));
+    } else {
+      memcpy(tmpbuf, "type\0", 5);
+    }
 
     if (n == n2) {
       dlog2("● %s %s resolved : %s", nodename(n), FMTNODE(n,0), tmpbuf);
@@ -305,6 +308,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
   NCASE(TupleType)  panic("TODO %s", nodename(n));
   NCASE(StructType) panic("TODO %s", nodename(n));
   NCASE(FunType)    panic("TODO %s", nodename(n));
+  NCASE(MacroParamType) panic("TODO %s", nodename(n));
 
   }}
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
@@ -913,7 +917,12 @@ static Node* restype_typetype(R* r, TypeTypeNode* n) {
   return as_Node(n);
 }
 
-static Node* restype_namedtype(R* r, IdTypeNode* n) {
+static Node* restype_idtype(R* r, IdTypeNode* n) {
+  TODO_RESTYPE_IMPL;
+  return as_Node(n);
+}
+
+static Node* restype_macroparamtype(R* r, MacroParamTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
@@ -1012,15 +1021,16 @@ static Node* _resolve_type(R* r, Node* np) {
   NCASE(If)         return restype_if(r, n);
   NCASE(TypeExpr)   return restype_typeexpr(r, n);
 
-  NCASE(TypeType)   return restype_typetype(r, n);
-  NCASE(IdType)  return restype_namedtype(r, n);
-  NCASE(AliasType)  return restype_aliastype(r, n);
-  NCASE(RefType)    return restype_reftype(r, n);
-  NCASE(BasicType)  return restype_basictype(r, n);
-  NCASE(ArrayType)  return restype_arraytype(r, n);
-  NCASE(TupleType)  return restype_tupletype(r, n);
-  NCASE(StructType) return restype_structtype(r, n);
-  NCASE(FunType)    return restype_funtype(r, n);
+  NCASE(TypeType)       return restype_typetype(r, n);
+  NCASE(IdType)         return restype_idtype(r, n);
+  NCASE(AliasType)      return restype_aliastype(r, n);
+  NCASE(RefType)        return restype_reftype(r, n);
+  NCASE(BasicType)      return restype_basictype(r, n);
+  NCASE(ArrayType)      return restype_arraytype(r, n);
+  NCASE(TupleType)      return restype_tupletype(r, n);
+  NCASE(StructType)     return restype_structtype(r, n);
+  NCASE(FunType)        return restype_funtype(r, n);
+  NCASE(MacroParamType) return restype_macroparamtype(r, n);
 
   }}
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
