@@ -1143,8 +1143,7 @@ static Node* nullable PAssign(Parser* p, const Parselet* e, PFlag fl, Node* left
     case NIndex:    MUSTTAIL return pAssignToBase(p, e, fl, left);
     default:
       b_errf(p->build, NodePosSpan(left), "cannot assign to %s", FMTNODE(left,0));
-      Tok stoplist[] = { TSemi, 0 };
-      advance(p, stoplist);
+      advance(p, (Tok[]){ TSemi, 0 });
       return NULL;
   }
 }
@@ -1227,8 +1226,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
         break;
       default:
         syntaxerr(p, "expecting , ; or ]");
-        Tok stoplist[] = { TRBrack, 0 };
-        advance(p, stoplist);
+        advance(p, (Tok[]){ TRBrack, 0 });
         want(p, TRBrack);
         return as_Node(n);
     }
@@ -1279,8 +1277,7 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 
   if (!is_Expr(left)) {
     syntaxerr(p, "can not index %s (%s)", FMTNODE(left,0), node_type_name(left));
-    Tok stoplist[] = { TRBrack, 0 };
-    advance(p, stoplist);
+    advance(p, (Tok[]){ TRBrack, 0 });
     want(p, TRBrack);
     return as_Node(n);
   }
@@ -1487,8 +1484,7 @@ static NodeFlags pArgs(Parser* p, ExprArray* args, PFlag fl) {
         goto end;
       default:
         syntaxerr(p, "expecting , ; or )");
-        Tok stoplist[] = { TRParen, 0 };
-        advance(p, stoplist);
+        advance(p, (Tok[]){ TRParen, 0 });
         want(p, TRParen);
         goto end;
     }
@@ -1644,8 +1640,7 @@ static Node* pStructType(Parser* p, PFlag fl, StructTypeNode* stype) {
     if (UNLIKELY(stype->fields.len == 0xFFFFFFFF)) {
       // overflow protection
       syntaxerr(p, "too many stuct fields");
-      Tok stoplist[] = { TRBrace, 0 };
-      advance(p, stoplist);
+      advance(p, (Tok[]){ TRBrace, 0 });
       break;
     }
 
@@ -2011,8 +2006,7 @@ static void pFunParams(Parser* p, FunNode* fn) {
         goto finish;
       default:
         syntaxerr(p, "expecting , ; or )");
-        Tok stoplist[] = { TRParen, 0 };
-        advance(p, stoplist);
+        advance(p, (Tok[]){ TRParen, 0 });
         goto finish;
     }
   }
@@ -2080,8 +2074,7 @@ static void pTemplateParams(Parser* p, MacroNode* macro) {
   do {
     if (UNLIKELY(p->tok != TId)) {
       syntaxerr(p, "expecting %s", TokName(TId));
-      Tok stoplist[] = { TGt, 0 };
-      advance(p, stoplist);
+      advance(p, (Tok[]){ TGt, 0 });
       break;
     }
 
@@ -2264,8 +2257,7 @@ static Node* parse_prefix(Parser* p, PFlag fl) {
     // dlog("parse_prefix NOT found for %s", TokName(p->tok));
     syntaxerr(p, (fl & PFlagType) ? "expecting type" : "expecting expression");
     Node* n = bad(p);
-    Tok stoplist[] = { TRParen, TRBrace, TRBrack, TSemi, 0 };
-    advance(p, stoplist);
+    advance(p, (Tok[]){ TRParen, TRBrace, TRBrack, TSemi, 0 });
     return n;
   }
   // dlog("parse_prefix FOUND for %s", TokName(p->tok));
@@ -2470,8 +2462,7 @@ error parse_tu(Parser* p, BuildCtx* b, Source* src, ParseFlags pflags, FileNode*
         b_notef(b, (PosSpan){n->pos,NoPos},
           "Did you mean \"var %s\"?", as_IdNode(n)->name);
       }
-      Tok stoplist[] = { TType, TFun, TSemi, 0 };
-      advance(p, stoplist);
+      advance(p, (Tok[]){ TType, TFun, TSemi, 0 });
     }
   }
 
