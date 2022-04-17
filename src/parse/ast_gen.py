@@ -256,6 +256,9 @@ def gen_as_const_assert(out, name, stname):
 def gen_as_TYPE(out, mode, name, subtypes):
   stname = structname(name, subtypes)
   if mode == "none":
+    out.append('  #define as_%s(n) ((%s*)(n))' % (name, stname))
+    out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, stname))
+  elif mode == "simple":
     out.append('  #define as_%s(n) ({ void* np__=(n); (%s*)np__; })' % (name, stname))
     out.append('  #define as_const_%s(n) ({ const void* np__=(n); (const %s*)np__; })' % (
       name, stname))
@@ -306,9 +309,8 @@ def gen_as_TYPE_leafs(out, mode):
     shortname = strip_node_suffix(name)
     if shortname == '' or len(subtypes) > 0: continue
     if mode == "none":
-      out.append('  #define as_%s(n) ({ void* np__=(n); (%s*)np__; })' % (name, name))
-      out.append('  #define as_const_%s(n) ({ const void* np__=(n); (const %s*)np__; })' % (
-        name, name))
+      out.append('  #define as_%s(n) ((%s*)(n))' % (name, name))
+      out.append('  #define as_const_%s(n) ((const %s*)(n))' % (name, name))
     else: # mode == "assert" or mode == "generic"
       gen_as_assert(out, name, name)
       gen_as_const_assert(out, name, name)
@@ -323,7 +325,7 @@ outh.append('//')
 outh.append('// Large _Generic with both const and non-const cases ("const T*" & "T*")')
 outh.append('// are really slow to compile, so we break up the "as_" macros into two forms.')
 outh.append('#if defined(DEBUG)')
-gen_as_TYPE(outh, "none", 'Node', Node)
+gen_as_TYPE(outh, "simple", 'Node', Node)
 # gen_as_TYPE_leafs(outh, "assert")
 # gen_as_TYPE_supers(outh, "assert", Node)
 gen_as_TYPE_leafs(outh, "generic")
