@@ -1,0 +1,49 @@
+// this file is used for development and may not make sense or even compile
+
+// unsafe fun to_rawptr<T>(_ &T) rawptr
+
+// fun main(x, y int) rawptr
+//   hello = "Hello world\n"
+//   var p = unsafe to_rawptr(hello)
+//   p
+
+
+fun foo<T>(_ T) int
+  0
+
+fun main(x int) int
+  foo(x)
+
+
+// // fun a(x &[u8]) rawptr
+// //   var p = unsafe to_rawptr(x)
+// //   p
+
+// fun b(x &u32) rawptr
+//   var p = unsafe to_rawptr(x)
+//   p
+
+// fun main() int
+//   0
+
+// fun write(fd i32, ptr rawptr, size uint) i32
+
+// fun main() int
+//   message = "Hello world\n"
+//   ptr = unsafe to_rawptr(message)
+//   write(1, ptr, 12)
+//   0
+
+
+// fun write(fd i32, ptr uint, size uint) i32
+
+// fun foo(s &[u8]) int
+//   1
+
+// fun main(x, y int) int
+//   hello = "hello world"
+//   hello = "world"
+//   write(1, size=5, ptr=hello)
+//   y = foo(hello)
+//   y = y * 2
+//   x * y

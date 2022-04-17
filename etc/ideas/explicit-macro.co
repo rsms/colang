@@ -1,0 +1,11 @@
+// explicit macro syntax
+// macrodef = "macro" name pattern { template }
+// e.g.
+macro bar (T)
+  fun bar_${T}(_ T) int
+    0
+
+bar(int)
+// creates:
+fun bar_int(_ int) int
+  0
