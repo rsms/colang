@@ -6,4 +6,3 @@ fun main() int
   ptr = unsafe to_rawptr(message)
   write(1, ptr, 12)
   0
-

@@ -412,7 +412,7 @@ static isize find_param_by_name(R* r, const ParamArray* params, Sym name) {
 //——————————————————————————————————————
 // node-specific type resolver functions
 
-static Node* restype_cunit(R* r, CUnitNode* n) {
+static Node* resolve_cunit(R* r, CUnitNode* n) {
   // File and Pkg are special in that types do not propagate
   // Note: Instead of setting n->type=Type_nil, leave as NULL and return early
   // to avoid check for null types.
@@ -422,7 +422,7 @@ static Node* restype_cunit(R* r, CUnitNode* n) {
 }
 
 
-static Node* restype_fun(R* r, FunNode* n) {
+static Node* resolve_fun(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
   n->type = as_Type(t);
   t->flags |= (n->flags & NF_Unsafe);
@@ -577,7 +577,7 @@ static void resolve_call_args(R* r, CallNode* n, ParamArray* params) {
 }
 
 
-static Node* restype_call_type(R* r, CallNode* n) {
+static Node* resolve_call_type(R* r, CallNode* n) {
   Type* recvt = (
     is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
     is_Type(n->receiver) ? (Type*)n->receiver :
@@ -589,7 +589,7 @@ static Node* restype_call_type(R* r, CallNode* n) {
 }
 
 
-static Node* restype_call_macro(R* r, CallNode* n) {
+static Node* resolve_call_macro(R* r, CallNode* n) {
   MacroNode* macro = as_MacroNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
   dlog("TODO call: %s", FMTNODE(macro,0));
 
@@ -600,7 +600,7 @@ static Node* restype_call_macro(R* r, CallNode* n) {
 }
 
 
-static Node* restype_call_fun(R* r, CallNode* n) {
+static Node* resolve_call_fun(R* r, CallNode* n) {
   FunTypeNode* ft = (FunTypeNode*)as_Expr(n->receiver)->type;
 
   if (NodeIsUnsafe(ft) && (r->flags & RF_Unsafe) == 0) {
@@ -626,7 +626,7 @@ static Node* restype_call_fun(R* r, CallNode* n) {
 }
 
 
-static Node* restype_call(R* r, CallNode* n) {
+static Node* resolve_call(R* r, CallNode* n) {
   n->receiver = resolve(r, n->receiver);
 
   Type* recvt = (
@@ -635,9 +635,9 @@ static Node* restype_call(R* r, CallNode* n) {
     kType_nil
   );
 
-  if (recvt == kType_type)         return restype_call_type(r, n);
-  if (recvt == kType_macro)        return restype_call_macro(r, n);
-  if LIKELY(is_FunTypeNode(recvt)) return restype_call_fun(r, n);
+  if (recvt == kType_type)         return resolve_call_type(r, n);
+  if (recvt == kType_macro)        return resolve_call_macro(r, n);
+  if LIKELY(is_FunTypeNode(recvt)) return resolve_call_fun(r, n);
 
   b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
     TypeKindName(TF_Kind(recvt->tflags)), FMTNODE(n->receiver,0));
@@ -646,7 +646,7 @@ static Node* restype_call(R* r, CallNode* n) {
 }
 
 
-static Node* restype_tuple(R* r, TupleNode* n) {
+static Node* resolve_tuple(R* r, TupleNode* n) {
   auto t = mknode_array(r, TupleType, n->pos, a, n->a.len);
   if UNLIKELY(!t) {
     n->type = kType_nil;
@@ -688,13 +688,13 @@ static Node* restype_tuple(R* r, TupleNode* n) {
 }
 
 
-static Node* restype_array(R* r, ArrayNode* n) {
-  panic("TODO (impl probably almost identical to restype_tuple)");
+static Node* resolve_array(R* r, ArrayNode* n) {
+  panic("TODO (impl probably almost identical to resolve_tuple)");
   return as_Node(n);
 }
 
 
-static Node* restype_block(R* r, BlockNode* n) {
+static Node* resolve_block(R* r, BlockNode* n) {
   // The type of a block is the type of the last expression
 
   if (n->a.len == 0) {
@@ -725,30 +725,30 @@ static Node* restype_block(R* r, BlockNode* n) {
 }
 
 
-static Node* restype_field(R* r, FieldNode* n) {
+static Node* resolve_field(R* r, FieldNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 
-static Node* restype_intlit(R* r, IntLitNode* n) {
+static Node* resolve_intlit(R* r, IntLitNode* n) {
   Type* t = r->typecontext ? r->typecontext : kType_int;
   Expr* n2 = ctypecast_implicit(r->build, n, t, NULL, n);
   return as_Node(n2);
 }
 
 
-static Node* restype_floatlit(R* r, FloatLitNode* n) {
+static Node* resolve_floatlit(R* r, FloatLitNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_strlit(R* r, StrLitNode* n) {
+static Node* resolve_strlit(R* r, StrLitNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_id(R* r, IdNode* n) {
+static Node* resolve_id(R* r, IdNode* n) {
   assertnotnull(n->target);
   n->target = as_Expr(resolve(r, n->target));
   n->type = unbox_id_type(((Expr*)n->target)->type);
@@ -756,7 +756,7 @@ static Node* restype_id(R* r, IdNode* n) {
 }
 
 
-static Node* restype_binop(R* r, BinOpNode* n) {
+static Node* resolve_binop(R* r, BinOpNode* n) {
   Expr* x = n->left;
   Expr* y = n->right;
   bool prefer_y = false;
@@ -789,24 +789,24 @@ static Node* restype_binop(R* r, BinOpNode* n) {
 }
 
 
-static Node* restype_prefixop(R* r, PrefixOpNode* n) {
+static Node* resolve_prefixop(R* r, PrefixOpNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_postfixop(R* r, PostfixOpNode* n) {
+static Node* resolve_postfixop(R* r, PostfixOpNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_return(R* r, ReturnNode* n) {
+static Node* resolve_return(R* r, ReturnNode* n) {
   n->expr = as_Expr(resolve(r, n->expr));
   n->type = unbox_id_type(n->expr->type);
   return as_Node(n);
 }
 
 
-static Node* restype_assign(R* r, AssignNode* n) {
+static Node* resolve_assign(R* r, AssignNode* n) {
   // 1. resolve destination (lvalue) and
   // 2. resolve value (rvalue) witin the type context of destination
 
@@ -843,28 +843,28 @@ static Node* restype_assign(R* r, AssignNode* n) {
 }
 
 
-static Node* restype_macro(R* r, MacroNode* n) {
+static Node* resolve_macro(R* r, MacroNode* n) {
   // TODO_RESTYPE_IMPL;
-  dlog("TODO restype_macro");
+  dlog("TODO resolve_macro");
   n->type = kType_nil;
   return as_Node(n);
 }
 
 
-static Node* restype_typecast(R* r, TypeCastNode* n) {
+static Node* resolve_typecast(R* r, TypeCastNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 
-static Node* restype_const(R* r, ConstNode* n) {
+static Node* resolve_const(R* r, ConstNode* n) {
   n->value = as_Expr(resolve(r, n->value));
   n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }
 
 
-static Node* restype_var(R* r, VarNode* n) {
+static Node* resolve_var(R* r, VarNode* n) {
   // parser should make sure that var without explicit type has initializer
   assertnotnull(n->init);
   n->init = as_Expr(resolve(r, n->init));
@@ -873,107 +873,107 @@ static Node* restype_var(R* r, VarNode* n) {
 }
 
 
-static Node* restype_param(R* r, ParamNode* n) {
+static Node* resolve_param(R* r, ParamNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_macroparam(R* r, MacroParamNode* n) {
+static Node* resolve_macroparam(R* r, MacroParamNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_ref(R* r, RefNode* n) {
+static Node* resolve_ref(R* r, RefNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 
-static Node* restype_namedarg(R* r, NamedArgNode* n) {
+static Node* resolve_namedarg(R* r, NamedArgNode* n) {
   n->value = as_Expr(resolve(r, n->value));
   n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }
 
 
-static Node* restype_selector(R* r, SelectorNode* n) {
+static Node* resolve_selector(R* r, SelectorNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_index(R* r, IndexNode* n) {
+static Node* resolve_index(R* r, IndexNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_slice(R* r, SliceNode* n) {
+static Node* resolve_slice(R* r, SliceNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_if(R* r, IfNode* n) {
+static Node* resolve_if(R* r, IfNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
-static Node* restype_typeexpr(R* r, TypeExprNode* n) {
+static Node* resolve_typeexpr(R* r, TypeExprNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
 
 
 
-static Node* restype_typetype(R* r, TypeTypeNode* n) {
+static Node* resolve_typetype(R* r, TypeTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_idtype(R* r, IdTypeNode* n) {
+static Node* resolve_idtype(R* r, IdTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_macroparamtype(R* r, MacroParamTypeNode* n) {
+static Node* resolve_macroparamtype(R* r, MacroParamTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_macrotype(R* r, MacroTypeNode* n) {
+static Node* resolve_macrotype(R* r, MacroTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_aliastype(R* r, AliasTypeNode* n) {
+static Node* resolve_aliastype(R* r, AliasTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_reftype(R* r, RefTypeNode* n) {
+static Node* resolve_reftype(R* r, RefTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_basictype(R* r, BasicTypeNode* n) {
+static Node* resolve_basictype(R* r, BasicTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_arraytype(R* r, ArrayTypeNode* n) {
+static Node* resolve_arraytype(R* r, ArrayTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_tupletype(R* r, TupleTypeNode* n) {
+static Node* resolve_tupletype(R* r, TupleTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_structtype(R* r, StructTypeNode* n) {
+static Node* resolve_structtype(R* r, StructTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* restype_funtype(R* r, FunTypeNode* n) {
+static Node* resolve_funtype(R* r, FunTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
@@ -1003,51 +1003,51 @@ static Node* _resolve_type(R* r, Node* np) {
 
   switch ((enum NodeKind)np->kind) { case NBad: {
 
-  NCASE(Field)      return restype_field(r, n);
-  GNCASE(CUnit)     return restype_cunit(r, n);
+  NCASE(Field)      return resolve_field(r, n);
+  GNCASE(CUnit)     return resolve_cunit(r, n);
   NCASE(Comment)    // not possible
 
   NCASE(Nil)        // not possible
   NCASE(BoolLit)    // not possible
-  NCASE(IntLit)     return restype_intlit(r, n);
-  NCASE(FloatLit)   return restype_floatlit(r, n);
-  NCASE(StrLit)     return restype_strlit(r, n);
-  NCASE(Id)         return restype_id(r, n);
-  NCASE(BinOp)      return restype_binop(r, n);
-  NCASE(PrefixOp)   return restype_prefixop(r, n);
-  NCASE(PostfixOp)  return restype_postfixop(r, n);
-  NCASE(Return)     return restype_return(r, n);
-  NCASE(Assign)     return restype_assign(r, n);
-  NCASE(Tuple)      return restype_tuple(r, n);
-  NCASE(Array)      return restype_array(r, n);
-  NCASE(Block)      return restype_block(r, n);
-  NCASE(Fun)        return restype_fun(r, n);
-  NCASE(Macro)      return restype_macro(r, n);
-  NCASE(Call)       return restype_call(r, n);
-  NCASE(TypeCast)   return restype_typecast(r, n);
-  NCASE(Const)      return restype_const(r, n);
-  NCASE(Var)        return restype_var(r, n);
-  NCASE(Param)      return restype_param(r, n);
-  NCASE(MacroParam) return restype_macroparam(r, n);
-  NCASE(Ref)        return restype_ref(r, n);
-  NCASE(NamedArg)   return restype_namedarg(r, n);
-  NCASE(Selector)   return restype_selector(r, n);
-  NCASE(Index)      return restype_index(r, n);
-  NCASE(Slice)      return restype_slice(r, n);
-  NCASE(If)         return restype_if(r, n);
-  NCASE(TypeExpr)   return restype_typeexpr(r, n);
+  NCASE(IntLit)     return resolve_intlit(r, n);
+  NCASE(FloatLit)   return resolve_floatlit(r, n);
+  NCASE(StrLit)     return resolve_strlit(r, n);
+  NCASE(Id)         return resolve_id(r, n);
+  NCASE(BinOp)      return resolve_binop(r, n);
+  NCASE(PrefixOp)   return resolve_prefixop(r, n);
+  NCASE(PostfixOp)  return resolve_postfixop(r, n);
+  NCASE(Return)     return resolve_return(r, n);
+  NCASE(Assign)     return resolve_assign(r, n);
+  NCASE(Tuple)      return resolve_tuple(r, n);
+  NCASE(Array)      return resolve_array(r, n);
+  NCASE(Block)      return resolve_block(r, n);
+  NCASE(Fun)        return resolve_fun(r, n);
+  NCASE(Macro)      return resolve_macro(r, n);
+  NCASE(Call)       return resolve_call(r, n);
+  NCASE(TypeCast)   return resolve_typecast(r, n);
+  NCASE(Const)      return resolve_const(r, n);
+  NCASE(Var)        return resolve_var(r, n);
+  NCASE(Param)      return resolve_param(r, n);
+  NCASE(MacroParam) return resolve_macroparam(r, n);
+  NCASE(Ref)        return resolve_ref(r, n);
+  NCASE(NamedArg)   return resolve_namedarg(r, n);
+  NCASE(Selector)   return resolve_selector(r, n);
+  NCASE(Index)      return resolve_index(r, n);
+  NCASE(Slice)      return resolve_slice(r, n);
+  NCASE(If)         return resolve_if(r, n);
+  NCASE(TypeExpr)   return resolve_typeexpr(r, n);
 
-  NCASE(TypeType)       return restype_typetype(r, n);
-  NCASE(IdType)         return restype_idtype(r, n);
-  NCASE(AliasType)      return restype_aliastype(r, n);
-  NCASE(RefType)        return restype_reftype(r, n);
-  NCASE(BasicType)      return restype_basictype(r, n);
-  NCASE(ArrayType)      return restype_arraytype(r, n);
-  NCASE(TupleType)      return restype_tupletype(r, n);
-  NCASE(StructType)     return restype_structtype(r, n);
-  NCASE(FunType)        return restype_funtype(r, n);
-  NCASE(MacroType)      return restype_macrotype(r, n);
-  NCASE(MacroParamType) return restype_macroparamtype(r, n);
+  NCASE(TypeType)       return resolve_typetype(r, n);
+  NCASE(IdType)         return resolve_idtype(r, n);
+  NCASE(AliasType)      return resolve_aliastype(r, n);
+  NCASE(RefType)        return resolve_reftype(r, n);
+  NCASE(BasicType)      return resolve_basictype(r, n);
+  NCASE(ArrayType)      return resolve_arraytype(r, n);
+  NCASE(TupleType)      return resolve_tupletype(r, n);
+  NCASE(StructType)     return resolve_structtype(r, n);
+  NCASE(FunType)        return resolve_funtype(r, n);
+  NCASE(MacroType)      return resolve_macrotype(r, n);
+  NCASE(MacroParamType) return resolve_macroparamtype(r, n);
 
   }}
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
