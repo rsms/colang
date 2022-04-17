@@ -223,6 +223,7 @@ struct FunTypeNode { Type;
   ParamArray*    params; // == FunNode.params
   Type* nullable result; // == FunNode.result (TupleType or single type)
 };
+struct MacroTypeNode { Type; };
 struct MacroParamTypeNode { Type;
   MacroParamNode* param;
 };

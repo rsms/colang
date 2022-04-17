@@ -46,6 +46,9 @@ Type* resolve_id_type(IdTypeNode* id, Type* target) {
   id->flags &= ~NF_Const;
   id->flags &= (target->flags & (NF_Const | NF_Unresolved));
 
+  if (is_LocalNode(target))
+    NodeRefLocal((LocalNode*)target);
+
   return (Type*)id;
 }
 
@@ -217,7 +220,6 @@ static Node* _resolve_sym1(R* r, Node* np) {
     return np;
 
   NCASE(Field)      panic("TODO %s", nodename(n));
-
   NCASE(Nil)        panic("TODO %s", nodename(n));
   NCASE(BoolLit)    panic("TODO %s", nodename(n));
   NCASE(IntLit)     panic("TODO %s", nodename(n));
@@ -308,6 +310,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
   NCASE(TupleType)  panic("TODO %s", nodename(n));
   NCASE(StructType) panic("TODO %s", nodename(n));
   NCASE(FunType)    panic("TODO %s", nodename(n));
+  NCASE(MacroType)  panic("TODO %s", nodename(n));
   NCASE(MacroParamType) panic("TODO %s", nodename(n));
 
   }}
@@ -439,19 +442,19 @@ static Node* restype_fun(R* r, FunNode* n) {
   }
 
   if (n->body) {
-    Type* typecontext = set_typecontext(r, n->result);
+    Type* typecontext = set_typecontext(r, t->result);
     n->body = as_Expr(resolve(r, n->body));
     r->typecontext = typecontext;
     if UNLIKELY(
-      n->result && n->result != kType_nil &&
-      !b_typeeq(r->build, n->result, n->body->type) &&
+      t->result && t->result != kType_nil &&
+      !b_typeeq(r->build, t->result, n->body->type) &&
       r->build->errcount == 0)
     {
       // TODO: focus the message on the first return expression of n->body
-      // which is of a different type than n->result
+      // which is of a different type than t->result
       errf(r, n->body,
         "incompatible result type %s for function returning %s",
-        FMTNODE(n->body->type,0), FMTNODE(n->result,1));
+        FMTNODE(n->body->type,0), FMTNODE(t->result,1));
     }
   }
 
@@ -586,6 +589,17 @@ static Node* restype_call_type(R* r, CallNode* n) {
 }
 
 
+static Node* restype_call_macro(R* r, CallNode* n) {
+  MacroNode* macro = as_MacroNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
+  dlog("TODO call: %s", FMTNODE(macro,0));
+
+  // TODO: expand macro
+
+  n->type = kType_nil; // FIXME
+  return as_Node(n);
+}
+
+
 static Node* restype_call_fun(R* r, CallNode* n) {
   FunTypeNode* ft = (FunTypeNode*)as_Expr(n->receiver)->type;
 
@@ -621,17 +635,14 @@ static Node* restype_call(R* r, CallNode* n) {
     kType_nil
   );
 
-  if (recvt == kType_type)
-    return restype_call_type(r, n);
+  if (recvt == kType_type)         return restype_call_type(r, n);
+  if (recvt == kType_macro)        return restype_call_macro(r, n);
+  if LIKELY(is_FunTypeNode(recvt)) return restype_call_fun(r, n);
 
-  if UNLIKELY(!is_FunTypeNode(recvt)) {
-    b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
-      TypeKindName(TF_Kind(recvt->tflags)), FMTNODE(n->receiver,0));
-    n->type = kType_nil;
-    return (Node*)n;
-  }
-
-  return restype_call_fun(r, n);
+  b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
+    TypeKindName(TF_Kind(recvt->tflags)), FMTNODE(n->receiver,0));
+  n->type = kType_nil;
+  return (Node*)n;
 }
 
 
@@ -927,6 +938,11 @@ static Node* restype_macroparamtype(R* r, MacroParamTypeNode* n) {
   return as_Node(n);
 }
 
+static Node* restype_macrotype(R* r, MacroTypeNode* n) {
+  TODO_RESTYPE_IMPL;
+  return as_Node(n);
+}
+
 static Node* restype_aliastype(R* r, AliasTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
@@ -1030,6 +1046,7 @@ static Node* _resolve_type(R* r, Node* np) {
   NCASE(TupleType)      return restype_tupletype(r, n);
   NCASE(StructType)     return restype_structtype(r, n);
   NCASE(FunType)        return restype_funtype(r, n);
+  NCASE(MacroType)      return restype_macrotype(r, n);
   NCASE(MacroParamType) return restype_macroparamtype(r, n);
 
   }}

@@ -1,9 +1,9 @@
-fun foo(s &[u8]) int
-  1
 
-fun main(x, y int) int
-  hello = "hello world"
-  hello = "world"
-  y = foo(hello)
-  y = y * 2
-  x * y
+fun write(fd i32, ptr rawptr, size uint) i32
+
+fun main() int
+  message = "Hello world\n"
+  ptr = unsafe to_rawptr(message)
+  write(1, ptr, 12)
+  0
+

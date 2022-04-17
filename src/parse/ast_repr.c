@@ -147,6 +147,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NFunType: // (int int)->bool
     CH(NODEARRAY(CH(s, '('), ((FunTypeNode*)n)->params), ')');
     return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
+  case NMacroType: // type
+    return STR(s, "macro");
   case NTupleType: // (int bool Foo)
     return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
   case NArrayType: // [int], [int 4]
@@ -549,6 +551,7 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(TupleType)
   NCASE(FunType)
   NCASE(RefType)
+  NCASE(MacroType)
   NCASE(MacroParamType)
 
   // -- not implemented --

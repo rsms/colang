@@ -60,9 +60,10 @@ enum NodeKind {
     NTupleType      = 40, // struct TupleTypeNode
     NStructType     = 41, // struct StructTypeNode
     NFunType        = 42, // struct FunTypeNode
-    NMacroParamType = 43, // struct MacroParamTypeNode
-  NType_END         = 43,
-  NodeKind_MAX      = 43,
+    NMacroType      = 43, // struct MacroTypeNode
+    NMacroParamType = 44, // struct MacroParamTypeNode
+  NType_END         = 44,
+  NodeKind_MAX      = 44,
 } END_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -111,6 +112,7 @@ typedef struct ArrayTypeNode ArrayTypeNode;
 typedef struct TupleTypeNode TupleTypeNode;
 typedef struct StructTypeNode StructTypeNode;
 typedef struct FunTypeNode FunTypeNode;
+typedef struct MacroTypeNode MacroTypeNode;
 typedef struct MacroParamTypeNode MacroParamTypeNode;
 
 // bool NodeKindIs<kind>(NodeKind)
@@ -175,6 +177,7 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
 #define is_TupleTypeNode(n) ((n)->kind==NTupleType)
 #define is_StructTypeNode(n) ((n)->kind==NStructType)
 #define is_FunTypeNode(n) ((n)->kind==NFunType)
+#define is_MacroTypeNode(n) ((n)->kind==NMacroType)
 #define is_MacroParamTypeNode(n) ((n)->kind==NMacroParamType)
 
 // void assert_is_<kind>(const Node*)
@@ -238,6 +241,7 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
 #define assert_is_TupleTypeNode(n) asserteq(assertnotnull(n)->kind,NTupleType)
 #define assert_is_StructTypeNode(n) asserteq(assertnotnull(n)->kind,NStructType)
 #define assert_is_FunTypeNode(n) asserteq(assertnotnull(n)->kind,NFunType)
+#define assert_is_MacroTypeNode(n) asserteq(assertnotnull(n)->kind,NMacroType)
 #define assert_is_MacroParamTypeNode(n) asserteq(assertnotnull(n)->kind,NMacroParamType)
 
 // T* as_T(Node* n)
@@ -334,6 +338,8 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
   #define as_const_StructTypeNode(n) ({__typeof__(n) n__=(n);assert_is_StructTypeNode(n__),(const StructTypeNode*)(n__);})
   #define as_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(FunTypeNode*)(n__);})
   #define as_const_FunTypeNode(n) ({__typeof__(n) n__=(n);assert_is_FunTypeNode(n__),(const FunTypeNode*)(n__);})
+  #define as_MacroTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroTypeNode(n__),(MacroTypeNode*)(n__);})
+  #define as_const_MacroTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroTypeNode(n__),(const MacroTypeNode*)(n__);})
   #define as_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamTypeNode(n__),(MacroParamTypeNode*)(n__);})
   #define as_const_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);assert_is_MacroParamTypeNode(n__),(const MacroParamTypeNode*)(n__);})
   #define as_Stmt(n) _Generic((n), PkgNode*:(Stmt*)(n), FileNode*:(Stmt*)(n), \
@@ -445,14 +451,16 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
   #define as_Type(n) _Generic((n), TypeTypeNode*:(Type*)(n), IdTypeNode*:(Type*)(n), \
     AliasTypeNode*:(Type*)(n), RefTypeNode*:(Type*)(n), BasicTypeNode*:(Type*)(n), \
     ArrayTypeNode*:(Type*)(n), TupleTypeNode*:(Type*)(n), StructTypeNode*:(Type*)(n), \
-    FunTypeNode*:(Type*)(n), MacroParamTypeNode*:(Type*)(n), Type*:(Type*)(n), \
+    FunTypeNode*:(Type*)(n), MacroTypeNode*:(Type*)(n), MacroParamTypeNode*:(Type*)(n), \
+    Type*:(Type*)(n), \
     Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(Type*)(n__);}))
   #define as_const_Type(n) _Generic((n), const TypeTypeNode*:(const Type*)(n), \
     const IdTypeNode*:(const Type*)(n), const AliasTypeNode*:(const Type*)(n), \
     const RefTypeNode*:(const Type*)(n), const BasicTypeNode*:(const Type*)(n), \
     const ArrayTypeNode*:(const Type*)(n), const TupleTypeNode*:(const Type*)(n), \
     const StructTypeNode*:(const Type*)(n), const FunTypeNode*:(const Type*)(n), \
-    const MacroParamTypeNode*:(const Type*)(n), const Type*:(const Type*)(n), \
+    const MacroTypeNode*:(const Type*)(n), const MacroParamTypeNode*:(const Type*)(n), \
+    const Type*:(const Type*)(n), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_Type(n__),(const Type*)(n__);}))
 
 #else // !defined(DEBUG)
@@ -544,6 +552,8 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
   #define as_const_StructTypeNode(n) ({ const void* np__=(n); (const StructTypeNode*)np__; })
   #define as_FunTypeNode(n) ({ void* np__=(n); (FunTypeNode*)np__; })
   #define as_const_FunTypeNode(n) ({ const void* np__=(n); (const FunTypeNode*)np__; })
+  #define as_MacroTypeNode(n) ({ void* np__=(n); (MacroTypeNode*)np__; })
+  #define as_const_MacroTypeNode(n) ({ const void* np__=(n); (const MacroTypeNode*)np__; })
   #define as_MacroParamTypeNode(n) ({ void* np__=(n); (MacroParamTypeNode*)np__; })
   #define as_const_MacroParamTypeNode(n) ({ const void* np__=(n); (const MacroParamTypeNode*)np__; })
   #define as_Stmt(n) ({ void* np__=(n); (Stmt*)np__; })
@@ -617,6 +627,7 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
 #define maybe_TupleTypeNode(n) ({__typeof__(n) n__=(n);is_TupleTypeNode(n__)?(TupleTypeNode*)(n__):NULL;})
 #define maybe_StructTypeNode(n) ({__typeof__(n) n__=(n);is_StructTypeNode(n__)?(StructTypeNode*)(n__):NULL;})
 #define maybe_FunTypeNode(n) ({__typeof__(n) n__=(n);is_FunTypeNode(n__)?(FunTypeNode*)(n__):NULL;})
+#define maybe_MacroTypeNode(n) ({__typeof__(n) n__=(n);is_MacroTypeNode(n__)?(MacroTypeNode*)(n__):NULL;})
 #define maybe_MacroParamTypeNode(n) ({__typeof__(n) n__=(n);is_MacroParamTypeNode(n__)?(MacroParamTypeNode*)(n__):NULL;})
 
 // Type* nullable TypeOfNode(Node* n)
@@ -630,7 +641,8 @@ typedef struct MacroParamTypeNode MacroParamTypeNode;
   ArrayTypeNode*:kType_type, const TupleTypeNode*:(const Type*)kType_type, \
   TupleTypeNode*:kType_type, const StructTypeNode*:(const Type*)kType_type, \
   StructTypeNode*:kType_type, const FunTypeNode*:(const Type*)kType_type, \
-  FunTypeNode*:kType_type, const MacroParamTypeNode*:(const Type*)kType_type, \
+  FunTypeNode*:kType_type, const MacroTypeNode*:(const Type*)kType_type, \
+  MacroTypeNode*:kType_type, const MacroParamTypeNode*:(const Type*)kType_type, \
   MacroParamTypeNode*:kType_type, const Type*:(const Type*)kType_type, Type*:kType_type, \
   const NilNode*:(const Type*)((Expr*)(n))->type, NilNode*:((Expr*)(n))->type, \
   const BoolLitNode*:(const Type*)((Expr*)(n))->type, BoolLitNode*:((Expr*)(n))->type, \
@@ -753,6 +765,7 @@ typedef union Type_union {
   TupleTypeNode      TupleTypeNode;
   StructTypeNode     StructTypeNode;
   FunTypeNode        FunTypeNode;
+  MacroTypeNode      MacroTypeNode;
   MacroParamTypeNode MacroParamTypeNode;
 } Type_union;
 typedef union Node_union {

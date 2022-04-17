@@ -10,7 +10,7 @@ const char* NodeKindName(NodeKind k) {
     "Const", "Var", "Param", "MacroParam", "Ref", "NamedArg", "Selector",
     "Index", "Slice", "If", "TypeExpr", "TypeType", "IdType", "AliasType",
     "RefType", "BasicType", "ArrayType", "TupleType", "StructType", "FunType",
-    "MacroParamType", "?"
+    "MacroType", "MacroParamType", "?"
   };
   return kNodeNameTable[MIN(NodeKind_MAX+1,k)];
 }

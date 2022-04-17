@@ -31,6 +31,7 @@ const char* TypeKindName(TypeKind tk) {
     case TF_KindPointer: return "pointer";
     case TF_KindVector:  return "vector";
     case TF_KindType:    return "type";
+    case TF_KindMacro:   return "macro";
   }
   return "?";
 }

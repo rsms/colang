@@ -754,11 +754,14 @@ static Node* PId(Parser* p, PFlag fl) {
   Node* target = (fl & PFlagRValue) ? lookupsym(p, p->name) : NULL;
   Node* n;
   if (target) {
+    // existing identifier
     if (is_MacroParamNode(target) && (fl & PFlagType)) {
       auto mpt = mknode(p, MacroParamType);
       mpt->param = (MacroParamNode*)target;
+      NodeRefLocal(as_LocalNode(target));
       n = (Node*)mpt;
     } else if (p->flags & ParseOpt) {
+      // shortcut; return the target, skipping Id node indirection
       if (fl & PFlagType)
         expectType(p, target);
       n = target;
@@ -773,6 +776,7 @@ static Node* PId(Parser* p, PFlag fl) {
       n = (Node*)resolve_id_expr(id, (Expr*)target);
     }
   } else {
+    // new identifier
     if (fl & PFlagType) {
       IdTypeNode* id = mknode(p, IdType);
       id->name = p->name;
@@ -2129,6 +2133,7 @@ static Node* PFun(Parser* p, PFlag fl) {
     pushScope(p);
     macro->pos = fn->pos;
     macro->name = fn->name;
+    macro->type = kType_macro;
     pMacroParams(p, macro);
     macro->endpos = macro->params_pos.end;
     if (fn->name)
