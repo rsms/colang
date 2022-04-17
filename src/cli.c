@@ -2,6 +2,7 @@
 
 #ifndef CO_NO_LIBC
   #include <sys/ioctl.h>
+  #include <unistd.h> // isatty
   #define cli_logf(fmt, args...) fprintf(g_cli_stderr, fmt "\n", ##args)
 #else
   #define cli_logf log

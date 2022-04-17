@@ -9,6 +9,12 @@
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
 #define DEBUG_BUILD_EXPR
 
+#if defined(DEBUG_BUILD_EXPR) && !defined(DEBUG)
+  #undef DEBUG_BUILD_EXPR
+#elif defined(DEBUG_BUILD_EXPR) && !defined(CO_NO_LIBC)
+  #include <unistd.h> // isatty
+#endif
+
 
 // make the code more readable by using short name aliases
 typedef LLVMValueRef      Val;
@@ -1073,7 +1079,7 @@ static Val build_fun_call(B* b, CallNode* n, const char* vname) {
   // build arguments
   Val argsv[16];
   auto args = array_make(Array(Val), argsv, sizeof(argsv));
-  bool ok = true;
+  UNUSED bool ok = true;
   for (u32 i = 0; i < n->args.len; i++) {
     const char* arg_vname = vnamef(b, "callarg_%u", i);
     Val arg = build_rval(b, n->args.v[i], arg_vname);
