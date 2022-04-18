@@ -1,0 +1,35 @@
+// Rust's Iter::map method:
+//   fn map<B, F>(self, f: F) -> Map<Self, F>
+//   where
+//     Self: Sized,
+//     F: FnMut(Self::Item) -> B;
+
+interface Iter<T> {
+  next(it mut&Iter<T>) T?
+  len_hint(it &Iter<T>) (uint, uint?) // bounds on the remaining length of the iterator
+}
+
+interface Equal<R=self> {
+  eq(&self, &R) bool
+  ne(l &self, r &R) bool -> !eq(l, r)
+}
+
+interface Ordered<R=self> {
+  Equal<R>
+  cmp(&self, &R) int
+  lt(l &self, r &R) bool -> l.cmp() <  r.cmp()
+  le(l &self, r &R) bool -> l.cmp() <= r.cmp()
+  gt(l &self, r &R) bool -> l.cmp() >  r.cmp()
+  ge(l &self, r &R) bool -> l.cmp() >= r.cmp()
+}
+
+// implements Equal<int,int>
+fun int.eq(&self, other &int) bool -> self == r
+
+fun sort<T is Ordered>(v mut&[T])
+
+fun map<T,R>(v [T], f fun(mut&T)R) [R]
+  var v2 [T] = alloc(T, v.len)
+  for i = 0; i < v.len; i++
+    v2[i] = f(v[i])
+  v2
