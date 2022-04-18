@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 cd "$(dirname "$0")"
 SCRIPT_FILE=$PWD/"$(basename "$0")"
@@ -127,8 +127,8 @@ export CXX=clang++
 
 if $WITH_LLVM; then
   # build LLVM from source
-  echo $SHELL etc/llvm/build-llvm.sh
-       $SHELL etc/llvm/build-llvm.sh
+  echo bash etc/llvm/build-llvm.sh
+       bash etc/llvm/build-llvm.sh
 else
   # use LLVM/clang from system
   LLVM_VERSION=13.0.0

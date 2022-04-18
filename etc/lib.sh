@@ -72,8 +72,8 @@ _relpath() {
 # Prints the sha1 (or sha256 or sha512) sum of file's content (or stdin if no <file> is given)
 _checksum() {
   local prog=sha1sum
-  if [ "$1" == "-sha256" ]; then prog=sha256sum; shift; fi
-  if [ "$1" == "-sha512" ]; then prog=sha512sum; shift; fi
+  if [ "$1" = "-sha256" ]; then prog=sha256sum; shift; fi
+  if [ "$1" = "-sha512" ]; then prog=sha512sum; shift; fi
   $prog "$@" | cut -f 1 -d ' '
 }
 
@@ -116,7 +116,7 @@ _downloaded_file() {
 # checksum can be prefixed with sha1: sha256: or sha512: (e.g. sha256:checksum)
 _verify_checksum() {
   local silent
-  if [ "$1" == "-silent" ]; then silent=y; shift; fi
+  if [ "$1" = "-silent" ]; then silent=y; shift; fi
   local file="$1"
   local expected="$2"
   local prog=sha1sum

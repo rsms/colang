@@ -6,7 +6,6 @@ ETC_LLVM_DIR=$PWD
 . ../lib.sh
 cd ../..  # to PROJECT
 
-
 # DESTDIR: where to install stuff
 # This is a prefix; each project is installed in a subdirectory, e.g. DESTDIR/zlib.
 DESTDIR="$DEPS_DIR"
@@ -203,7 +202,8 @@ if [ ! -f "$OPENSSL_DESTDIR/lib/libcrypto.a" ] ||
    [ "$(cat "$OPENSSL_DESTDIR/version" 2>/dev/null)" != "$OPENSSL_VERSION" ]
 then
   _download_pushsrc \
-    https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz $OPENSSL_CHECKSUM
+    https://www.openssl.org/source/openssl-$OPENSSL_VERSION.tar.gz \
+    $OPENSSL_CHECKSUM
 
   ./config \
     --prefix=/ \
@@ -235,6 +235,7 @@ then
   _popsrc
   DEPS_CHANGED=true
 fi
+
 
 # -------------------------------------------------------------------------
 # libxml2 (required by xar)
