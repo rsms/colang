@@ -61,6 +61,10 @@ Pos pos_with_adjusted_start(Pos p, i32 deltacol);
 // a and b must be on the same line.
 Pos pos_union(Pos a, Pos b);
 
+// pos_{min,max} returns the {smallest,largest} position
+static Pos pos_min(Pos a, Pos b);
+static Pos pos_max(Pos a, Pos b);
+
 // pos_isknown reports whether the position is a known position.
 static bool pos_isknown(Pos);
 
@@ -150,6 +154,13 @@ inline static bool pos_isknown(Pos p) {
 }
 inline static Source* nullable pos_source(const PosMap* pm, Pos p) {
   return (Source*)pm->a.v[pos_origin(p)];
+}
+
+inline static Pos pos_min(Pos a, Pos b) {
+  return ((b < a) & b) ? b : a; // & b to exclude NoPos
+}
+inline static Pos pos_max(Pos a, Pos b) {
+  return (b > a) ? b : a;
 }
 
 inline static void posmap_clear(PosMap* pm) {

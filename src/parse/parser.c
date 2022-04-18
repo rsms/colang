@@ -756,10 +756,12 @@ static Node* PId(Parser* p, PFlag fl) {
   if (target) {
     // existing identifier
     if (is_TemplateParamNode(target) && (fl & PFlagType)) {
-      auto mpt = mknode(p, TemplateParamType);
-      mpt->param = (TemplateParamNode*)target;
+      TemplateParamNode* tparam = (TemplateParamNode*)target;
+      auto tparamt = mknode(p, TemplateParamType);
+      tparamt->param = tparam;
+      array_push(&tparam->instances, as_Node(tparamt));
       NodeRefLocal(as_LocalNode(target));
-      n = (Node*)mpt;
+      n = (Node*)tparamt;
     } else if (p->flags & ParseOpt) {
       // shortcut; return the target, skipping Id node indirection
       if (fl & PFlagType)
@@ -2067,6 +2069,7 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
     return;
   }
 
+  u32 index = 0;
   do {
     if (UNLIKELY(p->tok != TId)) {
       syntaxerr(p, "expecting %s", TokName(TId));
@@ -2074,11 +2077,17 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
       break;
     }
 
-    TemplateParamNode* param = mknode(p, TemplateParam);
+    TemplateParamNode* param = mknode_array(p, TemplateParam, instances, 2);
+    if UNLIKELY(!param) {
+      advance(p, (Tok[]){ TGt, 0 });
+      break;
+    }
+
     NodeSetConst(param);
     NodeSetUnused(param);
     param->name = p->name;
     param->type = kType_nil;
+    param->index = index++;
     nexttok(p); // consume id
     array_push(&tpl->params, param);
 
@@ -2088,6 +2097,11 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
     if (got(p, TAssign))
       param->init = parse_prefix(p, fl | PFlagRValue);
 
+    // duplicate name?
+    if UNLIKELY(lookupsymShallow(p, param->name))
+      b_errf(p->build, NodePosSpan(param), "duplicate template parameter %s", param->name);
+
+    // define in scope
     defsym(p, param->name, param);
 
   } while (got(p, TComma) && p->tok != TGt);
@@ -2128,12 +2142,14 @@ static Node* PFun(Parser* p, PFlag fl) {
   // template parameters, e.g. "fun foo<T, R>(...)" => NTemplate
   TemplateNode* tpl = NULL;
   if (p->tok == TLt) {
+    TemplateTypeNode* tpltype = mktype(p, TemplateType, TF_KindTemplate);
+    tpltype->prodkind = TF_KindFunc;
     tpl = mknode_array(p, Template, params, 2);
     if UNLIKELY(!tpl) return bad(p);
     pushScope(p);
     tpl->pos = fn->pos;
     tpl->name = fn->name;
-    tpl->type = kType_template;
+    tpl->type = as_Type(tpltype);
     pTemplateParams(p, tpl);
     tpl->endpos = tpl->params_pos.end;
     if (fn->name)
@@ -2193,7 +2209,7 @@ static Node* PFun(Parser* p, PFlag fl) {
     return as_Node(fn);
 
   popScopeAndCheckUnused(p); // template parameter scope
-  tpl->template = as_Node(fn);
+  tpl->body = as_Node(fn);
   return as_Node(tpl);
 }
 

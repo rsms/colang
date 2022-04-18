@@ -14,13 +14,13 @@ PosSpan _NodePosSpan(const Node* np) {
   switch (np->kind) {
     case NBinOp: {
       auto n = (BinOpNode*)np;
-      span.start = n->left->pos;
-      span.end = n->right->pos;
+      span.start = pos_min(span.start, n->left->pos);
+      span.end = pos_max(span.end, n->right->pos);
       break;
     }
     case NCall: {
       auto n = (CallNode*)np;
-      span.start = NodePosSpan(n->receiver).start;
+      span.start = pos_min(span.start, NodePosSpan(n->receiver).start);
       if (n->args.len > 0) {
         Pos last_arg_end = NodePosSpan(n->args.v[n->args.len - 1]).end;
         span.end = pos_union(span.end, last_arg_end);
@@ -33,7 +33,7 @@ PosSpan _NodePosSpan(const Node* np) {
     }
     case NNamedArg: {
       auto n = (NamedArgNode*)np;
-      span.end = NodePosSpan(n->value).end;
+      span.end = pos_max(span.end, NodePosSpan(n->value).end);
       break;
     }
     // case NAssign: {

@@ -37,6 +37,10 @@ Pos pos_union(Pos a, Pos b) {
     // cross-line pos union not supported (can't be expressed with Pos; use PosSpan instead)
     return a;
   }
+  if (b == NoPos)
+    return a;
+  if (a == NoPos)
+    return b;
   if (b < a) {
     Pos tmp = a;
     a = b;

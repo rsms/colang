@@ -124,10 +124,10 @@ struct FunNode { Expr;
   Expr* nullable body;   // NULL for fun-declaration
 };
 struct TemplateNode { Expr;
-  Sym nullable    name;
+  Sym nullable       name;
+  PosSpan            params_pos;
   TemplateParamArray params;
-  Node*           template;
-  PosSpan         params_pos;
+  Node*              body;
 };
 struct CallNode { Expr;
   Node*     receiver; // Type | Fun | Id
@@ -154,6 +154,8 @@ struct ParamNode { LocalNode;
 };
 struct TemplateParamNode { LocalNode;
   Node* nullable init; // initial/default value
+  u32            index; // index in "<...>" i.e. 2 for C in "<A,B,C,D>"
+  NodeArray      instances;
 };
 struct RefNode { Expr;
   Expr* target;
@@ -223,7 +225,9 @@ struct FunTypeNode { Type;
   ParamArray*    params; // == FunNode.params
   Type* nullable result; // == FunNode.result (TupleType or single type)
 };
-struct TemplateTypeNode { Type; };
+struct TemplateTypeNode { Type;
+  TypeKind prodkind; // kind of thing the template produces
+};
 struct TemplateParamTypeNode { Type;
   TemplateParamNode* param;
 };

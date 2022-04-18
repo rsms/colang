@@ -92,7 +92,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NParam: // param x
     return SYM(STR(s, "param "), ((LocalNode*)n)->name);
   case NTemplateParam: // template_param T
-    return SYM(STR(s, "template_param "), ((LocalNode*)n)->name);
+    return SYM(STR(s, "tparam "), ((LocalNode*)n)->name);
   case NRef: // &x, mut&x
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefNode*)n)->target);
   case NFun: // function foo
@@ -140,7 +140,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NTypeType: // type
     return STR(s, "type");
   case NIdType: // foo
-    return CH(SYM(STR(s, "idtype("), ((IdTypeNode*)n)->name), ')');
+    //return SYM(STR(s, "idtype "), ((IdTypeNode*)n)->name);
+    return SYM(s, ((IdTypeNode*)n)->name);
   case NAliasType: // foo (aka bar)
     STR(SYM(s, ((AliasTypeNode*)n)->name), " (aka ");
     return CH(NODE(s, ((AliasTypeNode*)n)->elem), ')');
@@ -148,7 +149,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     CH(NODEARRAY(CH(s, '('), ((FunTypeNode*)n)->params), ')');
     return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
   case NTemplateType: // type
-    return STR(s, "template");
+    return STR(STR(s, TypeKindName(((TemplateTypeNode*)n)->prodkind)), " template ");
   case NTupleType: // (int bool Foo)
     return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
   case NArrayType: // [int], [int 4]
@@ -173,7 +174,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     return CH(s, '}');
   }
   case NTemplateParamType:
-    return STR(s, "type");
+    return SYM(STR(s, "tparam "), ((TemplateParamTypeNode*)n)->param->name);
 
   case NComment:
     assertf(0, "unexpected node %s", nodename(n));
@@ -314,9 +315,10 @@ static void _meta_end(Meta* m) {
 static void _write_node(Repr* r, const Node* nullable n);
 
 static void write_array(Repr* r, const NodeArray* a) {
-  if (a->len == 0)
-    return;
-  str_push(&r->dst, ' ');
+  // if (a->len == 0)
+  //   return;
+  if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+    str_push(&r->dst, ' ');
   write_paren_start(r);
   for (u32 i = 0; i < a->len; i++)
     write_node(r, a->v[i]);
@@ -337,7 +339,8 @@ static void write_qstr(Repr* r, const char* s, usize len) {
 }
 
 static void write_name(Repr* r, Sym s) {
-  str_push(&r->dst, ' ');
+  if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+    str_push(&r->dst, ' ');
   write_push_style(r, STYLE_NAME);
   str_append(&r->dst, s, symlen(s));
   write_pop_style(r);
@@ -440,26 +443,36 @@ static void _write_node1(Repr* r, const Node* n) {
   write_node_attrs(r, n);
 
   // stop now if we have already "seen" this node
-  if (!is_newfound)
+  if (!is_newfound && (n->kind != NParam || r->intypeof))
     return;
 
   // "<type>" of expressions
-  if (is_Expr(n) && !r->intypeof) {
+  if (is_Expr(n)) {
     auto typ = ((Expr*)n)->type;
-    str_push(dst, ' ');
-    write_push_style(r, STYLE_TYPE);
-    if (typ == NULL) {
-      write_push_style(r, STYLE_ERR);
-      str_appendcstr(dst, "<?>");
+    if (!r->intypeof) {
+      str_push(dst, ' ');
+      write_push_style(r, STYLE_TYPE);
+      if (typ == NULL) {
+        write_push_style(r, STYLE_ERR);
+        str_appendcstr(dst, "<?>");
+        write_pop_style(r);
+      } else {
+        str_push(dst, '<');
+        r->intypeof = true;
+        write_node(r, typ);
+        r->intypeof = false;
+        str_push(dst, '>');
+      }
       write_pop_style(r);
-    } else {
-      str_push(dst, '<');
-      r->intypeof = true;
-      write_node(r, typ);
-      r->intypeof = false;
-      str_push(dst, '>');
+    } else if (n->kind == NParam) {
+      if (typ == NULL) {
+        write_push_style(r, STYLE_ERR);
+        str_appendcstr(dst, " ?");
+        write_pop_style(r);
+      } else {
+        write_node(r, typ);
+      }
     }
-    write_pop_style(r);
   }
 
   // "[meta]"
@@ -513,9 +526,10 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Ref)
   NCASE(Id)       write_name(r, n->name);
   GNCASE(Local)   write_name(r, n->name);
-  NCASE(Fun)      write_name(r, n->name ? n->name : kSym__);
   NCASE(Template)    write_name(r, n->name ? n->name : kSym__);
   NCASE(NamedArg) write_name(r, n->name);
+  NCASE(Fun)
+    write_name(r, n->name ? n->name : kSym__);
   NCASE(BinOp)
     write_push_style(r, STYLE_OP);
     write_str(r, TokName(n->op));
@@ -546,13 +560,15 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(BasicType) UNREACHABLE; // handled by _write_node
   NCASE(AliasType) write_name(r, n->name);
   NCASE(IdType)    write_name(r, n->name);
+  NCASE(TemplateType)
+    write_str(r, TypeKindName(((TemplateTypeNode*)n)->prodkind));
+  NCASE(TemplateParamType)
+    write_name(r, assertnotnull(n->param)->name);
   NCASE(TypeType)
   NCASE(ArrayType)
   NCASE(TupleType)
   NCASE(FunType)
   NCASE(RefType)
-  NCASE(TemplateType)
-  NCASE(TemplateParamType)
 
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
@@ -591,7 +607,7 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->body);
   NCASE(Template)
     write_array(r, as_NodeArray(&n->params));
-    write_node(r, n->template);
+    write_node(r, n->body);
   GNCASE(Local)
     if (LocalInitField(n))
       write_node(r, LocalInitField(n));
@@ -619,7 +635,19 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(TupleType)
     write_array(r, as_NodeArray(&n->a));
   NCASE(FunType)
-    write_array(r, as_NodeArray(n->params));
+    // funtype does not have explicit parameter type,
+    // instead it is computed from the function definitions parameters.
+    str_push(&r->dst, ' ');
+    write_paren_start(r);
+    for (u32 i = 0; i < n->params->len; i++) {
+      ParamNode* param = n->params->v[i];
+      if (i) str_push(&r->dst, ' ');
+      write_paren_start(r);
+      write_name(r, param->name);
+      write_node(r, unbox_id_type(param->type));
+      write_paren_end(r);
+    }
+    write_paren_end(r);
     write_node(r, n->result);
 
   NDEFAULTCASE break;

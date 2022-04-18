@@ -65,9 +65,10 @@ Type* resolve_id_type(IdTypeNode* id, Type* target) {
 typedef u32 RFlag;
 enum RFlag {
   RF_ExplicitTypeCast = 1 << 0,
-  RF_ResolveIdeal     = 1 << 1,  // set when resolving ideal types
-  RF_Eager            = 1 << 2,  // set when resolving eagerly
-  RF_Unsafe           = 1 << 3,  // in unsafe context (unsafe function body or unsafe block)
+  RF_ResolveIdeal     = 1 << 1, // set when resolving ideal types
+  RF_Eager            = 1 << 2, // set when resolving eagerly
+  RF_Unsafe           = 1 << 3, // in unsafe context (unsafe function body or unsafe block)
+  RF_Template         = 1 << 4, // in template body
 
   RF_INVALID          = 0xffffffff, // specific flags value that is invalid
   _RF_UNUSED_         = 1 << 31,    // make sure we can never compose RF_INVALID
@@ -422,7 +423,7 @@ static Node* resolve_cunit(R* r, CUnitNode* n) {
 }
 
 
-static Node* resolve_fun(R* r, FunNode* n) {
+static FunTypeNode* resolve_fun_proto(R* r, FunNode* n) {
   auto t = mknode(r, FunType, n->pos);
   n->type = as_Type(t);
   t->flags |= (n->flags & NF_Unsafe);
@@ -441,24 +442,34 @@ static Node* resolve_fun(R* r, FunNode* n) {
     t->result = unbox_id_type(n->result);
   }
 
-  if (n->body) {
-    Type* typecontext = set_typecontext(r, t->result);
-    n->body = as_Expr(resolve(r, n->body));
-    r->typecontext = typecontext;
-    if UNLIKELY(
-      t->result && t->result != kType_nil &&
-      !b_typeeq(r->build, t->result, n->body->type) &&
-      r->build->errcount == 0)
-    {
-      // TODO: focus the message on the first return expression of n->body
-      // which is of a different type than t->result
-      errf(r, n->body,
-        "incompatible result type %s for function returning %s",
-        FMTNODE(n->body->type,0), FMTNODE(t->result,1));
-    }
+  r->flags = rflags; // restore
+  return t;
+}
+
+
+static Node* resolve_fun(R* r, FunNode* n) {
+  FunTypeNode* t = resolve_fun_proto(r, n);
+
+  if (!n->body)
+    return as_Node(n);
+
+  // resolve function body
+  Type* typecontext = set_typecontext(r, t->result);
+  n->body = as_Expr(resolve(r, n->body));
+  r->typecontext = typecontext;
+
+  if UNLIKELY(
+    t->result && t->result != kType_nil &&
+    !b_typeeq(r->build, t->result, n->body->type) &&
+    r->build->errcount == 0)
+  {
+    // TODO: focus the message on the first return expression of n->body
+    // which is of a different type than t->result
+    errf(r, n->body,
+      "incompatible result type %s for function returning %s",
+      FMTNODE(n->body->type,0), FMTNODE(t->result,1));
   }
 
-  r->flags = rflags; // restore
   return as_Node(n);
 }
 
@@ -552,7 +563,7 @@ end:
 }
 
 
-static void resolve_call_args(R* r, CallNode* n, ParamArray* params) {
+static bool resolve_call_args(R* r, CallNode* n, ParamArray* params) {
   // resolve arguments in the context of the function's parameters
   bool ok;
   if (n->flags & NF_Named) {
@@ -561,19 +572,25 @@ static void resolve_call_args(R* r, CallNode* n, ParamArray* params) {
     ok = resolve_positional_call_args(r, n, params);
   }
   if UNLIKELY(!ok)
-    return;
+    return false;
 
   for (u32 i = 0, len = n->args.len; i < len; i++) {
     Expr* arg = n->args.v[i];
     Type* param_typ = assertnotnull(params->v[i]->type);
+    if (is_TemplateParamTypeNode(param_typ)) {
+      assertf(r->flags & RF_Template, "template parameter outside template");
+      continue;
+    }
     if UNLIKELY(!b_typelteq(r->build, param_typ, arg->type)) {
       char tmpbuf[128];
       errf(r, arg, "incompatible argument type %s, expecting %s in call to %s",
         FMTNODE(arg->type,0), FMTNODE(param_typ,1),
         fmtnode(n->receiver, tmpbuf, sizeof(tmpbuf)));
-      break;
+      return false;
     }
   }
+
+  return true;
 }
 
 
@@ -589,20 +606,7 @@ static Node* resolve_call_type(R* r, CallNode* n) {
 }
 
 
-static Node* resolve_call_template(R* r, CallNode* n) {
-  TemplateNode* tpl = as_TemplateNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
-  dlog("TODO call: %s", FMTNODE(tpl,0));
-
-  // TODO: expand tpl
-
-  n->type = kType_nil; // FIXME
-  return as_Node(n);
-}
-
-
-static Node* resolve_call_fun(R* r, CallNode* n) {
-  FunTypeNode* ft = (FunTypeNode*)as_Expr(n->receiver)->type;
-
+static Node* resolve_call_fun(R* r, CallNode* n, FunTypeNode* ft) {
   if (NodeIsUnsafe(ft) && (r->flags & RF_Unsafe) == 0) {
     b_errf(r->build, NodePosSpan(n),
       "call to unsafe function requires unsafe function or block");
@@ -626,6 +630,129 @@ static Node* resolve_call_fun(R* r, CallNode* n) {
 }
 
 
+static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
+  // TODO: need to traverse AST and copy paths with changes,
+  // kind of like instertion in a HAMT.
+  dlog("TODO instantiate_template %s", FMTNODE(tpl,0));
+  return (Node*)kExpr_nil;
+}
+
+
+static Node* resolve_call(R* r, CallNode* n);
+
+
+static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
+  // indicate that we are "inside" a template
+  RFlag rflags = add_flags(r, RF_Template);
+
+  // Resolve the function prototype
+  FunNode* fn = as_FunNode(tpl->body);
+  FunTypeNode* ft = resolve_fun_proto(r, fn);
+
+  // Resolve the function call with potential template parameters as function parameters.
+  // This gives us definitive types of arguments,
+  // which we use to infer template parameter types.
+  resolve_call_fun(r, n, ft);
+  if UNLIKELY(r->build->errcount)
+    goto bail;
+  asserteq(n->args.len, ft->params->len); // resolve_call_fun should check this
+
+  // tplvals holds effective template parameter values
+  Node* tplvals_st[16];
+  NodeArray tplvals = array_make(NodeArray, tplvals_st, sizeof(tplvals_st));
+  if UNLIKELY(!array_reserve(&tplvals, tpl->params.len)) {
+    b_err_nomem(r->build, NodePosSpan(n));
+    goto bail;
+  }
+  tplvals.len = tpl->params.len;
+  memset(tplvals.v, 0, sizeof(void*) * tplvals.len); // set all to NULL
+  u32 min_index = U32_MAX, max_index = 0;
+  assert(tplvals.len < U32_MAX);
+
+  // TODO: populate tplvals with explicitly provided template values,
+  // e.g. T=int in "foo<int>(3)"
+
+  // populate tplvals based on arguments to call
+  for (u32 i = 0; i < n->args.len; i++) {
+    ParamNode* param = fn->params.v[i];
+    if (!is_TemplateParamTypeNode(param->type))
+      continue;
+
+    Type* t = assertnotnull(n->args.v[i]->type);
+    //dlog("args[%u] %s : %s", i, FMTNODE(n->args.v[i],0), FMTNODE(t,1));
+
+    // e.g. param is "x T" in "fun foo(x T, y int)"
+    TemplateParamTypeNode* tparamt = (TemplateParamTypeNode*)param->type;
+    TemplateParamNode* tparam = tparamt->param;
+
+    // When a template parameter is used more than once, select the first use.
+    // e.g. T=int in "fun foo<T>(x T, y T) ; foo(1, 2.1)" (rather than T=f64)
+    if (tplvals.v[tparam->index])
+      continue;
+
+    // let the value of template parameter P be t
+    tplvals.v[tparam->index] = as_Node(t);
+    min_index = MIN(min_index, tparam->index);
+    max_index = MIN(max_index, tparam->index);
+  }
+
+  // it is an error if some template parameters were not explicitly passed or could
+  // not be inferred from arguments
+  if UNLIKELY(min_index != 0 || max_index != tplvals.len - 1) {
+    u32 nerrors = 0;
+    for (u32 i = 0; i < tplvals.len; i++) {
+      TemplateParamNode* tparam = tpl->params.v[i];
+      if (tplvals.v[i] || tparam->nrefs == 0)
+        continue;
+      nerrors++;
+      b_errf(r->build, NodePosSpan(tparam),
+        "unable to infer value of template parameter %s", tparam->name);
+    }
+    if (nerrors > 0) {
+      if (n->pos != NoPos)
+        b_notef(r->build, NodePosSpan(n), "template instantiated here");
+      goto bail;
+    }
+  }
+
+  // dlog2
+  #ifdef CO_PARSE_RESOLVE_DEBUG
+  dlog2("Effective template parameter values:");
+  for (u32 i = 0; i < tplvals.len; i++)
+    dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
+  #endif
+
+  // instantiate template to create function implementation
+  Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
+  concrete_fn = resolve(r, concrete_fn);
+  array_free(&tplvals);
+  r->flags = rflags; // restore
+
+  // update call to point to concrete function and then resolve the actual call
+  n->receiver = concrete_fn;
+  return resolve_call(r, n);
+
+bail:
+  r->flags = rflags; // restore
+  return as_Node(n);
+}
+
+
+static Node* resolve_call_template(R* r, CallNode* n) {
+  TemplateNode* tpl = as_TemplateNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
+  TemplateTypeNode* tt = as_TemplateTypeNode(tpl->type);
+
+  if (tt->prodkind == TF_KindFunc)
+    return resolve_call_template_fun(r, n, tpl);
+
+  if (tt->prodkind == TF_KindType)
+    dlog("TODO call templated type");
+
+  b_errf(r->build, NodePosSpan(n), "%s is not callable", FMTNODE(tpl,0));
+  return as_Node(n);
+}
+
+
 static Node* resolve_call(R* r, CallNode* n) {
   n->receiver = resolve(r, n->receiver);
 
@@ -636,11 +763,10 @@ static Node* resolve_call(R* r, CallNode* n) {
   );
 
   if (recvt == kType_type)         return resolve_call_type(r, n);
-  if (recvt == kType_template)     return resolve_call_template(r, n);
-  if LIKELY(is_FunTypeNode(recvt)) return resolve_call_fun(r, n);
+  if (is_TemplateTypeNode(recvt))  return resolve_call_template(r, n);
+  if LIKELY(is_FunTypeNode(recvt)) return resolve_call_fun(r, n, (FunTypeNode*)recvt);
 
-  b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
-    TypeKindName(TF_Kind(recvt->tflags)), FMTNODE(n->receiver,0));
+  b_errf(r->build, NodePosSpan(n), "%s is not callable", FMTNODE(n->receiver,0));
   n->type = kType_nil;
   return (Node*)n;
 }
@@ -732,14 +858,16 @@ static Node* resolve_field(R* r, FieldNode* n) {
 
 
 static Node* resolve_intlit(R* r, IntLitNode* n) {
-  Type* t = r->typecontext ? r->typecontext : kType_int;
+  Type* t = kType_int;
+  if (r->typecontext && r->typecontext->kind != NTemplateParamType)
+    t = r->typecontext;
   Expr* n2 = ctypecast_implicit(r->build, n, t, NULL, n);
   return as_Node(n2);
 }
 
 
 static Node* resolve_floatlit(R* r, FloatLitNode* n) {
-  TODO_RESTYPE_IMPL; n->type = kType_nil;
+  TODO_RESTYPE_IMPL; n->type = kType_f64;
   return as_Node(n);
 }
 

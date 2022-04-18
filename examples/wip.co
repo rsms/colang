@@ -13,11 +13,14 @@
 //     Self: Sized,
 //     F: FnMut(Self::Item) -> B;
 
-fun foo<T>(_ T) int
-  0
+fun foo<T,K>(a T, b int, c K, d T) int
+  // var c Y = 3 // TODO
+  // a * b + c
+  a * b + c
 
-fun main(x int) int
-  foo(x)
+fun main(x i8) int
+  // foo<int>(x, 2) // TODO <explicit_type>
+  foo(1, 2, x, 4)
 
 
 // // fun a(x &[u8]) rawptr
