@@ -193,6 +193,9 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
 #define assert_llvm_type_iskind(llvmtype, expect_typekind) \
   asserteq(LLVMGetTypeKind(llvmtype), (expect_typekind))
 
+// TODO: Find a different way to implement this macro since
+// calling LLVMGetElementType on a pointer type is being deprecated in LLVM
+// as part of the migration to opaque pointers.
 #define assert_llvm_type_isptrkind(llvmtype, expect_typekind) do { \
   asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind); \
   asserteq(LLVMGetTypeKind(LLVMGetElementType(llvmtype)), (expect_typekind)); \
@@ -382,6 +385,8 @@ inline static Block get_current_block(B* b) {
     Typ ty = LLVMTypeOf(v);
     LLVMTypeKind tk = LLVMGetTypeKind(ty);
     while (tk == LLVMPointerTypeKind) {
+      // TODO: LLVMGetElementType on pointers is deprecated; find another way to do this,
+      // to get the function type from a value.
       ty = LLVMGetElementType(ty);
       tk = LLVMGetTypeKind(ty);
     }
@@ -948,8 +953,10 @@ static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
 
 static Val build_var(B* b, VarNode* n, const char* vname) {
   if (n->irval) {
-    if (!NodeIsConst(n) && (b->flags & BFL_RVAL))
-      return build_load(b, LLVMGetElementType(LLVMTypeOf(n->irval)), n->irval, n->name);
+    if (!NodeIsConst(n) && (b->flags & BFL_RVAL)) {
+      Typ ty = get_type(b, n->type);
+      return build_load(b, ty, n->irval, n->name);
+    }
     return n->irval;
   }
 
@@ -986,9 +993,8 @@ static Val build_param(B* b, ParamNode* n, const char* vname) {
   Val paramval = assertnotnull(n->irval); // note: irval set by build_fun
   if (NodeIsConst(n) || (b->flags & BFL_RVAL) == 0)
     return paramval;
-  assert_llvm_type_isptr(LLVMTypeOf(paramval));
-  Typ elem_type = LLVMGetElementType(LLVMTypeOf(paramval));
-  return build_load(b, elem_type, paramval, vname);
+  Typ ty = get_type(b, n->type);
+  return build_load(b, ty, paramval, vname);
 }
 
 
@@ -1088,7 +1094,8 @@ static Val build_fun_call(B* b, CallNode* n, const char* vname) {
   assert(ok);
 
   // build call
-  Typ fntype = LLVMGetElementType(LLVMTypeOf(fn));
+  assert_is_FunTypeNode(recv->type);
+  Typ fntype = get_type(b, recv->type);
   Val v = LLVMBuildCall2(b->builder, fntype, fn, args.v, args.len, "");
   array_free(&args);
   return v;

@@ -8,11 +8,14 @@
 //   p
 
 
-fun foo<T>(_ T) int
-  0
+// fun foo<T>(_ T) int
+//   0
 
 fun main(x int) int
-  foo(x)
+  x = x * 1
+  y = x
+  y = x * y
+  // foo(x)
 
 
 // // fun a(x &[u8]) rawptr
