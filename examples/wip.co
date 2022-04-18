@@ -7,15 +7,17 @@
 //   var p = unsafe to_rawptr(hello)
 //   p
 
+// Rust's Iter::map method:
+//   fn map<B, F>(self, f: F) -> Map<Self, F>
+//   where
+//     Self: Sized,
+//     F: FnMut(Self::Item) -> B;
 
-// fun foo<T>(_ T) int
-//   0
+fun foo<T>(_ T) int
+  0
 
 fun main(x int) int
-  x = x * 1
-  y = x
-  y = x * y
-  // foo(x)
+  foo(x)
 
 
 // // fun a(x &[u8]) rawptr

@@ -19,7 +19,7 @@ typedef struct CUnitNode CUnitNode;
 typedef struct ListExprNode ListExprNode;
 typedef struct UnaryOpNode UnaryOpNode;
 typedef struct ParamNode ParamNode;
-typedef struct MacroParamNode MacroParamNode;
+typedef struct TemplateParamNode TemplateParamNode;
 
 typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
 typedef u16 NodeFlags; // NF_* constants; AST node flags (Unresolved, Const ...)
@@ -29,7 +29,7 @@ typedef Array(Expr*)           ExprArray;
 typedef Array(Type*)           TypeArray;
 typedef Array(FieldNode*)      FieldArray;
 typedef Array(ParamNode*)      ParamArray;
-typedef Array(MacroParamNode*) MacroParamArray;
+typedef Array(TemplateParamNode*) TemplateParamArray;
 
 
 #define as_NodeArray(n) _Generic((n), \
@@ -37,7 +37,7 @@ typedef Array(MacroParamNode*) MacroParamArray;
   const TypeArray*:(const NodeArray*)(n), TypeArray*:(NodeArray*)(n), \
   const FieldArray*:(const NodeArray*)(n), FieldArray*:(NodeArray*)(n), \
   const ParamArray*:(const NodeArray*)(n), ParamArray*:(NodeArray*)(n), \
-  const MacroParamArray*:(const NodeArray*)(n), MacroParamArray*:(NodeArray*)(n), \
+  const TemplateParamArray*:(const NodeArray*)(n), TemplateParamArray*:(NodeArray*)(n), \
   const NodeArray*:(n), NodeArray*:(n) )
 
 struct Node {
@@ -123,9 +123,9 @@ struct FunNode { Expr;
   Sym   nullable name;   // NULL for lambda
   Expr* nullable body;   // NULL for fun-declaration
 };
-struct MacroNode { Expr;
+struct TemplateNode { Expr;
   Sym nullable    name;
-  MacroParamArray params;
+  TemplateParamArray params;
   Node*           template;
   PosSpan         params_pos;
 };
@@ -152,7 +152,7 @@ struct ParamNode { LocalNode;
   Expr* nullable init;  // initial/default value
   u32            index; // argument index
 };
-struct MacroParamNode { LocalNode;
+struct TemplateParamNode { LocalNode;
   Node* nullable init; // initial/default value
 };
 struct RefNode { Expr;
@@ -223,9 +223,9 @@ struct FunTypeNode { Type;
   ParamArray*    params; // == FunNode.params
   Type* nullable result; // == FunNode.result (TupleType or single type)
 };
-struct MacroTypeNode { Type; };
-struct MacroParamTypeNode { Type;
-  MacroParamNode* param;
+struct TemplateTypeNode { Type; };
+struct TemplateParamTypeNode { Type;
+  TemplateParamNode* param;
 };
 
 
@@ -378,10 +378,10 @@ BEGIN_INTERFACE
 #define SetLocalInitField(n,v) ( ((VarNode*)as_LocalNode((Node*)n))->init = (v) )
 static_assert(offsetof(ConstNode,value) == offsetof(VarNode,init), "");
 static_assert(offsetof(ConstNode,value) == offsetof(ParamNode,init), "");
-static_assert(offsetof(ConstNode,value) == offsetof(MacroParamNode,init), "");
+static_assert(offsetof(ConstNode,value) == offsetof(TemplateParamNode,init), "");
 static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((VarNode*)0)->init), "");
 static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((ParamNode*)0)->init), "");
-static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((MacroParamNode*)0)->init), "");
+static_assert(sizeof(((ConstNode*)0)->value) == sizeof(((TemplateParamNode*)0)->init), "");
 
 // CallNodeArgsPosSpan returns a PosSpan for the arguments of a CallNode
 #define CallNodeArgsPosSpan(n) ((PosSpan){(n)->args_pos, NodePosSpan(n).end})
@@ -519,13 +519,13 @@ static Node* example(Node* np) {
   NCASE(Array)      panic("TODO %s", nodename(n));
   NCASE(Block)      panic("TODO %s", nodename(n));
   NCASE(Fun)        panic("TODO %s", nodename(n));
-  NCASE(Macro)      panic("TODO %s", nodename(n));
+  NCASE(Template)      panic("TODO %s", nodename(n));
   NCASE(Call)       panic("TODO %s", nodename(n));
   NCASE(TypeCast)   panic("TODO %s", nodename(n));
   NCASE(Const)      panic("TODO %s", nodename(n));
   NCASE(Var)        panic("TODO %s", nodename(n));
   NCASE(Param)      panic("TODO %s", nodename(n));
-  NCASE(MacroParam) panic("TODO %s", nodename(n));
+  NCASE(TemplateParam) panic("TODO %s", nodename(n));
   NCASE(Ref)        panic("TODO %s", nodename(n));
   NCASE(NamedArg)   panic("TODO %s", nodename(n));
   NCASE(Selector)   panic("TODO %s", nodename(n));

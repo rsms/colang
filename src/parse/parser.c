@@ -329,11 +329,11 @@ static Expr* parse_next_tuple(Parser* p, int precedence, PFlag fl);
 
 static const char* local_kind_name(LocalNode* n) {
   switch (n->kind) {
-    case NConst:      return "constant";
-    case NVar:        return "variable";
-    case NParam:      return "function parameter";
-    case NMacroParam: return "macro parameter";
-    default:          assert(0); return "";
+    case NConst:         return "constant";
+    case NVar:           return "variable";
+    case NParam:         return "function parameter";
+    case NTemplateParam: return "template parameter";
+    default:             assert(0); return "";
   }
 }
 
@@ -554,7 +554,7 @@ static void _defsym(Parser* p, Sym s, Node* n) {
        || is_LocalNode(n)
        || is_FieldNode(n)
        || is_FunNode(n)
-       || is_MacroNode(n)
+       || is_TemplateNode(n)
        ,"%s !=", nodename(n));
 
   #ifdef DEBUG_DEFSYM
@@ -647,8 +647,8 @@ static Type* presolve_id_type(Parser* p, IdTypeNode* id) {
 
   if (!target) {
     NodeSetUnresolved(id);
-  } else if (is_MacroParamNode(target)) {
-    dlog("TODO macro param used as type");
+  } else if (is_TemplateParamNode(target)) {
+    dlog("TODO template param used as type");
     NodeSetUnresolved(id);
   } else if (is_Expr(target) && ((Expr*)target)->type) {
     // target is an expression with a type
@@ -755,9 +755,9 @@ static Node* PId(Parser* p, PFlag fl) {
   Node* n;
   if (target) {
     // existing identifier
-    if (is_MacroParamNode(target) && (fl & PFlagType)) {
-      auto mpt = mknode(p, MacroParamType);
-      mpt->param = (MacroParamNode*)target;
+    if (is_TemplateParamNode(target) && (fl & PFlagType)) {
+      auto mpt = mknode(p, TemplateParamType);
+      mpt->param = (TemplateParamNode*)target;
       NodeRefLocal(as_LocalNode(target));
       n = (Node*)mpt;
     } else if (p->flags & ParseOpt) {
@@ -2054,15 +2054,15 @@ finish:
 
 
 // parse template parameters, e.g. "<T, R=T>"
-static void pMacroParams(Parser* p, MacroNode* macro) {
-  macro->params_pos.start = currpos(p);
+static void pTemplateParams(Parser* p, TemplateNode* tpl) {
+  tpl->params_pos.start = currpos(p);
   assert(p->tok == TLt);
   nexttok(p); // consume "<"
 
   PFlag fl = PFlagNone; // lvalue semantics
 
   if UNLIKELY(p->tok == TGt) {
-    syntaxerr(p, "empty macro parameter list");
+    syntaxerr(p, "empty template parameter list");
     nexttok(p); // consume ">"
     return;
   }
@@ -2074,13 +2074,13 @@ static void pMacroParams(Parser* p, MacroNode* macro) {
       break;
     }
 
-    MacroParamNode* param = mknode(p, MacroParam);
+    TemplateParamNode* param = mknode(p, TemplateParam);
     NodeSetConst(param);
     NodeSetUnused(param);
     param->name = p->name;
     param->type = kType_nil;
     nexttok(p); // consume id
-    array_push(&macro->params, param);
+    array_push(&tpl->params, param);
 
     // TODO: constraints
 
@@ -2092,7 +2092,7 @@ static void pMacroParams(Parser* p, MacroNode* macro) {
 
   } while (got(p, TComma) && p->tok != TGt);
 
-  macro->params_pos.end = currpos(p);
+  tpl->params_pos.end = currpos(p);
   want(p, TGt);
 }
 
@@ -2125,19 +2125,19 @@ static Node* PFun(Parser* p, PFlag fl) {
     nexttok(p);
   }
 
-  // macro parameters, e.g. "fun foo<T, R>(...)" => NMacro
-  MacroNode* macro = NULL;
+  // template parameters, e.g. "fun foo<T, R>(...)" => NTemplate
+  TemplateNode* tpl = NULL;
   if (p->tok == TLt) {
-    macro = mknode_array(p, Macro, params, 2);
-    if UNLIKELY(!macro) return bad(p);
+    tpl = mknode_array(p, Template, params, 2);
+    if UNLIKELY(!tpl) return bad(p);
     pushScope(p);
-    macro->pos = fn->pos;
-    macro->name = fn->name;
-    macro->type = kType_macro;
-    pMacroParams(p, macro);
-    macro->endpos = macro->params_pos.end;
+    tpl->pos = fn->pos;
+    tpl->name = fn->name;
+    tpl->type = kType_template;
+    pTemplateParams(p, tpl);
+    tpl->endpos = tpl->params_pos.end;
     if (fn->name)
-      defsym(p, fn->name, macro);
+      defsym(p, fn->name, tpl);
   } else if (fn->name) {
     defsym(p, fn->name, fn);
   }
@@ -2189,12 +2189,12 @@ static Node* PFun(Parser* p, PFlag fl) {
     popScope(p);
   }
 
-  if (!macro)
+  if (!tpl)
     return as_Node(fn);
 
   popScopeAndCheckUnused(p); // template parameter scope
-  macro->template = as_Node(fn);
-  return as_Node(macro);
+  tpl->template = as_Node(fn);
+  return as_Node(tpl);
 }
 
 

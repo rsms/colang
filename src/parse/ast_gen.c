@@ -6,11 +6,11 @@ const char* NodeKindName(NodeKind k) {
   static const char* const kNodeNameTable[NodeKind_MAX+2] = {
 "Bad", "Field", "Pkg", "File", "Comment", "Nil", "BoolLit", "IntLit",
     "FloatLit", "StrLit", "Id", "BinOp", "PrefixOp", "PostfixOp", "Return",
-    "Assign", "Tuple", "Array", "Block", "Fun", "Macro", "Call", "TypeCast",
-    "Const", "Var", "Param", "MacroParam", "Ref", "NamedArg", "Selector",
+    "Assign", "Tuple", "Array", "Block", "Fun", "Template", "Call", "TypeCast",
+    "Const", "Var", "Param", "TemplateParam", "Ref", "NamedArg", "Selector",
     "Index", "Slice", "If", "TypeExpr", "TypeType", "IdType", "AliasType",
     "RefType", "BasicType", "ArrayType", "TupleType", "StructType", "FunType",
-    "MacroType", "MacroParamType", "?"
+    "TemplateType", "TemplateParamType", "?"
   };
   return kNodeNameTable[MIN(NodeKind_MAX+1,k)];
 }

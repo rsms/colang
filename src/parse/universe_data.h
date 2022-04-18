@@ -9,8 +9,8 @@
 static const Type _kType_type = {.kind=NTypeType, .tflags=TF_KindType};
 Type* kType_type = (Type*)&_kType_type;
 
-static const Type _kType_macro = {.kind=NMacroType, .tflags=TF_KindMacro};
-Type* kType_macro = (Type*)&_kType_macro;
+static const Type _kType_template = {.kind=NTemplateType, .tflags=TF_KindTemplate};
+Type* kType_template = (Type*)&_kType_template;
 
 static const Node _kNode_bad = {.kind=NBad};
 Node* kNode_bad = (Node*)&_kNode_bad;

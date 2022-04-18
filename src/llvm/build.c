@@ -946,7 +946,7 @@ static Val build_const(B* b, ConstNode* n, const char* vname) {
 }
 
 
-static Val build_macroparam(B* b, MacroParamNode* n, const char* vname) {
+static Val build_templateparam(B* b, TemplateParamNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
 }
 
@@ -1115,7 +1115,7 @@ static Val build_call(B* b, CallNode* n, const char* vname) {
 }
 
 
-static Val build_macro(B* b, MacroNode* n, const char* vname) {
+static Val build_template(B* b, TemplateNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
 }
 
@@ -1166,13 +1166,13 @@ static Val _build_expr(B* b, Expr* np, const char* vname) {
   NCASE(Array)      return build_array(b, n, vname);
   NCASE(Block)      return build_block(b, n, vname);
   NCASE(Fun)        return build_fun(b, n, vname);
-  NCASE(Macro)      return build_macro(b, n, vname);
+  NCASE(Template)      return build_template(b, n, vname);
   NCASE(Call)       return build_call(b, n, vname);
   NCASE(TypeCast)   return build_typecast(b, n, vname);
   NCASE(Const)      return build_const(b, n, vname);
   NCASE(Var)        return build_var(b, n, vname);
   NCASE(Param)      return build_param(b, n, vname);
-  NCASE(MacroParam) return build_macroparam(b, n, vname);
+  NCASE(TemplateParam) return build_templateparam(b, n, vname);
   NCASE(Ref)        return build_ref(b, n, vname);
   NCASE(NamedArg)   return build_namedarg(b, n, vname);
   NCASE(Selector)   return build_selector(b, n, vname);

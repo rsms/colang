@@ -18,7 +18,7 @@ Expr* resolve_id_expr(IdNode* id, Expr* target) {
   id->target = target;
 
   switch (target->kind) {
-    case NMacro:
+    case NTemplate:
     case NFun:
       // Note: Don't transfer "unresolved" attribute of functions
       break;
@@ -292,7 +292,7 @@ static Node* _resolve_sym1(R* r, Node* np) {
     return np;
 
 
-  NCASE(Macro)    panic("TODO %s", nodename(n));
+  NCASE(Template)    panic("TODO %s", nodename(n));
   NCASE(TypeCast) panic("TODO %s", nodename(n));
   NCASE(Ref)      panic("TODO %s", nodename(n));
   NCASE(NamedArg) panic("TODO %s", nodename(n));
@@ -310,8 +310,8 @@ static Node* _resolve_sym1(R* r, Node* np) {
   NCASE(TupleType)  panic("TODO %s", nodename(n));
   NCASE(StructType) panic("TODO %s", nodename(n));
   NCASE(FunType)    panic("TODO %s", nodename(n));
-  NCASE(MacroType)  panic("TODO %s", nodename(n));
-  NCASE(MacroParamType) panic("TODO %s", nodename(n));
+  NCASE(TemplateType)  panic("TODO %s", nodename(n));
+  NCASE(TemplateParamType) panic("TODO %s", nodename(n));
 
   }}
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
@@ -329,7 +329,7 @@ static Node* _resolve_type(R* r, Node* n);
 // set_typecontext returns r->typecontext as it was prior to setting t
 static Type* nullable set_typecontext(R* r, Type* nullable t) {
   if (t) {
-    assert(is_Type(t) || is_MacroParamNode(t));
+    assert(is_Type(t) || is_TemplateParamNode(t));
     assertne(t, kType_ideal);
   }
   Type* prev = r->typecontext;
@@ -589,11 +589,11 @@ static Node* resolve_call_type(R* r, CallNode* n) {
 }
 
 
-static Node* resolve_call_macro(R* r, CallNode* n) {
-  MacroNode* macro = as_MacroNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
-  dlog("TODO call: %s", FMTNODE(macro,0));
+static Node* resolve_call_template(R* r, CallNode* n) {
+  TemplateNode* tpl = as_TemplateNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
+  dlog("TODO call: %s", FMTNODE(tpl,0));
 
-  // TODO: expand macro
+  // TODO: expand tpl
 
   n->type = kType_nil; // FIXME
   return as_Node(n);
@@ -636,7 +636,7 @@ static Node* resolve_call(R* r, CallNode* n) {
   );
 
   if (recvt == kType_type)         return resolve_call_type(r, n);
-  if (recvt == kType_macro)        return resolve_call_macro(r, n);
+  if (recvt == kType_template)     return resolve_call_template(r, n);
   if LIKELY(is_FunTypeNode(recvt)) return resolve_call_fun(r, n);
 
   b_errf(r->build, NodePosSpan(n), "cannot call %s %s",
@@ -843,9 +843,9 @@ static Node* resolve_assign(R* r, AssignNode* n) {
 }
 
 
-static Node* resolve_macro(R* r, MacroNode* n) {
+static Node* resolve_template(R* r, TemplateNode* n) {
   // TODO_RESTYPE_IMPL;
-  dlog("TODO resolve_macro");
+  dlog("TODO resolve_template");
   n->type = kType_nil;
   return as_Node(n);
 }
@@ -878,7 +878,7 @@ static Node* resolve_param(R* r, ParamNode* n) {
   return as_Node(n);
 }
 
-static Node* resolve_macroparam(R* r, MacroParamNode* n) {
+static Node* resolve_templateparam(R* r, TemplateParamNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
 }
@@ -933,12 +933,12 @@ static Node* resolve_idtype(R* r, IdTypeNode* n) {
   return as_Node(n);
 }
 
-static Node* resolve_macroparamtype(R* r, MacroParamTypeNode* n) {
+static Node* resolve_templateparamtype(R* r, TemplateParamTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
 
-static Node* resolve_macrotype(R* r, MacroTypeNode* n) {
+static Node* resolve_templatetype(R* r, TemplateTypeNode* n) {
   TODO_RESTYPE_IMPL;
   return as_Node(n);
 }
@@ -1007,47 +1007,47 @@ static Node* _resolve_type(R* r, Node* np) {
   GNCASE(CUnit)     return resolve_cunit(r, n);
   NCASE(Comment)    // not possible
 
-  NCASE(Nil)        // not possible
-  NCASE(BoolLit)    // not possible
-  NCASE(IntLit)     return resolve_intlit(r, n);
-  NCASE(FloatLit)   return resolve_floatlit(r, n);
-  NCASE(StrLit)     return resolve_strlit(r, n);
-  NCASE(Id)         return resolve_id(r, n);
-  NCASE(BinOp)      return resolve_binop(r, n);
-  NCASE(PrefixOp)   return resolve_prefixop(r, n);
-  NCASE(PostfixOp)  return resolve_postfixop(r, n);
-  NCASE(Return)     return resolve_return(r, n);
-  NCASE(Assign)     return resolve_assign(r, n);
-  NCASE(Tuple)      return resolve_tuple(r, n);
-  NCASE(Array)      return resolve_array(r, n);
-  NCASE(Block)      return resolve_block(r, n);
-  NCASE(Fun)        return resolve_fun(r, n);
-  NCASE(Macro)      return resolve_macro(r, n);
-  NCASE(Call)       return resolve_call(r, n);
-  NCASE(TypeCast)   return resolve_typecast(r, n);
-  NCASE(Const)      return resolve_const(r, n);
-  NCASE(Var)        return resolve_var(r, n);
-  NCASE(Param)      return resolve_param(r, n);
-  NCASE(MacroParam) return resolve_macroparam(r, n);
-  NCASE(Ref)        return resolve_ref(r, n);
-  NCASE(NamedArg)   return resolve_namedarg(r, n);
-  NCASE(Selector)   return resolve_selector(r, n);
-  NCASE(Index)      return resolve_index(r, n);
-  NCASE(Slice)      return resolve_slice(r, n);
-  NCASE(If)         return resolve_if(r, n);
-  NCASE(TypeExpr)   return resolve_typeexpr(r, n);
+  NCASE(Nil)           // not possible
+  NCASE(BoolLit)       // not possible
+  NCASE(IntLit)        return resolve_intlit(r, n);
+  NCASE(FloatLit)      return resolve_floatlit(r, n);
+  NCASE(StrLit)        return resolve_strlit(r, n);
+  NCASE(Id)            return resolve_id(r, n);
+  NCASE(BinOp)         return resolve_binop(r, n);
+  NCASE(PrefixOp)      return resolve_prefixop(r, n);
+  NCASE(PostfixOp)     return resolve_postfixop(r, n);
+  NCASE(Return)        return resolve_return(r, n);
+  NCASE(Assign)        return resolve_assign(r, n);
+  NCASE(Tuple)         return resolve_tuple(r, n);
+  NCASE(Array)         return resolve_array(r, n);
+  NCASE(Block)         return resolve_block(r, n);
+  NCASE(Fun)           return resolve_fun(r, n);
+  NCASE(Template)      return resolve_template(r, n);
+  NCASE(Call)          return resolve_call(r, n);
+  NCASE(TypeCast)      return resolve_typecast(r, n);
+  NCASE(Const)         return resolve_const(r, n);
+  NCASE(Var)           return resolve_var(r, n);
+  NCASE(Param)         return resolve_param(r, n);
+  NCASE(TemplateParam) return resolve_templateparam(r, n);
+  NCASE(Ref)           return resolve_ref(r, n);
+  NCASE(NamedArg)      return resolve_namedarg(r, n);
+  NCASE(Selector)      return resolve_selector(r, n);
+  NCASE(Index)         return resolve_index(r, n);
+  NCASE(Slice)         return resolve_slice(r, n);
+  NCASE(If)            return resolve_if(r, n);
+  NCASE(TypeExpr)      return resolve_typeexpr(r, n);
 
-  NCASE(TypeType)       return resolve_typetype(r, n);
-  NCASE(IdType)         return resolve_idtype(r, n);
-  NCASE(AliasType)      return resolve_aliastype(r, n);
-  NCASE(RefType)        return resolve_reftype(r, n);
-  NCASE(BasicType)      return resolve_basictype(r, n);
-  NCASE(ArrayType)      return resolve_arraytype(r, n);
-  NCASE(TupleType)      return resolve_tupletype(r, n);
-  NCASE(StructType)     return resolve_structtype(r, n);
-  NCASE(FunType)        return resolve_funtype(r, n);
-  NCASE(MacroType)      return resolve_macrotype(r, n);
-  NCASE(MacroParamType) return resolve_macroparamtype(r, n);
+  NCASE(TypeType)      return resolve_typetype(r, n);
+  NCASE(IdType)        return resolve_idtype(r, n);
+  NCASE(AliasType)     return resolve_aliastype(r, n);
+  NCASE(RefType)       return resolve_reftype(r, n);
+  NCASE(BasicType)     return resolve_basictype(r, n);
+  NCASE(ArrayType)     return resolve_arraytype(r, n);
+  NCASE(TupleType)     return resolve_tupletype(r, n);
+  NCASE(StructType)    return resolve_structtype(r, n);
+  NCASE(FunType)       return resolve_funtype(r, n);
+  NCASE(TemplateType)  return resolve_templatetype(r, n);
+  NCASE(TemplateParamType) return resolve_templateparamtype(r, n);
 
   }}
   assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);

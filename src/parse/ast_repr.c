@@ -91,8 +91,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     return SYM(STR(s, "var "), ((LocalNode*)n)->name);
   case NParam: // param x
     return SYM(STR(s, "param "), ((LocalNode*)n)->name);
-  case NMacroParam: // macroparam x
-    return SYM(STR(s, "macroparam "), ((LocalNode*)n)->name);
+  case NTemplateParam: // template_param T
+    return SYM(STR(s, "template_param "), ((LocalNode*)n)->name);
   case NRef: // &x, mut&x
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefNode*)n)->target);
   case NFun: // function foo
@@ -101,9 +101,9 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     if (((FunNode*)n)->name) { SYM(s, ((FunNode*)n)->name); }
     else { CH(s, '_'); }
     return s;
-  case NMacro: // macro foo
-    STR(s, "macro ");
-    if (((MacroNode*)n)->name) { SYM(s, ((MacroNode*)n)->name); }
+  case NTemplate: // template foo
+    STR(s, "template ");
+    if (((TemplateNode*)n)->name) { SYM(s, ((TemplateNode*)n)->name); }
     else { CH(s,'_'); }
     return s;
   case NTypeCast: // typecast<int16>
@@ -147,8 +147,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NFunType: // (int int)->bool
     CH(NODEARRAY(CH(s, '('), ((FunTypeNode*)n)->params), ')');
     return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
-  case NMacroType: // type
-    return STR(s, "macro");
+  case NTemplateType: // type
+    return STR(s, "template");
   case NTupleType: // (int bool Foo)
     return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
   case NArrayType: // [int], [int 4]
@@ -172,7 +172,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     }
     return CH(s, '}');
   }
-  case NMacroParamType:
+  case NTemplateParamType:
     return STR(s, "type");
 
   case NComment:
@@ -350,7 +350,7 @@ static bool maybe_cyclic_node(const Node* n) {
     case NConst:
     case NParam:
     case NFun:
-    case NMacro:
+    case NTemplate:
       return true;
     default:
       return false;
@@ -514,7 +514,7 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Id)       write_name(r, n->name);
   GNCASE(Local)   write_name(r, n->name);
   NCASE(Fun)      write_name(r, n->name ? n->name : kSym__);
-  NCASE(Macro)    write_name(r, n->name ? n->name : kSym__);
+  NCASE(Template)    write_name(r, n->name ? n->name : kSym__);
   NCASE(NamedArg) write_name(r, n->name);
   NCASE(BinOp)
     write_push_style(r, STYLE_OP);
@@ -551,8 +551,8 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(TupleType)
   NCASE(FunType)
   NCASE(RefType)
-  NCASE(MacroType)
-  NCASE(MacroParamType)
+  NCASE(TemplateType)
+  NCASE(TemplateParamType)
 
   // -- not implemented --
   NCASE(Field)      write_TODO(r);
@@ -589,7 +589,7 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_array(r, as_NodeArray(&n->params));
     write_node(r, n->result);
     write_node(r, n->body);
-  NCASE(Macro)
+  NCASE(Template)
     write_array(r, as_NodeArray(&n->params));
     write_node(r, n->template);
   GNCASE(Local)
