@@ -41,6 +41,7 @@ typedef struct TStyleStack    TStyleStack; // support for undo and easy range st
   _(TS_MAGENTA,     "5",  "8;5;170") \
   _(TS_PINK,        "5",  "8;5;211") \
   _(TS_PURPLE,      "5",  "8;5;141") \
+  _(TS_LIGHTPURPLE, "5",  "8;5;147") \
   _(TS_CYAN,        "6",  "8;5;51") \
   _(TS_WHITE,       "7",  "7") /* "WHITE" MUST BE LAST MEMBER */ \
 // end DEF_TSTYLE_COLORS

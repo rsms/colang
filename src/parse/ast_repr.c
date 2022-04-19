@@ -273,16 +273,18 @@ struct Repr {
   const char* rparen;
 };
 
-#define STYLE_NODE   TS_BOLD        // node name
-#define STYLE_LIT    TS_LIGHTGREEN
-#define STYLE_NAME   TS_LIGHTBLUE   // symbolic names like Id, IdType, etc.
-#define STYLE_OP     TS_LIGHTORANGE
-#define STYLE_TYPE   TS_DIM
-#define STYLE_META   TS_DIM
-#define STYLE_ERR    TS_RED
-#define STYLE_NODEID TS_DIM
+#define STYLE_NODE   ((TStyle[]){ TS_BOLD })        // node name
+#define STYLE_LIT    ((TStyle[]){ TS_LIGHTGREEN })
+#define STYLE_NAME   ((TStyle[]){ TS_LIGHTBLUE })   // symbolic names like Id, IdType, etc.
+#define STYLE_OP     ((TStyle[]){ TS_LIGHTORANGE })
+#define STYLE_TYPE   ((TStyle[]){ TS_DIM })
+#define STYLE_META   ((TStyle[]){ TS_LIGHTPURPLE, TS_DIM })
+#define STYLE_ERR    ((TStyle[]){ TS_RED })
+#define STYLE_NODEID ((TStyle[]){ TS_DIM })
+#define STYLE_PAREN  ((TStyle[]){ TS_DIM })  // "(" and ")"
 
-#define STYLE_PAREN  {TS_DIM,TS_PINK}  // TStyle[] for "(" and ")"
+#define TSTYLE_PUSH(r, style_list) \
+  tstyle_pushv(&(r)->stylestack, style_list, countof(style_list))
 
 
 // -- repr output writers
@@ -292,10 +294,13 @@ static usize printable_len(Repr* r) {
   return r->dst.len - r->stylelen;
 }
 
-static void write_push_style(Repr* r, TStyle style) {
+#define write_push_style(r, style_list) \
+  _write_push_style((r), style_list, countof(style_list))
+
+static void _write_push_style(Repr* r, const TStyle* stylev, u32 stylec) {
   if (TStylesIsNone(r->styles))
     return;
-  const char* s = tstyle_push(&r->stylestack, style);
+  const char* s = tstyle_pushv(&r->stylestack, stylev, stylec);
   usize len = strlen(s);
   r->stylelen += len;
   str_append(&r->dst, s, len);
@@ -316,8 +321,7 @@ static void write_paren_start(Repr* r) {
     return;
   }
   u32 len1 = r->dst.len;
-  str_appendcstr(&r->dst,
-    tstyle_pushv(&r->stylestack, (TStyle[])STYLE_PAREN, countof((TStyle[])STYLE_PAREN)));
+  str_appendcstr(&r->dst, TSTYLE_PUSH(r, STYLE_PAREN));
   str_appendc(&r->dst, '(');
   str_appendcstr(&r->dst, tstyle_pop(&r->stylestack));
   r->stylelen += r->dst.len - len1 - 1;
@@ -329,8 +333,7 @@ static void write_paren_end(Repr* r) {
     return;
   }
   u32 len1 = r->dst.len;
-  str_appendcstr(&r->dst,
-    tstyle_pushv(&r->stylestack, (TStyle[])STYLE_PAREN, countof((TStyle[])STYLE_PAREN)));
+  str_appendcstr(&r->dst, TSTYLE_PUSH(r, STYLE_PAREN));
   str_appendc(&r->dst, ')');
   str_appendcstr(&r->dst, tstyle_pop(&r->stylestack));
   r->stylelen += r->dst.len - len1 - 1;
@@ -571,7 +574,7 @@ static void _write_node1(Repr* r, const Node* n) {
 #define write_TODO(r) _write_TODO(r, __FILE__, __LINE__)
 static void _write_TODO(Repr* r, const char* file, u32 line) {
   str_push(&r->dst, ' ');
-  write_push_style(r, TS_RED);
+  write_push_style(r, (TStyle[]){TS_RED});
   str_appendcstr(&r->dst, "[TODO ");
   str_appendcstr(&r->dst, file);
   str_push(&r->dst, ':');
