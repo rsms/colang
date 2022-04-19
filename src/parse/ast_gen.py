@@ -430,8 +430,9 @@ outh.append('')
 
 
 
+ENABLE_AST_VISITOR = False
 # ASTVisitorFuns
-if True:
+if ENABLE_AST_VISITOR:
   ftable_size = len(leafnames) + 2
   outh.append("""
 typedef struct ASTVisitor     ASTVisitor;

@@ -789,6 +789,8 @@ static void build_file(B* b, FileNode* n) {
         build_fun(b, n, n->name);
       NCASE(Var)
         // ignore
+      NCASE(Template)
+        // ignore
       NDEFAULTCASE
         panic("TODO: file-level %s", NodeKindName(np->kind));
     }}
@@ -1110,7 +1112,7 @@ static Val build_call(B* b, CallNode* n, const char* vname) {
   assertf(
     (is_Expr(n->receiver) && is_TypeTypeNode(recv->type)) ||
     is_TypeTypeNode(n->receiver),
-    "n->receiver=%s", nodename(n->receiver));
+    "unexpected n->receiver: %s", nodename(n->receiver));
   return build_type_call(b, n, vname);
 }
 

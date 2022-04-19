@@ -19,6 +19,7 @@ typedef struct CUnitNode CUnitNode;
 typedef struct ListExprNode ListExprNode;
 typedef struct UnaryOpNode UnaryOpNode;
 typedef struct ParamNode ParamNode;
+typedef struct TemplateNode TemplateNode;
 typedef struct TemplateParamNode TemplateParamNode;
 
 typedef u8  NodeKind;  // AST node kind (NNone, NBad, NBoolLit ...)
@@ -123,16 +124,20 @@ struct FunNode { Expr;
   Sym   nullable name;   // NULL for lambda
   Expr* nullable body;   // NULL for fun-declaration
 };
+struct CallNode { Expr;
+  Node*     receiver; // Type | Fun | Id
+  Pos       args_pos; // start of args (end of args == NodePosSpan(n).end)
+  ExprArray args;
+};
 struct TemplateNode { Expr;
   Sym nullable       name;
   PosSpan            params_pos;
   TemplateParamArray params;
   Node*              body;
 };
-struct CallNode { Expr;
-  Node*     receiver; // Type | Fun | Id
-  Pos       args_pos; // start of args (end of args == NodePosSpan(n).end)
-  ExprArray args;
+struct TemplateInstanceNode { Expr;
+  TemplateNode* tpl;  // template to instantiate
+  NodeArray     args; // arguments for template; indices match tpl->params
 };
 struct TypeCastNode { Expr;
   Expr* expr;

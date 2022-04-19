@@ -72,11 +72,10 @@ struct TStyles {
 };
 
 struct TStyleStack {
-  TStyle  undo[64]; // stack of styles that inverses the most recent style, like a log
-  u32     depth;    // number of entries at undo (may be larger than countof(undo))
-  // current effective style state:
-  struct { TStyle fg, bg; } color;
-  bool bold, dim, italic, underline;
+  TStyles  styles;
+  char     buf[64];
+  AEscAttr stack[32];
+  u32      stack_len;
 };
 
 TStyles TStylesForTerm();   // best for the current terminal
@@ -86,13 +85,18 @@ TStyles TStyles16();        // 4-bit color codes (16 colors)
 TStyles TStyles256();       // 8-bit color codes (256 colors)
 TStyles TStylesNone();      // no styles/colors
 
-// tstyle_push records s as a change to the current TStyleStack.
-// Returns s as a convenience.
-TStyle tstyle_push(TStyleStack*, TStyle s);
+// tstyle_pushv records styles as a change to the current logical style.
+// Returns a null-terminated string which when printed enables the new styles
+// on top of any current styling.
+const char* tstyle_pushv(TStyleStack*, const TStyle* stylev, u32 stylec);
+inline static const char* tstyle_push(TStyleStack* st, TStyle s) {
+  return tstyle_pushv(st, (TStyle[]){s}, 1);
+}
 
 // tstyle_pop undoes the most recent tstyle_push.
-// Returns a style which inverses the effect of the corresponding tstyle_push style.
-TStyle tstyle_pop(TStyleStack*);
+// Returns a null-terminated string which when printed restores the style to what
+// it was prior to the corresponding tstyle_push call.
+const char* tstyle_pop(TStyleStack*);
 
 // tstyle_str returns the ANSI escape sequence for s as a null-terminated string
 inline static const char* tstyle_str(TStyles t, TStyle s) {

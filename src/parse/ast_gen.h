@@ -33,37 +33,38 @@ enum NodeKind {
       NBlock           = 18, // struct BlockNode
     NListExpr_END      = 18,
     NFun               = 19, // struct FunNode
-    NTemplate          = 20, // struct TemplateNode
-    NCall              = 21, // struct CallNode
-    NTypeCast          = 22, // struct TypeCastNode
-    NLocal_BEG         = 23,
-      NConst           = 23, // struct ConstNode
-      NVar             = 24, // struct VarNode
-      NParam           = 25, // struct ParamNode
-      NTemplateParam   = 26, // struct TemplateParamNode
-    NLocal_END         = 26,
-    NRef               = 27, // struct RefNode
-    NNamedArg          = 28, // struct NamedArgNode
-    NSelector          = 29, // struct SelectorNode
-    NIndex             = 30, // struct IndexNode
-    NSlice             = 31, // struct SliceNode
-    NIf                = 32, // struct IfNode
-    NTypeExpr          = 33, // struct TypeExprNode
-  NExpr_END            = 33,
-  NType_BEG            = 34,
-    NTypeType          = 34, // struct TypeTypeNode
-    NIdType            = 35, // struct IdTypeNode
-    NAliasType         = 36, // struct AliasTypeNode
-    NRefType           = 37, // struct RefTypeNode
-    NBasicType         = 38, // struct BasicTypeNode
-    NArrayType         = 39, // struct ArrayTypeNode
-    NTupleType         = 40, // struct TupleTypeNode
-    NStructType        = 41, // struct StructTypeNode
-    NFunType           = 42, // struct FunTypeNode
-    NTemplateType      = 43, // struct TemplateTypeNode
-    NTemplateParamType = 44, // struct TemplateParamTypeNode
-  NType_END            = 44,
-  NodeKind_MAX         = 44,
+    NCall              = 20, // struct CallNode
+    NTemplate          = 21, // struct TemplateNode
+    NTemplateInstance  = 22, // struct TemplateInstanceNode
+    NTypeCast          = 23, // struct TypeCastNode
+    NLocal_BEG         = 24,
+      NConst           = 24, // struct ConstNode
+      NVar             = 25, // struct VarNode
+      NParam           = 26, // struct ParamNode
+      NTemplateParam   = 27, // struct TemplateParamNode
+    NLocal_END         = 27,
+    NRef               = 28, // struct RefNode
+    NNamedArg          = 29, // struct NamedArgNode
+    NSelector          = 30, // struct SelectorNode
+    NIndex             = 31, // struct IndexNode
+    NSlice             = 32, // struct SliceNode
+    NIf                = 33, // struct IfNode
+    NTypeExpr          = 34, // struct TypeExprNode
+  NExpr_END            = 34,
+  NType_BEG            = 35,
+    NTypeType          = 35, // struct TypeTypeNode
+    NIdType            = 36, // struct IdTypeNode
+    NAliasType         = 37, // struct AliasTypeNode
+    NRefType           = 38, // struct RefTypeNode
+    NBasicType         = 39, // struct BasicTypeNode
+    NArrayType         = 40, // struct ArrayTypeNode
+    NTupleType         = 41, // struct TupleTypeNode
+    NStructType        = 42, // struct StructTypeNode
+    NFunType           = 43, // struct FunTypeNode
+    NTemplateType      = 44, // struct TemplateTypeNode
+    NTemplateParamType = 45, // struct TemplateParamTypeNode
+  NType_END            = 45,
+  NodeKind_MAX         = 45,
 } END_ENUM(NodeKind)
 
 // NodeKindName returns a printable name. E.g. NBad => "Bad"
@@ -89,8 +90,9 @@ typedef struct TupleNode TupleNode;
 typedef struct ArrayNode ArrayNode;
 typedef struct BlockNode BlockNode;
 typedef struct FunNode FunNode;
-typedef struct TemplateNode TemplateNode;
 typedef struct CallNode CallNode;
+typedef struct TemplateNode TemplateNode;
+typedef struct TemplateInstanceNode TemplateInstanceNode;
 typedef struct TypeCastNode TypeCastNode;
 typedef struct ConstNode ConstNode;
 typedef struct VarNode VarNode;
@@ -152,8 +154,9 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
 #define is_ArrayNode(n) ((n)->kind==NArray)
 #define is_BlockNode(n) ((n)->kind==NBlock)
 #define is_FunNode(n) ((n)->kind==NFun)
-#define is_TemplateNode(n) ((n)->kind==NTemplate)
 #define is_CallNode(n) ((n)->kind==NCall)
+#define is_TemplateNode(n) ((n)->kind==NTemplate)
+#define is_TemplateInstanceNode(n) ((n)->kind==NTemplateInstance)
 #define is_TypeCastNode(n) ((n)->kind==NTypeCast)
 #define is_LocalNode(n) NodeKindIsLocal((n)->kind)
 #define is_ConstNode(n) ((n)->kind==NConst)
@@ -216,8 +219,9 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
 #define assert_is_ArrayNode(n) asserteq(assertnotnull(n)->kind,NArray)
 #define assert_is_BlockNode(n) asserteq(assertnotnull(n)->kind,NBlock)
 #define assert_is_FunNode(n) asserteq(assertnotnull(n)->kind,NFun)
-#define assert_is_TemplateNode(n) asserteq(assertnotnull(n)->kind,NTemplate)
 #define assert_is_CallNode(n) asserteq(assertnotnull(n)->kind,NCall)
+#define assert_is_TemplateNode(n) asserteq(assertnotnull(n)->kind,NTemplate)
+#define assert_is_TemplateInstanceNode(n) asserteq(assertnotnull(n)->kind,NTemplateInstance)
 #define assert_is_TypeCastNode(n) asserteq(assertnotnull(n)->kind,NTypeCast)
 #define assert_is_LocalNode(n) _assert_is1(Local,(n))
 #define assert_is_ConstNode(n) asserteq(assertnotnull(n)->kind,NConst)
@@ -292,10 +296,12 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
   #define as_const_BlockNode(n) ({__typeof__(n) n__=(n);assert_is_BlockNode(n__),(const BlockNode*)(n__);})
   #define as_FunNode(n) ({__typeof__(n) n__=(n);assert_is_FunNode(n__),(FunNode*)(n__);})
   #define as_const_FunNode(n) ({__typeof__(n) n__=(n);assert_is_FunNode(n__),(const FunNode*)(n__);})
-  #define as_TemplateNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateNode(n__),(TemplateNode*)(n__);})
-  #define as_const_TemplateNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateNode(n__),(const TemplateNode*)(n__);})
   #define as_CallNode(n) ({__typeof__(n) n__=(n);assert_is_CallNode(n__),(CallNode*)(n__);})
   #define as_const_CallNode(n) ({__typeof__(n) n__=(n);assert_is_CallNode(n__),(const CallNode*)(n__);})
+  #define as_TemplateNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateNode(n__),(TemplateNode*)(n__);})
+  #define as_const_TemplateNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateNode(n__),(const TemplateNode*)(n__);})
+  #define as_TemplateInstanceNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateInstanceNode(n__),(TemplateInstanceNode*)(n__);})
+  #define as_const_TemplateInstanceNode(n) ({__typeof__(n) n__=(n);assert_is_TemplateInstanceNode(n__),(const TemplateInstanceNode*)(n__);})
   #define as_TypeCastNode(n) ({__typeof__(n) n__=(n);assert_is_TypeCastNode(n__),(TypeCastNode*)(n__);})
   #define as_const_TypeCastNode(n) ({__typeof__(n) n__=(n);assert_is_TypeCastNode(n__),(const TypeCastNode*)(n__);})
   #define as_ConstNode(n) ({__typeof__(n) n__=(n);assert_is_ConstNode(n__),(ConstNode*)(n__);})
@@ -367,12 +373,12 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
     PrefixOpNode*:(Expr*)(n), PostfixOpNode*:(Expr*)(n), struct UnaryOpNode*:(Expr*)(n), \
     ReturnNode*:(Expr*)(n), AssignNode*:(Expr*)(n), TupleNode*:(Expr*)(n), \
     ArrayNode*:(Expr*)(n), BlockNode*:(Expr*)(n), struct ListExprNode*:(Expr*)(n), \
-    FunNode*:(Expr*)(n), TemplateNode*:(Expr*)(n), CallNode*:(Expr*)(n), \
-    TypeCastNode*:(Expr*)(n), ConstNode*:(Expr*)(n), VarNode*:(Expr*)(n), \
-    ParamNode*:(Expr*)(n), TemplateParamNode*:(Expr*)(n), struct LocalNode*:(Expr*)(n), \
-    RefNode*:(Expr*)(n), NamedArgNode*:(Expr*)(n), SelectorNode*:(Expr*)(n), \
-    IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), IfNode*:(Expr*)(n), \
-    TypeExprNode*:(Expr*)(n), Expr*:(Expr*)(n), \
+    FunNode*:(Expr*)(n), CallNode*:(Expr*)(n), TemplateNode*:(Expr*)(n), \
+    TemplateInstanceNode*:(Expr*)(n), TypeCastNode*:(Expr*)(n), ConstNode*:(Expr*)(n), \
+    VarNode*:(Expr*)(n), ParamNode*:(Expr*)(n), TemplateParamNode*:(Expr*)(n), \
+    struct LocalNode*:(Expr*)(n), RefNode*:(Expr*)(n), NamedArgNode*:(Expr*)(n), \
+    SelectorNode*:(Expr*)(n), IndexNode*:(Expr*)(n), SliceNode*:(Expr*)(n), \
+    IfNode*:(Expr*)(n), TypeExprNode*:(Expr*)(n), Expr*:(Expr*)(n), \
     Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(Expr*)(n__);}))
   #define as_const_Expr(n) _Generic((n), const NilNode*:(const Expr*)(n), \
     const BoolLitNode*:(const Expr*)(n), const IntLitNode*:(const Expr*)(n), \
@@ -383,15 +389,15 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
     const ReturnNode*:(const Expr*)(n), const AssignNode*:(const Expr*)(n), \
     const TupleNode*:(const Expr*)(n), const ArrayNode*:(const Expr*)(n), \
     const BlockNode*:(const Expr*)(n), const struct ListExprNode*:(const Expr*)(n), \
-    const FunNode*:(const Expr*)(n), const TemplateNode*:(const Expr*)(n), \
-    const CallNode*:(const Expr*)(n), const TypeCastNode*:(const Expr*)(n), \
-    const ConstNode*:(const Expr*)(n), const VarNode*:(const Expr*)(n), \
-    const ParamNode*:(const Expr*)(n), const TemplateParamNode*:(const Expr*)(n), \
-    const struct LocalNode*:(const Expr*)(n), const RefNode*:(const Expr*)(n), \
-    const NamedArgNode*:(const Expr*)(n), const SelectorNode*:(const Expr*)(n), \
-    const IndexNode*:(const Expr*)(n), const SliceNode*:(const Expr*)(n), \
-    const IfNode*:(const Expr*)(n), const TypeExprNode*:(const Expr*)(n), \
-    const Expr*:(const Expr*)(n), \
+    const FunNode*:(const Expr*)(n), const CallNode*:(const Expr*)(n), \
+    const TemplateNode*:(const Expr*)(n), const TemplateInstanceNode*:(const Expr*)(n), \
+    const TypeCastNode*:(const Expr*)(n), const ConstNode*:(const Expr*)(n), \
+    const VarNode*:(const Expr*)(n), const ParamNode*:(const Expr*)(n), \
+    const TemplateParamNode*:(const Expr*)(n), const struct LocalNode*:(const Expr*)(n), \
+    const RefNode*:(const Expr*)(n), const NamedArgNode*:(const Expr*)(n), \
+    const SelectorNode*:(const Expr*)(n), const IndexNode*:(const Expr*)(n), \
+    const SliceNode*:(const Expr*)(n), const IfNode*:(const Expr*)(n), \
+    const TypeExprNode*:(const Expr*)(n), const Expr*:(const Expr*)(n), \
     const Node*: ({__typeof__(n) n__=(n);assert_is_Expr(n__),(const Expr*)(n__);}))
 
   #define as_LitExpr(n) _Generic((n), NilNode*:(struct LitExpr*)(n), \
@@ -506,10 +512,12 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
   #define as_const_BlockNode(n) ((const BlockNode*)(n))
   #define as_FunNode(n) ((FunNode*)(n))
   #define as_const_FunNode(n) ((const FunNode*)(n))
-  #define as_TemplateNode(n) ((TemplateNode*)(n))
-  #define as_const_TemplateNode(n) ((const TemplateNode*)(n))
   #define as_CallNode(n) ((CallNode*)(n))
   #define as_const_CallNode(n) ((const CallNode*)(n))
+  #define as_TemplateNode(n) ((TemplateNode*)(n))
+  #define as_const_TemplateNode(n) ((const TemplateNode*)(n))
+  #define as_TemplateInstanceNode(n) ((TemplateInstanceNode*)(n))
+  #define as_const_TemplateInstanceNode(n) ((const TemplateInstanceNode*)(n))
   #define as_TypeCastNode(n) ((TypeCastNode*)(n))
   #define as_const_TypeCastNode(n) ((const TypeCastNode*)(n))
   #define as_ConstNode(n) ((ConstNode*)(n))
@@ -602,8 +610,9 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
 #define maybe_ArrayNode(n) ({__typeof__(n) n__=(n);is_ArrayNode(n__)?(ArrayNode*)(n__):NULL;})
 #define maybe_BlockNode(n) ({__typeof__(n) n__=(n);is_BlockNode(n__)?(BlockNode*)(n__):NULL;})
 #define maybe_FunNode(n) ({__typeof__(n) n__=(n);is_FunNode(n__)?(FunNode*)(n__):NULL;})
-#define maybe_TemplateNode(n) ({__typeof__(n) n__=(n);is_TemplateNode(n__)?(TemplateNode*)(n__):NULL;})
 #define maybe_CallNode(n) ({__typeof__(n) n__=(n);is_CallNode(n__)?(CallNode*)(n__):NULL;})
+#define maybe_TemplateNode(n) ({__typeof__(n) n__=(n);is_TemplateNode(n__)?(TemplateNode*)(n__):NULL;})
+#define maybe_TemplateInstanceNode(n) ({__typeof__(n) n__=(n);is_TemplateInstanceNode(n__)?(TemplateInstanceNode*)(n__):NULL;})
 #define maybe_TypeCastNode(n) ({__typeof__(n) n__=(n);is_TypeCastNode(n__)?(TypeCastNode*)(n__):NULL;})
 #define maybe_LocalNode(n) ({__typeof__(n) n__=(n);is_LocalNode(n__)?as_LocalNode(n__):NULL;})
 #define maybe_ConstNode(n) ({__typeof__(n) n__=(n);is_ConstNode(n__)?(ConstNode*)(n__):NULL;})
@@ -666,8 +675,10 @@ typedef struct TemplateParamTypeNode TemplateParamTypeNode;
   const struct ListExprNode*:(const Type*)((Expr*)(n))->type, \
   struct ListExprNode*:((Expr*)(n))->type, \
   const FunNode*:(const Type*)((Expr*)(n))->type, FunNode*:((Expr*)(n))->type, \
-  const TemplateNode*:(const Type*)((Expr*)(n))->type, TemplateNode*:((Expr*)(n))->type, \
   const CallNode*:(const Type*)((Expr*)(n))->type, CallNode*:((Expr*)(n))->type, \
+  const TemplateNode*:(const Type*)((Expr*)(n))->type, TemplateNode*:((Expr*)(n))->type, \
+  const TemplateInstanceNode*:(const Type*)((Expr*)(n))->type, \
+  TemplateInstanceNode*:((Expr*)(n))->type, \
   const TypeCastNode*:(const Type*)((Expr*)(n))->type, TypeCastNode*:((Expr*)(n))->type, \
   const ConstNode*:(const Type*)((Expr*)(n))->type, ConstNode*:((Expr*)(n))->type, \
   const VarNode*:(const Type*)((Expr*)(n))->type, VarNode*:((Expr*)(n))->type, \
@@ -733,26 +744,27 @@ typedef union LocalNode_union {
   TemplateParamNode TemplateParamNode;
 } LocalNode_union;
 typedef union Expr_union {
-  Node               Node;
-  LitExpr_union      LitExpr;
-  IdNode             IdNode;
-  BinOpNode          BinOpNode;
-  UnaryOpNode_union  UnaryOpNode;
-  ReturnNode         ReturnNode;
-  AssignNode         AssignNode;
-  ListExprNode_union ListExprNode;
-  FunNode            FunNode;
-  TemplateNode       TemplateNode;
-  CallNode           CallNode;
-  TypeCastNode       TypeCastNode;
-  LocalNode_union    LocalNode;
-  RefNode            RefNode;
-  NamedArgNode       NamedArgNode;
-  SelectorNode       SelectorNode;
-  IndexNode          IndexNode;
-  SliceNode          SliceNode;
-  IfNode             IfNode;
-  TypeExprNode       TypeExprNode;
+  Node                 Node;
+  LitExpr_union        LitExpr;
+  IdNode               IdNode;
+  BinOpNode            BinOpNode;
+  UnaryOpNode_union    UnaryOpNode;
+  ReturnNode           ReturnNode;
+  AssignNode           AssignNode;
+  ListExprNode_union   ListExprNode;
+  FunNode              FunNode;
+  CallNode             CallNode;
+  TemplateNode         TemplateNode;
+  TemplateInstanceNode TemplateInstanceNode;
+  TypeCastNode         TypeCastNode;
+  LocalNode_union      LocalNode;
+  RefNode              RefNode;
+  NamedArgNode         NamedArgNode;
+  SelectorNode         SelectorNode;
+  IndexNode            IndexNode;
+  SliceNode            SliceNode;
+  IfNode               IfNode;
+  TypeExprNode         TypeExprNode;
 } Expr_union;
 typedef union Type_union {
   Node                  Node;
@@ -775,134 +787,5 @@ typedef union Node_union {
   Expr_union Expr;
   Type_union Type;
 } Node_union;
-
-typedef struct ASTVisitor     ASTVisitor;
-typedef struct ASTVisitorFuns ASTVisitorFuns;
-typedef Node* nullable (*ASTVisitorFun)(
-  ASTVisitor* v, Node* n, Node* parent_node, const char* field_name_in_parent);
-struct ASTVisitor {
-  void* nullable ctx; // user data
-  PMap           seenmap;
-  ASTVisitorFun  ftable[47];
-};
-void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*, void* nullable ctx);
-void ASTVisitorDispose(ASTVisitor*);
-// Node* nullable ASTVisit(ASTVisitor* v, T* n)
-#define ASTVisit(v, n, pn, pfield) _Generic((n), \
-  BadNode*: (v)->ftable[NBad]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  FieldNode*: (v)->ftable[NField]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  PkgNode*: (v)->ftable[NPkg]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  FileNode*: (v)->ftable[NFile]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  CommentNode*: (v)->ftable[NComment]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  NilNode*: (v)->ftable[NNil]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  BoolLitNode*: (v)->ftable[NBoolLit]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  IntLitNode*: (v)->ftable[NIntLit]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  FloatLitNode*: (v)->ftable[NFloatLit]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  StrLitNode*: (v)->ftable[NStrLit]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  IdNode*: (v)->ftable[NId]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  BinOpNode*: (v)->ftable[NBinOp]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  ReturnNode*: (v)->ftable[NReturn]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  AssignNode*: (v)->ftable[NAssign]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TupleNode*: (v)->ftable[NTuple]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  ArrayNode*: (v)->ftable[NArray]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  BlockNode*: (v)->ftable[NBlock]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  FunNode*: (v)->ftable[NFun]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TemplateNode*: (v)->ftable[NTemplate]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  CallNode*: (v)->ftable[NCall]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TypeCastNode*: (v)->ftable[NTypeCast]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  ConstNode*: (v)->ftable[NConst]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  VarNode*: (v)->ftable[NVar]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  ParamNode*: (v)->ftable[NParam]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TemplateParamNode*: (v)->ftable[NTemplateParam]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  RefNode*: (v)->ftable[NRef]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  NamedArgNode*: (v)->ftable[NNamedArg]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  SelectorNode*: (v)->ftable[NSelector]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  IndexNode*: (v)->ftable[NIndex]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  SliceNode*: (v)->ftable[NSlice]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  IfNode*: (v)->ftable[NIf]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TypeExprNode*: (v)->ftable[NTypeExpr]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TypeTypeNode*: (v)->ftable[NTypeType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  IdTypeNode*: (v)->ftable[NIdType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  AliasTypeNode*: (v)->ftable[NAliasType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  RefTypeNode*: (v)->ftable[NRefType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  BasicTypeNode*: (v)->ftable[NBasicType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  ArrayTypeNode*: (v)->ftable[NArrayType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TupleTypeNode*: (v)->ftable[NTupleType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  StructTypeNode*: (v)->ftable[NStructType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  FunTypeNode*: (v)->ftable[NFunType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TemplateTypeNode*: (v)->ftable[NTemplateType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  TemplateParamTypeNode*: (v)->ftable[NTemplateParamType]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  Node*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  Stmt*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  struct CUnitNode*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  Expr*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  struct LitExpr*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  struct ListExprNode*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  struct LocalNode*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)), \
-  Type*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)))
-
-struct ASTVisitorFuns {
-  Node* nullable (*nullable Bad)(ASTVisitor*, BadNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Field)(ASTVisitor*, FieldNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Pkg)(ASTVisitor*, PkgNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable File)(ASTVisitor*, FileNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Comment)(ASTVisitor*, CommentNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Nil)(ASTVisitor*, NilNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable BoolLit)(ASTVisitor*, BoolLitNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable IntLit)(ASTVisitor*, IntLitNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable FloatLit)(ASTVisitor*, FloatLitNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable StrLit)(ASTVisitor*, StrLitNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Id)(ASTVisitor*, IdNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable BinOp)(ASTVisitor*, BinOpNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable PrefixOp)(ASTVisitor*, PrefixOpNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable PostfixOp)(ASTVisitor*, PostfixOpNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Return)(ASTVisitor*, ReturnNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Assign)(ASTVisitor*, AssignNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Tuple)(ASTVisitor*, TupleNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Array)(ASTVisitor*, ArrayNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Block)(ASTVisitor*, BlockNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Fun)(ASTVisitor*, FunNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Template)(ASTVisitor*, TemplateNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Call)(ASTVisitor*, CallNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TypeCast)(ASTVisitor*, TypeCastNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Const)(ASTVisitor*, ConstNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Var)(ASTVisitor*, VarNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Param)(ASTVisitor*, ParamNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TemplateParam)(ASTVisitor*, TemplateParamNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Ref)(ASTVisitor*, RefNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable NamedArg)(ASTVisitor*, NamedArgNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Selector)(ASTVisitor*, SelectorNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Index)(ASTVisitor*, IndexNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Slice)(ASTVisitor*, SliceNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable If)(ASTVisitor*, IfNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TypeExpr)(ASTVisitor*, TypeExprNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TypeType)(ASTVisitor*, TypeTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable IdType)(ASTVisitor*, IdTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable AliasType)(ASTVisitor*, AliasTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable RefType)(ASTVisitor*, RefTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable BasicType)(ASTVisitor*, BasicTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable ArrayType)(ASTVisitor*, ArrayTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TupleType)(ASTVisitor*, TupleTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable StructType)(ASTVisitor*, StructTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable FunType)(ASTVisitor*, FunTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TemplateType)(ASTVisitor*, TemplateTypeNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable TemplateParamType)(ASTVisitor*, TemplateParamTypeNode*, Node* pn, const char* pf);
-
-  // class-level visitors called for nodes without specific visitors
-  Node* nullable (*nullable Stmt)(ASTVisitor*, Stmt*, Node* pn, const char* pf);
-  Node* nullable (*nullable CUnit)(ASTVisitor*, struct CUnitNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Expr)(ASTVisitor*, Expr*, Node* pn, const char* pf);
-  Node* nullable (*nullable LitExpr)(ASTVisitor*, struct LitExpr*, Node* pn, const char* pf);
-  Node* nullable (*nullable UnaryOp)(ASTVisitor*, struct UnaryOpNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable ListExpr)(ASTVisitor*, struct ListExprNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Local)(ASTVisitor*, struct LocalNode*, Node* pn, const char* pf);
-  Node* nullable (*nullable Type)(ASTVisitor*, Type*, Node* pn, const char* pf);
-
-  // catch-all fallback visitor
-  Node* nullable (*nullable Node)(ASTVisitor*, Node*, Node* pn, const char* pf);
-};
 
 ASSUME_NONNULL_END

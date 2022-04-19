@@ -2106,6 +2106,32 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
 }
 
 
+// "<" ... ">"
+static TemplateNode* nullable pTemplate(
+  Parser* p, Sym nullable name, TypeKind prodkind, u32 nparam_hint)
+{
+  assert(p->tok == TLt); // note: pTemplateParams consumes this token
+
+  TemplateTypeNode* t = mktype(p, TemplateType, TF_KindTemplate);
+  t->prodkind = prodkind;
+
+  TemplateNode* tpl = mknode_array(p, Template, params, nparam_hint);
+  if UNLIKELY(!tpl) return NULL;
+  NodeSetUnused(tpl);
+  tpl->name = name;
+  tpl->type = as_Type(t);
+
+  // parse parameters
+  pTemplateParams(p, tpl);
+  tpl->endpos = tpl->params_pos.end;
+
+  if (name)
+    defsym(p, name, tpl);
+
+  return tpl;
+}
+
+
 // Fun     = FunDef | FunExpr
 // FunDef  = "fun" Id? params? Type? Block?
 // FunExpr = "fun" Id? params? Type? "->" Expr
@@ -2137,49 +2163,41 @@ static Node* PFun(Parser* p, PFlag fl) {
   // template parameters, e.g. "fun foo<T, R>(...)" => NTemplate
   TemplateNode* tpl = NULL;
   if (p->tok == TLt) {
-    TemplateTypeNode* tpltype = mktype(p, TemplateType, TF_KindTemplate);
-    tpltype->prodkind = TF_KindFunc;
-    tpl = mknode_array(p, Template, params, 2);
-    if UNLIKELY(!tpl) return bad(p);
-    pushScope(p);
-    tpl->pos = fn->pos;
-    tpl->name = fn->name;
-    tpl->type = as_Type(tpltype);
-    pTemplateParams(p, tpl);
-    tpl->endpos = tpl->params_pos.end;
-    if (fn->name)
-      defsym(p, fn->name, tpl);
+    pushScope(p); // template parameter scope
+    tpl = pTemplate(p, fn->name, TF_KindFunc, /*nparam_hint*/2);
+    if UNLIKELY(!tpl) {
+      popScope(p);
+      return bad(p);
+    }
   } else if (fn->name) {
     defsym(p, fn->name, fn);
   }
 
   // function parameters
   pushScope(p); // body AND parameter scope
-  if (p->tok == TLParen)
+  if (p->tok == TLParen) {
     pFunParams(p, fn);
+    fn->endpos = fn->params_pos.end;
+  } else {
+    fn->endpos = currpos(p);
+  }
 
   // result type(s)
   if (p->tok != TLBrace && p->tok != TSemi) {
     if (p->tok == TRArr) {
       // e.g. "fun foo() -> 123" => "fun foo() auto { 123 }"
       fn->result = kType_auto;
+      fn->endpos = currpos(p);
+      nexttok(p);
     } else {
       fn->result = pType(p, fl);
       NodeTransferUnresolved(fn, fn->result);
+      fn->endpos = pos_max(fn->result->pos, fn->result->endpos);
     }
   } else {
     // no result type specified is the same as "nil" (does not return a value)
     fn->result = kType_nil;
   }
-
-  // set endpos
-  // FIXME: this sets endpos to the next following token, not the last token.
-  // Example:
-  // 1  fun add(x int, y uint) int
-  // 2
-  // Gets an endpos of 2:0 (which is invalid since column is zero so formatters will ignore it)
-  // It should get endpos 1:24 (for "int")
-  set_endpos(p, fn);
 
   // body
   p->fnest++;

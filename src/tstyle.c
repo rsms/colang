@@ -210,54 +210,119 @@ static_assert(TS_DEFAULT_FG < TS_BLACK, "");
 static_assert(TS_DEFAULT_BG < TS_BLACK_BG, "");
 
 
-// tstyle_patch updates s's style state.
-// Returns the "inverse" style, which if applied undoes the initial change.
-static TStyle tstyle_patch(TStyleStack* s, TStyle style) {
-  auto prevcol = s->color;
+static void patch_attr(AEscAttr* a, TStyle style) {
   switch ((enum TStyle)style) {
-    case TS_BOLD:        return (s->bold=1)      ? TS_NOBOLD      : _TS_NONE;
-    case TS_DIM:         return (s->dim=1)       ? TS_NODIM       : _TS_NONE;
-    case TS_ITALIC:      return (s->italic=1)    ? TS_NOITALIC    : _TS_NONE;
-    case TS_UNDERLINE:   return (s->underline=1) ? TS_NOUNDERLINE : _TS_NONE;
-    case TS_NOBOLD:      return (s->bold=0)      ? _TS_NONE       : TS_BOLD;
-    case TS_NODIM:       return (s->dim=0)       ? _TS_NONE       : TS_DIM;
-    case TS_NOITALIC:    return (s->italic=0)    ? _TS_NONE       : TS_ITALIC;
-    case TS_NOUNDERLINE: return (s->underline=0) ? _TS_NONE       : TS_UNDERLINE;
-    case TS_DEFAULT_FG:
-      s->color.fg = 0; // 0 rather than TS_DEFAULT_FG; allows for zero-init'd TStyleStack
-      return MAX(prevcol.fg, TS_DEFAULT_FG);
-    case TS_DEFAULT_BG:
-      s->color.bg = 0;
-      return MAX(prevcol.bg, TS_DEFAULT_BG);
+    case TS_RESET:       *a = AESC_DEFAULT_ATTR; break;
+    case TS_BOLD:        a->bold = true; break;
+    case TS_DIM:         a->dim = true; break;
+    case TS_ITALIC:      a->italic = true; break;
+    case TS_UNDERLINE:   a->underline = true; break;
+    case TS_NOBOLD:      a->bold = false; break;
+    case TS_NODIM:       a->dim = false; break;
+    case TS_NOITALIC:    a->italic = false; break;
+    case TS_NOUNDERLINE: a->underline = false; break;
+    case TS_DEFAULT_FG:  a->fgtype = 0; memcpy(a->fgrgb, AESC_DEFAULT_ATTR.fgrgb, 3); break;
+    case TS_DEFAULT_BG:  a->bgtype = 0; memcpy(a->bgrgb, AESC_DEFAULT_ATTR.bgrgb, 3); break;
+
     case _TS_FGCOLOR_START ... _TS_FGCOLOR_END-1:
-      s->color.fg = style;
-      return MAX(prevcol.fg, TS_DEFAULT_FG);
+      a->fg256 = style;
+      a->fgtype = 3;
+      break;
+
     case _TS_BGCOLOR_START ... _TS_BGCOLOR_END-1:
-      s->color.bg = style;
-      return MAX(prevcol.bg, TS_DEFAULT_BG);
-    case TS_RESET:
+      a->bg256 = style;
+      a->bgtype = 3;
+      break;
+
     case _TS_MAX:
     case _TS_NONE:
       break;
   }
-  assertf(0,"invalid TStyle %d", style);
-  return _TS_NONE;
 }
 
 
-TStyle tstyle_push(TStyleStack* s, TStyle style) {
-  TStyle inverse_style = tstyle_patch(s, style);
-  s->undo[MIN(s->depth, countof(s->undo)-1)] = inverse_style;
-  s->depth++; // overflow doesn't matter
-  return style;
+static const char* diff_attr(TStyleStack* st, AEscAttr prev, AEscAttr next) {
+  if (aesc_attr_eq(&prev, &next))
+    return "";
+
+  st->buf[0] = '\x1B';
+  st->buf[1] = '[';
+  ABuf s_ = abuf_make(st->buf + 2, sizeof(st->buf) - 2); ABuf* s = &s_;
+
+  #define ADD_STYLE(tstyle) { \
+    if (s->len) abuf_c(s, ';'); \
+    const char* str = tstyle_str(st->styles, (tstyle)) + strlen(PRE); \
+    abuf_append(s, str, strlen(str) - strlen(SUF)); \
+  }
+
+  #define FLAG(FIELD, on_style, off_style) \
+    if (prev.FIELD != next.FIELD) ADD_STYLE(next.FIELD ? (on_style) : (off_style));
+
+  FLAG(bold,      TS_BOLD,      TS_NOBOLD)
+  FLAG(dim,       TS_DIM,       TS_NODIM)
+  FLAG(italic,    TS_ITALIC,    TS_NOITALIC)
+  FLAG(underline, TS_UNDERLINE, TS_NOUNDERLINE)
+  // FLAG(inverse, not supported by tstyle)
+  // FLAG(blink, not supported by tstyle)
+  // FLAG(hidden, not supported by tstyle)
+  // FLAG(strike, not supported by tstyle)
+
+  if (prev.fg256 != next.fg256) {
+    ADD_STYLE((next.fgtype == 3) ? (TStyle)next.fg256 : TS_DEFAULT_FG);
+  }
+
+  if (prev.bg256 != next.bg256)
+    ADD_STYLE((next.bgtype == 3) ? (TStyle)next.bg256 : TS_DEFAULT_BG);
+
+  if (s->len == 0)
+    return "";
+  abuf_c(s, 'm');
+  abuf_terminate(s);
+  return st->buf;
 }
 
-TStyle tstyle_pop(TStyleStack* s) {
-  assertf(s->depth > 0, "extra tstyle_pop without matching tstyle_push");
-  s->depth--;
-  TStyle undostyle = s->undo[MIN(s->depth, countof(s->undo)-1)];
-  tstyle_patch(s, undostyle);
-  return undostyle;
+
+const char* tstyle_pushv(TStyleStack* st, const TStyle* stylev, u32 stylec) {
+  if (st->styles == &t0)
+    return "";
+
+  AEscAttr a = st->stack_len ? st->stack[st->stack_len] : AESC_DEFAULT_ATTR;
+  for (u32 i = 0; i < stylec; i++)
+    patch_attr(&a, stylev[i]);
+
+  st->stack[st->stack_len] = a;
+  st->stack_len = MIN(st->stack_len + 1, countof(st->stack)-2);
+
+  if (stylec == 1)
+    return tstyle_str(st->styles, stylev[0]);
+
+  if (stylec == 0)
+    return "";
+
+  st->buf[0] = '\x1B';
+  st->buf[1] = '[';
+  ABuf s_ = abuf_make(st->buf + 2, sizeof(st->buf) - 2); ABuf* s = &s_;
+
+  for (u32 i = 0; i < stylec; i++) {
+    if (s->len) abuf_c(s, ';');
+    const char* str = tstyle_str(st->styles, stylev[i]) + strlen(PRE);
+    abuf_append(s, str, strlen(str) - strlen(SUF));
+  }
+
+  abuf_c(s, 'm');
+  abuf_terminate(s);
+  return st->buf;
+}
+
+
+const char* tstyle_pop(TStyleStack* st) {
+  if (st->styles == &t0)
+    return "";
+  assertf(st->stack_len > 0, "extra tstyle_pop without matching tstyle_push");
+  st->stack_len--;
+  AEscAttr prev = st->stack[st->stack_len];
+  AEscAttr next = st->stack_len == 0 ? AESC_DEFAULT_ATTR : st->stack[st->stack_len - 1];
+  return diff_attr(st, prev, next);
 }
 
 
@@ -370,6 +435,7 @@ DEF_TEST(tstyle) {
 }
 
 
+/* TODO: convert to new AEscAttr impl
 DEF_TEST(tstyle_stack) {
   auto styles = TStyles256();
   TStyleStack stk = {0};
@@ -442,7 +508,7 @@ DEF_TEST(tstyle_stack) {
   // strrepr(tmp, sizeof(tmp), buf, strlen(buf));
   // printf("\n%s\n\n%s\n", tmp, buf);
   // exit(0);
-}
+}*/
 
 #endif // CO_TESTING_ENABLED
 //———————————————————————————————————————————————————————————————————————————————————————

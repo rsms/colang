@@ -164,27 +164,28 @@ void _ASTVisitChildren(ASTVisitor* v, Node* np) {
   NCASE(Comment)
 
   GNCASE(LitExpr)
-  NCASE(Id)            N(target);
-  NCASE(BinOp)         N(left); N(right);
-  GNCASE(UnaryOp)      N(expr);
-  NCASE(Return)        N(expr);
-  NCASE(Assign)        N(val); N(dst);
-  GNCASE(ListExpr)     A(a);
-  NCASE(Fun)           A(params); N(result); N(body);
-  NCASE(Template)      A(params); N(body);
-  NCASE(Call)          N(receiver); A(args);
-  NCASE(TypeCast)      N(expr);
-  NCASE(Const)         N(value);
-  NCASE(Var)           N(init);
-  NCASE(Param)         N(init);
-  NCASE(TemplateParam) N(init);
-  NCASE(Ref)           N(target);
-  NCASE(NamedArg)      N(value);
-  NCASE(Selector)      N(operand);
-  NCASE(Index)         N(operand); N(indexexpr);
-  NCASE(Slice)         N(operand); N(start); N(end);
-  NCASE(If)            N(cond); N(thenb); N(elseb);
-  NCASE(TypeExpr)      N(elem);
+  NCASE(Id)               N(target);
+  NCASE(BinOp)            N(left); N(right);
+  GNCASE(UnaryOp)         N(expr);
+  NCASE(Return)           N(expr);
+  NCASE(Assign)           N(val); N(dst);
+  GNCASE(ListExpr)        A(a);
+  NCASE(Fun)              A(params); N(result); N(body);
+  NCASE(Template)         A(params); N(body);
+  NCASE(TemplateInstance) N(tpl); A(args);
+  NCASE(Call)             N(receiver); A(args);
+  NCASE(TypeCast)         N(expr);
+  NCASE(Const)            N(value);
+  NCASE(Var)              N(init);
+  NCASE(Param)            N(init);
+  NCASE(TemplateParam)    N(init);
+  NCASE(Ref)              N(target);
+  NCASE(NamedArg)         N(value);
+  NCASE(Selector)         N(operand);
+  NCASE(Index)            N(operand); N(indexexpr);
+  NCASE(Slice)            N(operand); N(start); N(end);
+  NCASE(If)               N(cond); N(thenb); N(elseb);
+  NCASE(TypeExpr)         N(elem);
 
   NCASE(TypeType)
   NCASE(IdType)        N(target);

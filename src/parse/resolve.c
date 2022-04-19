@@ -20,7 +20,8 @@ Expr* resolve_id_expr(IdNode* id, Expr* target) {
   switch (target->kind) {
     case NTemplate:
     case NFun:
-      // Note: Don't transfer "unresolved" attribute of functions
+      // Note: Don't transfer "unresolved" attribute of functions or templates
+      NodeClearUnused(target);
       break;
     case NLocal_BEG ... NLocal_END:
       // increment local's ref count
@@ -220,13 +221,6 @@ static Node* _resolve_sym1(R* r, Node* np) {
     r->lookupscope = lookupscope; // restore
     return np;
 
-  NCASE(Field)      panic("TODO %s", nodename(n));
-  NCASE(Nil)        panic("TODO %s", nodename(n));
-  NCASE(BoolLit)    panic("TODO %s", nodename(n));
-  NCASE(IntLit)     panic("TODO %s", nodename(n));
-  NCASE(FloatLit)   panic("TODO %s", nodename(n));
-  NCASE(StrLit)     panic("TODO %s", nodename(n));
-
   NCASE(Id) {
     Node* target = ScopeLookup(r->lookupscope, n->name);
     if (UNLIKELY(!target) || UNLIKELY(!is_Expr(target))) {
@@ -292,30 +286,10 @@ static Node* _resolve_sym1(R* r, Node* np) {
       SetLocalInitField(n, as_Expr(resolve_sym(r, LocalInitField(n))));
     return np;
 
-
-  NCASE(Template)    panic("TODO %s", nodename(n));
-  NCASE(TypeCast) panic("TODO %s", nodename(n));
-  NCASE(Ref)      panic("TODO %s", nodename(n));
-  NCASE(NamedArg) panic("TODO %s", nodename(n));
-  NCASE(Selector) panic("TODO %s", nodename(n));
-  NCASE(Index)    panic("TODO %s", nodename(n));
-  NCASE(Slice)    panic("TODO %s", nodename(n));
-  NCASE(If)       panic("TODO %s", nodename(n));
-  NCASE(TypeExpr) panic("TODO %s", nodename(n));
-
-  NCASE(TypeType)   panic("TODO %s", nodename(n));
-  NCASE(AliasType)  panic("TODO %s", nodename(n));
-  NCASE(RefType)    panic("TODO %s", nodename(n));
-  NCASE(BasicType)  panic("TODO %s", nodename(n));
-  NCASE(ArrayType)  panic("TODO %s", nodename(n));
-  NCASE(TupleType)  panic("TODO %s", nodename(n));
-  NCASE(StructType) panic("TODO %s", nodename(n));
-  NCASE(FunType)    panic("TODO %s", nodename(n));
-  NCASE(TemplateType)  panic("TODO %s", nodename(n));
-  NCASE(TemplateParamType) panic("TODO %s", nodename(n));
-
+  NDEFAULTCASE
+    // ignore all other nodes
+    return np;
   }}
-  assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
   UNREACHABLE;
 }
 
@@ -633,7 +607,7 @@ static Node* resolve_call_fun(R* r, CallNode* n, FunTypeNode* ft) {
 }
 
 
-typedef struct TInst {
+/*typedef struct TInst {
   BuildCtx*     build;
   TemplateNode* tpl;
   NodeArray     values; // indexed by TemplateParamNode.index
@@ -682,7 +656,7 @@ static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
   dlog("result: %s", FMTNODE(result,0));
   // return result;
   return (Node*)kExpr_nil;
-}
+}*/
 
 
 static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
@@ -766,15 +740,36 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
   #endif
 
-  // instantiate template to create function implementation
-  Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
-  concrete_fn = resolve(r, concrete_fn);
-  array_free(&tplvals);
-  r->flags = rflags; // restore
+  // Two stategies:
+  // a) Delay instantiation until code generation, avoiding copying AST,
+  //    but also having to delay analysis of the instanced "product" AST.
+  // b) Instantiate the template now and apply analysis.
+  #if 1
+    // wrap the template user node in an instance node
+    TemplateInstanceNode* ti = mknode_array(
+      r, TemplateInstance, n->pos, args, tpl->params.len);
+    if UNLIKELY(!ti) {
+      n->type = kType_nil;
+      return as_Node(n);
+    }
+    ti->tpl = tpl;
+    ti->type = tpl->type;
+    array_append(&ti->args, tplvals.v, tplvals.len);
+    n->receiver = as_Node(ti);
 
-  // update call to point to concrete function and then resolve the actual call
-  n->receiver = concrete_fn;
-  return resolve_call(r, n);
+    dlog("xxx %zu", sizeof(LocalNode));
+
+  #else
+    // instantiate template to create function implementation
+    Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
+    concrete_fn = resolve(r, concrete_fn);
+    array_free(&tplvals);
+    r->flags = rflags; // restore
+
+    // update call to point to concrete function and then resolve the actual call
+    n->receiver = concrete_fn;
+    return resolve_call(r, n);
+  #endif
 
 bail:
   r->flags = rflags; // restore
@@ -1015,14 +1010,6 @@ static Node* resolve_assign(R* r, AssignNode* n) {
 }
 
 
-static Node* resolve_template(R* r, TemplateNode* n) {
-  // TODO_RESTYPE_IMPL;
-  dlog("TODO resolve_template");
-  n->type = kType_nil;
-  return as_Node(n);
-}
-
-
 static Node* resolve_typecast(R* r, TypeCastNode* n) {
   TODO_RESTYPE_IMPL; n->type = kType_nil;
   return as_Node(n);
@@ -1175,39 +1162,40 @@ static Node* _resolve_type(R* r, Node* np) {
 
   switch ((enum NodeKind)np->kind) { case NBad: {
 
-  NCASE(Field)      return resolve_field(r, n);
-  GNCASE(CUnit)     return resolve_cunit(r, n);
-  NCASE(Comment)    // not possible
+  NCASE(Field)   return resolve_field(r, n);
+  GNCASE(CUnit)  return resolve_cunit(r, n);
+  NCASE(Comment) // not possible (fall through to assertion)
 
-  NCASE(Nil)           // not possible
-  NCASE(BoolLit)       // not possible
-  NCASE(IntLit)        return resolve_intlit(r, n);
-  NCASE(FloatLit)      return resolve_floatlit(r, n);
-  NCASE(StrLit)        return resolve_strlit(r, n);
-  NCASE(Id)            return resolve_id(r, n);
-  NCASE(BinOp)         return resolve_binop(r, n);
-  NCASE(PrefixOp)      return resolve_prefixop(r, n);
-  NCASE(PostfixOp)     return resolve_postfixop(r, n);
-  NCASE(Return)        return resolve_return(r, n);
-  NCASE(Assign)        return resolve_assign(r, n);
-  NCASE(Tuple)         return resolve_tuple(r, n);
-  NCASE(Array)         return resolve_array(r, n);
-  NCASE(Block)         return resolve_block(r, n);
-  NCASE(Fun)           return resolve_fun(r, n);
-  NCASE(Template)      return resolve_template(r, n);
-  NCASE(Call)          return resolve_call(r, n);
-  NCASE(TypeCast)      return resolve_typecast(r, n);
-  NCASE(Const)         return resolve_const(r, n);
-  NCASE(Var)           return resolve_var(r, n);
-  NCASE(Param)         return resolve_param(r, n);
-  NCASE(TemplateParam) return resolve_templateparam(r, n);
-  NCASE(Ref)           return resolve_ref(r, n);
-  NCASE(NamedArg)      return resolve_namedarg(r, n);
-  NCASE(Selector)      return resolve_selector(r, n);
-  NCASE(Index)         return resolve_index(r, n);
-  NCASE(Slice)         return resolve_slice(r, n);
-  NCASE(If)            return resolve_if(r, n);
-  NCASE(TypeExpr)      return resolve_typeexpr(r, n);
+  NCASE(Nil)              // not possible (fall through to assertion)
+  NCASE(BoolLit)          // not possible (fall through to assertion)
+  NCASE(IntLit)           return resolve_intlit(r, n);
+  NCASE(FloatLit)         return resolve_floatlit(r, n);
+  NCASE(StrLit)           return resolve_strlit(r, n);
+  NCASE(Id)               return resolve_id(r, n);
+  NCASE(BinOp)            return resolve_binop(r, n);
+  NCASE(PrefixOp)         return resolve_prefixop(r, n);
+  NCASE(PostfixOp)        return resolve_postfixop(r, n);
+  NCASE(Return)           return resolve_return(r, n);
+  NCASE(Assign)           return resolve_assign(r, n);
+  NCASE(Tuple)            return resolve_tuple(r, n);
+  NCASE(Array)            return resolve_array(r, n);
+  NCASE(Block)            return resolve_block(r, n);
+  NCASE(Fun)              return resolve_fun(r, n);
+  NCASE(Template)         // not possible (fall through to assertion)
+  NCASE(TemplateInstance) // not possible (fall through to assertion)
+  NCASE(Call)             return resolve_call(r, n);
+  NCASE(TypeCast)         return resolve_typecast(r, n);
+  NCASE(Const)            return resolve_const(r, n);
+  NCASE(Var)              return resolve_var(r, n);
+  NCASE(Param)            return resolve_param(r, n);
+  NCASE(TemplateParam)    return resolve_templateparam(r, n);
+  NCASE(Ref)              return resolve_ref(r, n);
+  NCASE(NamedArg)         return resolve_namedarg(r, n);
+  NCASE(Selector)         return resolve_selector(r, n);
+  NCASE(Index)            return resolve_index(r, n);
+  NCASE(Slice)            return resolve_slice(r, n);
+  NCASE(If)               return resolve_if(r, n);
+  NCASE(TypeExpr)         return resolve_typeexpr(r, n);
 
   NCASE(TypeType)      return resolve_typetype(r, n);
   NCASE(IdType)        return resolve_idtype(r, n);

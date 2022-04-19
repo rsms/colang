@@ -32,6 +32,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   #define CH(s,c)        abuf_c(s, c)
   #define STR(s,cstr)    abuf_cstr(s, cstr)
   #define SYM(s,sym)     abuf_append(s, sym, symlen(sym))
+  #define SYMX(s,sym)    ((sym) ? abuf_append(s, (sym), symlen(sym)) : abuf_c(s, '_'))
 
   if (n == NULL)
     return STR(s,"<null>");
@@ -40,84 +41,118 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
 
   case NBad: // nil
     return STR(s,"bad");
+
   case NPkg: // package "foo"
     return CH(STR(STR(s, "package \""), ((PkgNode*)n)->name ), '"');
+
   case NFile: // file "foo"
     return CH(STR(STR(s, "file \""), ((FileNode*)n)->name ), '"');
+
   case NField: // field foo T
     SYM(STR(s, "field"), ((FieldNode*)n)->name);
     if (((FieldNode*)n)->type)
       NODE(CH(s, ' '), ((FieldNode*)n)->type);
     return s;
+
   case NNil: // nil
     return STR(s, "nil");
+
   case NBoolLit: // true | false
     return STR(s, ((BoolLitNode*)n)->ival ? "true" : "false");
+
   case NIntLit: // 123
     return abuf_u64(s, ((IntLitNode*)n)->ival, 10);
+
   case NFloatLit: // 12.3
     return abuf_f64(s, ((FloatLitNode*)n)->fval, -1);
+
   case NStrLit: // "lolcat"
     return CH(abuf_repr(CH(s, '"'), ((StrLitNode*)n)->p, ((StrLitNode*)n)->len), '"');
+
   case NId: // foo
     return SYM(s, ((IdNode*)n)->name);
+
   case NBinOp: // foo + bar
     NODE(s, ((BinOpNode*)n)->left);
     STR(CH(s,' '), TokName(((BinOpNode*)n)->op));
     return NODE(CH(s,' '), ((BinOpNode*)n)->right);
+
   case NPostfixOp: // foo++
     NODE(s, ((PostfixOpNode*)n)->expr);
     return STR(s, TokName(((PostfixOpNode*)n)->op));
+
   case NPrefixOp: // -foo
     STR(s, TokName(((PrefixOpNode*)n)->op));
     return NODE(s, ((PrefixOpNode*)n)->expr);
+
   case NAssign: // foo=
     return CH(NODE(s, ((AssignNode*)n)->dst), '=');
+
   case NNamedArg: // name=value
     CH(SYM(s, ((NamedArgNode*)n)->name), '=');
     return NODE(s, ((NamedArgNode*)n)->value);
+
   case NReturn: // return foo
     return NODE(STR(s, "return "), ((ReturnNode*)n)->expr);
+
   case NBlock: // block
     if (NodeIsUnsafe(n)) STR(s, "unsafe ");
     return STR(s, "block");
+
   case NArray: // array [one two 3]
     return CH(NODEARRAY(STR(s, "array ["), &((ArrayNode*)n)->a), ']');
+
   case NTuple: // tuple (one two 3)
     return CH(NODEARRAY(STR(s, "tuple ("), &((TupleNode*)n)->a), ')');
+
   case NConst: // const x
     return SYM(STR(s, "const "), ((LocalNode*)n)->name);
+
   case NVar: // var x
     return SYM(STR(s, "var "), ((LocalNode*)n)->name);
+
   case NParam: // param x
     return SYM(STR(s, "param "), ((LocalNode*)n)->name);
+
   case NTemplateParam: // template_param T
     return SYM(STR(s, "tparam "), ((LocalNode*)n)->name);
+
   case NRef: // &x, mut&x
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefNode*)n)->target);
+
   case NFun: // function foo
     if (NodeIsUnsafe(n)) STR(s, "unsafe ");
-    STR(s, "function ");
-    if (((FunNode*)n)->name) { SYM(s, ((FunNode*)n)->name); }
-    else { CH(s, '_'); }
-    return s;
+    return SYMX(STR(s, "function "), ((FunNode*)n)->name);
+
   case NTemplate: // template foo
-    STR(s, "template ");
-    if (((TemplateNode*)n)->name) { SYM(s, ((TemplateNode*)n)->name); }
-    else { CH(s,'_'); }
+    STR(s, "template");
+    if (((TemplateNode*)n)->name)
+      SYMX(CH(s, ' '), ((TemplateNode*)n)->name);
     return s;
+
+  case NTemplateInstance: // template foo
+    STR(s, "template-instance");
+    if (((TemplateInstanceNode*)n)->tpl->name)
+      SYMX(CH(s, ' '), ((TemplateInstanceNode*)n)->tpl->name);
+    return s;
+
   case NTypeCast: // typecast<int16>
     return CH(NODE(STR(s, "typecast<"), ((TypeCastNode*)n)->expr), '>');
+
   case NCall: // call foo
     return NODE(STR(s, "call "), ((CallNode*)n)->receiver);
+
   case NIf: // if
     return STR(s, "if");
+
   case NSelector: // expr.name | expr.selector
     return SYM(CH(NODE(s, ((SelectorNode*)n)->operand), '.'), ((SelectorNode*)n)->member);
+
   case NIndex: // foo[index]
     CH(NODE(s, ((IndexNode*)n)->operand), '[');
     CH(NODE(s, ((IndexNode*)n)->indexexpr), ']');
     return s;
+
   case NSlice: { // [start?:end?]
     SliceNode* slice = (SliceNode*)n;
     NODE(s, slice->operand);
@@ -129,22 +164,29 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
       NODE(s, slice->end);
     return CH(s, ']');
   }
+
   case NTypeExpr: // type foo
     return NODE(STR(s, "type "), ((TypeExprNode*)n)->elem);
 
 
+
   case NBasicType: // int
     return SYM(s, ((BasicTypeNode*)n)->name);
+
   case NRefType: // &T, mut&T
     return NODE(STR(s, NodeIsConst(n) ? "&" : "mut&"), ((RefTypeNode*)n)->elem);
+
   case NTypeType: // type
     return STR(s, "type");
+
   case NIdType: // foo
     //return SYM(STR(s, "idtype "), ((IdTypeNode*)n)->name);
     return SYM(s, ((IdTypeNode*)n)->name);
+
   case NAliasType: // foo (aka bar)
     STR(SYM(s, ((AliasTypeNode*)n)->name), " (aka ");
     return CH(NODE(s, ((AliasTypeNode*)n)->elem), ')');
+
   case NFunType: { // (int int)->bool
     FunTypeNode* ft = (FunTypeNode*)n;
     STR(s, "fun(");
@@ -159,15 +201,19 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
       NODE(abuf_c(s, ' '), ((FunTypeNode*)n)->result); // ok if NULL
     return s;
   }
+
   case NTemplateType: // type
     return STR(STR(s, TypeKindName(((TemplateTypeNode*)n)->prodkind)), " template ");
+
   case NTupleType: // (int bool Foo)
     return CH(NODEARRAY(CH(s, '('), &((TupleTypeNode*)n)->a), ')');
+
   case NArrayType: // [int], [int 4]
     NODE(CH(s, '['), ((ArrayTypeNode*)n)->elem);
     if (((ArrayTypeNode*)n)->size > 0)
       abuf_u64(CH(s,' '), ((ArrayTypeNode*)n)->size, 10);
     return CH(s, ']');
+
   case NStructType: { // "struct Name" or "struct {foo float; y bool}"
     StructTypeNode* st = (StructTypeNode*)n;
     STR(s, "struct ");
@@ -184,6 +230,7 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     }
     return CH(s, '}');
   }
+
   case NTemplateParamType:
     // return SYM(STR(s, "tparam "), ((TemplateParamTypeNode*)n)->param->name);
     return SYM(s, ((TemplateParamTypeNode*)n)->param->name);
@@ -230,10 +277,12 @@ struct Repr {
 #define STYLE_LIT    TS_LIGHTGREEN
 #define STYLE_NAME   TS_LIGHTBLUE   // symbolic names like Id, IdType, etc.
 #define STYLE_OP     TS_LIGHTORANGE
-#define STYLE_TYPE   TS_BLACK_BG
+#define STYLE_TYPE   TS_DIM
 #define STYLE_META   TS_DIM
 #define STYLE_ERR    TS_RED
 #define STYLE_NODEID TS_DIM
+
+#define STYLE_PAREN  {TS_DIM,TS_PINK}  // TStyle[] for "(" and ")"
 
 
 // -- repr output writers
@@ -246,7 +295,7 @@ static usize printable_len(Repr* r) {
 static void write_push_style(Repr* r, TStyle style) {
   if (TStylesIsNone(r->styles))
     return;
-  const char* s = tstyle_str(r->styles, tstyle_push(&r->stylestack, style));
+  const char* s = tstyle_push(&r->stylestack, style);
   usize len = strlen(s);
   r->stylelen += len;
   str_append(&r->dst, s, len);
@@ -255,22 +304,36 @@ static void write_push_style(Repr* r, TStyle style) {
 static void write_pop_style(Repr* r) {
   if (TStylesIsNone(r->styles))
     return;
-  const char* s = tstyle_str(r->styles, tstyle_pop(&r->stylestack));
+  const char* s = tstyle_pop(&r->stylestack);
   usize len = strlen(s);
   r->stylelen += len;
   str_append(&r->dst, s, len);
 }
 
 static void write_paren_start(Repr* r) {
-  str_appendcstr(&r->dst, r->lparen);
-  if (r->lparen[1])
-    r->stylelen += strlen(r->lparen) - 1;
+  if (TStylesIsNone(r->styles)) {
+    str_appendc(&r->dst, '(');
+    return;
+  }
+  u32 len1 = r->dst.len;
+  str_appendcstr(&r->dst,
+    tstyle_pushv(&r->stylestack, (TStyle[])STYLE_PAREN, countof((TStyle[])STYLE_PAREN)));
+  str_appendc(&r->dst, '(');
+  str_appendcstr(&r->dst, tstyle_pop(&r->stylestack));
+  r->stylelen += r->dst.len - len1 - 1;
 }
 
 static void write_paren_end(Repr* r) {
-  str_appendcstr(&r->dst, r->rparen);
-  if (r->rparen[1])
-    r->stylelen += strlen(r->rparen) - 1;
+  if (TStylesIsNone(r->styles)) {
+    str_appendc(&r->dst, ')');
+    return;
+  }
+  u32 len1 = r->dst.len;
+  str_appendcstr(&r->dst,
+    tstyle_pushv(&r->stylestack, (TStyle[])STYLE_PAREN, countof((TStyle[])STYLE_PAREN)));
+  str_appendc(&r->dst, ')');
+  str_appendcstr(&r->dst, tstyle_pop(&r->stylestack));
+  r->stylelen += r->dst.len - len1 - 1;
 }
 
 static void write_newline(Repr* r) {
@@ -406,7 +469,7 @@ static void _write_node(Repr* r, const Node* nullable n) {
     str_appendcstr(dst, "nil");
     write_pop_style(r);
   } else {
-    if (is_Type(n)) write_push_style(r, STYLE_TYPE);
+    // if (is_Type(n)) write_push_style(r, STYLE_TYPE);
 
     if (is_BasicTypeNode(n)) {
       // "name" for BasicType (e.g. "int")
@@ -423,7 +486,7 @@ static void _write_node(Repr* r, const Node* nullable n) {
       write_paren_end(r);
     }
 
-    if (is_Type(n)) write_pop_style(r);
+    // if (is_Type(n)) write_pop_style(r);
   }
 
   if (indent) write_pop_indent(r);
@@ -538,10 +601,11 @@ static void write_node_attrs(Repr* r, const Node* np) {
   NCASE(Ref)
   NCASE(Id)       write_name(r, n->name);
   GNCASE(Local)   write_name(r, n->name);
-  NCASE(Template)    write_name(r, n->name ? n->name : kSym__);
   NCASE(NamedArg) write_name(r, n->name);
-  NCASE(Fun)
-    write_name(r, n->name ? n->name : kSym__);
+  NCASE(Fun)      write_name(r, n->name ? n->name : kSym__);
+  NCASE(Template) write_name(r, n->name ? n->name : kSym__);
+  NCASE(TemplateInstance)
+    write_name(r, n->tpl->name ? n->tpl->name : kSym__);
   NCASE(BinOp)
     write_push_style(r, STYLE_OP);
     write_str(r, TokName(n->op));
@@ -620,6 +684,9 @@ static void write_node_fields(Repr* r, const Node* np) {
   NCASE(Template)
     write_array(r, as_NodeArray(&n->params));
     write_node(r, n->body);
+  NCASE(TemplateInstance)
+    write_node(r, n->tpl);
+    write_array(r, as_NodeArray(&n->args));
   GNCASE(Local)
     if (LocalInitField(n))
       write_node(r, LocalInitField(n));
@@ -684,6 +751,7 @@ bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl) {
     r.lparen = "\x1b[2m(\x1b[22m";
     r.rparen = "\x1b[2m)\x1b[22m";
   }
+  r.stylestack.styles = r.styles;
 
   write_node(&r, n);
   *dst = r.dst;

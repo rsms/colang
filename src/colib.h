@@ -701,10 +701,10 @@ ASSUME_NONNULL_END
 #include "path.h"
 
 #include "sym.h"
-#include "tstyle.h"
 #include "sha256.h"
 #include "unicode.h"
 #include "ansiesc.h"
+#include "tstyle.h"
 #include "cli.h"
 
 #endif // !defined(__cplusplus)
