@@ -56,13 +56,9 @@ static void fmtattr(AEscAttr a, char* buf, usize bufcap) {
     case 2: abuf_fmt(&s, "#%02X%02X%02X", a.bgrgb[0], a.bgrgb[1], a.bgrgb[2]); break;
     default: assertf(0,"invalid bgtype %u", a.bgtype);
   }
-  // intensity
-  if (a.intensity > 0) {
-    abuf_fmt(&s, ", intensity +%d", a.intensity);
-  } else if (a.intensity < 0) {
-    abuf_fmt(&s, ", intensity %d", a.intensity);
-  }
   // flags
+  if (a.bold)      abuf_cstr(&s, ", bold");
+  if (a.dim)       abuf_cstr(&s, ", dim");
   if (a.italic)    abuf_cstr(&s, ", italic");
   if (a.underline) abuf_cstr(&s, ", underline");
   if (a.inverse)   abuf_cstr(&s, ", inverse");
@@ -103,15 +99,15 @@ DEF_TEST(aesc_parsec) {
     },
     a_white_red_dim = {
       .fg8 = ANSI_COLOR_WHITE, .bg8 = ANSI_COLOR_RED,
-      .intensity = -1,
+      .dim = 1,
     },
     a_DEF_def = {
       .fg8 = DEFAULT_FG, .bg8 = DEFAULT_BG, .fg8bright = true,
-      .intensity = 1,
+      .bold = 1,
     },
-    a_def_def_dim = {
+    a_DEF_def_dim = {
       .fg8 = DEFAULT_FG, .bg8 = DEFAULT_BG,
-      .intensity = -1,
+      .bold = 1, .dim = 1,
     };
 
   // // fmtattr mini tests (we rely on these for debugging "real" tests)
@@ -142,7 +138,7 @@ DEF_TEST(aesc_parsec) {
     },
     {
       "normal \x1B[1mbright\x1B[2mdim\x1B[22m end",
-      { [10] = &a_DEF_def, [20] = &a_def_def_dim, [28] = &a_def_def, },
+      { [10] = &a_DEF_def, [20] = &a_DEF_def_dim, [28] = &a_def_def, },
     },
     {
       "normal \x1B[2;37;41mdim white on red\x1B[m end",
@@ -159,7 +155,7 @@ DEF_TEST(aesc_parsec) {
     },
   };
 
-  for (usize tidx = 0; tidx < countof(tests); tidx++) {
+  for (u32 tidx = 0; tidx < countof(tests); tidx++) {
     auto t = &tests[tidx];
     usize len = strlen(t->input);
     AEscParser p = aesc_mkparser(AESC_DEFAULT_ATTR);
@@ -177,8 +173,8 @@ DEF_TEST(aesc_parsec) {
            (!(i > 1 && expect_attr) && retval == AESC_P_ATTR) )
       {
         sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), t->input, MIN(len, i+1));
-        assertf(0, "s[%zu]: expected return value %s; got %s\n%s\n%*s↑\n",
-          i,
+        assertf(0, "[test#%u] s[%zu]: expected return value %s; got %s\n%s\n%*s↑\n",
+          tidx, i,
           ((i > 1 && expect_attr) ? "ATTR" : "MORE|NONE"),
           AEscParseState_str(retval),
           tmpbuf[2], (int)strlen(tmpbuf[2])-1, "");
@@ -188,8 +184,8 @@ DEF_TEST(aesc_parsec) {
         fmtattr(*expect_attr, tmpbuf[0], sizeof(tmpbuf[0]));
         fmtattr(p.attr, tmpbuf[1], sizeof(tmpbuf[1]));
         sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), t->input, MIN(len, i+1));
-        assertf(0, "s[%zu]: expected p.attr %s; got %s\n%s\n%*s↑\n",
-          i, tmpbuf[0], tmpbuf[1],
+        assertf(0, "[test#%u] s[%zu]: expected p.attr %s; got %s\n%s\n%*s↑\n",
+          tidx, i, tmpbuf[0], tmpbuf[1],
           tmpbuf[2], (int)strlen(tmpbuf[2])-1, "");
       }
 

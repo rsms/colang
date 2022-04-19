@@ -30,12 +30,12 @@ typedef struct AEscAttr {
     u8 bg256;
     u8 bgrgb[3];
   };
-  u8 fgtype    : 2; // 0 = color8, 1 = color256, 2 = rgb
-  u8 bgtype    : 2; // 0 = color8, 1 = color256, 2 = rgb
-  i8 intensity : 2; // -1 dim, 0 normal, 1 bright
-  u8 _reserved : 2;
-
+  u8 fgtype    : 2; // 0 = color8, 1 = color256, 2 = rgb, 3 = user type
+  u8 bgtype    : 2; // 0 = color8, 1 = color256, 2 = rgb, 3 = user type
+  u8 _reserved : 4;
   // flags
+  u8 bold      : 1;
+  u8 dim       : 1;
   u8 italic    : 1;
   u8 underline : 1;
   u8 inverse   : 1;
@@ -76,6 +76,16 @@ AEscParseState aesc_parsec(AEscParser* p, char c);
 
 //
 #define AESC_DEFAULT_ATTR ((AEscAttr){.fg8=ANSI_COLOR_WHITE})
+
+inline static bool aesc_attr_eq(const AEscAttr* a, const AEscAttr* b) {
+  return *(u64*)a == *(u64*)b;
+}
+inline static bool aesc_attr_colors_eq(const AEscAttr* a, const AEscAttr* b) {
+  return ((u32*)a)[0] == ((u32*)b)[0];
+}
+inline static bool aesc_attr_flags_eq(const AEscAttr* a, const AEscAttr* b) {
+  return ((u32*)a)[1] == ((u32*)b)[1];
+}
 
 // u8 AESC_ATTR_FG8(const AEscAttr*)
 // u8 AESC_ATTR_BG8(const AEscAttr*)

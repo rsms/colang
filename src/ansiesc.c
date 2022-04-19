@@ -78,31 +78,31 @@ AEscParseState aesc_parsec(AEscParser* p, char c) {
   } break;
 
   case PS_ATTR: switch (c) { // ESC[…
-    case '0': *na = p->defaultattr;                 TR(PS_END);
-    case '1': na->intensity = 1; na->fg8bright = 1; TR(PS_END);
-    case '2':                                       TR(PS_ATTR2);
-    case '3':                                       TR(PS_ATTR3);
-    case '4':                                       TR(PS_ATTR4);
-    case '5': na->blink = 1;                        TR(PS_END);
-    case '7': na->inverse = 1;                      TR(PS_END);
-    case '8': na->hidden = 1;                       TR(PS_END);
-    case '9': na->strike = 1;                       TR(PS_END);
-    case ';': *na = p->defaultattr;                 TR(PS_ATTR);
-    case 'm': *na = p->defaultattr;                 goto endattr;
-    default:                                        goto endnone;
+    case '0': *na = p->defaultattr;            TR(PS_END);
+    case '1': na->bold = 1; na->fg8bright = 1; TR(PS_END);
+    case '2':                                  TR(PS_ATTR2);
+    case '3':                                  TR(PS_ATTR3);
+    case '4':                                  TR(PS_ATTR4);
+    case '5': na->blink = 1;                   TR(PS_END);
+    case '7': na->inverse = 1;                 TR(PS_END);
+    case '8': na->hidden = 1;                  TR(PS_END);
+    case '9': na->strike = 1;                  TR(PS_END);
+    case ';': *na = p->defaultattr;            TR(PS_ATTR);
+    case 'm': *na = p->defaultattr;            goto endattr;
+    default:                                   goto endnone;
   } break;
 
   case PS_ATTR2: switch (c) { // ESC[2…
-    case '2': na->intensity = 0; na->fg8bright = 0;  TR(PS_END);
-    case '3': na->italic = 0;                        TR(PS_END);
-    case '4': na->underline = 0;                     TR(PS_END);
-    case '5': na->blink = 0;                         TR(PS_END);
-    case '7': na->inverse = 0;                       TR(PS_END);
-    case '8': na->hidden = 0;                        TR(PS_END);
-    case '9': na->strike = 0;                        TR(PS_END);
-    case ';': na->intensity = -1; na->fg8bright = 0; TR(PS_ATTR);
-    case 'm': na->intensity = -1; na->fg8bright = 0; goto endattr;
-    default:                                         goto endnone;
+    case '2': na->dim = 0; na->bold = 0; na->fg8bright = 0; TR(PS_END);
+    case '3': na->italic = 0;                               TR(PS_END);
+    case '4': na->underline = 0;                            TR(PS_END);
+    case '5': na->blink = 0;                                TR(PS_END);
+    case '7': na->inverse = 0;                              TR(PS_END);
+    case '8': na->hidden = 0;                               TR(PS_END);
+    case '9': na->strike = 0;                               TR(PS_END);
+    case ';': na->dim = 1; na->fg8bright = 0;               TR(PS_ATTR);
+    case 'm': na->dim = 1; na->fg8bright = 0;               goto endattr;
+    default:                                                goto endnone;
   } break;
 
   case PS_ATTR3: switch (c) { // ESC[3…
