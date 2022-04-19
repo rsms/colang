@@ -594,6 +594,9 @@ static bool resolve_call_args(R* r, CallNode* n, ParamArray* params) {
 }
 
 
+static Node* resolve_call(R* r, CallNode* n);
+
+
 static Node* resolve_call_type(R* r, CallNode* n) {
   Type* recvt = (
     is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
@@ -630,15 +633,56 @@ static Node* resolve_call_fun(R* r, CallNode* n, FunTypeNode* ft) {
 }
 
 
-static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
-  // TODO: need to traverse AST and copy paths with changes,
-  // kind of like instertion in a HAMT.
-  dlog("TODO instantiate_template %s", FMTNODE(tpl,0));
+typedef struct TInst {
+  BuildCtx*     build;
+  TemplateNode* tpl;
+  NodeArray     values; // indexed by TemplateParamNode.index
+} TInst;
+
+
+static Node* tinst_node(TInst* ti, Node* n) {
+  dlog("tinst_node %s : %s : %s", nodename(n),
+    fmtnode(n, ti->build->tmpbuf[0], sizeof(ti->build->tmpbuf[0])),
+    is_Expr(n) ?
+      fmtnode(((Expr*)n)->type, ti->build->tmpbuf[1], sizeof(ti->build->tmpbuf[1])) :
+      "-"
+  );
+
   return (Node*)kExpr_nil;
 }
 
 
-static Node* resolve_call(R* r, CallNode* n);
+Node* nullable tinst_TemplateParamType(
+  ASTVisitor* v, TemplateParamTypeNode* n, Node* parent, const char* field)
+{
+  dlog("TemplateParamType (in parent %s.%s)", nodename(parent), field);
+  ASTVisitChildren(v, n);
+  return (Node*)n;
+}
+
+
+static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
+  // TODO: need to traverse AST and copy paths with changes,
+  // kind of like insertion in a HAMT.
+  dlog("TODO instantiate_template %s", FMTNODE(tpl,0));
+  TInst ti = {
+    .build = r->build,
+    .tpl = tpl,
+    .values = *tplvals,
+  };
+
+  ASTVisitor visitor;
+  static const ASTVisitorFuns funs = {
+    .TemplateParamType = &tinst_TemplateParamType,
+  };
+  ASTVisitorInit(&visitor, &funs, &ti);
+  Node* result = ASTVisit(&visitor, tpl->body, tpl, "body");
+
+  // Node* result = tinst_node(&ti, tpl->body);
+  dlog("result: %s", FMTNODE(result,0));
+  // return result;
+  return (Node*)kExpr_nil;
+}
 
 
 static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
@@ -1178,7 +1222,7 @@ static Node* _resolve_type(R* r, Node* np) {
   NCASE(TemplateParamType) return resolve_templateparamtype(r, n);
 
   }}
-  assertf(0,"invalid node kind: n@%p->kind = %u", np, np->kind);
+  assertf(0,"invalid node kind: %s (%u)", NodeKindName(np->kind), np->kind);
   UNREACHABLE;
 }
 

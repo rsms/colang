@@ -759,7 +759,6 @@ static Node* PId(Parser* p, PFlag fl) {
       TemplateParamNode* tparam = (TemplateParamNode*)target;
       auto tparamt = mknode(p, TemplateParamType);
       tparamt->param = tparam;
-      array_push(&tparam->instances, as_Node(tparamt));
       NodeRefLocal(as_LocalNode(target));
       n = (Node*)tparamt;
     } else if (p->flags & ParseOpt) {
@@ -2077,11 +2076,7 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
       break;
     }
 
-    TemplateParamNode* param = mknode_array(p, TemplateParam, instances, 2);
-    if UNLIKELY(!param) {
-      advance(p, (Tok[]){ TGt, 0 });
-      break;
-    }
+    TemplateParamNode* param = mknode(p, TemplateParam);
 
     NodeSetConst(param);
     NodeSetUnused(param);

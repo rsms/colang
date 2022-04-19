@@ -145,9 +145,20 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
   case NAliasType: // foo (aka bar)
     STR(SYM(s, ((AliasTypeNode*)n)->name), " (aka ");
     return CH(NODE(s, ((AliasTypeNode*)n)->elem), ')');
-  case NFunType: // (int int)->bool
-    CH(NODEARRAY(CH(s, '('), ((FunTypeNode*)n)->params), ')');
-    return NODE(STR(s, "->"), ((FunTypeNode*)n)->result); // ok if NULL
+  case NFunType: { // (int int)->bool
+    FunTypeNode* ft = (FunTypeNode*)n;
+    STR(s, "fun(");
+    for (u32 i = 0; i < ft->params->len; i++) {
+      if (i) abuf_cstr(s, ", ");
+      STR(s, ft->params->v[i]->name);
+      abuf_c(s, ' ');
+      NODE(s, ft->params->v[i]->type);
+    }
+    CH(s, ')');
+    if (((FunTypeNode*)n)->result)
+      NODE(abuf_c(s, ' '), ((FunTypeNode*)n)->result); // ok if NULL
+    return s;
+  }
   case NTemplateType: // type
     return STR(STR(s, TypeKindName(((TemplateTypeNode*)n)->prodkind)), " template ");
   case NTupleType: // (int bool Foo)
@@ -174,7 +185,8 @@ static ABuf* _fmtnode1(const Node* nullable n, ABuf* s) {
     return CH(s, '}');
   }
   case NTemplateParamType:
-    return SYM(STR(s, "tparam "), ((TemplateParamTypeNode*)n)->param->name);
+    // return SYM(STR(s, "tparam "), ((TemplateParamTypeNode*)n)->param->name);
+    return SYM(s, ((TemplateParamTypeNode*)n)->param->name);
 
   case NComment:
     assertf(0, "unexpected node %s", nodename(n));

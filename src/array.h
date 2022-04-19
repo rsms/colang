@@ -33,6 +33,9 @@ bool array_push(Array(T)* a, T value)
   // Appends one value to the end of a.
   // Returns false on overflow or allocation failure.
 
+T array_pop(Array(T)* a)
+  // Removes the last value from a. Panics if a is empty.
+
 bool array_append(Array(T)* a, const T* src, u32 len)
   // Appends len number of values to the end of a.
   // Returns false on overflow or allocation failure.
@@ -99,6 +102,9 @@ typedef Array(const char*) CStrArray;
   ( UNLIKELY((a)->len == (a)->cap) && \
     UNLIKELY(!_array_grow((VoidArray*)(a), mem_ctx(), _ARRAY_ESIZE(a), 1)) ) ? false : \
   ( ((a)->v[(a)->len++] = value), true ) )
+
+#define array_pop(a) ( \
+  safecheck((a)->len > 0), (a)->v[--(a)->len] )
 
 #define array_append(a, src, len) ({ \
   const __typeof__(*(a)->v)* __srcv = (src); /* catch incompatible types */ \

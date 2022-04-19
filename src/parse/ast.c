@@ -110,3 +110,102 @@ Node* ScopeLookup(const Scope* nullable scope, Sym s) {
   #endif
   return n;
 }
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// ASTVisit
+#ifdef ASTVisit
+
+static void visit_nodearray(ASTVisitor* v, NodeArray* a, Node* parent, const char* field) {
+  for (u32 i = 0; i < a->len; i++) {
+    Node* n1 = a->v[i];
+    Node* n2 = ASTVisit(v, n1, parent, field);
+    if (n1 != n2)
+      a->v[i] = n2;
+  }
+}
+
+
+static void visit_nodefield(ASTVisitor* v, Node** np, Node* parent, const char* field) {
+  if (*np) {
+    Node* n2 = ASTVisit(v, *np, parent, field);
+    if (n2 != *np)
+      *np = n2;
+  }
+}
+
+
+void _ASTVisitChildren(ASTVisitor* v, Node* np) {
+  #define N(FIELD) \
+    visit_nodefield(v, (Node**)&n->FIELD, np, #FIELD)
+
+  #define A(ARRAY_FIELD) \
+    visit_nodearray(v, as_NodeArray(&n->ARRAY_FIELD), np, #ARRAY_FIELD)
+
+  #define AP(ARRAY_FIELD) \
+    visit_nodearray(v, as_NodeArray(n->ARRAY_FIELD), np, #ARRAY_FIELD)
+
+  // break cycles
+  // static bool reg_cyclic_node(Repr* r, const Node* n, u32* nodeid) {
+  uintptr* vp = pmap_assign(&v->seenmap, np);
+  if LIKELY(vp) {
+    if (*vp) {
+      return;
+    }
+    *vp = (uintptr)1;
+  }
+
+  //dlog("visit children of %s", nodename(np));
+
+  switch ((enum NodeKind)np->kind) { case NBad: {
+
+  NCASE(Field)   N(type); N(init);
+  GNCASE(CUnit)  A(a);
+  NCASE(Comment)
+
+  GNCASE(LitExpr)
+  NCASE(Id)            N(target);
+  NCASE(BinOp)         N(left); N(right);
+  GNCASE(UnaryOp)      N(expr);
+  NCASE(Return)        N(expr);
+  NCASE(Assign)        N(val); N(dst);
+  GNCASE(ListExpr)     A(a);
+  NCASE(Fun)           A(params); N(result); N(body);
+  NCASE(Template)      A(params); N(body);
+  NCASE(Call)          N(receiver); A(args);
+  NCASE(TypeCast)      N(expr);
+  NCASE(Const)         N(value);
+  NCASE(Var)           N(init);
+  NCASE(Param)         N(init);
+  NCASE(TemplateParam) N(init);
+  NCASE(Ref)           N(target);
+  NCASE(NamedArg)      N(value);
+  NCASE(Selector)      N(operand);
+  NCASE(Index)         N(operand); N(indexexpr);
+  NCASE(Slice)         N(operand); N(start); N(end);
+  NCASE(If)            N(cond); N(thenb); N(elseb);
+  NCASE(TypeExpr)      N(elem);
+
+  NCASE(TypeType)
+  NCASE(IdType)        N(target);
+  NCASE(AliasType)     N(elem);
+  NCASE(RefType)       N(elem);
+  NCASE(BasicType)
+  NCASE(ArrayType)     N(elem);
+  NCASE(TupleType)     A(a);
+  NCASE(StructType)    A(fields);
+  NCASE(FunType)       AP(params); N(result);
+  NCASE(TemplateType)
+  NCASE(TemplateParamType) N(param);
+
+  }}
+
+  // visit type of expression
+  if (is_Expr(np) && ((Expr*)np)->type)
+    visit_nodefield(v, (Node**)&((Expr*)np)->type, np, "type");
+
+  return;
+}
+
+
+#endif // ASTVisit

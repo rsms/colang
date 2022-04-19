@@ -155,7 +155,6 @@ struct ParamNode { LocalNode;
 struct TemplateParamNode { LocalNode;
   Node* nullable init; // initial/default value
   u32            index; // index in "<...>" i.e. 2 for C in "<A,B,C,D>"
-  NodeArray      instances;
 };
 struct RefNode { Expr;
   Expr* target;
@@ -434,6 +433,11 @@ inline static Type* unbox_id_type(Type* nullable t) {
   (n)->kind = N##NEW_KIND; \
   (NEW_KIND##Node*)(n); \
 })
+
+#ifdef ASTVisit
+  #define ASTVisitChildren(v, n) _ASTVisitChildren((v),as_Node(n))
+  void _ASTVisitChildren(ASTVisitor*, Node*);
+#endif
 
 // --------------------------------------------------------------------------------------
 // repr

@@ -431,40 +431,49 @@ outh.append('')
 
 
 # ASTVisitorFuns
-if False:
+if True:
   ftable_size = len(leafnames) + 2
   outh.append("""
-  typedef struct ASTVisitor     ASTVisitor;
-  typedef struct ASTVisitorFuns ASTVisitorFuns;
-  typedef int(*ASTVisitorFun)(ASTVisitor*, const Node*);
-  struct ASTVisitor {
-    ASTVisitorFun ftable[%d];
-  };
-  void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*);
+typedef struct ASTVisitor     ASTVisitor;
+typedef struct ASTVisitorFuns ASTVisitorFuns;
+typedef Node* nullable (*ASTVisitorFun)(
+  ASTVisitor* v, Node* n, Node* parent_node, const char* field_name_in_parent);
+struct ASTVisitor {
+  void* nullable ctx; // user data
+  PMap           seenmap;
+  ASTVisitorFun  ftable[%d];
+};
+void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*, void* nullable ctx);
+void ASTVisitorDispose(ASTVisitor*);
   """.strip() % ftable_size)
 
-  outh.append('// error ASTVisit(ASTVisitor* v, const NODE_TYPE* n)')
+  outh.append('// Node* nullable ASTVisit(ASTVisitor* v, T* n)')
   tmp = []
-  tmp.append('#define ASTVisit(v, n) _Generic((n),')
+  tmp.append('#define ASTVisit(v, n, pn, pfield) _Generic((n),')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    tmp.append('const %s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
-    tmp.append('%s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
+    # tmp.append('const %s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
+    tmp.append('%s*: (v)->ftable[N%s]((v),(Node*)(n),(Node*)(pn),(pfield)),' % (
+      name,shortname))
   for name, subtypes in typemap.items():
     if len(subtypes) > 0:
       stname = structname(name, subtypes)
-      tmp.append('const %s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
-      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
+      # tmp.append('const %s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
+      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)),' % (
+        stname))
   # tmp.append('default: v->ftable[MIN(%d,(n)->kind)]((v),(const Node*)(n)),' % (
   #   ftable_size - 1))
   tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
   output_compact_macro(outh, tmp)
   outh.append('')
 
+  tailargs = ", Node* pn, const char* pf"
+
   outh.append('struct ASTVisitorFuns {')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    outh.append('  error(*nullable %s)(ASTVisitor*, const %s*);' % (shortname, name))
+    outh.append('  Node* nullable (*nullable %s)(ASTVisitor*, %s*%s);' % (
+      shortname, name, tailargs))
 
   outh.append('')
   outh.append("  // class-level visitors called for nodes without specific visitors")
@@ -473,16 +482,27 @@ if False:
     shortname = strip_node_suffix(name)
     if shortname == '': continue
     stname = structname(name, subtypes)
-    outh.append('  error(*nullable %s)(ASTVisitor*, const %s*);' % (shortname, stname))
+    outh.append('  Node* nullable (*nullable %s)(ASTVisitor*, %s*%s);' % (
+      shortname, stname, tailargs))
   outh.append('')
   outh.append("  // catch-all fallback visitor")
-  outh.append('  error(*nullable Node)(ASTVisitor*, const Node*);')
+  outh.append('  Node* nullable (*nullable Node)(ASTVisitor*, Node*%s);' % (tailargs))
   outh.append('};')
   outh.append('')
 
-  outc.append('static error ASTVisitorNoop(ASTVisitor* v, const Node* n) { return 0; }')
+  #——————————— impl ———————————
+
+  outc.append(
+    'static Node* nullable ASTVisitorNoop(ASTVisitor* v, Node* n%s) {' % (
+      tailargs))
+  outc.append('  if (!is_LitExpr(n)) ASTVisitChildren(v, n);')
+  outc.append('  return n;')
+  outc.append('}')
   outc.append('')
-  outc.append('void ASTVisitorInit(ASTVisitor* v, const ASTVisitorFuns* f) {')
+  outc.append(
+    'void ASTVisitorInit(ASTVisitor* v, const ASTVisitorFuns* f, void* nullable ctx) {')
+  outc.append('  v->ctx = ctx;')
+  outc.append('  pmap_init(&v->seenmap, mem_ctx(), 64, MAPLF_1);')
   outc.append('  ASTVisitorFun dft = (f->Node ? f->Node : &ASTVisitorNoop), dft1 = dft;')
   outc.append('  // populate v->ftable')
 
@@ -510,6 +530,10 @@ if False:
         out.append('  dft = dft1; // end %s' % shortname)
 
   visit(outc, 'Node', Node)
+  outc.append('}')
+  outc.append('')
+  outc.append('void ASTVisitorDispose(ASTVisitor* v) {')
+  outc.append('  hmap_dispose(&v->seenmap);')
   outc.append('}')
   outc.append('')
 
