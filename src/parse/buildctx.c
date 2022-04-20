@@ -250,7 +250,7 @@ static Node* nodeslab_alloc(BuildCtx* b, usize ptr_count) {
 
 
 Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs) {
-  safecheckf(nptrs < USIZE_MAX/sizeof(void), "overflow");
+  safecheckf(nptrs < USIZE_MAX/sizeof(void*), "overflow");
   Node* n = nodeslab_alloc(b, nptrs);
   n->pos = pos;
   n->kind = kind;
@@ -292,6 +292,106 @@ Node* nullable _b_mknode_array(
     a->cap = (u32)cap;
     a->ext = true;
   }
+
+  return n;
+}
+
+
+Node* _b_copy_node(BuildCtx* b, const Node* src) {
+  assert(src->kind < countof(kNodeStructSizeTab));
+
+  usize structsize = kNodeStructSizeTab[src->kind];
+  usize elemsize;
+  usize arrayoffs = 0;
+  usize arraysize = 0;
+
+  #define ARRAY(ARRAY_FIELD) { \
+    arrayoffs = (usize)offsetof(__typeof__(*n), ARRAY_FIELD); \
+    elemsize = sizeof(n->ARRAY_FIELD.v[0]); \
+    arraysize = (usize)n->ARRAY_FIELD.cap * elemsize; \
+  }
+
+  const Node* np = src;
+  switch ((enum NodeKind)np->kind) { case NBad: {
+    GNCASE(CUnit)           ARRAY(a);
+    GNCASE(ListExpr)        ARRAY(a);
+    NCASE(Fun)              ARRAY(params);
+    NCASE(Call)             ARRAY(args);
+    NCASE(Template)         ARRAY(params);
+    NCASE(TemplateInstance) ARRAY(args);
+    NCASE(Selector)         ARRAY(indices);
+    NCASE(TupleType)        ARRAY(a);
+    NCASE(StructType)       ARRAY(fields);
+
+    // other nodes don't have any array field
+    NCASE(AliasType)
+    NCASE(ArrayType)
+    NCASE(Assign)
+    NCASE(BasicType)
+    NCASE(BinOp)
+    NCASE(BoolLit)
+    NCASE(Comment)
+    NCASE(Const)
+    NCASE(Field)
+    NCASE(FloatLit)
+    NCASE(FunType)
+    NCASE(Id)
+    NCASE(IdType)
+    NCASE(If)
+    NCASE(Index)
+    NCASE(IntLit)
+    NCASE(NamedArg)
+    NCASE(Nil)
+    NCASE(Param)
+    NCASE(PostfixOp)
+    NCASE(PrefixOp)
+    NCASE(Ref)
+    NCASE(RefType)
+    NCASE(Return)
+    NCASE(Slice)
+    NCASE(StrLit)
+    NCASE(TemplateParam)
+    NCASE(TemplateParamType)
+    NCASE(TemplateType)
+    NCASE(TypeCast)
+    NCASE(TypeExpr)
+    NCASE(TypeType)
+    NCASE(Var)
+  }}
+
+  usize nptrs = _PTRCOUNT(structsize + arraysize);
+  safecheckf(nptrs < USIZE_MAX/sizeof(void*), "overflow");
+  Node* n = nodeslab_alloc(b, nptrs);
+
+  memcpy(n, src, nptrs * sizeof(void*));
+
+  if (arrayoffs == 0)
+    return n;
+
+  #if DEBUG
+  const VoidArray* src_array = ((void*)src) + arrayoffs;
+  #endif
+
+  arraysize = (nptrs * sizeof(void*)) - structsize;
+
+  void* p = n;
+  VoidArray* a = p + arrayoffs;
+  a->v = p + structsize;
+  a->cap = (u32)(arraysize / elemsize);
+  a->ext = true;
+
+  assert(a->cap > 0);
+  assert(a->cap >= src_array->cap);
+  assert(a->len == src_array->len);
+
+  // dlog("~~xx__xx~~"
+  //   "\n  cap %u => %u"
+  //   "\n  len %u => %u"
+  //   "\n  ext %d => %d"
+  //   ,src_array->cap, a->cap
+  //   ,src_array->len, a->len
+  //   ,src_array->ext, a->ext
+  //   );
 
   return n;
 }

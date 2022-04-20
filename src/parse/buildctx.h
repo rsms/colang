@@ -146,7 +146,7 @@ error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files i
     (count) ) \
 )
 
-#define _PTRCOUNT(size) ALIGN2((size),sizeof(void*))/sizeof(void*)
+#define _PTRCOUNT(size) ALIGN2(((usize)(size)),sizeof(void*))/sizeof(void*)
 
 Node* _b_mknode(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
 Node* nullable _b_mknodev(BuildCtx* b, NodeKind kind, Pos pos, usize nptrs);
@@ -157,6 +157,9 @@ Node* nullable _b_mknode_array(
 // b_free_node returns a node to b's nodeslab free list
 #define b_free_node(b, n, KIND) _b_free_node((b),as_Node(n),_PTRCOUNT(sizeof(KIND##Node)) )
 void _b_free_node(BuildCtx* b, Node* n, usize nptrs);
+
+#define b_copy_node(b, src) ( (__typeof__(*(src))*)_b_copy_node((b),as_const_Node(src)) )
+Node* _b_copy_node(BuildCtx* b, const Node* src);
 
 // b_mkpkgnode creates a package node for b, setting
 //   pkg->name = b->pkgid
