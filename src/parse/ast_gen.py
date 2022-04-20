@@ -441,7 +441,7 @@ outh.append('')
 
 
 
-ENABLE_AST_VISITOR = True
+ENABLE_AST_VISITOR = False
 # ASTVisitorFuns
 if ENABLE_AST_VISITOR:
   ftable_size = len(leafnames) + 2
