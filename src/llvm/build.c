@@ -681,9 +681,17 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return n->irval;
 
   vname = n->name ? n->name : vname;
+  char fname_buf[64];
+  Str fname = str_make(fname_buf, sizeof(fname_buf));
+  str_appendcstr(&fname, vname);
+  if (strcmp(vname, "main") != 0) {
+    str_appendc(&fname, '$');
+    Sym tid = b_typeid(b->build, n->type);
+    str_append(&fname, tid, symlen(tid));
+  }
 
   // build function prototype
-  Val fn = build_funproto(b, n, vname);
+  Val fn = build_funproto(b, n, str_cstr(&fname));
   n->irval = fn;
 
   if (!n->body) { // external
