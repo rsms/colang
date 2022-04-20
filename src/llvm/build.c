@@ -7,7 +7,7 @@
 #include "../parse/parse.h"
 
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
-#define DEBUG_BUILD_EXPR
+//#define DEBUG_BUILD_EXPR
 
 #if defined(DEBUG_BUILD_EXPR) && !defined(DEBUG)
   #undef DEBUG_BUILD_EXPR
@@ -685,7 +685,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   Str fname = str_make(fname_buf, sizeof(fname_buf));
   str_appendcstr(&fname, vname);
   if (strcmp(vname, "main") != 0) {
-    str_appendc(&fname, '$');
+    // TODO: use type ID for parameters only?
     Sym tid = b_typeid(b->build, n->type);
     str_append(&fname, tid, symlen(tid));
   }

@@ -519,7 +519,7 @@ static void _write_node1(Repr* r, const Node* n) {
   }
 
   // memory address (for debugging)
-  if (1) {
+  if (0) {
     str_appendcstr(&r->dst, " \e[9");
     str_appendc(&r->dst, '1'+(int)((uintptr)n%6));
     str_appendcstr(&r->dst, "m0x");

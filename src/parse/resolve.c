@@ -4,7 +4,11 @@
 #include "ast_transform.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
-#define CO_PARSE_RESOLVE_DEBUG
+//#define CO_PARSE_RESOLVE_DEBUG
+
+#if defined(CO_PARSE_RESOLVE_DEBUG) && !defined(DEBUG)
+  #undef CO_PARSE_RESOLVE_DEBUG
+#endif
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // resolve_id impl
@@ -553,10 +557,7 @@ static bool resolve_call_args(R* r, CallNode* n, ParamArray* params) {
     Expr* arg = n->args.v[i];
     Type* param_typ = assertnotnull(params->v[i]->type);
     if (is_TemplateParamTypeNode(param_typ)) {
-      // TODO: convert to assertion once instantiate_template is done.
-      // assertf(r->flags & RF_Template, "template parameter outside template");
-      if ((r->flags & RF_Template) == 0)
-        errf(r, arg, "template parameter outside template");
+      assertf(r->flags & RF_Template, "template parameter outside template");
       continue;
     }
     if UNLIKELY(!b_typelteq(r->build, param_typ, arg->type)) {
@@ -608,22 +609,6 @@ static Node* resolve_call_fun(R* r, CallNode* n, FunTypeNode* ft) {
     resolve_call_args(r, n, ft->params);
 
   return as_Node(n);
-}
-
-
-static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
-  Node* instance = atr_visit_template(r->build, tpl, tplvals);
-
-  Str str = str_make(NULL, 0);
-  fmtast(instance, &str, 0);
-  dlog("instance:\n—————————————————————————————————————\n%s"
-       "\n—————————————————————————————————————\n", str.v);
-  str_free(&str);
-  // exit(0);
-
-  return instance;
-
-  // return (Node*)kExpr_nil;
 }
 
 
@@ -708,13 +693,13 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
   #endif
 
-  // instantiate template to create function implementation
-  Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
+  // instantiate template to create function implementation,
+  // updating the call to point to instanced function
+  n->receiver = atr_visit_template(r->build, tpl, &tplvals);
   array_free(&tplvals);
   r->flags = rflags; // restore
 
-  // update call to point to concrete function and then resolve the actual call
-  n->receiver = concrete_fn;
+  // resolve the call
   return resolve_call(r, n);
 
 bail:

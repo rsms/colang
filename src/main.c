@@ -114,7 +114,9 @@ static error parse_pkg(BuildCtx* build) {
     pflags |= ParseOpt;
   }
 
+  #if DEBUG
   Str str = str_make(tmpbuf, sizeof(tmpbuf)); // for debug logging
+  #endif
 
   for (Source* src = build->srclist; src != NULL; src = src->next) {
     auto t = logtime_start("parse");
@@ -123,18 +125,25 @@ static error parse_pkg(BuildCtx* build) {
     if (err)
       return err;
     logtime_end(t);
+
+    #if DEBUG
     str.len = 0;
     fmtast(filenode, &str, 0);
     printf("parse_tu =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
+    #endif
+
     if (build->errcount)
       break;
 
     t = logtime_start("resolve");
     filenode = resolve_ast(build, filenode);
     logtime_end(t);
+
+    #if DEBUG
     str.len = 0;
     fmtast(filenode, &str, 0);
     printf("resolve_ast =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
+    #endif
 
     array_push(&build->pkg.a, as_Node(filenode));
   }

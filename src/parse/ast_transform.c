@@ -4,7 +4,7 @@
 #include "ast_transform.h"
 
 // CO_PARSE_ATR_DEBUG: define to enable trace logging
-#define CO_PARSE_ATR_DEBUG
+//#define CO_PARSE_ATR_DEBUG
 //———————————————————————————————————————————————————————————————————————————————————
 #if defined(CO_PARSE_ATR_DEBUG) && defined(DEBUG)
   #ifndef CO_NO_LIBC
@@ -18,7 +18,7 @@
     fflush(stderr); })
 #else
   #undef CO_PARSE_ATR_DEBUG
-  #define atr_dlog dlog
+  #define atr_dlog(fmt, args...) ((void)0)
 #endif
 //———————————————————————————————————————————————————————————————————————————————————
 
