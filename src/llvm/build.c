@@ -103,7 +103,7 @@ typedef struct B {
   #endif
   #define dlog2(format, args...) ({                                               \
     if (isatty(2)) log("\e[1;30m▍\e[0m%*s" format, b->debug_depth*2, "", ##args); \
-    else           log("[resolve] %*s" format, b->debug_depth*2, "", ##args);     \
+    else           log("[build] %*s" format, b->debug_depth*2, "", ##args);       \
     fflush(stderr); })
   #undef panic
   #define panic(format, args...) ({ \
@@ -717,7 +717,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     Val pv = LLVMGetParam(fn, i);
     Typ pt = LLVMTypeOf(pv);
     if (NodeIsConst(pn) /*&& !arg_type_needs_alloca(pt)*/) {
-      // immutable pimitive value does not need a local alloca
+      // immutable primitive value does not need a local alloca
       pn->irval = pv;
       continue;
     }
