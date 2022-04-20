@@ -162,6 +162,7 @@ outh.append('// NodeKindName returns a printable name. E.g. %s => "%s"' % (
   'N'+strip_node_suffix(leafnames[0]), strip_node_suffix(leafnames[0]) ))
 outh.append('const char* NodeKindName(NodeKind);')
 outh.append('')
+# —— impl ——
 outc.append('const char* NodeKindName(NodeKind k) {')
 outc.append('  // kNodeNameTable[NodeKind] => const char* name')
 outc.append('  static const char* const kNodeNameTable[NodeKind_MAX+2] = {')
@@ -176,6 +177,16 @@ outc.append('')
 # node typedefs
 outh += ['typedef struct %s %s;' % (name, name) for name in leafnames]
 outh.append('')
+
+# node sizes
+outh.append('// kNodeStructSizeTab[NodeKind] => sizeof(STRUCT)')
+outh.append('extern const u8 kNodeStructSizeTab[%d];' % len(leafnames))
+outh.append('')
+# —— impl ——
+outc.append('const u8 kNodeStructSizeTab[%d] = {' % len(leafnames))
+outc += ['  sizeof(struct %s),' % (name) for name in leafnames]
+outc.append('};')
+outc.append('')
 
 # NodeKindIs*
 outh.append('// bool NodeKindIs<kind>(NodeKind)')
@@ -430,51 +441,56 @@ outh.append('')
 
 
 
-ENABLE_AST_VISITOR = False
+ENABLE_AST_VISITOR = True
 # ASTVisitorFuns
 if ENABLE_AST_VISITOR:
   ftable_size = len(leafnames) + 2
   outh.append("""
 typedef struct ASTVisitor     ASTVisitor;
 typedef struct ASTVisitorFuns ASTVisitorFuns;
-typedef Node* nullable (*ASTVisitorFun)(
-  ASTVisitor* v, Node* n, Node* parent_node, const char* field_name_in_parent);
+typedef struct ASTParent      ASTParent;
+
+struct ASTParent {
+  const ASTParent* nullable parent;     // grandparent, if any
+  Node*                     n;          // parent AST node
+  Node**                    child_ptr;  // child in parent
+  const char*               field_name; // name of parent field where child occurs
+};
+
+typedef int(*ASTVisitorFun)(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n);
+
 struct ASTVisitor {
   void* nullable ctx; // user data
   PMap           seenmap;
   ASTVisitorFun  ftable[%d];
 };
+
 void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*, void* nullable ctx);
 void ASTVisitorDispose(ASTVisitor*);
   """.strip() % ftable_size)
 
-  outh.append('// Node* nullable ASTVisit(ASTVisitor* v, T* n)')
+  outh.append(
+    '// int ASTVisit(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n)')
   tmp = []
-  tmp.append('#define ASTVisit(v, n, pn, pfield) _Generic((n),')
+  tmp.append('#define ASTVisit(v, flags, parent, n) _Generic((n),')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    # tmp.append('const %s*: (v)->ftable[N%s]((v),(const Node*)(n)),' % (name,shortname))
-    tmp.append('%s*: (v)->ftable[N%s]((v),(Node*)(n),(Node*)(pn),(pfield)),' % (
+    tmp.append('%s*: (v)->ftable[N%s]((v),(flags),(parent),(Node*)(n)),' % (
       name,shortname))
   for name, subtypes in typemap.items():
     if len(subtypes) > 0:
       stname = structname(name, subtypes)
-      # tmp.append('const %s*: (v)->ftable[(n)->kind]((v),(const Node*)(n)),' % stname)
-      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(Node*)(n),(Node*)(pn),(pfield)),' % (
+      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(flags),(parent),(Node*)(n)),' % (
         stname))
-  # tmp.append('default: v->ftable[MIN(%d,(n)->kind)]((v),(const Node*)(n)),' % (
-  #   ftable_size - 1))
   tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
   output_compact_macro(outh, tmp)
   outh.append('')
 
-  tailargs = ", Node* pn, const char* pf"
-
   outh.append('struct ASTVisitorFuns {')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    outh.append('  Node* nullable (*nullable %s)(ASTVisitor*, %s*%s);' % (
-      shortname, name, tailargs))
+    outh.append('  int(*nullable %s)(ASTVisitor*, usize, const ASTParent*, %s*);' % (
+      shortname, name))
 
   outh.append('')
   outh.append("  // class-level visitors called for nodes without specific visitors")
@@ -483,21 +499,20 @@ void ASTVisitorDispose(ASTVisitor*);
     shortname = strip_node_suffix(name)
     if shortname == '': continue
     stname = structname(name, subtypes)
-    outh.append('  Node* nullable (*nullable %s)(ASTVisitor*, %s*%s);' % (
-      shortname, stname, tailargs))
+    outh.append('  int(*nullable %s)(ASTVisitor*, usize, const ASTParent*, %s*);' % (
+      shortname, stname))
   outh.append('')
   outh.append("  // catch-all fallback visitor")
-  outh.append('  Node* nullable (*nullable Node)(ASTVisitor*, Node*%s);' % (tailargs))
+  outh.append('  int(*nullable Node)(ASTVisitor*, usize, const ASTParent*, Node*);')
   outh.append('};')
   outh.append('')
 
   #——————————— impl ———————————
 
   outc.append(
-    'static Node* nullable ASTVisitorNoop(ASTVisitor* v, Node* n%s) {' % (
-      tailargs))
-  outc.append('  if (!is_LitExpr(n)) ASTVisitChildren(v, n);')
-  outc.append('  return n;')
+  'static int ASTVisitorNoop(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n) {')
+  outc.append('  if (is_LitExpr(n)) return 0;')
+  outc.append('  return ASTVisitChildren(v, flags, parent, n);')
   outc.append('}')
   outc.append('')
   outc.append(

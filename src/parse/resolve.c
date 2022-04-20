@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2022 Rasmus Andersson. See accompanying LICENSE file for details.
 #include "parse.h"
+#include "ast_transform.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
 #define CO_PARSE_RESOLVE_DEBUG
@@ -552,7 +553,10 @@ static bool resolve_call_args(R* r, CallNode* n, ParamArray* params) {
     Expr* arg = n->args.v[i];
     Type* param_typ = assertnotnull(params->v[i]->type);
     if (is_TemplateParamTypeNode(param_typ)) {
-      assertf(r->flags & RF_Template, "template parameter outside template");
+      // TODO: convert to assertion once instantiate_template is done.
+      // assertf(r->flags & RF_Template, "template parameter outside template");
+      if ((r->flags & RF_Template) == 0)
+        errf(r, arg, "template parameter outside template");
       continue;
     }
     if UNLIKELY(!b_typelteq(r->build, param_typ, arg->type)) {
@@ -607,56 +611,20 @@ static Node* resolve_call_fun(R* r, CallNode* n, FunTypeNode* ft) {
 }
 
 
-/*typedef struct TInst {
-  BuildCtx*     build;
-  TemplateNode* tpl;
-  NodeArray     values; // indexed by TemplateParamNode.index
-} TInst;
-
-
-static Node* tinst_node(TInst* ti, Node* n) {
-  dlog("tinst_node %s : %s : %s", nodename(n),
-    fmtnode(n, ti->build->tmpbuf[0], sizeof(ti->build->tmpbuf[0])),
-    is_Expr(n) ?
-      fmtnode(((Expr*)n)->type, ti->build->tmpbuf[1], sizeof(ti->build->tmpbuf[1])) :
-      "-"
-  );
-
-  return (Node*)kExpr_nil;
-}
-
-
-Node* nullable tinst_TemplateParamType(
-  ASTVisitor* v, TemplateParamTypeNode* n, Node* parent, const char* field)
-{
-  dlog("TemplateParamType (in parent %s.%s)", nodename(parent), field);
-  ASTVisitChildren(v, n);
-  return (Node*)n;
-}
-
-
 static Node* instantiate_template(R* r, TemplateNode* tpl, NodeArray* tplvals) {
-  // TODO: need to traverse AST and copy paths with changes,
-  // kind of like insertion in a HAMT.
-  dlog("TODO instantiate_template %s", FMTNODE(tpl,0));
-  TInst ti = {
-    .build = r->build,
-    .tpl = tpl,
-    .values = *tplvals,
-  };
+  Node* instance = atr_visit_template(r->build, tpl, tplvals);
 
-  ASTVisitor visitor;
-  static const ASTVisitorFuns funs = {
-    .TemplateParamType = &tinst_TemplateParamType,
-  };
-  ASTVisitorInit(&visitor, &funs, &ti);
-  Node* result = ASTVisit(&visitor, tpl->body, tpl, "body");
+  Str str = str_make(NULL, 0);
+  fmtast(instance, &str, 0);
+  dlog("instance:\n—————————————————————————————————————\n%s"
+       "\n—————————————————————————————————————\n", str.v);
+  str_free(&str);
+  // exit(0);
 
-  // Node* result = tinst_node(&ti, tpl->body);
-  dlog("result: %s", FMTNODE(result,0));
-  // return result;
-  return (Node*)kExpr_nil;
-}*/
+  return instance;
+
+  // return (Node*)kExpr_nil;
+}
 
 
 static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
@@ -740,36 +708,14 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
   #endif
 
-  // Two stategies:
-  // a) Delay instantiation until code generation, avoiding copying AST,
-  //    but also having to delay analysis of the instanced "product" AST.
-  // b) Instantiate the template now and apply analysis.
-  #if 1
-    // wrap the template user node in an instance node
-    TemplateInstanceNode* ti = mknode_array(
-      r, TemplateInstance, n->pos, args, tpl->params.len);
-    if UNLIKELY(!ti) {
-      n->type = kType_nil;
-      return as_Node(n);
-    }
-    ti->tpl = tpl;
-    ti->type = tpl->type;
-    array_append(&ti->args, tplvals.v, tplvals.len);
-    n->receiver = as_Node(ti);
+  // instantiate template to create function implementation
+  Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
+  array_free(&tplvals);
+  r->flags = rflags; // restore
 
-    dlog("xxx %zu", sizeof(LocalNode));
-
-  #else
-    // instantiate template to create function implementation
-    Node* concrete_fn = instantiate_template(r, tpl, &tplvals);
-    concrete_fn = resolve(r, concrete_fn);
-    array_free(&tplvals);
-    r->flags = rflags; // restore
-
-    // update call to point to concrete function and then resolve the actual call
-    n->receiver = concrete_fn;
-    return resolve_call(r, n);
-  #endif
+  // update call to point to concrete function and then resolve the actual call
+  n->receiver = concrete_fn;
+  return resolve_call(r, n);
 
 bail:
   r->flags = rflags; // restore

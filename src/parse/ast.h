@@ -440,8 +440,9 @@ inline static Type* unbox_id_type(Type* nullable t) {
 })
 
 #ifdef ASTVisit
-  #define ASTVisitChildren(v, n) _ASTVisitChildren((v),as_Node(n))
-  void _ASTVisitChildren(ASTVisitor*, Node*);
+  #define ASTVisitChildren(v, flags, parent_of_n, n) \
+    _ASTVisitChildren((v),(flags),(parent_of_n),as_Node(n))
+  int _ASTVisitChildren(ASTVisitor*, usize flags, const ASTParent* parent_of_n, Node* n);
 #endif
 
 // --------------------------------------------------------------------------------------

@@ -518,6 +518,15 @@ static void _write_node1(Repr* r, const Node* n) {
     write_pop_style(r);
   }
 
+  // memory address (for debugging)
+  if (1) {
+    str_appendcstr(&r->dst, " \e[9");
+    str_appendc(&r->dst, '1'+(int)((uintptr)n%6));
+    str_appendcstr(&r->dst, "m0x");
+    str_appendu64(&r->dst, (u64)(uintptr)n, 16);
+    str_appendcstr(&r->dst, "\e[39m");
+  }
+
   write_node_attrs(r, n);
 
   // stop now if we have already "seen" this node
