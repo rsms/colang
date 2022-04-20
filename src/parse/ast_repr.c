@@ -269,8 +269,7 @@ struct Repr {
   NodeFmtFlag flags;
   TStyles     styles;
   TStyleStack stylestack;
-  const char* lparen;
-  const char* rparen;
+  u32         lparen_pos; // dst.len at the time after writing '('
 };
 
 #define STYLE_NODE   ((TStyle[]){ TS_BOLD })        // node name
@@ -325,6 +324,7 @@ static void write_paren_start(Repr* r) {
   str_appendc(&r->dst, '(');
   str_appendcstr(&r->dst, tstyle_pop(&r->stylestack));
   r->stylelen += r->dst.len - len1 - 1;
+  r->lparen_pos = r->dst.len;
 }
 
 static void write_paren_end(Repr* r) {
@@ -347,7 +347,7 @@ static void write_newline(Repr* r) {
 
 static void write_push_indent(Repr* r) {
   if (r->intypeof) {
-    if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+    if (r->dst.len != r->lparen_pos)
       str_push(&r->dst, ' ');
   } else {
     r->indent += INDENT_DEPTH;
@@ -395,7 +395,7 @@ static void _write_node(Repr* r, const Node* nullable n);
 static void write_array(Repr* r, const NodeArray* a) {
   // if (a->len == 0)
   //   return;
-  if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+  if (r->dst.len != r->lparen_pos)
     str_push(&r->dst, ' ');
   write_paren_start(r);
   for (u32 i = 0; i < a->len; i++)
@@ -417,7 +417,7 @@ static void write_qstr(Repr* r, const char* s, usize len) {
 }
 
 static void write_name(Repr* r, Sym s) {
-  if (!shassuffix(r->dst.v, r->dst.len, r->lparen))
+  if (r->dst.len != r->lparen_pos)
     str_push(&r->dst, ' ');
   write_push_style(r, STYLE_NAME);
   str_append(&r->dst, s, symlen(s));
@@ -756,13 +756,6 @@ bool _fmtast(const Node* nullable n, Str* dst, NodeFmtFlag fl) {
   pmap_init(&r.seenmap, mem_ctx(), 64, MAPLF_1);
 
   r.styles = TStylesForStderr();
-  if ((fl & NODE_FMT_COLOR) == 0 && (TStylesIsNone(r.styles) || (fl & NODE_FMT_NOCOLOR))) {
-    r.lparen = "(";
-    r.rparen = ")";
-  } else {
-    r.lparen = "\x1b[2m(\x1b[22m";
-    r.rparen = "\x1b[2m)\x1b[22m";
-  }
   r.stylestack.styles = r.styles;
 
   write_node(&r, n);
