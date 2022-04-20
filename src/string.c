@@ -561,7 +561,7 @@ bool str_appendu32(Str* s, u32 value, u32 base) {
 }
 
 
-bool str_appendu64(Str* s, u32 value, u32 base) {
+bool str_appendu64(Str* s, u64 value, u32 base) {
   if UNLIKELY(!str_reserve(s, 64))
     return false;
   s->len += sfmt_u64(s->v + s->len, value, base);

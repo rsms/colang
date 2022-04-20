@@ -85,7 +85,7 @@ bool str_appendfill(Str*, char c, u32 len); // like memset
 bool str_appendrepr(Str*, const void* p, usize len); // e.g. "hello\nworld\0"
 bool str_appendreprhex(Str*, const void* p, usize len); // e.g. "68656c6c6f0a776f726c6400"
 bool str_appendu32(Str*, u32 value, u32 base);
-bool str_appendu64(Str*, u32 value, u32 base);
+bool str_appendu64(Str*, u64 value, u32 base);
 bool str_appendf64(Str*, f64 value, int ndecimals);
 char* nullable str_cstr(Str*); // writes \0 to v[len] but does not increment len
 static usize str_availcap(const Str*); // free allocated space available at s->v+s->len
