@@ -746,51 +746,59 @@ static Node* PAuto(Parser* p, PFlag fl) {
 }
 
 
+static Node* pId(Parser* p, PFlag fl, Pos pos, Sym name) {
+  Node* target = (fl & PFlagRValue) ? lookupsym(p, name) : NULL;
+  if (target) {
+    // existing identifier
+    if (is_TemplateParamNode(target) && (fl & PFlagType)) {
+      TemplateParamNode* tparam = (TemplateParamNode*)target;
+      auto tparamt = b_mknode(p->build, TemplateParamType, pos);
+      tparamt->param = tparam;
+      NodeRefLocal(as_LocalNode(target));
+      return (Node*)tparamt;
+    }
+    if (p->flags & ParseOpt) {
+      // shortcut; return the target, skipping Id node indirection
+      if (fl & PFlagType)
+        expectType(p, target);
+      return target;
+    }
+    if (is_Type(target)) {
+      auto id = b_mknode(p->build, IdType, pos);
+      id->name = name;
+      return (Node*)resolve_id_type(id, (Type*)target);
+    }
+    assert_is_Expr(target);
+    auto id = b_mknode(p->build, Id, pos);
+    id->name = name;
+    return (Node*)resolve_id_expr(id, (Expr*)target);
+  }
+
+  // new identifier
+  Node* n;
+  if (fl & PFlagType) {
+    IdTypeNode* id = b_mknode(p->build, IdType, pos);
+    id->name = name;
+    n = (Node*)id;
+  } else {
+    IdNode* id = b_mknode(p->build, Id, pos);
+    id->name = name;
+    n = (Node*)id;
+  }
+  NodeSetUnresolved(n);
+  return n;
+}
+
+
 // PId -- identifier (as prefix)
 // When parsing an rvalue identifier, PFlagRValue is set in fl
 //
 //!PrefixParselet TId
 static Node* PId(Parser* p, PFlag fl) {
-  Node* target = (fl & PFlagRValue) ? lookupsym(p, p->name) : NULL;
-  Node* n;
-  if (target) {
-    // existing identifier
-    if (is_TemplateParamNode(target) && (fl & PFlagType)) {
-      TemplateParamNode* tparam = (TemplateParamNode*)target;
-      auto tparamt = mknode(p, TemplateParamType);
-      tparamt->param = tparam;
-      NodeRefLocal(as_LocalNode(target));
-      n = (Node*)tparamt;
-    } else if (p->flags & ParseOpt) {
-      // shortcut; return the target, skipping Id node indirection
-      if (fl & PFlagType)
-        expectType(p, target);
-      n = target;
-    } else if (is_Type(target)) {
-      auto id = mknode(p, IdType);
-      id->name = p->name;
-      n = (Node*)resolve_id_type(id, (Type*)target);
-    } else {
-      assert_is_Expr(target);
-      auto id = mknode(p, Id);
-      id->name = p->name;
-      n = (Node*)resolve_id_expr(id, (Expr*)target);
-    }
-  } else {
-    // new identifier
-    if (fl & PFlagType) {
-      IdTypeNode* id = mknode(p, IdType);
-      id->name = p->name;
-      n = (Node*)id;
-    } else {
-      IdNode* id = mknode(p, Id);
-      id->name = p->name;
-      n = (Node*)id;
-    }
-    NodeSetUnresolved(n);
-  }
+  Pos pos = currpos(p);
+  Sym name = p->name;
   nexttok(p); // consume TId
-  return n;
+  return pId(p, fl, pos, name);
 }
 
 
@@ -1448,10 +1456,8 @@ static NodeFlags pArgs(Parser* p, ExprArray* args, PFlag fl) {
         // plain identifier.
         // Since we look ahead and consume the TId token up front,
         // emulate pExpr with PId prefix by continue parsing with parse_infix.
-        IdNode* id = b_mknode(p->build, Id, pos);
-        id->name = name;
-        arg = presolve_id_expr(p, id);
-        arg = expectExpr(p, parse_infix(p, PREC_LOWEST, fl, as_Node(arg)));
+        Node* lhs = pId(p, fl, pos, name);
+        arg = expectExpr(p, parse_infix(p, PREC_LOWEST, fl, lhs));
         if (flags & NF_Named)
           goto err_pos_after_named;
       }
