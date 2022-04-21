@@ -9,7 +9,7 @@ BEGIN_INTERFACE
 typedef struct HMap HMap;
 typedef u8 HMapLF; // load factor
 
-// smap -- string => uintptr
+// SMap {string => uintptr}
 typedef HMap SMap;
 typedef struct SMapEnt { StrSlice key; uintptr value; } SMapEnt;
 SMap* nullable smap_init(SMap* m, Mem, u32 hint, HMapLF);
@@ -17,13 +17,22 @@ uintptr* nullable smap_assign(SMap* m, StrSlice key);
 uintptr* nullable smap_find(const SMap* m, StrSlice key);
 static bool smap_del(SMap* m, StrSlice key);
 
-// pmap -- void* => uintptr
+// PMap {void* => uintptr}
 typedef HMap PMap;
 typedef struct PMapEnt { const void* key; uintptr value; } PMapEnt;
 PMap* nullable pmap_init(PMap* m, Mem, u32 hint, HMapLF);
 uintptr* nullable pmap_assign(PMap* m, const void* key);
 uintptr* nullable pmap_find(const PMap* m, const void* key);
 static bool pmap_del(PMap* m, const void* key);
+
+// PSet {void*}
+typedef HMap PSet;
+typedef struct PSetEnt { const void* key; } PSetEnt;
+PSet* nullable pset_init(PSet* m, Mem, u32 hint, HMapLF);
+static void pset_free(PSet*);
+bool pset_add(PSet* m, const void* key); // true if added
+bool pset_has(const PSet* m, const void* key);
+static bool pset_del(PSet* m, const void* key); // true if found & removed
 
 //————— low-level hmap interface —————
 
@@ -105,6 +114,13 @@ inline static bool smap_del(HMap* m, StrSlice key) {
 }
 inline static bool pmap_del(HMap* m, const void* key) {
   return hmap_del(m, &key, hash_ptr(&key, m->hash0));
+}
+
+inline static bool pset_del(PSet* m, const void* key) {
+  return hmap_del(m, &key, hash_ptr(&key, m->hash0));
+}
+inline static void pset_free(PSet* m) {
+  hmap_dispose(m);
 }
 
 

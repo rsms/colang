@@ -157,7 +157,9 @@ inline static Source* nullable pos_source(const PosMap* pm, Pos p) {
 }
 
 inline static Pos pos_min(Pos a, Pos b) {
-  return ((b < a) & b) ? b : a; // & b to exclude NoPos
+  // pos-1 causes NoPos (which is 0) to become the maximum value of Pos,
+  // effectively preferring >NoPos over NoPos here.
+  return (b-1 < a-1) ? b : a;
 }
 inline static Pos pos_max(Pos a, Pos b) {
   return (b > a) ? b : a;

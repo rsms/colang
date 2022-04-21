@@ -576,15 +576,33 @@ static bool resolve_call_args(R* r, CallNode* n, ParamArray* params) {
 static Node* resolve_call(R* r, CallNode* n);
 
 
-static Node* resolve_call_type(R* r, CallNode* n) {
-  Type* recvt = (
-    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
-    is_Type(n->receiver) ? (Type*)n->receiver :
-    kType_nil
-  );
-  dlog("TODO type of TypeType");
-  n->type = unbox_id_type(recvt);
-  return as_Node(n);
+static Node* resolve_call_type(R* r, CallNode* call, Type* t) {
+  // unbox alias type
+  Type* base_type = deref_type_alias(t);
+
+  if (is_BasicTypeNode(base_type)) {
+    if UNLIKELY(call->args.len != 1) {
+      if (call->args.len > 1) {
+        b_errf(r->build, NodeSetPosSpan((const Node**)&call->args.v[1], call->args.len - 1),
+          "unexpected extra expression(s) in type cast");
+      } else {
+        b_errf(r->build, NodePosSpan(call), "missing value in type cast" );
+      }
+      goto end;
+    }
+    Expr* expr = call->args.v[0];
+    array_free(&call->args);
+    TypeCastNode* tcast = CONVERT_NODE_KIND(call, TypeCast);
+    tcast->type = t;
+    tcast->expr = expr;
+    return as_Node(tcast);
+  }
+
+  dlog("TODO call type %s", nodename(t));
+
+end:
+  call->type = t;
+  return as_Node(call);
 }
 
 
@@ -699,6 +717,20 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
   array_free(&tplvals);
   r->flags = rflags; // restore
 
+  // register instance_of
+  if (is_FunNode(n->receiver)) {
+    ((FunNode*)n->receiver)->instance_of = tpl;
+  } else {
+    dlog("TODO: register instance_of for %s", nodename(n->receiver));
+  }
+
+  // // DEBUG: log produced instance before resolving call
+  // Str str = str_make(NULL, 0);
+  // fmtast(n->receiver, &str, 0);
+  // dlog("instance:\n—————————————————————————————————————\n%s"
+  //      "\n—————————————————————————————————————\n", str.v);
+  // str_free(&str);
+
   // resolve the call
   return resolve_call(r, n);
 
@@ -708,8 +740,7 @@ bail:
 }
 
 
-static Node* resolve_call_template(R* r, CallNode* n) {
-  TemplateNode* tpl = as_TemplateNode(NodeEval(r->build, as_Expr(n->receiver), NULL, 0));
+static Node* resolve_call_template(R* r, CallNode* n, TemplateNode* tpl) {
   TemplateTypeNode* tt = as_TemplateTypeNode(tpl->type);
 
   if (tt->prodkind == TF_KindFunc)
@@ -726,14 +757,19 @@ static Node* resolve_call_template(R* r, CallNode* n) {
 static Node* resolve_call(R* r, CallNode* n) {
   n->receiver = resolve(r, n->receiver);
 
-  Type* recvt = (
-    is_Expr(n->receiver) ? ((Expr*)n->receiver)->type :
-    is_Type(n->receiver) ? kType_type :
-    kType_nil
-  );
+  Node* recv = deref_node(n->receiver);
 
-  if (recvt == kType_type)         return resolve_call_type(r, n);
-  if (is_TemplateTypeNode(recvt))  return resolve_call_template(r, n);
+  Type* recvt = kType_type;
+  if (is_TypeExprNode(recv)) {
+    recv = (Node*)((TypeExprNode*)recv)->elem;
+  } else if (is_Expr(recv)) {
+    recvt = ((Expr*)recv)->type;
+  } else {
+    assert(is_Type(recv));
+  }
+
+  if (recvt == kType_type)         return resolve_call_type(r, n, as_Type(recv));
+  if (is_TemplateTypeNode(recvt))  return resolve_call_template(r, n, as_TemplateNode(recv));
   if LIKELY(is_FunTypeNode(recvt)) return resolve_call_fun(r, n, (FunTypeNode*)recvt);
 
   b_errf(r->build, NodePosSpan(n), "%s is not callable", FMTNODE(n->receiver,0));

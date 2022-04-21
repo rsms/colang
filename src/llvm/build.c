@@ -7,7 +7,7 @@
 #include "../parse/parse.h"
 
 // DEBUG_BUILD_EXPR: define to dlog trace build_expr
-//#define DEBUG_BUILD_EXPR
+#define DEBUG_BUILD_EXPR
 
 #if defined(DEBUG_BUILD_EXPR) && !defined(DEBUG)
   #undef DEBUG_BUILD_EXPR
@@ -53,11 +53,12 @@ typedef struct B {
   LLVMTargetMachineRef target;
 
   // build state
-  BFlags flags;         // contextual
-  u32    fnest;         // function nest depth
-  Val    varalloc;      // memory preallocated for a var's init
-  SymMap internedTypes; // AST types, keyed by typeid
-  PMap   defaultInits;  // constant initializers (Typ => Val)
+  BFlags     flags;             // contextual
+  u32        fnest;             // function nest depth
+  Val        varalloc;          // memory preallocated for a var's init
+  SymMap     internedTypes;     // AST types, keyed by typeid
+  PSet       templateInstances; // used template instances (TemplateNode*)
+  ASTVisitor astVisitor;
 
   // memory generation check (specific to current function)
   Block mgen_failb;
@@ -274,7 +275,7 @@ static error builder_init(B* b, CoLLVMModule* m) {
     LLVMDisposeBuilder(b->builder);
     return err_nomem;
   }
-  if (pmap_init(&b->defaultInits, b->build->mem, 16, MAPLF_2) == NULL) {
+  if (pset_init(&b->templateInstances, b->build->mem, 16, MAPLF_2) == NULL) {
     LLVMDisposeBuilder(b->builder);
     symmap_free(&b->internedTypes);
     return err_nomem;
@@ -298,10 +299,12 @@ static error builder_init(B* b, CoLLVMModule* m) {
 
 static void builder_dispose(B* b) {
   symmap_free(&b->internedTypes);
-  hmap_dispose(&b->defaultInits);
+  pset_free(&b->templateInstances);
   if (b->FPM)
     LLVMDisposePassManager(b->FPM);
   LLVMDisposeBuilder(b->builder);
+  if (b->astVisitor.ctx)
+    ASTVisitorDispose(&b->astVisitor);
 }
 
 
@@ -367,7 +370,7 @@ inline static Block get_current_block(B* b) {
     return p[i];
   }
 
-  static const char* fmtval(Val nullable v) {
+  UNUSED static const char* fmtval(Val nullable v) {
     if (!v)
       return "(null)";
     static char* p[5] = {NULL};
@@ -433,7 +436,7 @@ static bool set_interned_type(B* b, Type* tn, Typ tr) {
 static Typ nullable _get_type(B* b, Type* np);
 
 
-static Typ nullable get_basic_type(B* b, BasicTypeNode* tn) {
+static Typ get_basic_type(B* b, BasicTypeNode* tn) {
   switch ((enum TypeCodeBasic)tn->typecode) {
     case TC_bool:               return b->t_bool;
     case TC_i8:   case TC_u8:   return b->t_i8;
@@ -535,7 +538,7 @@ static Typ make_ref_type(B* b, RefTypeNode* t) {
 }
 
 
-static Typ nullable _get_type(B* b, Type* np) {
+static Typ _get_type(B* b, Type* np) {
   if (np->kind == NBasicType)
     return get_basic_type(b, (BasicTypeNode*)np);
 
@@ -676,6 +679,25 @@ static Val build_funproto(B* b, FunNode* n, const char* name) {
 }
 
 
+static void scrub_shared_irvals_visitor(ASTVisitor* v, const ASTParent* parent, Node* n) {
+  // dlog("visit %s", nodename(n));
+  if (n->irval)
+    n->irval = NULL;
+  ASTVisitChildrenAndType(v, parent, n);
+}
+
+
+static void scrub_shared_irvals(B* b, Node* parentn, Node* n) {
+  if (b->astVisitor.ctx == NULL) {
+    static const ASTVisitorFuns vf = {
+      .Node = &scrub_shared_irvals_visitor,
+    };
+    ASTVisitorInit(&b->astVisitor, &vf, b);
+  }
+  ASTVisitRoot(&b->astVisitor, parentn, n, /*visit_type*/true);
+}
+
+
 static Val build_fun(B* b, FunNode* n, const char* vname) {
   if (n->irval)
     return n->irval;
@@ -718,6 +740,12 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   // create a new basic block to start insertion into
   Block entryb = LLVMAppendBasicBlockInContext(b->ctx, fn, ""/*"entry"*/);
   LLVMPositionBuilderAtEnd(b->builder, entryb);
+
+  // If the function is an instance of a template, we need to scrub any previously
+  // stored irval values from its shared nodes (nodes with NF_Shared).
+  // i.e. template is instanced at least twice.
+  if (n->instance_of && !pset_add(&b->templateInstances, n->instance_of))
+    scrub_shared_irvals(b, (Node*)n, (Node*)n->body);
 
   // create local storage for mutable parameters
   for (u32 i = 0; i < n->params.len; i++) {
@@ -926,11 +954,11 @@ static Val build_binop(B* b, BinOpNode* n, const char* vname) {
 
 
 static Val build_prefixop(B* b, PrefixOpNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_postfixop(B* b, PostfixOpNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
@@ -957,7 +985,7 @@ static Val build_const(B* b, ConstNode* n, const char* vname) {
 
 
 static Val build_templateparam(B* b, TemplateParamNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
@@ -1018,15 +1046,15 @@ static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
 
 
 static Val build_assign_tuple(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_assign_index(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_assign_selector(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_assign(B* b, AssignNode* n, const char* vname) {
@@ -1042,11 +1070,11 @@ static Val build_assign(B* b, AssignNode* n, const char* vname) {
 
 
 static Val build_tuple(B* b, TupleNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_array(B* b, ArrayNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
@@ -1062,7 +1090,7 @@ static Val build_block(B* b, BlockNode* n, const char* vname) {
 
 static Val build_type_call(B* b, CallNode* n, const char* vname) {
   //Type* tn = (Type*)n->receiver;
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
@@ -1126,36 +1154,45 @@ static Val build_call(B* b, CallNode* n, const char* vname) {
 
 
 static Val build_template(B* b, TemplateNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
 static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  if (!is_BasicTypeNode(n->type)) {
+    dlog("TODO non-basic type cast %s  %s:%d", __FUNCTION__, __FILE__, __LINE__);
+    return b->v_int_0;
+  }
+  BasicTypeNode* t = (BasicTypeNode*)n->type;
+  LLVMBool isSigned = (t->tflags & TF_Signed);
+  Typ dst_type = get_basic_type(b, t);
+  Val src_val = build_expr(b, n->expr, "");
+  return LLVMBuildIntCast2(b->builder, src_val, dst_type, isSigned, vname);
 }
 
+
 static Val build_ref(B* b, RefNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_namedarg(B* b, NamedArgNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_selector(B* b, SelectorNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_index(B* b, IndexNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_slice(B* b, SliceNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 static Val build_if(B* b, IfNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return NULL;
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
 
@@ -1250,10 +1287,13 @@ error llvm_module_build(CoLLVMModule* m, const CoLLVMBuild* opt) {
     char* errmsg;
     bool ok = LLVMVerifyModule(b->mod, LLVMPrintMessageAction, &errmsg) == 0;
     if (!ok) {
-      //errlog("=========== LLVMVerifyModule ===========\n%s\n", errmsg);
+      log("\e[33;1m——————————————————————— LLVMVerifyModule ———————————————————————\e[0m");
+      int len = strlen(errmsg);
+      log("%.*s", (int)(len && errmsg[len-1] == '\n' ? len - 1 : len), errmsg);
       LLVMDisposeMessage(errmsg);
-      dlog("\n=========== LLVMDumpModule ===========");
+      log("————————————————————————————————————————————————————————————————");
       LLVMDumpModule(b->mod);
+      log("————————————————————————————————————————————————————————————————");
       builder_dispose(b);
       return err_invalid;
     }

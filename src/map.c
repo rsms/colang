@@ -26,70 +26,7 @@ static_assert(sizeof(HMapMeta) == sizeof(void*)*2, "");
 #define ENT_AT(m, index)   ENT_AT1((m)->entries, (m)->entsize, index)
 
 //———————————————————————————————————————————————————————————————————————————————————————
-// smap impl
-
-static bool smap_eq(const void* restrict entryp, const void* restrict keyp) {
-  const SMapEnt* ent = entryp;
-  const StrSlice* key = keyp;
-  return ent->key.len == key->len && memcmp(ent->key.p, key->p, key->len) == 0;
-}
-
-HMap* nullable smap_init(HMap* m, Mem mem, u32 hint, HMapLF lf) {
-  return hmap_init(m, mem, hint, lf, sizeof(SMapEnt), &smap_eq);
-}
-
-uintptr* nullable smap_find(const HMap* m, StrSlice key) {
-  SMapEnt* e = hmap_find(m, &key, hash_mem(key.p, key.len, m->hash0));
-  return e ? &e->value : NULL;
-}
-
-uintptr* nullable smap_assign(HMap* m, StrSlice key) {
-  SMapEnt* e = hmap_assign(m, &key, hash_mem(key.p, key.len, m->hash0));
-  if (e == NULL)
-    return NULL;
-  e->key = key;
-  return &e->value;
-}
-
-//———————————————————————————————————————————————————————————————————————————————————————
-// pmap impl
-
-static bool pmap_eq(const void* restrict entryp, const void* restrict keyp) {
-  const void* k1 = ((const PMapEnt*)entryp)->key;
-  const void* k2 = *(const void**)keyp;
-  return k1 == k2;
-}
-
-HMap* nullable pmap_init(HMap* m, Mem mem, u32 hint, HMapLF lf) {
-  return hmap_init(m, mem, hint, lf, sizeof(PMapEnt), &pmap_eq);
-}
-
-uintptr* nullable pmap_find(const HMap* m, const void* key) {
-  assertnotnull(key);
-  usize index = hash_ptr(&key, m->hash0) & (m->cap - 1);
-  for (;;) {
-    PMapEnt* ent = ENT_AT(m, index);
-    HMapMeta* meta = ((void*)ent) + m->entsize;
-    if (meta->flags == FL_FREE)
-      return NULL; // end of possible entries of provided hash (= not found)
-    if (meta->flags == FL_USED && ent->key == key)
-      return &ent->value;
-    if (++index == m->cap)
-      index = 0;
-  }
-  return NULL;
-}
-
-uintptr* nullable pmap_assign(HMap* m, const void* key) {
-  PMapEnt* e = hmap_assign(m, &key, hash_ptr(&key, m->hash0));
-  if (e == NULL)
-    return NULL;
-  e->key = key;
-  return &e->value;
-}
-
-//———————————————————————————————————————————————————————————————————————————————————————
-// hmap impl
+// HMap impl
 
 static u32 perfectcap(u32 len, HMapLF lf) {
   // captab maps MAPLF_1...4 to multipliers for cap -> gcap
@@ -207,12 +144,15 @@ void* nullable hmap_assign(HMap* m, const void* keyp, Hash hash) {
   for (;;) {
     ent = ENT_AT(m, index);
     meta = ent + (m)->entsize;
-    if (meta->flags == FL_FREE) {
+    if (meta->flags == FL_USED) {
+      if (meta->hash == hash && m->eqfn(ent, keyp))
+        break; // replace equivalent entry
+    } else {
+      // use free slot or recycle deleted slot
+      assert(meta->flags == FL_FREE || meta->flags == FL_DEL);
       m->len++;
       break;
     }
-    if (meta->flags == FL_DEL || (meta->hash == hash && m->eqfn(ent, keyp)))
-      break; // recycle deleted slot or replace equivalent entry
     if (++index == m->cap)
       index = 0;
   }
@@ -281,4 +221,119 @@ bool hmap_itnext(HMap* m, void* ep) {
     ent += m->entsize + sizeof(HMapMeta);
   }
   return false;
+}
+
+
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// SMap impl
+
+static bool smap_eq(const void* restrict entryp, const void* restrict keyp) {
+  const SMapEnt* ent = entryp;
+  const StrSlice* key = keyp;
+  return ent->key.len == key->len && memcmp(ent->key.p, key->p, key->len) == 0;
+}
+
+SMap* nullable smap_init(SMap* m, Mem mem, u32 hint, HMapLF lf) {
+  return hmap_init(m, mem, hint, lf, sizeof(SMapEnt), &smap_eq);
+}
+
+uintptr* nullable smap_find(const SMap* m, StrSlice key) {
+  SMapEnt* e = hmap_find(m, &key, hash_mem(key.p, key.len, m->hash0));
+  return e ? &e->value : NULL;
+}
+
+uintptr* nullable smap_assign(SMap* m, StrSlice key) {
+  SMapEnt* e = hmap_assign(m, &key, hash_mem(key.p, key.len, m->hash0));
+  if (e == NULL)
+    return NULL;
+  e->key = key;
+  return &e->value;
+}
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// PMap impl
+
+static bool pmap_eq(const void* restrict entryp, const void* restrict keyp) {
+  const void* k1 = ((const PMapEnt*)entryp)->key;
+  const void* k2 = *(const void**)keyp;
+  return k1 == k2;
+}
+
+PMap* nullable pmap_init(PMap* m, Mem mem, u32 hint, HMapLF lf) {
+  return hmap_init(m, mem, hint, lf, sizeof(PMapEnt), &pmap_eq);
+}
+
+uintptr* nullable pmap_find(const PMap* m, const void* key) {
+  assertnotnull(key);
+  usize index = hash_ptr(&key, m->hash0) & (m->cap - 1);
+  for (;;) {
+    PMapEnt* ent = ENT_AT(m, index);
+    HMapMeta* meta = ((void*)ent) + m->entsize;
+    if (meta->flags == FL_FREE)
+      return NULL; // end of possible entries of provided hash (= not found)
+    if (meta->flags == FL_USED && ent->key == key)
+      return &ent->value;
+    if (++index == m->cap)
+      index = 0;
+  }
+  return NULL;
+}
+
+uintptr* nullable pmap_assign(PMap* m, const void* key) {
+  PMapEnt* e = hmap_assign(m, &key, hash_ptr(&key, m->hash0));
+  if (e == NULL)
+    return NULL;
+  e->key = key;
+  return &e->value;
+}
+
+//———————————————————————————————————————————————————————————————————————————————————————
+// PSet impl
+
+// make sure we can reuse pmap_eq
+static_assert(offsetof(PMapEnt,key) == offsetof(PSetEnt,key), "");
+static_assert(sizeof(((PMapEnt*)0)->key) == sizeof(((PSetEnt*)0)->key), "");
+
+PSet* nullable pset_init(PSet* m, Mem mem, u32 hint, HMapLF lf) {
+  return hmap_init(m, mem, hint, lf, sizeof(PSetEnt), &pmap_eq);
+}
+
+bool pset_has(const HMap* m, const void* key) {
+  assertnotnull(key);
+  usize index = hash_ptr(&key, m->hash0) & (m->cap - 1);
+  for (;;) {
+    PSetEnt* ent = ENT_AT(m, index);
+    HMapMeta* meta = ((void*)ent) + m->entsize;
+    if (meta->flags == FL_FREE)
+      return false; // end of possible entries of provided hash (= not found)
+    if (meta->flags == FL_USED && ent->key == key)
+      return true;
+    if (++index == m->cap)
+      index = 0;
+  }
+  return false;
+}
+
+bool pset_add(HMap* m, const void* key) {
+  if (UNLIKELY(m->len >= m->gcap) && !hmap_grow(m))
+    return false;
+  Hash hash = hash_ptr(&key, m->hash0);
+  usize index = hash & (m->cap - 1);
+  for (;;) {
+    PSetEnt* ent = ENT_AT(m, index);
+    HMapMeta* meta = ((void*)ent) + (m)->entsize;
+    if (meta->flags == FL_USED) {
+      if (ent->key == key) // already in set
+        return false;
+    } else {
+      m->len++;
+      ent->key = key;
+      meta->flags = FL_USED;
+      meta->hash = hash;
+      return true; // added
+    }
+    if (++index == m->cap)
+      index = 0;
+  }
 }

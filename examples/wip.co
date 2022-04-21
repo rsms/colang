@@ -1,15 +1,14 @@
 // this file is used for development and may not make sense or even compile
 
 
-fun multiply<T>(a T, b T) T
-  a * b
+fun multiply<T>(a T, b int) T
+  a * T(b)
 
 fun main(x int)
   multiply(1, x)
 
-  // var a i8 = 1
-  // var b i8 = 2
-  // multiply(a, b)
+  var a i8 = 1
+  multiply(a, 2)
 
   // multiply(i8(2), i8(x)) // TODO: build_typecast in llvm/build.c
 

@@ -188,6 +188,8 @@ outc += ['  sizeof(struct %s),' % (name) for name in leafnames]
 outc.append('};')
 outc.append('')
 
+
+
 # NodeKindIs*
 outh.append('// bool NodeKindIs<kind>(NodeKind)')
 for name, subtypes in typemap.items():
@@ -200,6 +202,8 @@ for name, subtypes in typemap.items():
     shortname, shortname, shortname))
 outh.append('')
 
+
+
 # is_*
 outh.append('// bool is_<kind>(const Node*)')
 for name, subtypes in typemap.items():
@@ -211,6 +215,57 @@ for name, subtypes in typemap.items():
   else:
     outh.append('#define is_%s(n) NodeKindIs%s((n)->kind)' % (name, shortname))
 outh.append('')
+
+
+
+# xis_*
+outh.append('// bool xis_<kind>(const Node*)')
+def gen_is_TYPE(out, name, subtypes):
+  DBG = False # name == "LocalNode"
+  stname = structname(name, subtypes)
+  ind = "  "
+
+  def visit(out, qual, name, subtypes, ind):
+    if DBG:
+      print("%svisit %r %r" % (ind, name, subtypes))
+      ind = ind + "  "
+    for name2, subtypes2 in subtypes.items():
+      visit(out, qual, name2, subtypes2, ind)
+    #out.append('const %s*:(const %s*)(n),' % (structname(name, subtypes), stname))
+    out.append('const %s%s*:true,' % (qual, structname(name, subtypes)))
+    out.append('%s%s*:true,' % (qual, structname(name, subtypes)))
+
+  tmp = []
+  tmp.append('#define xis_%s(n) _Generic((n),' % (name))
+
+  visit(tmp, "", name, subtypes, ind)
+
+  shortname = strip_node_suffix(name)
+  if len(subtypes) == 0:
+    tmp.append('default: ((n)->kind==N%s) )' % (shortname))
+  else:
+    tmp.append('default: NodeKindIs%s((n)->kind) )' % (shortname))
+
+  output_compact_macro(out, tmp)
+  DBG = False
+  out.append('')
+
+def gen_is_TYPE_leafs(out):
+  for name, subtypes in typemap.items():
+    if name == 'Node' or len(subtypes) > 0: continue
+    gen_is_TYPE(out, name, subtypes)
+
+def gen_is_TYPE_supers(out, subtypes):
+  for name, subtypes2 in subtypes.items():
+    if subtypes2:
+      gen_is_TYPE(out, name, subtypes2)
+      gen_is_TYPE_supers(out, subtypes2)
+
+gen_is_TYPE_leafs(outh)
+gen_is_TYPE_supers(outh, Node)
+outh.append('')
+
+
 
 # assert_is_*
 outh.append('// void assert_is_<kind>(const Node*)')
@@ -236,6 +291,8 @@ for name, subtypes in typemap.items():
       '#define assert_is_%s(n) _assert_is1(%s,(n))' % (
       name, shortname))
 outh.append('')
+
+
 
 def iter_parent_names(name):
   if name == "" or name == "Node":
@@ -279,6 +336,7 @@ def gen_as_TYPE(out, mode, name, subtypes):
   else: # mode == "generic"
     DBG = False # name == "LocalNode"
     ind = "  "
+
     def visit(out, qual, name, subtypes, ind):
       if DBG:
         print("%svisit %r %r" % (ind, name, subtypes))
@@ -347,6 +405,7 @@ gen_as_TYPE_leafs(outh, "none")
 gen_as_TYPE_supers(outh, "none", Node)
 outh.append('#endif // DEBUG')
 outh.append('')
+
 
 
 # maybe_*
@@ -441,7 +500,7 @@ outh.append('')
 
 
 
-ENABLE_AST_VISITOR = False
+ENABLE_AST_VISITOR = True
 # ASTVisitorFuns
 if ENABLE_AST_VISITOR:
   ftable_size = len(leafnames) + 2
@@ -453,15 +512,15 @@ typedef struct ASTParent      ASTParent;
 struct ASTParent {
   const ASTParent* nullable parent;     // grandparent, if any
   Node*                     n;          // parent AST node
-  Node**                    child_ptr;  // child in parent
   const char*               field_name; // name of parent field where child occurs
 };
 
-typedef int(*ASTVisitorFun)(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n);
+typedef void(*ASTVisitorFun)(ASTVisitor* v, const ASTParent* parent, Node* n);
 
 struct ASTVisitor {
   void* nullable ctx; // user data
-  PMap           seenmap;
+  Node*          seenstack_st[16];
+  NodeArray      seenstack;
   ASTVisitorFun  ftable[%d];
 };
 
@@ -470,26 +529,47 @@ void ASTVisitorDispose(ASTVisitor*);
   """.strip() % ftable_size)
 
   outh.append(
-    '// int ASTVisit(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n)')
+    '// int ASTVisit(ASTVisitor* v, const ASTParent* parent, Node* n)')
   tmp = []
-  tmp.append('#define ASTVisit(v, flags, parent, n) _Generic((n),')
+  tmp.append('#define ASTVisit(v, parent, n) _Generic((n),')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    tmp.append('%s*: (v)->ftable[N%s]((v),(flags),(parent),(Node*)(n)),' % (
+    tmp.append('%s*: (v)->ftable[N%s]((v),(parent),(Node*)(n)),' % (
       name,shortname))
   for name, subtypes in typemap.items():
     if len(subtypes) > 0:
       stname = structname(name, subtypes)
-      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(flags),(parent),(Node*)(n)),' % (
+      tmp.append('%s*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)),' % (
         stname))
   tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
   output_compact_macro(outh, tmp)
   outh.append('')
 
+
+  # outh.append('// bool ASTVisit(ASTVisitor* v, const ASTParent* parent, Node* n)')
+  # outh.append(
+  #   'bool _ASTVisit(ASTVisitor* v, const ASTParent* parent, Node* n, ASTVisitorFun f);')
+  # tmp = []
+  # tmp.append('#define ASTVisit(v, parent, n) _ASTVisit((v),(parent),as_Node(n),_Generic((n),')
+  # for name in leafnames:
+  #   shortname = strip_node_suffix(name)
+  #   tmp.append('%s*: (v)->ftable[N%s],' % (
+  #     name,shortname))
+  # for name, subtypes in typemap.items():
+  #   if len(subtypes) > 0:
+  #     stname = structname(name, subtypes)
+  #     tmp.append('%s*: (v)->ftable[(n)->kind],' % (
+  #       stname))
+  # tmp[-1] = tmp[-1][:-1] + ')' # replace last ',' with ')'
+  # tmp.append(')')
+  # output_compact_macro(outh, tmp)
+  # outh.append('')
+
+
   outh.append('struct ASTVisitorFuns {')
   for name in leafnames:
     shortname = strip_node_suffix(name)
-    outh.append('  int(*nullable %s)(ASTVisitor*, usize, const ASTParent*, %s*);' % (
+    outh.append('  void(*nullable %s)(ASTVisitor*, const ASTParent*, %s*);' % (
       shortname, name))
 
   outh.append('')
@@ -499,27 +579,28 @@ void ASTVisitorDispose(ASTVisitor*);
     shortname = strip_node_suffix(name)
     if shortname == '': continue
     stname = structname(name, subtypes)
-    outh.append('  int(*nullable %s)(ASTVisitor*, usize, const ASTParent*, %s*);' % (
+    outh.append('  void(*nullable %s)(ASTVisitor*, const ASTParent*, %s*);' % (
       shortname, stname))
   outh.append('')
   outh.append("  // catch-all fallback visitor")
-  outh.append('  int(*nullable Node)(ASTVisitor*, usize, const ASTParent*, Node*);')
+  outh.append('  void(*nullable Node)(ASTVisitor*, const ASTParent*, Node*);')
   outh.append('};')
   outh.append('')
 
   #——————————— impl ———————————
 
   outc.append(
-  'static int ASTVisitorNoop(ASTVisitor* v, usize flags, const ASTParent* parent, Node* n) {')
-  outc.append('  if (is_LitExpr(n)) return 0;')
-  outc.append('  return ASTVisitChildren(v, flags, parent, n);')
+  'static void ASTVisitorNoop(ASTVisitor* v, const ASTParent* parent, Node* n) {')
+  outc.append('  if (is_LitExpr(n)) return;')
+  outc.append('  ASTVisitChildren(v, parent, n);')
   outc.append('}')
   outc.append('')
   outc.append(
     'void ASTVisitorInit(ASTVisitor* v, const ASTVisitorFuns* f, void* nullable ctx) {')
   outc.append('  v->ctx = ctx;')
-  outc.append('  pmap_init(&v->seenmap, mem_ctx(), 64, MAPLF_1);')
+  outc.append('  array_init(&v->seenstack, v->seenstack_st, sizeof(v->seenstack_st));')
   outc.append('  ASTVisitorFun dft = (f->Node ? f->Node : &ASTVisitorNoop), dft1 = dft;')
+  outc.append('')
   outc.append('  // populate v->ftable')
 
   def visit(out, name, subtypes, islast=False):
@@ -549,7 +630,7 @@ void ASTVisitorDispose(ASTVisitor*);
   outc.append('}')
   outc.append('')
   outc.append('void ASTVisitorDispose(ASTVisitor* v) {')
-  outc.append('  hmap_dispose(&v->seenmap);')
+  outc.append('  array_free(&v->seenstack);')
   outc.append('}')
   outc.append('')
 

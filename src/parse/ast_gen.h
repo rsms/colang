@@ -186,6 +186,207 @@ extern const u8 kNodeStructSizeTab[46];
 #define is_TemplateTypeNode(n) ((n)->kind==NTemplateType)
 #define is_TemplateParamTypeNode(n) ((n)->kind==NTemplateParamType)
 
+// bool xis_<kind>(const Node*)
+#define xis_BadNode(n) _Generic((n), const BadNode*:true, BadNode*:true, \
+  default: ((n)->kind==NBad) )
+
+#define xis_FieldNode(n) _Generic((n), const FieldNode*:true, FieldNode*:true, \
+  default: ((n)->kind==NField) )
+
+#define xis_PkgNode(n) _Generic((n), const PkgNode*:true, PkgNode*:true, \
+  default: ((n)->kind==NPkg) )
+
+#define xis_FileNode(n) _Generic((n), const FileNode*:true, FileNode*:true, \
+  default: ((n)->kind==NFile) )
+
+#define xis_CommentNode(n) _Generic((n), const CommentNode*:true, CommentNode*:true, \
+  default: ((n)->kind==NComment) )
+
+#define xis_NilNode(n) _Generic((n), const NilNode*:true, NilNode*:true, \
+  default: ((n)->kind==NNil) )
+
+#define xis_BoolLitNode(n) _Generic((n), const BoolLitNode*:true, BoolLitNode*:true, \
+  default: ((n)->kind==NBoolLit) )
+
+#define xis_IntLitNode(n) _Generic((n), const IntLitNode*:true, IntLitNode*:true, \
+  default: ((n)->kind==NIntLit) )
+
+#define xis_FloatLitNode(n) _Generic((n), const FloatLitNode*:true, FloatLitNode*:true, \
+  default: ((n)->kind==NFloatLit) )
+
+#define xis_StrLitNode(n) _Generic((n), const StrLitNode*:true, StrLitNode*:true, \
+  default: ((n)->kind==NStrLit) )
+
+#define xis_IdNode(n) _Generic((n), const IdNode*:true, IdNode*:true, \
+  default: ((n)->kind==NId) )
+
+#define xis_BinOpNode(n) _Generic((n), const BinOpNode*:true, BinOpNode*:true, \
+  default: ((n)->kind==NBinOp) )
+
+#define xis_PrefixOpNode(n) _Generic((n), const PrefixOpNode*:true, PrefixOpNode*:true, \
+  default: ((n)->kind==NPrefixOp) )
+
+#define xis_PostfixOpNode(n) _Generic((n), const PostfixOpNode*:true, \
+  PostfixOpNode*:true, default: ((n)->kind==NPostfixOp) )
+
+#define xis_ReturnNode(n) _Generic((n), const ReturnNode*:true, ReturnNode*:true, \
+  default: ((n)->kind==NReturn) )
+
+#define xis_AssignNode(n) _Generic((n), const AssignNode*:true, AssignNode*:true, \
+  default: ((n)->kind==NAssign) )
+
+#define xis_TupleNode(n) _Generic((n), const TupleNode*:true, TupleNode*:true, \
+  default: ((n)->kind==NTuple) )
+
+#define xis_ArrayNode(n) _Generic((n), const ArrayNode*:true, ArrayNode*:true, \
+  default: ((n)->kind==NArray) )
+
+#define xis_BlockNode(n) _Generic((n), const BlockNode*:true, BlockNode*:true, \
+  default: ((n)->kind==NBlock) )
+
+#define xis_FunNode(n) _Generic((n), const FunNode*:true, FunNode*:true, \
+  default: ((n)->kind==NFun) )
+
+#define xis_CallNode(n) _Generic((n), const CallNode*:true, CallNode*:true, \
+  default: ((n)->kind==NCall) )
+
+#define xis_TemplateNode(n) _Generic((n), const TemplateNode*:true, TemplateNode*:true, \
+  default: ((n)->kind==NTemplate) )
+
+#define xis_TemplateInstanceNode(n) _Generic((n), const TemplateInstanceNode*:true, \
+  TemplateInstanceNode*:true, default: ((n)->kind==NTemplateInstance) )
+
+#define xis_TypeCastNode(n) _Generic((n), const TypeCastNode*:true, TypeCastNode*:true, \
+  default: ((n)->kind==NTypeCast) )
+
+#define xis_ConstNode(n) _Generic((n), const ConstNode*:true, ConstNode*:true, \
+  default: ((n)->kind==NConst) )
+
+#define xis_VarNode(n) _Generic((n), const VarNode*:true, VarNode*:true, \
+  default: ((n)->kind==NVar) )
+
+#define xis_ParamNode(n) _Generic((n), const ParamNode*:true, ParamNode*:true, \
+  default: ((n)->kind==NParam) )
+
+#define xis_TemplateParamNode(n) _Generic((n), const TemplateParamNode*:true, \
+  TemplateParamNode*:true, default: ((n)->kind==NTemplateParam) )
+
+#define xis_RefNode(n) _Generic((n), const RefNode*:true, RefNode*:true, \
+  default: ((n)->kind==NRef) )
+
+#define xis_NamedArgNode(n) _Generic((n), const NamedArgNode*:true, NamedArgNode*:true, \
+  default: ((n)->kind==NNamedArg) )
+
+#define xis_SelectorNode(n) _Generic((n), const SelectorNode*:true, SelectorNode*:true, \
+  default: ((n)->kind==NSelector) )
+
+#define xis_IndexNode(n) _Generic((n), const IndexNode*:true, IndexNode*:true, \
+  default: ((n)->kind==NIndex) )
+
+#define xis_SliceNode(n) _Generic((n), const SliceNode*:true, SliceNode*:true, \
+  default: ((n)->kind==NSlice) )
+
+#define xis_IfNode(n) _Generic((n), const IfNode*:true, IfNode*:true, \
+  default: ((n)->kind==NIf) )
+
+#define xis_TypeExprNode(n) _Generic((n), const TypeExprNode*:true, TypeExprNode*:true, \
+  default: ((n)->kind==NTypeExpr) )
+
+#define xis_TypeTypeNode(n) _Generic((n), const TypeTypeNode*:true, TypeTypeNode*:true, \
+  default: ((n)->kind==NTypeType) )
+
+#define xis_IdTypeNode(n) _Generic((n), const IdTypeNode*:true, IdTypeNode*:true, \
+  default: ((n)->kind==NIdType) )
+
+#define xis_AliasTypeNode(n) _Generic((n), const AliasTypeNode*:true, \
+  AliasTypeNode*:true, default: ((n)->kind==NAliasType) )
+
+#define xis_RefTypeNode(n) _Generic((n), const RefTypeNode*:true, RefTypeNode*:true, \
+  default: ((n)->kind==NRefType) )
+
+#define xis_BasicTypeNode(n) _Generic((n), const BasicTypeNode*:true, \
+  BasicTypeNode*:true, default: ((n)->kind==NBasicType) )
+
+#define xis_ArrayTypeNode(n) _Generic((n), const ArrayTypeNode*:true, \
+  ArrayTypeNode*:true, default: ((n)->kind==NArrayType) )
+
+#define xis_TupleTypeNode(n) _Generic((n), const TupleTypeNode*:true, \
+  TupleTypeNode*:true, default: ((n)->kind==NTupleType) )
+
+#define xis_StructTypeNode(n) _Generic((n), const StructTypeNode*:true, \
+  StructTypeNode*:true, default: ((n)->kind==NStructType) )
+
+#define xis_FunTypeNode(n) _Generic((n), const FunTypeNode*:true, FunTypeNode*:true, \
+  default: ((n)->kind==NFunType) )
+
+#define xis_TemplateTypeNode(n) _Generic((n), const TemplateTypeNode*:true, \
+  TemplateTypeNode*:true, default: ((n)->kind==NTemplateType) )
+
+#define xis_TemplateParamTypeNode(n) _Generic((n), const TemplateParamTypeNode*:true, \
+  TemplateParamTypeNode*:true, default: ((n)->kind==NTemplateParamType) )
+
+#define xis_Stmt(n) _Generic((n), const PkgNode*:true, PkgNode*:true, \
+  const FileNode*:true, FileNode*:true, const struct CUnitNode*:true, \
+  struct CUnitNode*:true, const CommentNode*:true, CommentNode*:true, const Stmt*:true, \
+  Stmt*:true, default: NodeKindIsStmt((n)->kind) )
+
+#define xis_CUnitNode(n) _Generic((n), const PkgNode*:true, PkgNode*:true, \
+  const FileNode*:true, FileNode*:true, const struct CUnitNode*:true, \
+  struct CUnitNode*:true, default: NodeKindIsCUnit((n)->kind) )
+
+#define xis_Expr(n) _Generic((n), const NilNode*:true, NilNode*:true, \
+  const BoolLitNode*:true, BoolLitNode*:true, const IntLitNode*:true, IntLitNode*:true, \
+  const FloatLitNode*:true, FloatLitNode*:true, const StrLitNode*:true, \
+  StrLitNode*:true, const struct LitExpr*:true, struct LitExpr*:true, \
+  const IdNode*:true, IdNode*:true, const BinOpNode*:true, BinOpNode*:true, \
+  const PrefixOpNode*:true, PrefixOpNode*:true, const PostfixOpNode*:true, \
+  PostfixOpNode*:true, const struct UnaryOpNode*:true, struct UnaryOpNode*:true, \
+  const ReturnNode*:true, ReturnNode*:true, const AssignNode*:true, AssignNode*:true, \
+  const TupleNode*:true, TupleNode*:true, const ArrayNode*:true, ArrayNode*:true, \
+  const BlockNode*:true, BlockNode*:true, const struct ListExprNode*:true, \
+  struct ListExprNode*:true, const FunNode*:true, FunNode*:true, const CallNode*:true, \
+  CallNode*:true, const TemplateNode*:true, TemplateNode*:true, \
+  const TemplateInstanceNode*:true, TemplateInstanceNode*:true, \
+  const TypeCastNode*:true, TypeCastNode*:true, const ConstNode*:true, ConstNode*:true, \
+  const VarNode*:true, VarNode*:true, const ParamNode*:true, ParamNode*:true, \
+  const TemplateParamNode*:true, TemplateParamNode*:true, const struct LocalNode*:true, \
+  struct LocalNode*:true, const RefNode*:true, RefNode*:true, const NamedArgNode*:true, \
+  NamedArgNode*:true, const SelectorNode*:true, SelectorNode*:true, \
+  const IndexNode*:true, IndexNode*:true, const SliceNode*:true, SliceNode*:true, \
+  const IfNode*:true, IfNode*:true, const TypeExprNode*:true, TypeExprNode*:true, \
+  const Expr*:true, Expr*:true, default: NodeKindIsExpr((n)->kind) )
+
+#define xis_LitExpr(n) _Generic((n), const NilNode*:true, NilNode*:true, \
+  const BoolLitNode*:true, BoolLitNode*:true, const IntLitNode*:true, IntLitNode*:true, \
+  const FloatLitNode*:true, FloatLitNode*:true, const StrLitNode*:true, \
+  StrLitNode*:true, const struct LitExpr*:true, struct LitExpr*:true, \
+  default: NodeKindIsLitExpr((n)->kind) )
+
+#define xis_UnaryOpNode(n) _Generic((n), const PrefixOpNode*:true, PrefixOpNode*:true, \
+  const PostfixOpNode*:true, PostfixOpNode*:true, const struct UnaryOpNode*:true, \
+  struct UnaryOpNode*:true, default: NodeKindIsUnaryOp((n)->kind) )
+
+#define xis_ListExprNode(n) _Generic((n), const TupleNode*:true, TupleNode*:true, \
+  const ArrayNode*:true, ArrayNode*:true, const BlockNode*:true, BlockNode*:true, \
+  const struct ListExprNode*:true, struct ListExprNode*:true, \
+  default: NodeKindIsListExpr((n)->kind) )
+
+#define xis_LocalNode(n) _Generic((n), const ConstNode*:true, ConstNode*:true, \
+  const VarNode*:true, VarNode*:true, const ParamNode*:true, ParamNode*:true, \
+  const TemplateParamNode*:true, TemplateParamNode*:true, const struct LocalNode*:true, \
+  struct LocalNode*:true, default: NodeKindIsLocal((n)->kind) )
+
+#define xis_Type(n) _Generic((n), const TypeTypeNode*:true, TypeTypeNode*:true, \
+  const IdTypeNode*:true, IdTypeNode*:true, const AliasTypeNode*:true, \
+  AliasTypeNode*:true, const RefTypeNode*:true, RefTypeNode*:true, \
+  const BasicTypeNode*:true, BasicTypeNode*:true, const ArrayTypeNode*:true, \
+  ArrayTypeNode*:true, const TupleTypeNode*:true, TupleTypeNode*:true, \
+  const StructTypeNode*:true, StructTypeNode*:true, const FunTypeNode*:true, \
+  FunTypeNode*:true, const TemplateTypeNode*:true, TemplateTypeNode*:true, \
+  const TemplateParamTypeNode*:true, TemplateParamTypeNode*:true, const Type*:true, \
+  Type*:true, default: NodeKindIsType((n)->kind) )
+
+
 // void assert_is_<kind>(const Node*)
 #ifdef DEBUG
 #define _assert_is1(NAME,n) ({ \
@@ -790,5 +991,146 @@ typedef union Node_union {
   Expr_union Expr;
   Type_union Type;
 } Node_union;
+
+typedef struct ASTVisitor     ASTVisitor;
+typedef struct ASTVisitorFuns ASTVisitorFuns;
+typedef struct ASTParent      ASTParent;
+
+struct ASTParent {
+  const ASTParent* nullable parent;     // grandparent, if any
+  Node*                     n;          // parent AST node
+  const char*               field_name; // name of parent field where child occurs
+};
+
+typedef void(*ASTVisitorFun)(ASTVisitor* v, const ASTParent* parent, Node* n);
+
+struct ASTVisitor {
+  void* nullable ctx; // user data
+  Node*          seenstack_st[16];
+  NodeArray      seenstack;
+  ASTVisitorFun  ftable[48];
+};
+
+void ASTVisitorInit(ASTVisitor*, const ASTVisitorFuns*, void* nullable ctx);
+void ASTVisitorDispose(ASTVisitor*);
+// int ASTVisit(ASTVisitor* v, const ASTParent* parent, Node* n)
+#define ASTVisit(v, parent, n) _Generic((n), \
+  BadNode*: (v)->ftable[NBad]((v),(parent),(Node*)(n)), \
+  FieldNode*: (v)->ftable[NField]((v),(parent),(Node*)(n)), \
+  PkgNode*: (v)->ftable[NPkg]((v),(parent),(Node*)(n)), \
+  FileNode*: (v)->ftable[NFile]((v),(parent),(Node*)(n)), \
+  CommentNode*: (v)->ftable[NComment]((v),(parent),(Node*)(n)), \
+  NilNode*: (v)->ftable[NNil]((v),(parent),(Node*)(n)), \
+  BoolLitNode*: (v)->ftable[NBoolLit]((v),(parent),(Node*)(n)), \
+  IntLitNode*: (v)->ftable[NIntLit]((v),(parent),(Node*)(n)), \
+  FloatLitNode*: (v)->ftable[NFloatLit]((v),(parent),(Node*)(n)), \
+  StrLitNode*: (v)->ftable[NStrLit]((v),(parent),(Node*)(n)), \
+  IdNode*: (v)->ftable[NId]((v),(parent),(Node*)(n)), \
+  BinOpNode*: (v)->ftable[NBinOp]((v),(parent),(Node*)(n)), \
+  PrefixOpNode*: (v)->ftable[NPrefixOp]((v),(parent),(Node*)(n)), \
+  PostfixOpNode*: (v)->ftable[NPostfixOp]((v),(parent),(Node*)(n)), \
+  ReturnNode*: (v)->ftable[NReturn]((v),(parent),(Node*)(n)), \
+  AssignNode*: (v)->ftable[NAssign]((v),(parent),(Node*)(n)), \
+  TupleNode*: (v)->ftable[NTuple]((v),(parent),(Node*)(n)), \
+  ArrayNode*: (v)->ftable[NArray]((v),(parent),(Node*)(n)), \
+  BlockNode*: (v)->ftable[NBlock]((v),(parent),(Node*)(n)), \
+  FunNode*: (v)->ftable[NFun]((v),(parent),(Node*)(n)), \
+  CallNode*: (v)->ftable[NCall]((v),(parent),(Node*)(n)), \
+  TemplateNode*: (v)->ftable[NTemplate]((v),(parent),(Node*)(n)), \
+  TemplateInstanceNode*: (v)->ftable[NTemplateInstance]((v),(parent),(Node*)(n)), \
+  TypeCastNode*: (v)->ftable[NTypeCast]((v),(parent),(Node*)(n)), \
+  ConstNode*: (v)->ftable[NConst]((v),(parent),(Node*)(n)), \
+  VarNode*: (v)->ftable[NVar]((v),(parent),(Node*)(n)), \
+  ParamNode*: (v)->ftable[NParam]((v),(parent),(Node*)(n)), \
+  TemplateParamNode*: (v)->ftable[NTemplateParam]((v),(parent),(Node*)(n)), \
+  RefNode*: (v)->ftable[NRef]((v),(parent),(Node*)(n)), \
+  NamedArgNode*: (v)->ftable[NNamedArg]((v),(parent),(Node*)(n)), \
+  SelectorNode*: (v)->ftable[NSelector]((v),(parent),(Node*)(n)), \
+  IndexNode*: (v)->ftable[NIndex]((v),(parent),(Node*)(n)), \
+  SliceNode*: (v)->ftable[NSlice]((v),(parent),(Node*)(n)), \
+  IfNode*: (v)->ftable[NIf]((v),(parent),(Node*)(n)), \
+  TypeExprNode*: (v)->ftable[NTypeExpr]((v),(parent),(Node*)(n)), \
+  TypeTypeNode*: (v)->ftable[NTypeType]((v),(parent),(Node*)(n)), \
+  IdTypeNode*: (v)->ftable[NIdType]((v),(parent),(Node*)(n)), \
+  AliasTypeNode*: (v)->ftable[NAliasType]((v),(parent),(Node*)(n)), \
+  RefTypeNode*: (v)->ftable[NRefType]((v),(parent),(Node*)(n)), \
+  BasicTypeNode*: (v)->ftable[NBasicType]((v),(parent),(Node*)(n)), \
+  ArrayTypeNode*: (v)->ftable[NArrayType]((v),(parent),(Node*)(n)), \
+  TupleTypeNode*: (v)->ftable[NTupleType]((v),(parent),(Node*)(n)), \
+  StructTypeNode*: (v)->ftable[NStructType]((v),(parent),(Node*)(n)), \
+  FunTypeNode*: (v)->ftable[NFunType]((v),(parent),(Node*)(n)), \
+  TemplateTypeNode*: (v)->ftable[NTemplateType]((v),(parent),(Node*)(n)), \
+  TemplateParamTypeNode*: (v)->ftable[NTemplateParamType]((v),(parent),(Node*)(n)), \
+  Node*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  Stmt*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  struct CUnitNode*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  Expr*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  struct LitExpr*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  struct UnaryOpNode*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  struct ListExprNode*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  struct LocalNode*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)), \
+  Type*: (v)->ftable[(n)->kind]((v),(parent),(Node*)(n)))
+
+struct ASTVisitorFuns {
+  void(*nullable Bad)(ASTVisitor*, const ASTParent*, BadNode*);
+  void(*nullable Field)(ASTVisitor*, const ASTParent*, FieldNode*);
+  void(*nullable Pkg)(ASTVisitor*, const ASTParent*, PkgNode*);
+  void(*nullable File)(ASTVisitor*, const ASTParent*, FileNode*);
+  void(*nullable Comment)(ASTVisitor*, const ASTParent*, CommentNode*);
+  void(*nullable Nil)(ASTVisitor*, const ASTParent*, NilNode*);
+  void(*nullable BoolLit)(ASTVisitor*, const ASTParent*, BoolLitNode*);
+  void(*nullable IntLit)(ASTVisitor*, const ASTParent*, IntLitNode*);
+  void(*nullable FloatLit)(ASTVisitor*, const ASTParent*, FloatLitNode*);
+  void(*nullable StrLit)(ASTVisitor*, const ASTParent*, StrLitNode*);
+  void(*nullable Id)(ASTVisitor*, const ASTParent*, IdNode*);
+  void(*nullable BinOp)(ASTVisitor*, const ASTParent*, BinOpNode*);
+  void(*nullable PrefixOp)(ASTVisitor*, const ASTParent*, PrefixOpNode*);
+  void(*nullable PostfixOp)(ASTVisitor*, const ASTParent*, PostfixOpNode*);
+  void(*nullable Return)(ASTVisitor*, const ASTParent*, ReturnNode*);
+  void(*nullable Assign)(ASTVisitor*, const ASTParent*, AssignNode*);
+  void(*nullable Tuple)(ASTVisitor*, const ASTParent*, TupleNode*);
+  void(*nullable Array)(ASTVisitor*, const ASTParent*, ArrayNode*);
+  void(*nullable Block)(ASTVisitor*, const ASTParent*, BlockNode*);
+  void(*nullable Fun)(ASTVisitor*, const ASTParent*, FunNode*);
+  void(*nullable Call)(ASTVisitor*, const ASTParent*, CallNode*);
+  void(*nullable Template)(ASTVisitor*, const ASTParent*, TemplateNode*);
+  void(*nullable TemplateInstance)(ASTVisitor*, const ASTParent*, TemplateInstanceNode*);
+  void(*nullable TypeCast)(ASTVisitor*, const ASTParent*, TypeCastNode*);
+  void(*nullable Const)(ASTVisitor*, const ASTParent*, ConstNode*);
+  void(*nullable Var)(ASTVisitor*, const ASTParent*, VarNode*);
+  void(*nullable Param)(ASTVisitor*, const ASTParent*, ParamNode*);
+  void(*nullable TemplateParam)(ASTVisitor*, const ASTParent*, TemplateParamNode*);
+  void(*nullable Ref)(ASTVisitor*, const ASTParent*, RefNode*);
+  void(*nullable NamedArg)(ASTVisitor*, const ASTParent*, NamedArgNode*);
+  void(*nullable Selector)(ASTVisitor*, const ASTParent*, SelectorNode*);
+  void(*nullable Index)(ASTVisitor*, const ASTParent*, IndexNode*);
+  void(*nullable Slice)(ASTVisitor*, const ASTParent*, SliceNode*);
+  void(*nullable If)(ASTVisitor*, const ASTParent*, IfNode*);
+  void(*nullable TypeExpr)(ASTVisitor*, const ASTParent*, TypeExprNode*);
+  void(*nullable TypeType)(ASTVisitor*, const ASTParent*, TypeTypeNode*);
+  void(*nullable IdType)(ASTVisitor*, const ASTParent*, IdTypeNode*);
+  void(*nullable AliasType)(ASTVisitor*, const ASTParent*, AliasTypeNode*);
+  void(*nullable RefType)(ASTVisitor*, const ASTParent*, RefTypeNode*);
+  void(*nullable BasicType)(ASTVisitor*, const ASTParent*, BasicTypeNode*);
+  void(*nullable ArrayType)(ASTVisitor*, const ASTParent*, ArrayTypeNode*);
+  void(*nullable TupleType)(ASTVisitor*, const ASTParent*, TupleTypeNode*);
+  void(*nullable StructType)(ASTVisitor*, const ASTParent*, StructTypeNode*);
+  void(*nullable FunType)(ASTVisitor*, const ASTParent*, FunTypeNode*);
+  void(*nullable TemplateType)(ASTVisitor*, const ASTParent*, TemplateTypeNode*);
+  void(*nullable TemplateParamType)(ASTVisitor*, const ASTParent*, TemplateParamTypeNode*);
+
+  // class-level visitors called for nodes without specific visitors
+  void(*nullable Stmt)(ASTVisitor*, const ASTParent*, Stmt*);
+  void(*nullable CUnit)(ASTVisitor*, const ASTParent*, struct CUnitNode*);
+  void(*nullable Expr)(ASTVisitor*, const ASTParent*, Expr*);
+  void(*nullable LitExpr)(ASTVisitor*, const ASTParent*, struct LitExpr*);
+  void(*nullable UnaryOp)(ASTVisitor*, const ASTParent*, struct UnaryOpNode*);
+  void(*nullable ListExpr)(ASTVisitor*, const ASTParent*, struct ListExprNode*);
+  void(*nullable Local)(ASTVisitor*, const ASTParent*, struct LocalNode*);
+  void(*nullable Type)(ASTVisitor*, const ASTParent*, Type*);
+
+  // catch-all fallback visitor
+  void(*nullable Node)(ASTVisitor*, const ASTParent*, Node*);
+};
 
 ASSUME_NONNULL_END

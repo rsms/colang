@@ -648,7 +648,7 @@ static Type* presolve_id_type(Parser* p, IdTypeNode* id) {
   if (!target) {
     NodeSetUnresolved(id);
   } else if (is_TemplateParamNode(target)) {
-    dlog("TODO template param used as type");
+    panic("TODO template param used as type");
     NodeSetUnresolved(id);
   } else if (is_Expr(target) && ((Expr*)target)->type) {
     // target is an expression with a type
@@ -664,7 +664,11 @@ static Type* presolve_id_type(Parser* p, IdTypeNode* id) {
 
 static Type* nullable set_ctxtype(Parser* p, Type* nullable ctxtype) {
   Type* prev = p->ctxtype;
-  p->ctxtype = ctxtype != kType_ideal ? unbox_id_type(ctxtype) : NULL;
+  if (ctxtype == kType_ideal || ctxtype->kind == NTemplateParamType) {
+    p->ctxtype = NULL;
+  } else {
+    p->ctxtype = unbox_id_type(ctxtype);
+  }
   return prev;
 }
 
@@ -1409,26 +1413,6 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
 }
 
 
-// As = lhs "as" Type
-// "as" has the lowest precedence and thus... Examples:
-//
-//   "9 * 2 as int8"         => (TypeCast int8 (Op * (Int 9) (Int 2)))
-//   "9 * (2 as int8)"       => (Op * (Int 9) (TypeCast int8 (Int 2)))
-//   "9, 2 as (int8,int8)"   => (Int 9) (TypeCast (Tuple int8 int8) (Int 2))
-//   "(9, 2) as (int8,int8)" => (TypeCast (Tuple int8 int8) (Tuple (Int 9) (Int 2)))
-//
-//!Parselet (TAs LOWEST)
-static Node* PAs(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
-  auto n = mknode(p, TypeCast);
-  nexttok(p); // consume "as"
-  n->expr = expectExpr(p, lhs);
-  n->type = pType(p, fl);
-  if (NodeIsUnresolved(n->expr))
-    n->type->tflags |= NF_PartialType;
-  return as_Node(n);
-}
-
-
 // args = arg (sep arg)* sep?
 // arg  = Id "=" Expr | Expr
 // sep  = "," | ";"
@@ -1499,58 +1483,85 @@ err_pos_after_named:
 }
 
 
+// As = lhs "as" Type
+// "as" has the lowest precedence and thus... Examples:
+//
+//   "9 * 2 as int8"         => (TypeCast int8 (Op * (Int 9) (Int 2)))
+//   "9 * (2 as int8)"       => (Op * (Int 9) (TypeCast int8 (Int 2)))
+//   "9, 2 as (int8,int8)"   => (Int 9) (TypeCast (Tuple int8 int8) (Int 2))
+//   "(9, 2) as (int8,int8)" => (TypeCast (Tuple int8 int8) (Tuple (Int 9) (Int 2)))
+//
+//!Parselet (TAs LOWEST)
+static Node* PTypeCast(Parser* p, const Parselet* e, PFlag fl, Node* lhs) {
+  auto n = mknode(p, TypeCast);
+  nexttok(p); // consume "as"
+  n->expr = expectExpr(p, lhs);
+  n->type = pType(p, fl);
+  if (NodeIsUnresolved(n->expr))
+    n->type->tflags |= NF_PartialType;
+  return as_Node(n);
+}
+
+
+static Node* pTypeCast(
+  Parser* p, const Parselet* e, PFlag fl, Pos pos, Type* recv, BasicTypeNode* canon_recv)
+{
+  // save & alter ctxtype
+  bool is_explicit_ctxtype = p->is_explicit_ctxtype;
+  p->is_explicit_ctxtype = true; // TODO: don't cascade to subexpressions
+  Type* ctxtype = set_ctxtype(p, (Type*)canon_recv);
+
+  Expr* expr = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
+
+  // restore ctxtype
+  p->is_explicit_ctxtype = is_explicit_ctxtype;
+  p->ctxtype = ctxtype;
+
+  // short circuit e.g. "x = i64(3)"
+  // TODO: expand pos & endpos to include "type(3)"
+  if (expr->type == (Type*)canon_recv)
+    return as_Node(expr);
+
+  TypeCastNode* n = b_mknode(p->build, TypeCast, pos);
+  n->type = recv;
+  n->expr = expr;
+  return as_Node(n);
+}
+
+
 //!Parselet (TLParen MEMBER)
 static Node* PCall(Parser* p, const Parselet* e, PFlag fl, Node* receiver) {
-  auto call = mknode_array(p, Call, args, 8);
-  if UNLIKELY(!call) return bad(p);
+  Pos pos = currpos(p);
   nexttok(p); // consume "("
 
-  // receiver
+  Type* recv_type = NULL;
   if (is_Expr(receiver)) {
-    receiver = as_Node(use_as_rvalue(p, receiver));
-  } else if (is_IdTypeNode(receiver)) {
-    receiver = (Node*)unbox_id_type1((IdTypeNode*)receiver);
-  }
-  NodeTransferUnresolved(call, receiver);
-  call->receiver = receiver;
-  call->args_pos = call->pos;
-
-  if (p->tok == TRParen) { // e.g. "()"
-    call->endpos = currpos(p);
-    nexttok(p); // consume ")"
-    return as_Node(call);
-  }
-
-  // args
-  if (is_BasicTypeNode(receiver)) {
-    // fast path for primitive types e.g. "i16(123)".
-    // convert Call to TypeCast
-    TypeCastNode* tcast = CONVERT_NODE_KIND(call, TypeCast);
-    tcast->type = (Type*)receiver;
-
-    // save & alter ctxtype
-    bool is_explicit_ctxtype = p->is_explicit_ctxtype;
-    p->is_explicit_ctxtype = true;
-    Type* ctxtype = set_ctxtype(p, (Type*)receiver);
-
-    tcast->expr = pExpr(p, PREC_LOWEST, fl | PFlagRValue);
-
-    // restore ctxtype
-    p->is_explicit_ctxtype = is_explicit_ctxtype;
-    p->ctxtype = ctxtype;
-
-    if (tcast->type == tcast->expr->type) {
-      // short circuit e.g. "x = i64(3)"
-      // TODO: expand pos & endpos to include "type(3)"
-      call = (CallNode*)as_Node(tcast->expr);
-    }
+    receiver = (Node*)use_as_rvalue(p, receiver);
+    if (is_TypeExprNode(receiver))
+      recv_type = as_Type(deref_node((Node*)((TypeExprNode*)receiver)->elem));
   } else {
-    call->flags |= pArgs(p, &call->args, fl);
+    assert_is_Type(receiver);
+    recv_type = (Type*)deref_node(receiver);
   }
 
-  call->endpos = currpos(p);
+  Node* n;
+  if (recv_type && is_BasicTypeNode(recv_type)) {
+    // fast path for basic types e.g. "i16(123)"
+    n = pTypeCast(p, e, fl, pos, as_Type(receiver), (BasicTypeNode*)recv_type);
+  } else {
+    CallNode* call = b_mknode_array(p->build, Call, pos, args, 8);
+    if UNLIKELY(!call) return bad(p);
+    NodeTransferUnresolved(call, receiver);
+    call->receiver = receiver;
+    call->args_pos = call->pos;
+    if (p->tok != TRParen) // i.e. not "()"
+      call->flags |= pArgs(p, &call->args, fl);
+    n = (Node*)call;
+  }
+
+  n->endpos = currpos(p);
   want(p, TRParen);
-  return as_Node(call);
+  return n;
 }
 
 
@@ -2087,7 +2098,6 @@ static void pTemplateParams(Parser* p, TemplateNode* tpl) {
     NodeSetConst(param);
     NodeSetUnused(param);
     param->name = p->name;
-    param->type = kType_nil;
     param->index = index++;
     nexttok(p); // consume id
     array_push(&tpl->params, param);
@@ -2283,18 +2293,22 @@ ASSUME_NONNULL_END
 ASSUME_NONNULL_BEGIN
 
 
+#define dlog_parselet_sel(fmt, args...) ((void)0)
+// #define dlog_parselet_sel dlog
+
+
 static Node* parse_prefix(Parser* p, PFlag fl) {
   // find prefix parselet
   assert(p->tok < Tok_MAX);
   const Parselet* parselet = &parselets[p->tok];
   if (!parselet->fprefix) {
-    // dlog("parse_prefix NOT found for %s", TokName(p->tok));
+    dlog_parselet_sel("parse_prefix NOT found for %s", TokName(p->tok));
     syntaxerr(p, (fl & PFlagType) ? "expecting type" : "expecting expression");
     Node* n = bad(p);
     advance(p, (Tok[]){ TRParen, TRBrace, TRBrack, TSemi, 0 });
     return n;
   }
-  // dlog("parse_prefix FOUND for %s", TokName(p->tok));
+  dlog_parselet_sel("parse_prefix FOUND for %s", TokName(p->tok));
   return parselet->fprefix(p, fl);
 }
 
@@ -2305,13 +2319,14 @@ static Node* parse_infix(Parser* p, int precedence, PFlag fl, Node* left) {
   while (p->tok != TNone) {
     const Parselet* parselet = &parselets[p->tok];
     assertnotnull(parselet);
-    // if (parselet->f) {
-    //   dlog("infix parselet FOUND for %s; parselet->prec=%d < precedence=%d = %s",
-    //     TokName(p->tok), parselet->prec, precedence,
-    //     (int)parselet->prec < precedence ? "Y" : "N");
-    // } else {
-    //   dlog("infix parselet NOT found for %s", TokName(p->tok));
-    // }
+    if (parselet->f) {
+      dlog_parselet_sel(
+        "infix parselet FOUND for %s; parselet->prec=%d < precedence=%d = %s",
+        TokName(p->tok), parselet->prec, precedence,
+        (int)parselet->prec < precedence ? "Y" : "N");
+    } else {
+      dlog_parselet_sel("infix parselet NOT found for %s", TokName(p->tok));
+    }
     if (!parselet->f || (int)parselet->prec < precedence) {
       break;
     }

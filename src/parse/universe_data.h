@@ -6,10 +6,10 @@
 // Define to run the generator during program initialization:
 #define RUN_GENERATOR 0
 
-static const Type _kType_type = {.kind=NTypeType, .tflags=TF_KindType};
+static const Type _kType_type = {.kind=NTypeType, .flags=NF_Shared, .tflags=TF_KindType};
 Type* kType_type = (Type*)&_kType_type;
 
-static const Node _kNode_bad = {.kind=NBad};
+static const Node _kNode_bad = {.kind=NBad, .flags=NF_Shared};
 Node* kNode_bad = (Node*)&_kNode_bad;
 
 
@@ -144,7 +144,7 @@ static SymRBNode n_as = { kSym_as, false, &n_switch, &n_break, };
 static SymRBNode* _symroot = &n_as;
 
 #define _(NAME, TID, TFLAGS) \
-  {.kind=NBasicType, .tflags=TFLAGS, .tid=TID, TC_##NAME, kSym_##NAME}
+  {.kind=NBasicType,.flags=NF_Shared,.tflags=TFLAGS,.tid=TID, TC_##NAME, kSym_##NAME}
 static const BasicTypeNode _kType_bool = _(bool, kSym_b, TF_KindBool);
 static const BasicTypeNode _kType_i8 = _(i8, kSym_c, TF_KindInt | TF_Size1 | TF_Signed);
 static const BasicTypeNode _kType_u8 = _(u8, kSym_B, TF_KindInt | TF_Size1);
@@ -188,11 +188,11 @@ Type* kType_ideal = (Type*)&_kType_ideal;
 Type* kType_auto = (Type*)&_kType_auto;
 
 static const NilNode _kExpr_nil =
- {.kind=NNil,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_nil};
+ {.kind=NNil,.flags=NF_Const|NF_RValue|NF_Shared,.type=(Type*)&_kType_nil};
 static const BoolLitNode _kExpr_true =
- {.kind=NBoolLit,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_bool,.ival=1};
+ {.kind=NBoolLit,.flags=NF_Const|NF_RValue|NF_Shared,.type=(Type*)&_kType_bool,.ival=1};
 static const BoolLitNode _kExpr_false =
- {.kind=NBoolLit,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_bool,.ival=0};
+ {.kind=NBoolLit,.flags=NF_Const|NF_RValue|NF_Shared,.type=(Type*)&_kType_bool,.ival=0};
 Expr* kExpr_nil = (Expr*)&_kExpr_nil;
 Expr* kExpr_true = (Expr*)&_kExpr_true;
 Expr* kExpr_false = (Expr*)&_kExpr_false;
@@ -488,7 +488,7 @@ static void gen_constants() {
   printf(
     "\n"
     "#define _(NAME, TID, TFLAGS) \\\n"
-    "  {.kind=NBasicType, .tflags=TFLAGS, .tid=TID, TC_##NAME, kSym_##NAME}\n");
+    "  {.kind=NBasicType,.flags=NF_Shared,.tflags=TFLAGS,.tid=TID, TC_##NAME, kSym_##NAME}\n");
   #define _(name, encoding, typeflags) printf(                       \
     "static const BasicTypeNode _kType_%s = _(%s, kSym_%s, %s);\n",  \
     #name, #name, cidentc(encoding), #typeflags );
@@ -506,11 +506,11 @@ static void gen_constants() {
 
   // DEF_CONST_NODES_PUB
   printf("\n");
-  #define _(name, AST_TYPE, typecode_suffix, structinit) printf(             \
-    "static const %sNode _kExpr_%s =\n"                                      \
-    " {.kind=N%s,.flags=NF_Const|NF_RValue,.type=(Type*)&_kType_%s%s%s};\n", \
-    #AST_TYPE, #name,                                                        \
-    #AST_TYPE, #typecode_suffix,                                             \
+  #define _(name, AST_TYPE, typecode_suffix, structinit) printf( \
+    "static const %sNode _kExpr_%s =\n" \
+    " {.kind=N%s,.flags=NF_Const|NF_RValue|NF_Shared,.type=(Type*)&_kType_%s%s%s};\n", \
+    #AST_TYPE, #name, \
+    #AST_TYPE, #typecode_suffix,\
     (structinit[0]==0 ? "" : ","), structinit);
   DEF_CONST_NODES_PUB(_)
   #undef _

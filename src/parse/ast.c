@@ -51,10 +51,46 @@ PosSpan _NodePosSpan(const Node* np) {
 }
 
 
+PosSpan NodeSetPosSpan(const Node** v, u32 len) {
+  PosSpan a = {NoPos,NoPos};
+  while (len--) {
+    PosSpan b = NodePosSpan(v[len]);
+    a.start = pos_min(a.start, b.start);
+    a.end = pos_max(a.end, b.end);
+  }
+  return a;
+}
+
+
 Type* unbox_id_type1(IdTypeNode* t) {
   if (t->target)
     return unbox_id_type(t->target);
   return (Type*)t;
+}
+
+
+Node* deref_node(Node* n) {
+  assertnotnull(n);
+  for (;;) switch (n->kind) {
+    case NId:
+      n = (Node*)((IdNode*)n)->target;
+      break;
+    case NIdType:
+      n = (Node*)((IdTypeNode*)n)->target;
+      break;
+    case NConst:
+      n = (Node*)((ConstNode*)n)->value;
+      break;
+    default:
+      return n;
+  }
+}
+
+
+Type* deref_type_alias(Type* t) {
+  while (t->kind == NAliasType)
+    t = as_Type(deref_node((Node*)((AliasTypeNode*)t)->elem));
+  return t;
 }
 
 
@@ -116,52 +152,50 @@ Node* ScopeLookup(const Scope* nullable scope, Sym s) {
 // ASTVisit
 #ifdef ASTVisit
 
-static void visit_nodearray(
-  ASTVisitor* v,
-  usize       flags,
-  ASTParent*  parent,
-  Node*       n,
-  NodeArray*  a,
-  const char* field_name)
-{
-  parent->field_name = field_name;
-  for (u32 i = 0; i < a->len; i++) {
-    parent->child_ptr = &a->v[i];
-    ASTVisit(v, flags, parent, a->v[i]);
-  }
+
+void ASTVisitRoot(ASTVisitor* v, Node* nullable parentn, Node* root, bool visit_type) {
+  ASTParent parent = { .n = parentn ? parentn : kNode_bad, .field_name="" };
+  _ASTVisitChildren(v, &parent, root, visit_type);
 }
 
 
-static void visit_nodefield(
-  ASTVisitor* v, usize flags, ASTParent* parent, Node** np, const char* field_name)
+static void visit_array(
+  ASTVisitor* v, ASTParent* parent, const char* field_name, NodeArray* a)
 {
-  if (!*np)
+  parent->field_name = field_name;
+  for (u32 i = 0; i < a->len; i++)
+    ASTVisit(v, parent, a->v[i]);
+}
+
+
+static void visit_node(
+  ASTVisitor* v, ASTParent* parent, const char* field_name, Node* nullable n)
+{
+  if UNLIKELY(n == NULL)
     return;
   parent->field_name = field_name;
-  parent->child_ptr = np;
-  ASTVisit(v, flags, parent, *np);
+  ASTVisit(v, parent, n);
 }
 
 
-int _ASTVisitChildren(ASTVisitor* v, usize flags, const ASTParent* parent_of_n, Node* np) {
-  #define N(FIELD) \
-    visit_nodefield(v, flags, &parent, (Node**)&n->FIELD, #FIELD)
-
-  #define A(ARRAY_FIELD) \
-    visit_nodearray(v, flags, &parent, np, as_NodeArray(&n->ARRAY_FIELD), #ARRAY_FIELD)
-
-  #define AP(ARRAY_FIELD) \
-    visit_nodearray(v, flags, &parent, np, as_NodeArray(n->ARRAY_FIELD), #ARRAY_FIELD)
-
+void _ASTVisitChildren(
+  ASTVisitor* v, const ASTParent* parent_of_n, Node* np, bool visit_type)
+{
   // break cycles
-  uintptr* vp = pmap_assign(&v->seenmap, np);
-  if (!vp || *vp) // out of memory or already visited
-    return 0;
+  for (u32 len = v->seenstack.len; len--;) {
+    if (v->seenstack.v[len] == np)
+      return;
+  }
+  bool pushed_seenstack = array_push(&v->seenstack, np); // false on memory alloc failure
 
   ASTParent parent = {
     .parent = parent_of_n,
     .n = np,
   };
+
+  #define N(FIELD)  visit_node(v, &parent, #FIELD, as_Node(n->FIELD))
+  #define A(FIELD)  visit_array(v, &parent, #FIELD, as_NodeArray(&n->FIELD))
+  #define AP(FIELD) visit_array(v, &parent, #FIELD, as_NodeArray(n->FIELD))
 
   //dlog("visit children of %s", nodename(np));
 
@@ -209,20 +243,12 @@ int _ASTVisitChildren(ASTVisitor* v, usize flags, const ASTParent* parent_of_n, 
 
   }}
 
-  // register as visited
-  *vp = 1;
-  if (parent.n != np) {
-    // node was replaced; also register original node
-    vp = pmap_assign(&v->seenmap, np);
-    if (vp)
-      *vp = 1;
-  }
-
   // visit type of expression
-  if (is_Expr(np) && ((Expr*)np)->type)
-    visit_nodefield(v, flags, &parent, (Node**)&((Expr*)np)->type, "type");
+  if (visit_type && is_Expr(np) && (((Expr*)np)->type != NULL))
+    visit_node(v, &parent, "type", (Node*)((Expr*)np)->type);
 
-  return 1;
+  if (pushed_seenstack)
+    array_pop(&v->seenstack);
 }
 
 

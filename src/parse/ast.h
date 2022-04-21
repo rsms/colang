@@ -123,6 +123,7 @@ struct FunNode { Expr;
   Type* nullable result; // output results (TupleType for multiple results)
   Sym   nullable name;   // NULL for lambda
   Expr* nullable body;   // NULL for fun-declaration
+  TemplateNode* nullable instance_of;
 };
 struct CallNode { Expr;
   Node*     receiver; // Type | Fun | Id
@@ -249,16 +250,18 @@ static_assert(offsetof(Scope,bindings) == sizeof(Scope)-sizeof(((Scope*)0)->bind
 
 
 enum NodeFlags {
-  NF_Unresolved  = 1 << 0, // contains unresolved references. MUST BE VALUE 1!
-  NF_Const       = 1 << 1, // constant (value known at comptime, or immutable ref)
-  NF_Base        = 1 << 2, // [struct field] the field is a base of the struct
-  NF_RValue      = 1 << 3, // resolved as rvalue
-  NF_Unused      = 1 << 4, // [Local] never referenced
-  NF_Public      = 1 << 5, // [Local|Fun] public visibility (aka published, exported)
-  NF_Named       = 1 << 6, // [Tuple when used as args] has named argument
-  NF_PartialType = 1 << 7, // Type resolver should visit even if the node is typed
-  NF_CustomInit  = 1 << 8, // struct has fields w/ non-zero initializer
-  NF_Unsafe      = 1 << 9, // Fun: is unsafe, Expr: unsafe context
+  NF_Unresolved  = 1 << 0,  // contains unresolved references. MUST BE VALUE 1!
+  NF_Const       = 1 << 1,  // constant (value known at comptime, or immutable ref)
+  NF_Base        = 1 << 2,  // [struct field] the field is a base of the struct
+  NF_RValue      = 1 << 3,  // resolved as rvalue
+  NF_Unused      = 1 << 4,  // [Local] never referenced
+  NF_Public      = 1 << 5,  // [Local|Fun] public visibility (aka published, exported)
+  NF_Named       = 1 << 6,  // [Tuple when used as args] has named argument
+  NF_PartialType = 1 << 7,  // Type resolver should visit even if the node is typed
+  NF_CustomInit  = 1 << 8,  // struct has fields w/ non-zero initializer
+  NF_Unsafe      = 1 << 9,  // Fun: is unsafe, Expr: unsafe context
+  NF_Shared      = 1 << 10, // node is shared between multiple functions (template)
+  NF_HasShared   = 1 << 11, // TODO
 } END_ENUM(NodeFlags)
 
 #define NodeIsUnresolved(n) _NodeIsUnresolved(as_const_Node(n))
@@ -402,8 +405,12 @@ inline static bool NodeIsPrimitiveConst(const Node* n) {
   return n->kind == NNil || n->kind == NBasicType || n->kind == NBoolLit;
 }
 
-#define NodePosSpan(n) _NodePosSpan(as_Node(n))
+// NodePosSpan computes the source-position span for a node
+#define NodePosSpan(n) _NodePosSpan(as_const_Node(n))
 PosSpan _NodePosSpan(const Node* n);
+
+// NodeSetPosSpan computes the source-position span for a set of nodes
+PosSpan NodeSetPosSpan(const Node** v, u32 len);
 
 // NodeRefLocal increments the reference counter of a Local node.
 // Returns n as a convenience.
@@ -417,6 +424,15 @@ inline static u32 NodeUnrefLocal(LocalNode* n) {
   assertgt(n->nrefs, 0);
   return --n->nrefs;
 }
+
+// deref_node de-references id and constant local nodes, returning the effective value.
+// E.g. (id x (id y (const a (id (z (var b int (id k))))))) => (var b int (id k))
+Node* deref_node(Node* n);
+
+// deref_type_alias unboxes t if it's an AliasType.
+// When a AliasType is found, deref_node is called on it and if the result is
+// another AliasType, the process repeats, until we end with !AliasType.
+Type* deref_type_alias(Type* t);
 
 static Type* nullable unbox_id_type(Type* nullable t);
 Type* unbox_id_type1(IdTypeNode* t);
@@ -440,9 +456,22 @@ inline static Type* unbox_id_type(Type* nullable t) {
 })
 
 #ifdef ASTVisit
-  #define ASTVisitChildren(v, flags, parent_of_n, n) \
-    _ASTVisitChildren((v),(flags),(parent_of_n),as_Node(n))
-  int _ASTVisitChildren(ASTVisitor*, usize flags, const ASTParent* parent_of_n, Node* n);
+
+  void ASTVisitRoot(
+    ASTVisitor* v, Node* nullable parent_of_root, Node* root, bool visit_type);
+
+  #define ASTVisitChildrenAndType(v, parent_of_n, n) \
+    _ASTVisitChildren((v),(parent_of_n),as_Node(n),true)
+
+  #define ASTVisitChildren(v, parent_of_n, n) \
+    _ASTVisitChildren((v),(parent_of_n),as_Node(n),false)
+
+  #define ASTVisitType(v, parent_of_n, n) \
+    (xis_Expr(n) ? ASTVisit((v),(parent_of_n),(n)) : ((void)0))
+
+  void _ASTVisitChildren(
+    ASTVisitor*, const ASTParent* parent_of_n, Node* n, bool visit_type);
+
 #endif
 
 // --------------------------------------------------------------------------------------
