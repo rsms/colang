@@ -4,7 +4,7 @@
 #include "ast_transform.h"
 
 // CO_PARSE_ATR_DEBUG: define to enable trace logging
-//#define CO_PARSE_ATR_DEBUG
+#define CO_PARSE_ATR_DEBUG
 //———————————————————————————————————————————————————————————————————————————————————
 #if defined(CO_PARSE_ATR_DEBUG) && defined(DEBUG)
   #ifndef CO_NO_LIBC
@@ -31,24 +31,9 @@ typedef struct ATR {
   BuildCtx*     build;
   TemplateNode* tpl;
   NodeArray     tplvals; // indexed by TemplateParamNode.index
-  NodeArray     seenstack;
   int           depth;
   PMap          trmap; // oldnode => newnode
 } ATR;
-
-
-static bool atr_seenstack_push(ATR* a, Node* n) {
-  for (u32 len = a->seenstack.len; len--;) {
-    if (a->seenstack.v[len] == n)
-      return false;
-  }
-  return array_push(&a->seenstack, n);
-}
-
-
-static void atr_seenstack_pop(ATR* a) {
-  array_pop(&a->seenstack);
-}
 
 
 #define VISIT_PARAMS  ATR* a, usize flags
@@ -136,12 +121,6 @@ static Node* atr_visit1(VISIT_PARAMS, Node* np) {
     flags = atr_visit_array( \
       VISIT_ARGS, vp, &np, (Node**)&n, \
       offsetof(__typeof__(*n),ARRAY_FIELD), as_NodeArray(&n->ARRAY_FIELD)); \
-  }
-
-  // break cycles
-  if (!atr_seenstack_push(a, np)) {
-    atr_dlog("skip  %-*s %p", (int)(25 - (a->depth*2)), nodename(np), np);
-    return np;
   }
 
   // short circuit visited and replaced nodes
@@ -232,8 +211,6 @@ static Node* atr_visit1(VISIT_PARAMS, Node* np) {
 
   }}
 
-  atr_seenstack_pop(a);
-
   // visit type of expression
   if (is_Expr(np) && ((Expr*)np)->type) {
     Expr* n = (Expr*)np;
@@ -253,9 +230,6 @@ Node* atr_visit_template(BuildCtx* build, TemplateNode* tpl, NodeArray* tplvals)
     .tpl = tpl,
     .tplvals = *tplvals,
   };
-
-  Node* seenstack_st[32];
-  array_init(&a.seenstack, seenstack_st, sizeof(seenstack_st));
 
   if UNLIKELY(!pmap_init(&a.trmap, mem_ctx(), 64, MAPLF_1))
     return b_err_nomem(build, NodePosSpan(tpl));
