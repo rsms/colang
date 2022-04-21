@@ -6,6 +6,6 @@
 #pragma once
 BEGIN_INTERFACE
 
-Node* atr_visit_template(BuildCtx* build, TemplateNode* tpl, NodeArray* tplvals);
+Node* atr_visit_template(BuildCtx* build, Node* n, NodeArray* tplvals);
 
 END_INTERFACE

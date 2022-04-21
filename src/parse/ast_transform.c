@@ -27,11 +27,10 @@ enum ATRFlag {
 };
 
 typedef struct ATR {
-  BuildCtx*     build;
-  TemplateNode* tpl;
-  NodeArray     tplvals; // indexed by TemplateParamNode.index
-  int           depth;
-  PMap          trmap; // oldnode => newnode
+  BuildCtx* build;
+  NodeArray tplvals; // indexed by TemplateParamNode.index
+  int       depth;
+  PMap      trmap; // oldnode => newnode
 } ATR;
 
 
@@ -250,16 +249,14 @@ static Node* atr_visit1(VISIT_PARAMS, Node* np) {
 }
 
 
-Node* atr_visit_template(BuildCtx* build, TemplateNode* tpl, NodeArray* tplvals) {
+Node* atr_visit_template(BuildCtx* build, Node* n, NodeArray* tplvals) {
   ATR a = {
     .build = build,
-    .tpl = tpl,
     .tplvals = *tplvals,
   };
 
   if UNLIKELY(!pmap_init(&a.trmap, mem_ctx(), 64, MAPLF_1))
-    return b_err_nomem(build, NodePosSpan(tpl));
+    return b_err_nomem(build, NodePosSpan(n));
 
-  return atr_visit1(&a, 0, tpl->body);
-  // return atr_visit1(&a, 0, NULL, tpl->body);
+  return atr_visit1(&a, 0, n);
 }
