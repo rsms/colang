@@ -703,10 +703,13 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return n->irval;
 
   vname = n->name ? n->name : vname;
+  bool is_main = strcmp(vname, "main") == 0;
+
+  // add type id to function name
   char fname_buf[64];
   Str fname = str_make(fname_buf, sizeof(fname_buf));
   str_appendcstr(&fname, vname);
-  if (strcmp(vname, "main") != 0) {
+  if (!is_main) {
     // TODO: use type ID for parameters only?
     Sym tid = b_typeid(b->build, n->type);
     str_append(&fname, tid, symlen(tid));
@@ -721,7 +724,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
     return fn;
   }
 
-  if (/*vname[0] == '_'*/ strcmp(vname, "main") != 0) {
+  if (/*vname[0] == '_'*/ !is_main) {
     // Note on LLVMSetVisibility: visibility is different.
     // See https://llvm.org/docs/LangRef.html#visibility-styles
     // LLVMPrivateLinkage is like "static" in C but omit from symbol table
