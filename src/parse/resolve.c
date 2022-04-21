@@ -711,9 +711,18 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
   #endif
 
+  // Have we an equivalent instance already?
+  // Resolve function prototype (thus temporarily clearing body), then compute its type id
+  Expr* body = fn->body; fn->body = NULL;
+  FunNode* fn2 = as_FunNode(atr_visit_template(r->build, as_Node(fn), &tplvals));
+  FunTypeNode* ft2 = resolve_fun_proto(r, fn2);
+  fn->body = body;
+  Sym fn_proto_typeid = b_typeid(r->build, (Type*)ft2);
+  dlog("TODO: register & reuse instance fn_proto_typeid=\"%s\"", fn_proto_typeid);
+
   // instantiate template to create function implementation,
   // updating the call to point to instanced function
-  n->receiver = atr_visit_template(r->build, tpl, &tplvals);
+  n->receiver = atr_visit_template(r->build, tpl->body, &tplvals);
   array_free(&tplvals);
   r->flags = rflags; // restore
 
@@ -724,12 +733,13 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog("TODO: register instance_of for %s", nodename(n->receiver));
   }
 
-  // // DEBUG: log produced instance before resolving call
-  // Str str = str_make(NULL, 0);
-  // fmtast(n->receiver, &str, 0);
-  // dlog("instance:\n—————————————————————————————————————\n%s"
-  //      "\n—————————————————————————————————————\n", str.v);
-  // str_free(&str);
+  // { // DEBUG: log produced instance before resolving call
+  //   Str str = str_make(NULL, 0);
+  //   fmtast(n->receiver, &str, 0);
+  //   dlog("—————————————————————————— instance ——————————————————————————\n\n%s"
+  //        "\n——————————————————————————————————————————————————————————————\n", str.v);
+  //   str_free(&str);
+  // }
 
   // resolve the call
   return resolve_call(r, n);

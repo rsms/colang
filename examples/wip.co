@@ -6,6 +6,7 @@ fun multiply<T>(a T, b int) T
 
 fun main(x int)
   multiply(1, x)
+  multiply(1, x)
 
   var a i8 = 1
   multiply(a, 2)
