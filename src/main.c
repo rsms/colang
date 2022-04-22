@@ -32,9 +32,9 @@ const char* COCACHE = "";
 static const char* cli_usage =
   "Co compiler\n"
   "Usage: co [options] [<srcfile> ...]\n"
-  "       Build specific source files as one package\n"
-  "Usage: co [options] <dir> ...\n"
-  "       Build each directory as a package"
+  "       Build source files or stdin as one package\n"
+  "Usage: co [options] <dir>\n"
+  "       Build directory as a package"
 ;
 static CliOption cliopts[] = {
   // CliOption{longname, shortname, valuename, type, help [, default value]}
