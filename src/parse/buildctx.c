@@ -9,18 +9,15 @@
 error BuildCtxInit(
   BuildCtx*             b,
   Mem                   mem,
-  const char*           pkgid,
   DiagHandler* nullable diagh,
   void*                 userdata)
 {
-  assert(strlen(pkgid) > 0);
   bool recycle = b->pkg.a.v != NULL;
 
   b->opt       = OptNone;
   b->safe      = true;
   b->debug     = false;
   b->mem       = mem;
-  b->srclist   = NULL;
   b->diagh     = diagh;
   b->userdata  = userdata;
   b->diaglevel = DiagMAX;
@@ -47,6 +44,7 @@ error BuildCtxInit(
       memset(s->data, 0, sizeof(s->data));
     }
     b->pkg.a.len = 0;
+    b->sources.len = 0;
   } else {
     if UNLIKELY(symmap_init(&b->types, mem, 1) == NULL)
       return err_nomem;
@@ -55,13 +53,13 @@ error BuildCtxInit(
     posmap_init(&b->posmap);
     b->pkg.kind = NPkg;
     array_init(&b->pkg.a, NULL, 0);
+    array_init(&b->sources, b->sources_st, sizeof(b->sources_st));
   }
 
   if (!ScopeInit(&b->pkgscope, mem, universe_scope()))
     return err_nomem;
 
-  b->pkgid     = symget(&b->syms, pkgid, strlen(pkgid)); // note: panics on nomem
-  b->pkg.name  = b->pkgid;
+  b->pkg.name  = kSym__;
   b->pkg.scope = &b->pkgscope;
 
   b->nodeslab_curr = &b->nodeslab_head;
@@ -69,38 +67,46 @@ error BuildCtxInit(
   return 0;
 }
 
-void BuildCtxDispose(BuildCtx* ctx) {
-  array_free(&ctx->diagarray);
-  symmap_free(&ctx->types);
-  posmap_dispose(&ctx->posmap);
+void BuildCtxDispose(BuildCtx* b) {
+  array_free(&b->diagarray);
+  symmap_free(&b->types);
+  posmap_dispose(&b->posmap);
   #if DEBUG
-  memset(ctx, 0, sizeof(BuildCtx));
+  memset(b, 0, sizeof(BuildCtx));
   #endif
 }
 
-static Diagnostic* b_mkdiag(BuildCtx* ctx) {
+void b_set_pkgname(BuildCtx* b, const char* nullable pkgname) {
+  if (pkgname && pkgname[0]) {
+    b->pkg.name = symget(&b->syms, pkgname, strlen(pkgname)); // note: panics on nomem
+  } else {
+    b->pkg.name = kSym__;
+  }
+}
+
+static Diagnostic* b_mkdiag(BuildCtx* b) {
   Diagnostic* d = memalloct(Diagnostic);
-  d->build = ctx;
-  array_push(&ctx->diagarray, d);
+  d->build = b;
+  array_push(&b->diagarray, d);
   return d;
 }
 
-void b_diag(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* message) {
+void b_diag(BuildCtx* b, DiagLevel level, PosSpan pos, const char* message) {
   if (level <= DiagError)
-    ctx->errcount++;
-  if (level > ctx->diaglevel || ctx->diagh == NULL)
+    b->errcount++;
+  if (level > b->diaglevel || b->diagh == NULL)
     return;
-  Diagnostic* d = b_mkdiag(ctx);
+  Diagnostic* d = b_mkdiag(b);
   d->level = level;
   d->pos = pos;
-  d->message = mem_strdup(ctx->mem, message);
-  ctx->diagh(d, ctx->userdata);
+  d->message = mem_strdup(b->mem, message);
+  b->diagh(d, b->userdata);
 }
 
-void b_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {
-  if (level > ctx->diaglevel || ctx->diagh == NULL) {
+void b_diagv(BuildCtx* b, DiagLevel level, PosSpan pos, const char* fmt, va_list ap) {
+  if (level > b->diaglevel || b->diagh == NULL) {
     if (level <= DiagError)
-      ctx->errcount++;
+      b->errcount++;
     return;
   }
   #ifdef CO_NO_LIBC
@@ -112,40 +118,40 @@ void b_diagv(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, va_li
     va_copy(ap1, ap);
     isize n = vsnprintf(buf, sizeof(buf), fmt, ap1);
     if LIKELY(n < (isize)sizeof(buf))
-      return b_diag(ctx, level, pos, buf);
+      return b_diag(b, level, pos, buf);
     // buf too small; heap allocate
-    char* buf2 = (char*)mem_alloc(ctx->mem, n + 1);
+    char* buf2 = (char*)mem_alloc(b->mem, n + 1);
     n = vsnprintf(buf2, n + 1, fmt, ap);
-    b_diag(ctx, level, pos, buf2);
-    mem_free(ctx->mem, buf2, n + 1);
+    b_diag(b, level, pos, buf2);
+    mem_free(b->mem, buf2, n + 1);
   #endif
 }
 
-void b_diagf(BuildCtx* ctx, DiagLevel level, PosSpan pos, const char* fmt, ...) {
+void b_diagf(BuildCtx* b, DiagLevel level, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  b_diagv(ctx, level, pos, fmt, ap);
+  b_diagv(b, level, pos, fmt, ap);
   va_end(ap);
 }
 
-void b_errf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_errf(BuildCtx* b, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  b_diagv(ctx, DiagError, pos, fmt, ap);
+  b_diagv(b, DiagError, pos, fmt, ap);
   va_end(ap);
 }
 
-void b_warnf(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_warnf(BuildCtx* b, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  b_diagv(ctx, DiagWarn, pos, fmt, ap);
+  b_diagv(b, DiagWarn, pos, fmt, ap);
   va_end(ap);
 }
 
-void b_notef(BuildCtx* ctx, PosSpan pos, const char* fmt, ...) {
+void b_notef(BuildCtx* b, PosSpan pos, const char* fmt, ...) {
   va_list ap;
   va_start(ap, fmt);
-  b_diagv(ctx, DiagNote, pos, fmt, ap);
+  b_diagv(b, DiagNote, pos, fmt, ap);
   va_end(ap);
 }
 
@@ -155,48 +161,51 @@ Node* b_err_nomem(BuildCtx* b, PosSpan ps) {
 }
 
 
-void b_add_source(BuildCtx* b, Source* src) {
-  if (b->srclist)
-    src->next = b->srclist;
-  b->srclist = src;
+bool b_add_source(BuildCtx* b, Source* src) {
+  return array_push(&b->sources, src);
 }
 
-error b_add_file(BuildCtx* b, const char* filename) {
-  Source* src = mem_alloczt(b->mem, Source);
+error b_add_source_data(BuildCtx* b, const char* filename, const u8* body, u32 len) {
+  Source* src = mem_alloct(b->mem, Source);
+  error err = source_open_data(src, filename, body, len);
+  if (err) {
+    mem_free(b->mem, src, sizeof(Source));
+    return err;
+  }
+  return b_add_source(b, src) ? 0 : err_nomem;
+}
+
+error b_add_source_file(BuildCtx* b, const char* filename) {
+  Source* src = mem_alloct(b->mem, Source);
   error err = source_open_file(src, filename);
   if (err) {
     mem_free(b->mem, src, sizeof(Source));
     return err;
   }
-  b_add_source(b, src);
-  return 0;
+  return b_add_source(b, src) ? 0 : err_nomem;
 }
 
-error b_add_dir(BuildCtx* b, const char* filename) {
-  FSDir d;
-  error err = sys_dir_open(filename, &d);
-  if (err)
-    return err;
-
+error b_add_source_dir(BuildCtx* b, const char* filename, FSDir dir) {
   FSDirEnt e;
-  error err1;
-  while ((err = sys_dir_read(d, &e)) > 0) {
+  error err;
+  while (sys_dir_read(dir, &e, b->tmpbuf[0], sizeof(b->tmpbuf[0]), &err)) {
     switch (e.type) {
       case FSDirEnt_REG:
       case FSDirEnt_LNK:
       case FSDirEnt_UNKNOWN:
-        if (e.namlen < 4 || e.name[0] == '.' || strcmp(&e.name[e.namlen-2], ".co") != 0)
+        if (e.name[0] == '.' || !shassuffix(e.name, e.namelen, ".co"))
           break; // skip file
-        if ((err = b_add_file(b, e.name)))
-          goto end;
+        Str path = str_makex(b->tmpbuf[1]);
+        if (!path_join(&path, filename, e.name))
+          return err_nomem;
+        if ((err = b_add_source_file(b, str_cstr(&path))))
+          return err;
         break;
       default:
         break;
     }
   }
-end:
-  err1 = sys_dir_close(d);
-  return err < 0 ? err : err1;
+  return err;
 }
 
 
@@ -403,14 +412,6 @@ void _b_free_node(BuildCtx* b, Node* n, usize ptr_count) {
   if (slab->len < ptr_count || (slab->data + slab->len - ptr_count) != (void*)n)
     return;
   slab->len -= ptr_count;
-}
-
-
-PkgNode* b_mkpkgnode(BuildCtx* b, Scope* pkgscope) {
-  auto pkg = b_mknode(b, Pkg, 0);
-  pkg->name = b->pkgid;
-  pkg->scope = pkgscope;
-  return pkg;
 }
 
 

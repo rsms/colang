@@ -8,6 +8,12 @@
 #include <stdio.h>
 #include <getopt.h>
 
+#include <stdlib.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/stat.h>
+
 #include "colib.h"
 #include "cli.h"
 #include "parse/parse.h"
@@ -38,7 +44,7 @@ static CliOption cliopts[] = {
   {"unsafe", 0, "", CLI_T_BOOL, "Build witout runtime safety checks" },
   {"small", 0, "", CLI_T_BOOL, "Bias optimizations toward minimizing code size" },
   {"output", 'o', "<file>", CLI_T_STR, "Write output to <file>" },
-  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package", .strval="example" },
+  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package" },
   {"output-asm", 0, "<file>", CLI_T_STR, "Write machine assembly to <file>" },
   {"output-ir", 0, "<file>", CLI_T_STR, "Write IR source to <file>" },
   {"opt", 'O', "<level>", CLI_T_STR, "Set specific optimization level (0-3, s)" },
@@ -72,36 +78,19 @@ static void parse_cliopts(int argc, const char** argv) {
 #define die(fmt, args...) { log("%s: " fmt, progname, ##args); exit(1); }
 
 
-// static void print_src_checksum(const Source* src) {
-//   ABuf s = abuf_make(tmpbuf, sizeof(tmpbuf));
-//   abuf_reprhex(&s, src->sha256, sizeof(src->sha256));
-//   abuf_terminate(&s);
-//   printf("%s %s\n", tmpbuf, src->filename);
-// }
+static void print_src_checksum(const Source* src) {
+  ABuf s = abuf_make(tmpbuf, sizeof(tmpbuf));
+  abuf_reprhex(&s, src->sha256, sizeof(src->sha256));
+  abuf_terminate(&s);
+  printf("%s %s\n", src->filename, tmpbuf);
+}
 
-// static void scan_all(BuildCtx* build) {
-//   Scanner scanner = {0};
-//   for (Source* src = build->srclist; src != NULL; src = src->next) {
-//     dlog("scan %s", src->filename);
-//     error err = ScannerInit(&scanner, build, src, 0);
-//     if (err)
-//       panic("ScannerInit: %s", error_str(err));
-//     while (ScannerNext(&scanner) != TNone) {
-//       printf(">> %s\n", TokName(scanner.tok));
-//     }
-//   }
-// }
 
 static void on_diag(Diagnostic* d, void* userdata) {
   Str str = str_make(tmpbuf, sizeof(tmpbuf));
   assertf(diag_fmt(d, &str), "failed to allocate memory");
   fwrite(str.v, str.len, 1, stderr);
   str_free(&str);
-}
-
-
-static error begin_pkg(BuildCtx* build, const char* pkgid) {
-  return BuildCtxInit(build, mem_ctx(), pkgid, on_diag, NULL);
 }
 
 
@@ -115,38 +104,67 @@ static error parse_pkg(BuildCtx* build) {
   }
 
   #if DEBUG
-  Str str = str_make(tmpbuf, sizeof(tmpbuf)); // for debug logging
+    Str str = str_make(tmpbuf, sizeof(tmpbuf)); // for debug logging
+    #define LOG_AST(label, n) { \
+      str.len = 0; \
+      fmtast((n), &str, 0); \
+      printf("\n——————————————————————————————— %s ———————————————————————————————" \
+             "\n%s\n", label, str_cstr(&str)); \
+    }
+  #else
+    #define LOG_AST(label, n) ((void)0)
   #endif
 
-  for (Source* src = build->srclist; src != NULL; src = src->next) {
-    auto t = logtime_start("parse");
-    FileNode* filenode;
-    error err = parse_tu(&p, build, src, pflags, &filenode);
-    if (err)
-      return err;
-    logtime_end(t);
-
-    #if DEBUG
-    str.len = 0;
-    fmtast(filenode, &str, 0);
-    printf("parse_tu =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
-    #endif
-
-    if (build->errcount)
-      break;
-
-    t = logtime_start("resolve");
-    filenode = resolve_ast(build, filenode);
-    logtime_end(t);
-
-    #if DEBUG
-    str.len = 0;
-    fmtast(filenode, &str, 0);
-    printf("resolve_ast =>\n———————————————————\n%s\n———————————————————\n", str_cstr(&str));
-    #endif
-
-    array_push(&build->pkg.a, as_Node(filenode));
+  u8 secondary_analysis_st[countof(build->sources_st)];
+  auto secondary_analysis =
+    array_make(Array(u8), secondary_analysis_st, sizeof(secondary_analysis_st));
+  if (!array_reserve(&build->pkg.a, build->sources.len) ||
+      !array_reserve(&secondary_analysis, build->sources.len))
+  {
+    return err_nomem;
   }
+
+  // parse
+  auto t = logtime_start("parse & analyze");
+  error err;
+  for (u32 i = 0; i < build->sources.len && build->errcount == 0; i++) {
+    FileNode* filenode;
+    if (( err = parse_tu(&p, build, build->sources.v[i], pflags, &filenode) ))
+      return err;
+    LOG_AST("parse", filenode);
+    // if filenode has unresolved references we need to analyze it in a secondary pass,
+    // otherwise we can do analysis right away.
+    if (NodeIsUnresolved(filenode)) {
+      secondary_analysis.v[i] = true;
+      secondary_analysis.len = i+1;
+    } else {
+      filenode = resolve_ast(build, filenode);
+      LOG_AST("analyze1", filenode);
+      // TODO: could do codegen now here if we were to split up codegen by file
+    }
+    build->pkg.a.v[i] = as_Node(filenode);
+    build->pkg.a.len++;
+  }
+  logtime_end(t);
+
+  // TODO: MT: wait for parse jobs here
+
+  // secondary analysis
+  if (secondary_analysis.len > 0) {
+    t = logtime_start("analyze2");
+    for (u32 i = 0; i < secondary_analysis.len && build->errcount == 0; i++) {
+      if (secondary_analysis.v[i]) {
+        build->pkg.a.v[i] = resolve_ast(build, build->pkg.a.v[i]);
+        LOG_AST("analyze2", build->pkg.a.v[i]);
+      }
+    }
+    logtime_end(t);
+  }
+
+  //LOG_AST("package", &build->pkg);
+
+  array_free(&secondary_analysis);
+
   return 0;
 }
 
@@ -168,7 +186,6 @@ static void set_build_opt(BuildCtx* build) {
     case 's': build->opt = OptSize; return;
   }
   die("invalid -opt: %s", opt);
-  exit(1);
 }
 
 
@@ -187,22 +204,22 @@ static void init_copath_vars() {
     const char* exepath = sys_exepath();
     usize dirlen = path_dirlen(exepath, path_dirlen(exepath, strlen(exepath)));
     // MAX(1) here causes us to use "/" (instead of ".") if path is short
-    safecheckexpr( path_dir(&s, exepath, MAX(1, dirlen)), true);
+    safenotnull( path_dir(&s, exepath, MAX(1, dirlen)) );
     safecheckexpr( str_appendc(&s, '\0'), true);
   }
 
   COPATH = getenv("COPATH");
   usize copath_offs = s.len;
   if (!COPATH || strlen(COPATH) == 0) {
-    safecheckexpr( path_join(&s, sys_homedir(), ".co"), true);
+    safenotnull( path_join(&s, sys_homedir(), ".co") );
     safecheckexpr( str_appendc(&s, '\0'), true);
   }
 
   COCACHE = getenv("COCACHE");
   usize cocache_offs = s.len;
   if (!COCACHE || strlen(COCACHE) == 0) {
-    const char* copath = COPATH ? COPATH : &s.v[copath_offs];
-    safecheckexpr( path_join(&s, copath, "cache-0.0.1"), true);
+    const char* copath = COPATH ? COPATH : memstrdup(s.v + copath_offs);
+    safenotnull( path_join(&s, copath, "cache-0.0.1") );
     safecheckexpr( str_appendc(&s, '\0'), true);
   }
 
@@ -278,6 +295,100 @@ static void init_copath_vars() {
 #endif
 
 
+
+static void set_pkgname_from_dir(BuildCtx* b, const char* filename) {
+  // sets package name to the directory's name
+  Str name = str_makex(b->tmpbuf[0]);
+  bool ok = path_abs(&name, filename);
+
+  dlog("path_abs: %s", str_cstr(&name));
+
+  const char* base = path_base(&name, name.v, name.len);
+  if UNLIKELY(!base || !ok)
+    die("%s", error_str(err_nomem));
+
+  dlog("pkgname: %s", base);
+
+  assert(name.len > 0); // path_base never produces an empty result
+  if ((base[0] == PATH_SEPARATOR && base[1] == 0) ||
+      strcmp(base, ".") == 0 || strcmp(base, "..") == 0)
+  {
+    // invalid name
+    die("unable to infer package name from directory name. Please use -pkgname");
+  }
+  b_set_pkgname(b, base);
+  str_free(&name);
+}
+
+
+static void add_sources_dir(BuildCtx* build, const char* filename, int fd) {
+  if (cli_args.len > 1) {
+    die("unexpected extra argument \"%s\" after source directory", cli_args.v[1]);
+    close(fd);
+  }
+  FSDir dir;
+  error err = sys_dir_open_fd(fd, &dir);
+  if (err || (err = b_add_source_dir(build, filename, dir)))
+    die("%s: %s", filename, error_str(err));
+  sys_dir_close(dir);
+  close(fd);
+  set_pkgname_from_dir(build, filename);
+  if (build->sources.len == 0)
+    die("%s: no .co source files found in directory", cli_args.v[0]);
+}
+
+
+static void add_sources_files(BuildCtx* build, const char* filename, int fd, usize size) {
+  Source* src = mem_alloct(build->mem, Source);
+  if UNLIKELY(!src)
+    die("%s", error_str(err_nomem));
+
+  // source_open_filex takes ownership of fd (including closing it on error)
+  error err = source_open_filex(src, filename, fd, size);
+  if (err)
+    die("%s: %s", filename, error_str(err));
+  if (!b_add_source(build, src))
+    die("%s", error_str(err_nomem));
+
+  for (u32 i = 1; i < cli_args.len; i++) {
+    filename = cli_args.v[i];
+    if ((err = b_add_source_file(build, filename)))
+      die("%s: %s", filename, error_str(err));
+  }
+}
+
+
+static void add_sources(BuildCtx* build) {
+  if (cli_args.len == 0 || strcmp(cli_args.v[0], "-") == 0)
+    die("TODO read stdin");
+
+  // first argument is either a directory or an individual source file
+  const char* filename = cli_args.v[0];
+  int fd = open(filename, O_RDONLY);
+  if (fd < 0)
+    die("%s: %s", filename, strerror(errno));
+
+  // stat file
+  struct stat info;
+  if (fstat(fd, &info) != 0)
+    die("%s: %s (stat)", filename, strerror(errno));
+
+  // directory or individual files
+  if (S_ISDIR(info.st_mode)) {
+    add_sources_dir(build, filename, fd);
+  } else {
+    add_sources_files(build, filename, fd, (usize)info.st_size);
+  }
+
+  // compute and print source checksums
+  for (u32 i = 0; i < build->sources.len; i++) {
+    Source* src = build->sources.v[i];
+    source_checksum(src);
+    print_src_checksum(src);
+  }
+}
+
+
 int main(int argc, const char** argv) {
   time_init();
   fastrand_seed(nanotime());
@@ -288,16 +399,16 @@ int main(int argc, const char** argv) {
   // parse command-line options
   parse_cliopts(argc, argv);
 
-  // initialize COPATH et al
-  PANIC_ON_ERROR( sys_init_exepath(argv[0]) );
-  init_copath_vars();
-
   // run unit tests
   #if CO_TESTING_ENABLED
     if (co_test_runall(/*filter_prefix*/NULL))
       return 1;
     if (cliopt_bool(cliopts, "test-only")) return 0;
   #endif
+
+  // initialize COPATH et al
+  PANIC_ON_ERROR( sys_init_exepath(argv[0]) );
+  init_copath_vars();
 
   // initialize built-ins
   universe_init();
@@ -307,26 +418,20 @@ int main(int argc, const char** argv) {
 
   // setup a build context for the package (can be reused)
   BuildCtx* build = memalloczt(BuildCtx);
-  PANIC_ON_ERROR( begin_pkg(build, cliopt_str(cliopts, "pkgname")) );
-  if (symlen(build->pkgid) == 0)
-    panic("empty pkgname");
+  PANIC_ON_ERROR( BuildCtxInit(build, mem_ctx(), on_diag, NULL) );
 
   // configure build mode
   build->safe  = !cliopt_bool(cliopts, "unsafe");
   build->debug = cliopt_bool(cliopts, "debug");
   set_build_opt(build);
 
-  // add a source file to the package
-  error err;
-  Source src1 = {0};
-  const char* filename = cli_args.len ? cli_args.v[0] : "examples/hello.co";
-  if (( err = source_open_file(&src1, filename) ))
-    panic("%s: %s", filename, error_str(err));
-  b_add_source(build, &src1);
+  // add sources
+  add_sources(build);
 
-  // // compute and print source checksum
-  // source_checksum(&src1);
-  // print_src_checksum(&src1);
+  // override or set package name
+  const char* pkgname = cliopt_str(cliopts, "pkgname");
+  if (pkgname && pkgname[0])
+    b_set_pkgname(build, pkgname);
 
   // parse
   PANIC_ON_ERROR( parse_pkg(build) );

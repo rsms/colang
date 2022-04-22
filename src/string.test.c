@@ -229,7 +229,9 @@ DEF_TEST(strim_end) {
     const char* expected_output;
   } tests[] = {
     { "hello  ", ' ', "hello" },
-    { "hello", ' ', "hello" },
+    { "hello",   ' ', "hello" },
+    { "////",    '/', "" },
+    { "/",       '/', "" },
   };
   for (usize i = 0; i < countof(tests); i++) {
     usize len = strim_end(tests[i].input, strlen(tests[i].input), tests[i].trimc);

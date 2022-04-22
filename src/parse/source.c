@@ -19,38 +19,66 @@ static error source_init(Source* src, const char* filename) {
   return 0;
 }
 
-error source_open_file(Source* src, const char* filename) {
-  #ifdef CO_NO_LIBC
-    return err_not_supported;
-  #else
-    error err = source_init(src, filename);
-    if (err)
-      return err;
-
-    src->fd = open(filename, O_RDONLY);
-    if (src->fd < 0)
-      return error_from_errno(errno);
-
-    struct stat st;
-    if (fstat(src->fd, &st) != 0) {
-      int _errno = errno;
-      close(src->fd);
-      return error_from_errno(_errno);
-    }
-    src->len = (size_t)st.st_size;
-
-    return 0;
-  #endif // CO_NO_LIBC
+error source_close(Source* src) {
+  error err = source_body_close(src);
+  if (src->fd >= 0) {
+    #ifdef CO_NO_LIBC
+      return err_invalid;
+    #else
+      if (close(src->fd) != 0 && err == 0)
+        err = error_from_errno(errno);
+      src->fd = -1;
+    #endif
+  }
+  memfree(src->filename, strlen(src->filename) + 1);
+  array_free(&src->lineoffs);
+  return err;
 }
 
-error source_open_data(Source* src, const char* filename, const char* text, u32 len){
+error source_open_data(Source* src, const char* filename, const u8* body, u32 len){
   error err = source_init(src, filename);
   if (err)
     return err;
   src->fd = -1;
-  src->body = (const u8*)text;
+  src->body = body;
   src->len = len;
   return 0;
+}
+
+error source_open_filex(Source* src, const char* filename, int fd, usize len) {
+  #ifdef CO_NO_LIBC
+    return err_not_supported;
+  #else
+    if (fd < 0)
+      return err_badfd;
+    error err = source_init(src, filename);
+    if (err) {
+      close(fd);
+      return err;
+    }
+    src->fd = fd;
+    src->len = len;
+    return 0;
+  #endif // CO_NO_LIBC
+}
+
+error source_open_file(Source* src, const char* filename) {
+  #ifdef CO_NO_LIBC
+    return err_not_supported;
+  #else
+    int fd = open(filename, O_RDONLY);
+    if (fd < 0)
+      return error_from_errno(errno);
+
+    struct stat st;
+    if (fstat(fd, &st) != 0) {
+      error err = error_from_errno(errno);
+      close(fd);
+      return err;
+    }
+
+    return source_open_filex(src, filename, fd, (usize)st.st_size);
+  #endif // CO_NO_LIBC
 }
 
 error source_body_open(Source* src) {
@@ -84,22 +112,6 @@ error source_body_close(Source* src) {
 
   src->body = NULL;
   return 0;
-}
-
-error source_close(Source* src) {
-  error err = source_body_close(src);
-  if (src->fd > -1) {
-    #ifdef CO_NO_LIBC
-      return err_invalid;
-    #else
-      if (close(src->fd) != 0 && err == 0)
-        err = error_from_errno(errno);
-      src->fd = -1;
-    #endif
-  }
-  memfree(src->filename, strlen(src->filename) + 1);
-  array_free(&src->lineoffs);
-  return err;
 }
 
 error source_checksum(Source* src) {

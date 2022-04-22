@@ -6,15 +6,17 @@
 #pragma once
 BEGIN_INTERFACE
 
-typedef uintptr         FSDir;        // file directory handle
+typedef void*           FSDir;        // file directory handle
 typedef struct FSDirEnt FSDirEnt;     // directory entry
 typedef u8              FSDirEntType; // type of directory entry
 
+#define SYS_DIR_NAMEBUF_SIZE 2048
+
 struct FSDirEnt {
-  isize        ino;       // inode number
-  FSDirEntType type;      // type of file (not supported by all filesystems; 0 if unknown)
-  char         name[256]; // filename (null terminated)
-  u16          namlen;    // length of d_name (not including terminating null byte)
+  isize        ino;     // inode number
+  FSDirEntType type;    // type of file (not supported by all filesystems; 0 if unknown)
+  char*        name;    // filename (null terminated, =namebuf passed to sys_dir_read)
+  u32          namelen; // length of d_name (not including terminating null byte)
 };
 
 enum FSDirEntType {
@@ -37,7 +39,7 @@ const char* sys_homedir();
 
 error sys_dir_open(const char* filename, FSDir* result);
 error sys_dir_open_fd(int fd, FSDir* result);
-error sys_dir_read(FSDir, FSDirEnt* result); // returns 1 on success, 0 on EOF
+bool sys_dir_read(FSDir d, FSDirEnt* ent, char* namebuf, usize namebufcap, error* err_out);
 error sys_dir_close(FSDir);
 
 // sys_exepath returns the absolute path of the current executable.

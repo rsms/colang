@@ -711,8 +711,8 @@ static Node* resolve_call_template_fun(R* r, CallNode* n, TemplateNode* tpl) {
     dlog2("  %s = %s", tpl->params.v[i]->name, FMTNODE(tplvals.v[i],0));
   #endif
 
-  // Have we an equivalent instance already?
-  // Resolve function prototype (thus temporarily clearing body), then compute its type id
+  // Have we generated an instance already that we can reference?
+  // Resolve function prototype (without body) and compute its type id.
   Expr* body = fn->body; fn->body = NULL;
   FunNode* fn2 = as_FunNode(atr_visit_template(r->build, as_Node(fn), &tplvals));
   FunTypeNode* ft2 = resolve_fun_proto(r, fn2);

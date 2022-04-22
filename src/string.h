@@ -61,6 +61,7 @@ typedef Array(char) Str;
 
 // functions provided by array implementation (str_* is a thin veneer on array_*)
 static Str  str_make(char* nullable storage, usize storagesize);
+#define     str_makex(storage) str_make((storage),sizeof(storage))
 static void str_init(Str*, char* nullable storage, usize storagesize);
 static void str_clear(Str*);
 static void str_free(Str*);

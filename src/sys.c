@@ -111,7 +111,7 @@ error sys_dir_open(const char* filename, FSDir* result) {
   DIR* d = opendir(filename);
   if (d == NULL)
     return error_from_errno(errno);
-  *result = (FSDir)d;
+  *result = d;
   return 0;
 }
 
@@ -119,7 +119,7 @@ error sys_dir_open_fd(int fd, FSDir* result) {
   DIR* d = fdopendir(fd);
   if (d == NULL)
     return error_from_errno(errno);
-  *result = (FSDir)d;
+  *result = d;
   return 0;
 }
 
@@ -133,16 +133,18 @@ error sys_dir_close(FSDir d) {
   return 0;
 }
 
-error sys_dir_read(FSDir d, FSDirEnt* ent) {
-  memset(ent, 0, sizeof(FSDirEnt));
-
-  DIR* dirp = (DIR*)d;
-  if (dirp == NULL)
-    return err_invalid;
+bool sys_dir_read(FSDir d, FSDirEnt* ent, char* namebuf, usize namebufcap, error* err_out) {
+  DIR* dirp = d;
+  if (dirp == NULL) {
+    *err_out = err_invalid;
+    return false;
+  }
   
   struct dirent* e = readdir(dirp);
-  if (e == NULL)
-    return error_from_errno(errno); // 0 if EOF
+  if (e == NULL) {
+    *err_out = error_from_errno(errno);
+    return false;
+  }
 
   ent->ino = e->d_ino;
 
@@ -152,14 +154,26 @@ error sys_dir_read(FSDir d, FSDirEnt* ent) {
     ent->type = FSDirEnt_UNKNOWN;
   #endif
 
-  memcpy(ent->name, e->d_name, MIN(sizeof(ent->name), sizeof(e->d_name)));
+  assert(namebufcap-1 <= U32_MAX);
   #ifdef _DIRENT_HAVE_D_NAMLEN
-    ent->namlen = e->d_namlen;
+    ent->namelen = e->d_namlen;
   #else
-    ent->namlen = strlen(e->d_name);
+    usize namelen = strlen(e->d_name);
+    safecheck(namelen <= U32_MAX);
+    ent->namelen = (u32)namelen;
   #endif
 
-  return 1;
+  if (ent->namelen >= namebufcap) {
+    *err_out = err_name_too_long;
+    return false;
+  }
+
+  ent->name = namebuf;
+  memcpy(namebuf, e->d_name, (usize)ent->namelen);
+  namebuf[ent->namelen] = 0;
+
+  *err_out = 0;
+  return true;
 }
 
 #endif // !defined(CO_NO_LIBC)

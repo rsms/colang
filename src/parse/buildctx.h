@@ -61,13 +61,13 @@ struct BuildCtx {
   PosMap          posmap;    // maps Source <-> Pos
 
   PkgNode pkg;
-  Sym     pkgid;     // e.g. "bar/cat"
   Scope   pkgscope;
 
   NodeSlab  nodeslab_head; // first slab + list of additional data slabs
   NodeSlab* nodeslab_curr; // current slab
 
-  Source* nullable srclist; // list of sources (linked via Source.next)
+  Array(Source*) sources; // list of sources
+  Source*        sources_st[16];
 
   // diagnostics
   DiagHandler* nullable diagh;     // diagnostics handler
@@ -76,18 +76,21 @@ struct BuildCtx {
   u32                   errcount;  // total number of errors since last call to build_init
 
   // temporary buffers
-  char       tmpbuf[2][512];
+  char       tmpbuf[2][1024];
   Node_union tmpnode;
 };
 
 // BuildCtxInit initializes a BuildCtx structure.
 // userdata is passed along to DiagHandler.
-error BuildCtxInit(
-  BuildCtx*, Mem, const char* pkgid, DiagHandler* nullable, void* nullable userdata);
+error BuildCtxInit(BuildCtx*, Mem, DiagHandler* nullable, void* nullable userdata);
 
 // BuildCtxDispose frees up internal resources.
 // BuildCtx can be reused with BuildCtxInit after this call.
 void BuildCtxDispose(BuildCtx*);
+
+// b_set_pkgname sets b->pkg.name to the Sym for pkgname,
+// or kSym__ if pkgname is empty or NULL.
+void b_set_pkgname(BuildCtx*, const char* nullable pkgname);
 
 // b_diag invokes b->diagh with message (the message's bytes are copied into b->mem)
 void b_diag(BuildCtx*, DiagLevel, PosSpan, const char* message);
@@ -113,9 +116,12 @@ Node* b_err_nomem(BuildCtx*, PosSpan);
 
 
 // b_add_source adds src to b->srclist
-void b_add_source(BuildCtx*, Source* src);
+bool b_add_source(BuildCtx*, Source* src); // false on memory alloc failure
+error b_add_source_data(BuildCtx*, const char* filename, const u8* body, u32 len);
 error b_add_source_file(BuildCtx*, const char* filename);
-error b_add_source_dir(BuildCtx*, const char* filename); // add all *.co files in dir
+
+// b_add_source_dir adds all *.co files in dir to b->srclist
+error b_add_source_dir(BuildCtx*, const char* filename, FSDir dir);
 
 // All b_mknode* functions report memory-allocation failures via b_err_nomem.
 
@@ -160,12 +166,6 @@ void _b_free_node(BuildCtx* b, Node* n, usize nptrs);
 
 #define b_copy_node(b, src) ( (__typeof__(*(src))*)_b_copy_node((b),as_const_Node(src)) )
 Node* _b_copy_node(BuildCtx* b, const Node* src);
-
-// b_mkpkgnode creates a package node for b, setting
-//   pkg->name = b->pkgid
-//   pkg->scope = pkgscope
-// Note: returns b->tmpnode on memory-allocation failure.
-PkgNode* b_mkpkgnode(BuildCtx* b, Scope* pkgscope);
 
 
 // b_typeid_assign computes the type id of t, adds it to b->syms and assigns it to t->tid

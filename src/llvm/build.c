@@ -843,7 +843,7 @@ static void build_pkg(B* b, PkgNode* n) {
     FileNode* file = as_FileNode(na->v[i]);
     if (i == 0) {
       Str dir = str_make(b->build->tmpbuf[0], sizeof(b->build->tmpbuf[0]));
-      safecheckexpr( path_dir(&dir, file->name, strlen(file->name)), true);
+      safenotnull( path_dir(&dir, file->name, strlen(file->name)) );
       LLVMSetSourceFileName(b->mod, dir.v, dir.len);
       str_free(&dir);
     }

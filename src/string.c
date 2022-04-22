@@ -140,11 +140,9 @@ const char* strim_begin(const char* s, usize len, char trimc) {
 
 
 usize strim_end(const char* s, usize len, char trimc) {
-  if (len == 0)
-    return 0;
-  while (s[--len] == trimc && len != 0) {
+  for (; len && s[len - 1] == trimc; len--) {
   }
-  return len + 1;
+  return len;
 }
 
 

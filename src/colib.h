@@ -652,11 +652,21 @@ ASSUME_NONNULL_BEGIN
 #define floor  __builtin_floor
 #define ceil   __builtin_ceil
 
-#define memset  __builtin_memset
-#define memcpy  __builtin_memcpy
-#define memcmp  __builtin_memcmp
-#define memchr  __builtin_memchr
-#define memmove __builtin_memmove
+#ifndef memset
+  #define memset __builtin_memset
+#endif
+#ifndef memcpy
+  #define memcpy __builtin_memcpy
+#endif
+#ifndef memcmp
+  #define memcmp __builtin_memcmp
+#endif
+#ifndef memchr
+  #define memchr __builtin_memchr
+#endif
+#ifndef memmove
+  #define memmove __builtin_memmove
+#endif
 
 #define strlen __builtin_strlen
 #define strcmp __builtin_strcmp

@@ -21,7 +21,8 @@ struct Source {
 };
 
 error source_open_file(Source* src, const char* filename);
-error source_open_data(Source* src, const char* filename, const char* text, u32 len);
+error source_open_filex(Source* src, const char* filename, int fd, usize len); // takes fd
+error source_open_data(Source* src, const char* filename, const u8* body, u32 len);
 error source_body_open(Source* src);
 error source_body_close(Source* src);
 error source_close(Source* src); // src can be reused with open after this call
