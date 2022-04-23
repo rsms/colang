@@ -1,41 +1,12 @@
 // this file is used for development and may not make sense or even compile
 
 
-fun multiply<T>(a T, b int) T
-  a * T(b)
-
-fun main(x int)
-  // multiply(1, x)
-  // multiply(1, x)
-
-  // var a i8 = 1
-  // multiply(a, 2)
-
-  // call add in wip2.co (compile with both source files)
-  add(x, 2)
-
-  // multiply(i8(2), i8(x)) // TODO: build_typecast in llvm/build.c
-
-
-
-
-// fun foo<T,K>(a T, b int, c K, d T) int
-//   // var c Y = 3 // TODO
-//   // a * b + c
-//   a * b + c
-
-// fun main(x i8) int
-//   // foo<int>(x, 2) // TODO <explicit_type>
-//   foo(1, 2, x, 4)
-
-
-
 // unsafe fun to_rawptr<T>(_ &T) rawptr
 
-// fun main(x, y int) rawptr
-//   hello = "Hello world\n"
-//   var p = unsafe to_rawptr(hello)
-//   p
+fun main(x, y int) rawptr
+  hello = "Hello world\n"
+  var p = unsafe to_rawptr(hello)
+  p
 
 
 

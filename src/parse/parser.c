@@ -664,7 +664,7 @@ static Type* presolve_id_type(Parser* p, IdTypeNode* id) {
 
 static Type* nullable set_ctxtype(Parser* p, Type* nullable ctxtype) {
   Type* prev = p->ctxtype;
-  if (ctxtype == kType_ideal || ctxtype->kind == NTemplateParamType) {
+  if (ctxtype == kType_ideal || (ctxtype && ctxtype->kind == NTemplateParamType)) {
     p->ctxtype = NULL;
   } else {
     p->ctxtype = unbox_id_type(ctxtype);
