@@ -198,7 +198,9 @@ error b_add_source_dir(BuildCtx* b, const char* filename, FSDir dir) {
         Str path = str_makex(b->tmpbuf[1]);
         if (!path_join(&path, filename, e.name))
           return err_nomem;
-        if ((err = b_add_source_file(b, str_cstr(&path))))
+        err = b_add_source_file(b, str_cstr(&path));
+        str_free(&path);
+        if (err)
           return err;
         break;
       default:
@@ -207,27 +209,6 @@ error b_add_source_dir(BuildCtx* b, const char* filename, FSDir dir) {
   }
   return err;
 }
-
-
-#if rstrstrstrstrstt
-gdata* d = GSLAB_ALLOC(g, datavhead, datavcurr);
-#define GSLAB_ALLOC(g, HEADFIELD, CURRFIELD, ERRRET...) ({                          \
-  if UNLIKELY(g->CURRFIELD->len == countof(g->HEADFIELD.data)) {                    \
-    if (g->CURRFIELD->next) {                                                       \
-      g->CURRFIELD = g->CURRFIELD->next;                                            \
-      assert(g->CURRFIELD->len == 0);                                               \
-    } else {                                                                        \
-      __typeof__(g->CURRFIELD) tmp__ = rmem_alloc(g->a->mem, sizeof(g->HEADFIELD)); \
-      if (check_alloc(g, tmp__))                                                    \
-        return ERRRET;                                                              \
-      tmp__->len = 0;                                                               \
-      tmp__->next = g->CURRFIELD;                                                   \
-      g->CURRFIELD = tmp__;                                                         \
-    }                                                                               \
-  }                                                                                 \
-  &g->CURRFIELD->data[g->CURRFIELD->len++];                                         \
-})
-#endif
 
 
 static NodeSlab* nullable nodeslab_grow(BuildCtx* b) {

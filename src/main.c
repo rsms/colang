@@ -323,8 +323,9 @@ static void set_pkgname_from_dir(BuildCtx* b, const char* filename) {
 
 static void add_sources_dir(BuildCtx* build, const char* filename, int fd) {
   if (cli_args.len > 1) {
+    // TODO: Allow multiple directories to build multiple packages.
+    // Requires refactoring this code to manage multiple BuildCtx instances.
     die("unexpected extra argument \"%s\" after source directory", cli_args.v[1]);
-    close(fd);
   }
   FSDir dir;
   error err = sys_dir_open_fd(fd, &dir);

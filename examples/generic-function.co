@@ -1,0 +1,8 @@
+fun multiply<T>(a T, b int) T
+  a * T(b)
+
+fun main(x int)
+  multiply(1, x)
+
+  var a i8 = 1
+  multiply(a, 2)
