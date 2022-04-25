@@ -711,7 +711,7 @@ static Val build_fun(B* b, FunNode* n, const char* vname) {
   char fname_buf[64];
   Str fname = str_make(fname_buf, sizeof(fname_buf));
   str_appendcstr(&fname, vname);
-  if (!is_main) {
+  if (!is_main && n->body) {
     // TODO: use type ID for parameters only?
     Sym tid = b_typeid(b->build, n->type);
     str_append(&fname, tid, symlen(tid));
