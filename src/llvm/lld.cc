@@ -91,6 +91,20 @@ static error build_args(
   } else {
     // Rest of the world (flavor=!lld-link, flagstyle="-flag")
     auto archname = (const char*)Triple::getArchTypeName(triple.getArch()).bytes_begin();
+    switch (triple.getOS()) {
+      case Triple::Darwin:
+      case Triple::MacOSX:
+      case Triple::IOS:
+      case Triple::TvOS:
+      case Triple::WatchOS:
+        if (triple.getArch() == Triple::ArchType::aarch64) {
+          // LLD expects "arm64", not "aarch64", for these platforms
+          archname = "arm64";
+        }
+        break;
+      default:
+        break;
+    }
     args.emplace_back("-arch");
     args.emplace_back(archname);
     if (options.outfile) {
@@ -120,7 +134,6 @@ static error build_args(
       // flavor=ld64.lld
       //args.emplace_back("-static");
       // ld64.lld: warning: Option `-static' is not yet implemented. Stay tuned...
-      args.emplace_back("-no_pie");
       if (options.strip_dead) {
         // optimize
         args.emplace_back("-dead_strip"); // Remove unreferenced code and data
@@ -141,10 +154,18 @@ static error build_args(
       // flavor=ld64.lld
       args.emplace_back("-platform_version");
       args.emplace_back("macos");
-      args.emplace_back("10.15");
-      args.emplace_back("10.15");
-      args.emplace_back("-lsystem"); // macOS's "syscall API"
-      // args.emplace_back("-framework"); args.emplace_back("Foundation");
+      if (triple.getArch() == Triple::ArchType::aarch64) {
+        // 11.0.0 for arm64
+        args.emplace_back("11.0.0"); // see golang.org/issues/30488
+        args.emplace_back("11.0.0");
+        args.emplace_back( // TODO: what if this path doesn't exist?
+          "-L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib");
+      } else {
+        // 10.9.0 for x86 (see golang.org/issues/30488)
+        args.emplace_back("10.9.0");
+        args.emplace_back("10.9.0");
+      }
+      args.emplace_back("-lSystem"); // macOS's "syscall API"
       break;
     case Triple::IOS:
     case Triple::TvOS:
@@ -224,7 +245,8 @@ static error link_main(LinkFun linkf, llvm::ArrayRef<const char*> args) {
   auto errs = errout.str();
   if (errs.size() > 0) {
     fwrite(errs.data(), errs.size(), 1, stderr);
-    err = _lld_is_corrupt ? err_mfault : err_invalid; // TODO: better error code
+    if (_lld_is_corrupt)
+      err = err_mfault; // TODO: better error code
   }
 
   return err;
