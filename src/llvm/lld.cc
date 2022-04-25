@@ -152,6 +152,7 @@ static error build_args(
     case Triple::Darwin:
     case Triple::MacOSX:
       // flavor=ld64.lld
+      // -platform_version <platform> <min_version> <sdk_version>
       args.emplace_back("-platform_version");
       args.emplace_back("macos");
       if (triple.getArch() == Triple::ArchType::aarch64) {
@@ -166,6 +167,7 @@ static error build_args(
         args.emplace_back("10.9.0");
       }
       args.emplace_back("-lSystem"); // macOS's "syscall API"
+      //args.emplace_back("-adhoc_codesign");
       break;
     case Triple::IOS:
     case Triple::TvOS:
@@ -244,6 +246,11 @@ static error link_main(LinkFun linkf, llvm::ArrayRef<const char*> args) {
 
   auto errs = errout.str();
   if (errs.size() > 0) {
+    // TODO: split up over lines and ignore the following lines when linking
+    // for Apple platforms:
+    //   "ld64.lld: warning: /usr/lib/libSystem.dylib has version 10.15.0,\n"
+    //   "which is newer than target minimum of 10.9.0"
+    // which originates in checkCompatibility at llvm-src/lld/MachO/InputFiles.cpp
     fwrite(errs.data(), errs.size(), 1, stderr);
     if (_lld_is_corrupt)
       err = err_mfault; // TODO: better error code
