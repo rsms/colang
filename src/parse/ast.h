@@ -215,7 +215,7 @@ struct BasicTypeNode { Type;
   Sym      name;
 };
 struct ArrayTypeNode { Type;
-  u32            size;     // used for array. 0 until sizeexpr is resolved
+  u64            size;     // used for array. 0 until sizeexpr is resolved
   Expr* nullable sizeexpr; // NULL for inferred types
   Type*          elem;
 };

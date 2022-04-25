@@ -23,8 +23,7 @@ typedef LLVMBasicBlockRef Block;
 
 
 typedef enum {
-  BFL_MUT  = 1 << 0,
-  BFL_RVAL = 1 << 1,
+  BFL_RVAL = 1 << 0,
 } BFlags;
 
 
@@ -208,13 +207,16 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
 // we check for so many null values in this file that a shorthand increases legibility
 #define notnull assertnotnull_debug
 
-
 #define FMTNODE(n,bufno) \
   fmtnode(n, b->build->tmpbuf[bufno], sizeof(b->build->tmpbuf[bufno]))
 
 
 #define CHECKNOMEM(expr) \
   ( UNLIKELY(expr) ? (b_errf(b->build, (PosSpan){0}, "out of memory"), true) : false )
+
+
+static Val make_uint(Typ t, u64 v) { return LLVMConstInt(t, v, /*sign_extend*/false); }
+static Val make_sint(Typ t, u64 v) { return LLVMConstInt(t, v, /*sign_extend*/true); }
 
 
 static error builder_init(B* b, CoLLVMModule* m) {
@@ -261,8 +263,8 @@ static error builder_init(B* b, CoLLVMModule* m) {
   b->t_i8ptr = LLVMPointerType(b->t_i8, 0);
 
   // initialize common constant values
-  b->v_i32_0 = LLVMConstInt(b->t_i32, 0, /*signext*/false);
-  b->v_int_0 = LLVMConstInt(b->t_int, 0, /*signext*/false);
+  b->v_i32_0 = make_uint(b->t_i32, 0);
+  b->v_int_0 = make_uint(b->t_int, 0);
   b->v_intptr_0 = LLVMConstNull(LLVMPointerType(b->t_int, 0));
 
   // FPM: Apply per-function optimizations. (NULL to disable.)
@@ -875,34 +877,6 @@ static Val build_floatlit(B* b, FloatLitNode* n, const char* vname) {
 }
 
 
-static Val build_cslice(B* b, Val array_ptr) {
-  // (cslice<T>){ GEP(array_ptr), len(array_ptr) }
-  Typ array_ty = LLVMTypeOf(array_ptr); // i.e. [N x T]*
-  assert_llvm_type_isptrkind(array_ty, LLVMArrayTypeKind);
-  assert(LLVMIsConstant(array_ptr));
-  Typ elem_ty = LLVMGetElementType(array_ty); // i.e. [N x T]
-  Val indices[] = { b->v_i32_0, b->v_i32_0 };
-  Val constfields[] = {
-    LLVMConstGEP2(elem_ty, array_ptr, indices, countof(indices)),
-    LLVMConstInt(b->t_int, CoLLVMArrayTypeLength(elem_ty), /*signext*/false),
-  };
-  bool packed = false;
-  return LLVMConstStructInContext(b->ctx, constfields, countof(constfields), packed);
-}
-
-
-static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
-  if (n->irval)
-    return n->irval;
-  assert(NodeIsConst(n));
-  if (!vname[0])
-    vname = "str";
-  Val gv = CoLLVMBuildGlobalString(b->builder, n->p, n->len, vname); // [N x i8]*
-  n->irval = build_cslice(b, gv); // [N x i8]* => { u8* p=GEP, len=N }
-  return n->irval;
-}
-
-
 static Val build_id(B* b, IdNode* n, const char* vname) {
   assertnotnull(n->target); // must be resolved
   if (!n->irval)
@@ -1076,8 +1050,46 @@ static Val build_tuple(B* b, TupleNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
 }
 
+
 static Val build_array(B* b, ArrayNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
+  // start by building initializer values
+  Val vals_st[16];
+  auto vals = array_make(Array(Val), vals_st, sizeof(vals_st));
+  if CHECKNOMEM(!array_reserve(&vals, n->a.len))
+    return NULL;
+  vals.len = n->a.len;
+
+  u32 nconst = 0;
+  for (u32 i = 0; i < n->a.len; i++) {
+    Val v = build_rval(b, n->a.v[i], "");
+    vals.v[i] = v;
+    nconst += (u32)LLVMIsConstant(v);
+  }
+
+  Typ arrayty = get_type(b, n->type);
+  Typ elemty = get_type(b, as_ArrayTypeNode(n->type)->elem);
+
+  if (vname[0] == 0)
+    vname = "array";
+
+  if (nconst == vals.len) {
+    // all initializers are constant
+    Val init = LLVMConstArray(elemty, vals.v, vals.len);
+    // TODO: use preallocated memory (for parent AST node)
+    // store as global
+    Val ptr = LLVMAddGlobal(b->mod, arrayty, vname);
+    LLVMSetLinkage(ptr, LLVMPrivateLinkage);
+    LLVMSetInitializer(ptr, init);
+    LLVMSetGlobalConstant(ptr, true);
+    LLVMSetUnnamedAddr(ptr, true);
+    n->irval = ptr;
+  } else {
+    dlog("TODO non-const array  %s:%d", __FILE__, __LINE__);
+    n->irval = b->v_int_0;
+  }
+
+  array_free(&vals);
+  return n->irval;
 }
 
 
@@ -1174,9 +1186,171 @@ static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
 }
 
 
-static Val build_ref(B* b, RefNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
+
+static Val build_cslice_struct1(B* b, Val array_ptr) {
+  // (cslice<T>){ GEP(array_ptr), len(array_ptr) }
+  Typ array_ty = LLVMTypeOf(array_ptr); // i.e. [N x T]*
+  assert_llvm_type_isptrkind(array_ty, LLVMArrayTypeKind);
+  assert(LLVMIsConstant(array_ptr));
+  Typ elem_ty = LLVMGetElementType(array_ty); // i.e. [N x T]
+  Val indices[] = { b->v_i32_0, b->v_i32_0 };
+  Val constfields[] = {
+    LLVMConstGEP2(elem_ty, array_ptr, indices, countof(indices)),
+    make_uint(b->t_int, CoLLVMArrayTypeLength(elem_ty)),
+  };
+  bool packed = false;
+  return LLVMConstStructInContext(b->ctx, constfields, countof(constfields), packed);
 }
+
+
+static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
+  if (n->irval)
+    return n->irval;
+  assert(NodeIsConst(n));
+  if (!vname[0])
+    vname = "str";
+  Val gv = CoLLVMBuildGlobalString(b->builder, n->p, n->len, vname); // [N x i8]*
+  n->irval = build_cslice_struct1(b, gv); // [N x i8]* => { u8* p=GEP, len=N }
+  // TODO: convert to using build_cslice_struct
+  return n->irval;
+}
+
+
+// build_slice_struct does array[start:len]
+static Val build_slice_struct(
+  B* b, Typ array_ty, Val srcv, Val startv, Val lenv, Val capv)
+{
+  assert_llvm_type_isptr(LLVMTypeOf(srcv));
+  // struct slice<T> { T* p; uint len; uint cap; } = { GEP(srcv, 0, start), lenv, capv }
+  if (!LLVMIsConstant(srcv) || !LLVMIsConstant(startv) ||
+      !LLVMIsConstant(lenv) || !LLVMIsConstant(capv))
+  {
+    dlog("TODO: non-const build_slice_struct");
+    return b->v_int_0;
+  }
+  assert(LLVMConstIntGetZExtValue(lenv) <= LLVMConstIntGetZExtValue(capv));
+  Val fieldvals[] = {
+    // GEP indices:
+    //   For e.g. array_ty="&[int 3]":
+    //   - the first index is to the Nth array at the address ([int 3])
+    //   - the second index is to the Nth element of the array (int)
+    //   For ConstGEP the indices "roll around" automatically:
+    //   - GEP(srcv, 0, 2) =>
+    //     3rd element of the firt array at srcv
+    //   - GEP(srcv, 0, 3) => GEP(srcv, 1, 0) =>
+    //     0th element of the next array at srcv
+    LLVMConstGEP2(array_ty, srcv, (Val[]){ b->v_i32_0, startv }, 2),
+    lenv,
+    capv,
+  };
+  return LLVMConstStructInContext(b->ctx, fieldvals, countof(fieldvals), /*packed*/false);
+}
+
+
+static Val build_cslice_struct(B* b, Typ array_ty, Val srcv, Val startv, Val lenv) {
+  // struct cslice<T> { const T* p; uint len; } = { GEP(srcv, 0, start), lenv }
+  assert_llvm_type_isptr(LLVMTypeOf(srcv));
+  if (!LLVMIsConstant(srcv) || !LLVMIsConstant(startv) ||  !LLVMIsConstant(lenv)) {
+    dlog("TODO: non-const build_cslice_struct");
+    return b->v_int_0;
+  }
+  Val fieldvals[] = {
+    LLVMConstGEP2(array_ty, srcv, (Val[]){ b->v_i32_0, startv }, 2),
+    lenv,
+  };
+  return LLVMConstStructInContext(b->ctx, fieldvals, countof(fieldvals), /*packed*/false);
+}
+
+
+// len(v)
+static Val build_len(B* b, Type* t, Val v) {
+  if (!is_ArrayTypeNode(t)) {
+    dlog("TODO %s (%s) %s:%d", __FUNCTION__, nodename(t), __FILE__, __LINE__);
+    return b->v_int_0;
+  }
+  ArrayTypeNode* at = as_ArrayTypeNode(t);
+  if (at->size) {
+    // sized type, e.g. [int 3]
+    return make_uint(b->t_int, at->size);
+  }
+  dlog("TODO %s (%s) %s:%d", __FUNCTION__, nodename(t), __FILE__, __LINE__);
+  return b->v_int_0;
+}
+
+
+static Val build_array_ref(B* b, RefNode* n, const char* vname) {
+  // references to arrays are special since they yield slices:
+  //
+  // unsafe mode:
+  //       [T N] │ T mem[N]
+  //       [T]   │ struct slice  { T* p; uint len; uint cap; }
+  //   mut&[T N] │ T*
+  //      &[T N] │ const T*
+  //   mut&[T]   │ struct slice  { T* p; uint len; uint cap; }
+  //      &[T]   │ struct cslice { const T* p; uint len; }
+  //
+  // safe mode:
+  //       [T N] │ T mem[N]
+  //       [T]   │ struct slice  { T* p; uint len; uint cap; }
+  //   mut&[T N] │ struct slice  { T* p; uint len; uint cap; }
+  //      &[T N] │ struct cslice { const T* p; uint len; }
+  //   mut&[T]   │ struct slice  { T* p; uint len; uint cap; }
+  //      &[T]   │ struct cslice { const T* p; uint len; }
+  //
+
+  RefTypeNode* t = as_RefTypeNode(n->type);
+  ArrayTypeNode* at = as_ArrayTypeNode(t->elem);
+  assert(is_ArrayTypeNode(n->target->type));
+
+  Val srcv = build_lval(b, n->target, "");
+  assert_llvm_type_isptr(LLVMTypeOf(srcv));
+  Typ srct = get_type(b, n->target->type);
+
+  Val lenv = build_len(b, n->target->type, srcv);
+  Val capv = lenv; // TODO FIXME
+
+  if (at->size) {
+    // e.g. &[int 3]
+    // srcv is a pointer to the array, e.g. [3 x i64]*
+    lenv = make_uint(b->t_int, at->size);
+    capv = lenv;
+  } else {
+    // e.g. &[int]
+    // srcv is a pointer to a slice or cslice, e.g. { i64*, i64, i64 }* or { i64*, i64 }*
+    dlog("NodeIsConst(n->target): %d", NodeIsConst(n->target));
+    Val gepidx[] = { b->v_i32_0, b->v_i32_0 };
+    dlog("srct: %s", fmttyp(srct));
+    dlog("srcv: %s", fmtval(srcv));
+    srcv = LLVMBuildInBoundsGEP2(b->builder, srct, srcv, gepidx, countof(gepidx), "");
+    dlog("srcv: %s", fmtval(srcv));
+    dlog("LLVMTypeOf(srcv): %s", fmttyp(LLVMTypeOf(srcv)));
+  }
+
+  // type of result (sans pointer), e.g. { i8*, i64, i64 }
+  Typ array_ty = get_type(b, at);
+
+  if (NodeIsConst(n)) {
+    // struct cslice<T> { const T* p; uint len; }
+    n->irval = build_cslice_struct(b, array_ty, srcv, b->v_i32_0, lenv);
+    return n->irval;
+  }
+  // struct slice<T> { T* p; uint len; uint cap; }
+  n->irval = build_slice_struct(b, array_ty, srcv, b->v_i32_0, lenv, capv);
+  return n->irval;
+}
+
+
+static Val build_ref(B* b, RefNode* n, const char* vname) {
+  RefTypeNode* t = as_RefTypeNode(n->type);
+  if (is_ArrayTypeNode(t->elem))
+    return n->irval = build_array_ref(b, n, vname);
+
+  dlog("TODO: ref to non-array (%s) type", nodename(t->elem));
+  n->irval = build_lval(b, n->target, "");
+  assert_llvm_type_isptr(LLVMTypeOf(n->irval));
+  return n->irval;
+}
+
 
 static Val build_namedarg(B* b, NamedArgNode* n, const char* vname) {
   dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;

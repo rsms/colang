@@ -1,12 +1,36 @@
 // this file is used for development and may not make sense or even compile
 
 
-// unsafe fun to_rawptr<T>(_ &T) rawptr
+fun main(x int)
+  // a = [1,2,3] ; r = &a // a promoted to mut, typeof(r) = mut&[int 3]
+  // const r = &[1,2,3] // typeof(r) = &[int 3]
+  // var r mut&[i8] ; r = &[1,2,3] // typeof(r) = mut&[i8]
+  var v [i8] ; r = &v
 
-fun main(x, y int) rawptr
-  hello = "Hello world\n"
-  var p = unsafe to_rawptr(hello)
-  p
+
+/* C
+typedef struct cslice { const void* p; uint len; } cslice;
+void main(i64 x) {
+  cslice v = {NULL,0};
+  const i8 tmp[3] = {1,2,3};
+  v = (cslice){tmp,3};
+}
+*/
+
+// // unsafe fun to_rawptr<T>(_ &T) rawptr
+
+// fun bytes() rawptr
+//   hello = "Hello world\n"
+//   var p = unsafe to_rawptr(hello)
+//   p
+
+// fun ints() rawptr
+//   v = [1,2,3]
+//   var p = unsafe to_rawptr(v)
+//   p
+
+// fun main(x int) rawptr
+//   x
 
 
 

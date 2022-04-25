@@ -55,7 +55,7 @@ bool _typeid_append(Str* s, const Type* t) {
 
     case NArrayType:
       str_appendc(s, TypeCodeEncoding(TC_array));
-      str_appendu32(s, as_ArrayTypeNode(t)->size, 10);
+      str_appendu64(s, as_ArrayTypeNode(t)->size, 10);
       str_appendc(s, TypeCodeEncoding(TC_arrayEnd));
       MUSTTAIL return _typeid_append(s, assertnotnull(as_ArrayTypeNode(t)->elem));
 

@@ -4,7 +4,7 @@
 #include "ast_transform.h"
 
 // CO_PARSE_RESOLVE_DEBUG: define to enable trace logging
-//#define CO_PARSE_RESOLVE_DEBUG
+#define CO_PARSE_RESOLVE_DEBUG
 
 #if defined(CO_PARSE_RESOLVE_DEBUG) && !defined(DEBUG)
   #undef CO_PARSE_RESOLVE_DEBUG
@@ -189,6 +189,11 @@ static Node* _resolve(R* r, Node* n);
 #else
   #define resolve(r,n) _resolve((r),as_Node(n))
 #endif
+
+
+inline static Expr* resolve_expr(R* r, Expr* n) {
+  return as_Expr(resolve(r, n));
+}
 
 
 //———————————————————————————————————————————————————————————————————————————————————————
@@ -434,7 +439,7 @@ static Node* resolve_fun(R* r, FunNode* n) {
 
   // resolve function body
   Type* typecontext = set_typecontext(r, t->result);
-  n->body = as_Expr(resolve(r, n->body));
+  n->body = resolve_expr(r, n->body);
   r->typecontext = typecontext;
 
   if UNLIKELY(
@@ -473,7 +478,7 @@ static bool resolve_positional_call_args(R* r, CallNode* n, ParamArray* params) 
 
   for (u32 i = 0; i < n->args.len; i++) {
     r->typecontext = unbox_id_type(params->v[i]->type);
-    n->args.v[i] = as_Expr(resolve(r, n->args.v[i]));
+    n->args.v[i] = resolve_expr(r, n->args.v[i]);
   }
 
   r->typecontext = typecontext;
@@ -503,7 +508,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, ParamArray* params) {
   u32 i = 0;
   for (; i < args->len && args->v[i]->kind != NNamedArg; i++) {
     r->typecontext = unbox_id_type(params->v[i]->type);
-    args->v[i] = as_Expr(resolve(r, args->v[i]));
+    args->v[i] = resolve_expr(r, args->v[i]);
   }
 
   // find canonical parameter positions for remaining named arguments
@@ -523,7 +528,7 @@ static bool resolve_named_call_args(R* r, CallNode* n, ParamArray* params) {
     arg->irval = (void*)(uintptr)param_idx;
     // resolve argument
     r->typecontext = unbox_id_type(params->v[param_idx]->type);
-    args->v[i] = as_Expr(resolve(r, arg));
+    args->v[i] = resolve_expr(r, arg);
   }
 
   // sort arguments
@@ -819,7 +824,7 @@ static Node* resolve_tuple(R* r, TupleNode* n) {
   for (u32 i = 0; i < n->a.len; i++) {
     if (ctx_types)
       r->typecontext = unbox_id_type(ctx_types->v[i]);
-    Expr* cn = as_Expr(resolve(r, n->a.v[i]));
+    Expr* cn = resolve_expr(r, n->a.v[i]);
     cn->type = unbox_id_type(cn->type);
     array_push(&t->a, cn->type);
     n->a.v[i] = cn;
@@ -830,8 +835,93 @@ static Node* resolve_tuple(R* r, TupleNode* n) {
 }
 
 
+static Type* infer_array_type(R* r, ArrayNode* n) {
+  // array type is determined by the first concretely typed value,
+  // or the first value resolved if all values are ideally typed.
+  for (u32 i = 0; i < n->a.len; i++) {
+    Type* t = n->a.v[i]->type;
+    if (t && t != kType_ideal)
+      return t;
+  }
+  assert(n->a.len > 0);
+  n->a.v[0] = resolve_expr(r, n->a.v[0]);
+  return assertnotnull(n->a.v[0]->type);
+}
+
+
 static Node* resolve_array(R* r, ArrayNode* n) {
-  panic("TODO (impl probably almost identical to resolve_tuple)");
+  ArrayTypeNode* t;
+
+  RFlag rflags = add_flags(r, RF_ResolveIdeal | RF_Eager); // save & set
+  Type* tctx = r->typecontext; // save typecontext
+
+  if (tctx && is_ArrayTypeNode(tctx)) {
+    t = (ArrayTypeNode*)tctx;
+    if (t->size == 0) {
+      // context is an unsized array, i.e. [T], but array literal is sized
+      t = mknode(r, ArrayType, n->pos);
+      t->size = n->a.len;
+      t->elem = ((ArrayTypeNode*)tctx)->elem;
+      t->flags |= (tctx->flags & NF_Const);
+    } else if ((u64)n->a.len != t->size) {
+      // TODO: handle t->sizeexpr
+      errf(r, n, "destination array type of %llu with %u values", t->size, n->a.len);
+      return as_Node(n);
+    }
+  } else {
+    t = mknode(r, ArrayType, n->pos);
+    if (n->a.len == 0) {
+      errf(r, n, "cannot infer type of empty array");
+      return as_Node(n);
+    }
+    t->size = n->a.len;
+    r->typecontext = NULL;
+    t->elem = infer_array_type(r, n);
+    // TODO: NodeSetConstCond(t, fl & PFlagConst);
+  }
+
+  // resolve array values
+  r->typecontext = t->elem;
+  for (u32 i = 0; i < n->a.len; i++) {
+    n->a.v[i] = resolve_expr(r, n->a.v[i]);
+    if UNLIKELY(!b_typeeq(r->build, t->elem, n->a.v[i]->type)) {
+      // TODO: port report_type_mismatch from v1 branch
+      errf(r, n->a.v[i], "mixed value type %s in %s array",
+        FMTNODE(n->a.v[i]->type,0), FMTNODE(t->elem,1));
+      break;
+    }
+  }
+
+  r->typecontext = tctx; // restore
+  r->flags = rflags; // restore
+  n->type = as_Type(t);
+  return as_Node(n);
+}
+
+
+static Node* resolve_ref(R* r, RefNode* n) {
+  RFlag rflags = add_flags(r, RF_ResolveIdeal); // save & set
+
+  Type* typecontext = r->typecontext;
+  r->typecontext = NULL;
+  if (typecontext && is_RefTypeNode(typecontext))
+    r->typecontext = ((RefTypeNode*)typecontext)->elem;
+
+  n->target = resolve_expr(r, n->target);
+
+  auto t = mknode(r, RefType, n->pos);
+  t->elem = n->target->type;
+
+  // the ref is mutable if the context is mutable
+  bool is_const = NodeIsConst(n) || (typecontext && (typecontext->flags & NF_Const));
+  // NodeSetConstCond(t, is_const);
+  NodeSetConstCond(n, is_const);
+
+  n->type = (Type*)t;
+
+  r->flags = rflags; // restore
+  r->typecontext = typecontext; // restore
+
   return as_Node(n);
 }
 
@@ -853,12 +943,12 @@ static Node* resolve_block(R* r, BlockNode* n) {
   r->flags &= ~RF_ResolveIdeal;
   u32 lasti = n->a.len - 1;
   for (u32 i = 0; i < lasti; i++)
-    n->a.v[i] = as_Expr(resolve(r, n->a.v[i]));
+    n->a.v[i] = resolve_expr(r, n->a.v[i]);
 
   // Last node, in which case we set the flag to resolve literals so that implicit return
   // values gets properly typed.
   r->flags |= RF_ResolveIdeal;
-  n->a.v[lasti] = as_Expr(resolve(r, n->a.v[lasti]));
+  n->a.v[lasti] = resolve_expr(r, n->a.v[lasti]);
 
   n->type = unbox_id_type(n->a.v[lasti]->type);
 
@@ -894,7 +984,7 @@ static Node* resolve_strlit(R* r, StrLitNode* n) {
 
 static Node* resolve_id(R* r, IdNode* n) {
   assertnotnull(n->target);
-  n->target = as_Expr(resolve(r, n->target));
+  n->target = resolve_expr(r, n->target);
   n->type = unbox_id_type(((Expr*)n->target)->type);
   return as_Node(n);
 }
@@ -912,8 +1002,8 @@ static Node* resolve_binop(R* r, BinOpNode* n) {
       r->typecontext = unbox_id_type(y->type);
       prefer_y = true;
     }
-    x = as_Expr(resolve(r, x));
-    y = as_Expr(resolve(r, y));
+    x = resolve_expr(r, x);
+    y = resolve_expr(r, y);
   }
   r->typecontext = typecontext;
 
@@ -944,7 +1034,7 @@ static Node* resolve_postfixop(R* r, PostfixOpNode* n) {
 }
 
 static Node* resolve_return(R* r, ReturnNode* n) {
-  n->expr = as_Expr(resolve(r, n->expr));
+  n->expr = resolve_expr(r, n->expr);
   n->type = unbox_id_type(n->expr->type);
   return as_Node(n);
 }
@@ -955,10 +1045,10 @@ static Node* resolve_assign(R* r, AssignNode* n) {
   // 2. resolve value (rvalue) witin the type context of destination
 
   RFlag rflags = clear_flags(r, RF_ResolveIdeal);
-  n->dst = as_Expr(resolve(r, n->dst));
+  n->dst = resolve_expr(r, n->dst);
   Type* typecontext = r->typecontext; // save
   r->typecontext = (n->dst->type != kType_ideal) ? unbox_id_type(n->dst->type) : NULL;
-  n->val = as_Expr(resolve(r, n->val));
+  n->val = resolve_expr(r, n->val);
   r->typecontext = typecontext; // restore
   r->flags = rflags; // restore
 
@@ -994,7 +1084,7 @@ static Node* resolve_typecast(R* r, TypeCastNode* n) {
 
 
 static Node* resolve_const(R* r, ConstNode* n) {
-  n->value = as_Expr(resolve(r, n->value));
+  n->value = resolve_expr(r, n->value);
   n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }
@@ -1003,8 +1093,10 @@ static Node* resolve_const(R* r, ConstNode* n) {
 static Node* resolve_var(R* r, VarNode* n) {
   // parser should make sure that var without explicit type has initializer
   assertnotnull(n->init);
-  n->init = as_Expr(resolve(r, n->init));
+  Type* typecontext = set_typecontext(r, NULL); // save & set
+  n->init = resolve_expr(r, n->init);
   n->type = unbox_id_type(n->init->type);
+  r->typecontext = typecontext; // restore
   return as_Node(n);
 }
 
@@ -1019,14 +1111,9 @@ static Node* resolve_templateparam(R* r, TemplateParamNode* n) {
   return as_Node(n);
 }
 
-static Node* resolve_ref(R* r, RefNode* n) {
-  TODO_RESTYPE_IMPL; n->type = kType_nil;
-  return as_Node(n);
-}
-
 
 static Node* resolve_namedarg(R* r, NamedArgNode* n) {
-  n->value = as_Expr(resolve(r, n->value));
+  n->value = resolve_expr(r, n->value);
   n->type = unbox_id_type(n->value->type);
   return as_Node(n);
 }

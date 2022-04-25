@@ -73,7 +73,7 @@ typedef enum PFlag {
   PFlagRValue = 1 << 0, // parsing an rvalue
   PFlagType   = 1 << 1, // parsing a type
   PFlagMut    = 1 << 2, // "mut" outer
-  PFlagVar    = 1 << 3, // "var" outer (explicit mutable local)
+  PFlagConst  = 1 << 3, // inside type that is known to be constant
 } PFlag;
 
 
@@ -285,8 +285,9 @@ static void advance(Parser* p, const Tok* nullable stoplist) {
 })
 
 // mkref_type creates a reference-type node
-#define mkref_type(p, elem)     _mkref_type((p),as_Type(elem),false)
-#define mkref_type_mut(p, elem) _mkref_type((p),as_Type(elem),true)
+#define mkref_type(p, elem, mut)  _mkref_type((p),as_Type(elem),(mut))
+#define mkref_type_const(p, elem) _mkref_type((p),as_Type(elem),false)
+#define mkref_type_mut(p, elem)   _mkref_type((p),as_Type(elem),true)
 static Type* _mkref_type(Parser* p, Type* elem, bool mut) {
   RefTypeNode* t = mktype(p, RefType, TF_KindPointer);
   NodeSetConstCond(t, !mut);
@@ -312,7 +313,7 @@ static ArrayTypeNode* _mkarray_type(Parser* p, Type* elem, u64 size) {
 
 // // strtype returns the common string type [u8]
 // static Type* strtype(Parser* p) {
-//   return mkref_type(p, mkarray_type(p, kType_u8, 0));
+//   return mkref_type_const(p, mkarray_type(p, kType_u8, 0));
 // }
 
 
@@ -727,6 +728,7 @@ static Expr* _use_as_rvalue(Parser* p, Expr* n) {
 // Type or Id (always rvalue)
 inline static Type* pType(Parser* p, PFlag fl) {
   Node* n = parse_next(p, PREC_MEMBER, fl | PFlagType | PFlagRValue);
+  // assertf(NodeIsConst(n) == !(fl & PFlagMut), "%s", nodename(n));
   return expectType(p, n);
 }
 
@@ -881,6 +883,7 @@ static LocalNode* make_local(
 }
 
 
+// promote_local_to_mut makes a var definitively mutable
 static void promote_local_to_mut(Parser* p, LocalNode* n) {
   if (n->kind == NParam)
     return;
@@ -889,38 +892,8 @@ static void promote_local_to_mut(Parser* p, LocalNode* n) {
   if (t && is_RefTypeNode(t) && is_ArrayTypeNode(((RefTypeNode*)t)->elem)) {
     ArrayTypeNode* at = (ArrayTypeNode*)((RefTypeNode*)t)->elem;
     if (at->size || at->sizeexpr)
-      n->type = mkref_type(p, mkarray_type(p, at->elem, 0));
+      n->type = mkref_type_mut(p, mkarray_type(p, at->elem, 0));
   }
-}
-
-
-static RefTypeNode* pRefType(Parser* p, PFlag fl) {
-  auto n = mktype(p, RefType, TF_KindPointer);
-  nexttok(p); // consume "&"
-  // TODO: parse optional trailing "mut" kw?
-  NodeSetConstCond(n, (fl & PFlagMut) == 0);
-  n->elem = pType(p, fl | PFlagRValue);
-  // n->flags = n->elem->flags & NF_Const;
-  n->pos = pos_union(n->pos, n->elem->pos);
-  NodeTransferUnresolved(n, n->elem);
-  return n;
-}
-
-
-// MutType = "mut" Type
-//!PrefixParselet TMut
-static Node* PMut(Parser* p, PFlag fl) {
-  Pos mut_pos = currpos(p);
-  nexttok(p); // consume "mut"
-
-  // expect "&"
-  if (p->tok != TAnd) {
-    syntaxerr(p, "expecting &");
-    return bad(p);
-  }
-  auto t = pRefType(p, fl | PFlagMut);
-  t->pos = pos_union(mut_pos, t->pos);
-  return as_Node(t);
 }
 
 
@@ -942,7 +915,7 @@ static Node* PVarOrConst(Parser* p, PFlag fl) {
   if UNLIKELY(!got(p, TId))
     syntaxerr(p, "expecting identifier");
 
-  SET_FLAG(fl, PFlagVar, !isconst);
+  SET_FLAG(fl, PFlagConst, isconst);
 
   // type
   Type* typ = NULL;
@@ -1247,6 +1220,7 @@ static Node* pArrayLit(Parser* p, PFlag fl) {
     n->type = as_Type(t);
   }
   p->ctxtype = ctxtype; // restore
+  NodeSetConstCond(n, fl & PFlagConst);
   return as_Node(n);
 }
 
@@ -1326,19 +1300,61 @@ static Node* PLBrackInfix(Parser* p, const Parselet* e, PFlag fl, Node* left) {
 }
 
 
+static RefTypeNode* pRefType(Parser* p, PFlag fl) {
+  auto n = mktype(p, RefType, TF_KindPointer);
+  NodeSetConstCond(n, (fl & PFlagMut) == 0);
+  nexttok(p); // consume "&"
+
+  // make sure that PFlagConst is not set if PFlagMut is
+  SET_FLAG(fl, PFlagConst, (fl & PFlagMut) == 0);
+
+  n->elem = pType(p, fl | PFlagRValue);
+
+  // n->flags = n->elem->flags & NF_Const;
+  n->pos = pos_union(n->pos, n->elem->pos);
+  NodeTransferUnresolved(n, n->elem);
+  return n;
+}
+
+
+// MutType = "mut" Type
+//!PrefixParselet TMut
+static Node* PMut(Parser* p, PFlag fl) {
+  Pos mut_pos = currpos(p);
+  nexttok(p); // consume "mut"
+
+  // expect "&"
+  if (p->tok != TAnd) {
+    syntaxerr(p, "expecting &");
+    return bad(p);
+  }
+  auto t = pRefType(p, fl | PFlagMut);
+  t->pos = pos_union(mut_pos, t->pos);
+  return as_Node(t);
+}
+
+
 // Ref | RefType
 // Ref     = "&" Expr
 // RefType = "&" Type
 //!PrefixParselet TAnd
-static Node* PRefPrefix(Parser* p, PFlag fl) {
+static Node* PRef(Parser* p, PFlag fl) {
   if (fl & PFlagType)
     return as_Node(pRefType(p, fl));
 
   auto ref = mknode(p, Ref);
   nexttok(p); // consume "&"
 
+  if (p->ctxtype && (fl & PFlagMut) == 0) {
+    // ref should be in ref type context (if any)
+    assertf(is_RefTypeNode(p->ctxtype), "%s", nodename(p->ctxtype));
+    bool is_const = (p->ctxtype->flags & NF_Const);
+    SET_FLAG(fl, PFlagConst, is_const);
+    SET_FLAG(fl, PFlagMut, !is_const);
+  }
+
   // reference target
-  Expr* target = ref->target = pExpr(p, PREC_LOWEST, PFlagRValue);
+  Expr* target = ref->target = pExpr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
   NodeTransferUnresolved(ref, target);
 
   // if the target is an id, use the id's target
@@ -1346,23 +1362,18 @@ static Node* PRefPrefix(Parser* p, PFlag fl) {
     target = ((IdNode*)target)->target;
 
   // mutability
-  if (
-    // e.g. "somefun(&y)"
-    p->ctxtype ? ((fl & PFlagMut) == 0) :
-    // e.g. "x = &y"
-    !NodeIsUnresolved(target) && (
-      // if the target is a "const name T = ..." then the ref is const too: "&T"
-      // but for locals we leave the ref mutable.
-      is_LocalNode(target) ? is_ConstNode(target) : NodeIsConst(target)
-    )
-    // else: target is a global (or undefined)
-  ) {
-    NodeSetConst(ref);
-  } else if (is_LocalNode(target) && !is_ConstNode(target)) {
-    // since we're making a mutable ref, treat it as a local store,
-    // making sure the target local is upgraded to "mut".
-    NodeClearConst(target);
-    promote_local_to_mut(p, (LocalNode*)target);
+  if (p->ctxtype) {
+    NodeSetConstCond(ref, fl & PFlagConst);
+  } else {
+    if (is_LocalNode(target) && !is_ConstNode(target)) {
+      // since we're making a mutable ref, treat it as a local store,
+      // making sure the target local is upgraded to "mut".
+      NodeClearConst(target);
+      NodeClearConst(ref->target);
+      promote_local_to_mut(p, as_LocalNode(target));
+    } else {
+      NodeTransferConst(ref, target);
+    }
   }
 
   // element type of our reference (e.g. "int" in "x = 1; typeof(&x) // &int")
@@ -1518,9 +1529,11 @@ static Node* pTypeCast(
   p->ctxtype = ctxtype;
 
   // short circuit e.g. "x = i64(3)"
-  // TODO: expand pos & endpos to include "type(3)"
-  if (expr->type == (Type*)canon_recv)
+  if (expr->type == (Type*)canon_recv) {
+    expr->pos = pos_min(expr->pos, recv->pos);
+    expr->endpos = pos_max(expr->endpos, currpos(p)); // currpos is at ending ")"
     return as_Node(expr);
+  }
 
   TypeCastNode* n = b_mknode(p->build, TypeCast, pos);
   n->type = recv;
@@ -1899,7 +1912,7 @@ static Node* PStrLit(Parser* p, PFlag fl) {
 
   // typeof("foo") => &[u8 3]
   auto arrayt = mkarray_type(p, kType_u8, (u64)p->sval.len);
-  n->type = mkref_type(p, arrayt);
+  n->type = mkref_type_const(p, arrayt);
   n->type->pos = pos_with_width(n->pos, 0);
 
   return as_Node(n);
