@@ -66,10 +66,10 @@ BUILD_DIR=$OUTDIR/$BUILD_MODE
 [ "$BUILD_MODE" = "debug" ] && DEBUG=true
 
 case "$WITH_LLVM" in
-  "") WITH_LLVM=static ; $DEBUG && WITH_LLVM=shared ;;
+  "")            WITH_LLVM=static ; $DEBUG && WITH_LLVM=shared ;;
   static|shared) ;;  # as is
-  off) WITH_LLVM= ;;
-  *)   _err "invalid value \"$WITH_LLVM\" for -llvm option" ;;
+  off)           WITH_LLVM= ;;
+  *)             _err "invalid value \"$WITH_LLVM\" for -llvm option" ;;
 esac
 
 #————————————————————————————————————————————————————————————————————————————————————————
@@ -318,13 +318,34 @@ if $CC_IS_CLANG; then
     -Wno-pragma-once-outside-header \
   )
   [ -t 1 ] && XFLAGS+=( -fcolor-diagnostics )
-  if [ "$(uname -s)" = "Darwin" ]; then
+  if [ "$(uname -s)" = "Darwin" ] &&
+     [ "$WITH_LLVM" != "shared" -o "$(uname -m)" != "arm64" ]
+  then
     # Use lld to avoid incompatible outdated macOS system linker.
     # If the system linker is outdated, it would fail with an error like this:
     # "ld: could not parse object file ... Unknown attribute kind ..."
+    #
+    # Note on second check in "if" above:
+    #   macOS 11 introduced a complex dynamic linker which lld struggles with.
+    #   From Apple: (62986286)
+    #     New in macOS Big Sur 11.0.1, the system ships with a built-in dynamic
+    #     linker cache of all system-provided libraries. As part of this
+    #     change, copies of dynamic libraries are no longer present on the
+    #     filesystem. Code that attempts to check for dynamic library presence
+    #     by looking for a file at a path or enumerating a directory will fail.
+    #     Instead, check for library presence by attempting to dlopen() the
+    #     path, which will correctly check for the library in the cache.
+    #     <https://developer.apple.com/documentation/macos-release-notes/
+    #      macos-big-sur-11_0_1-release-notes#Kernel>
+    #   If we try to link using lld on macOS 12.2.1 with our llvm-build of
+    #   lld 14.0.0, we get the following error:
+    #     error: LC_DYLD_INFO_ONLY not found in deps/llvm/lib/libco-llvm-bundle-d.dylib
+    #
+    MACOS_VERSION=10.15
+    [ "$(uname -m)" = "arm64" ] && MACOS_VERSION=12.0
     LDFLAGS_HOST+=(
       -fuse-ld="$(dirname "$CC_PATH")/ld64.lld" \
-      -Wl,-platform_version,macos,10.15,10.15 \
+      -Wl,-platform_version,macos,$MACOS_VERSION,$MACOS_VERSION \
     )
   fi
 elif $CC_IS_GCC; then
@@ -350,7 +371,7 @@ if $DEBUG; then
       -fno-optimize-sibling-calls \
       -fmacro-backtrace-limit=0 \
     )
-    LDFLAGS_HOST+=( -fsanitize=address,undefined -static-libsan )
+    LDFLAGS_HOST+=( -fsanitize=address,undefined )
   fi
 else
   XFLAGS+=( -DNDEBUG )
@@ -365,7 +386,7 @@ else
   fi
   if $CC_IS_CLANG; then
     XFLAGS+=( -flto )
-    LDFLAGS_HOST+=( -flto -Wl,-no_pie )
+    LDFLAGS_HOST+=( -flto )
   fi
 fi
 
@@ -404,6 +425,7 @@ if [ -n "$WITH_LLVM" ]; then
     LDFLAGS_HOST+=(
       "$DEPSDIR/llvm/lib/libco-llvm-bundle.a" \
       "$DEPSDIR/llvm/lib/libc++.a" \
+      "$DEPSDIR/llvm/lib/libunwind.a" \
     )
   fi
 fi
