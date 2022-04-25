@@ -181,6 +181,9 @@ DEF_TEST(aesc_parsec) {
       }
 
       if (expect_attr && memcmp(expect_attr, &p.attr, sizeof(p.attr)) != 0) {
+        sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), t->input, len);
+        log("\"%s\"", tmpbuf[2]);
+
         fmtattr(*expect_attr, tmpbuf[0], sizeof(tmpbuf[0]));
         fmtattr(p.attr, tmpbuf[1], sizeof(tmpbuf[1]));
         sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), t->input, MIN(len, i+1));
