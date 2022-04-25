@@ -464,28 +464,50 @@ _mk_dlib_macos() {
   local DLIB_FILE=$LLVM_DESTDIR/lib/libco-llvm-bundle-d.dylib
   local LIB_VERSION=0.0.1        # used for mach-o dylib
   local LIB_VERSION_COMPAT=0.0.1 # used for mach-o dylib
-  local MACOS_FRAMEWORKS=()
-  local EXTRA_LDFLAGS=( -lc++ )
+  local MACOS_VERSION=10.15
+  local EXTRA_LDFLAGS=()
+
+  [ "$(uname -m)" = "arm64" ] &&
+    MACOS_VERSION=12.0
+
+  [ -d /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib ] &&
+    EXTRA_LDFLAGS+=( -L/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/lib )
 
   echo "create ${DLIB_FILE##$PWD/}"
 
-  ld64.lld -dylib \
-    -o "$DLIB_FILE" \
-    --color-diagnostics \
-    --lto-O3 \
-    -install_name "@rpath/$(basename "$DLIB_FILE")" \
-    -current_version "$LIB_VERSION" \
-    -compatibility_version "$LIB_VERSION_COMPAT" \
-    -cache_path_lto "$WORK_DIR/llvm-dylib-lto.cache" \
-    -arch $(uname -m) \
-    -ObjC \
-    -platform_version macos 10.15 10.15 \
-    -all_load \
-    \
-    -lSystem.B \
-    "${EXTRA_LDFLAGS[@]}" \
-    "${LLVM_LIBFILES[@]}" \
-    "${MACOS_FRAMEWORKS[@]}"
+  if [ "$(uname -m)" = "arm64" ]; then
+    # use system linker since ld64.lld on arm64 in llvm 14 errors out with
+    #   error: LC_DYLD_INFO_ONLY not found in deps/llvm/lib/libunwind.dylib
+    /usr/bin/ld -dylib \
+      -o "$DLIB_FILE" \
+      -install_name "@rpath/$(basename "$DLIB_FILE")" \
+      -current_version "$LIB_VERSION" \
+      -compatibility_version "$LIB_VERSION_COMPAT" \
+      -platform_version macos $MACOS_VERSION $MACOS_VERSION \
+      -arch $(uname -m) \
+      -all_load \
+      -lc++ -lc \
+      \
+      "${EXTRA_LDFLAGS[@]}" \
+      "${LLVM_LIBFILES[@]}"
+  else
+    ld64.lld -dylib \
+      -o "$DLIB_FILE" \
+      --color-diagnostics \
+      --lto-O3 \
+      -install_name "@rpath/$(basename "$DLIB_FILE")" \
+      -current_version "$LIB_VERSION" \
+      -compatibility_version "$LIB_VERSION_COMPAT" \
+      -cache_path_lto "$WORK_DIR/llvm-dylib-lto.cache" \
+      -arch $(uname -m) \
+      -ObjC \
+      -platform_version macos $MACOS_VERSION $MACOS_VERSION \
+      -all_load \
+      -lc++ -lc \
+      \
+      "${EXTRA_LDFLAGS[@]}" \
+      "${LLVM_LIBFILES[@]}"
+  fi
 }
 
 
@@ -519,6 +541,7 @@ _mk_lib_bundles() {
     $OPENSSL_DESTDIR/lib/libcrypto.a \
     $LIBXML2_DESTDIR/lib/libxml2.a \
   )
+  export PATH="$LLVM_DESTDIR/bin:$PATH"
   case "$(uname -s)" in
     Darwin)
       _mk_alib_macos
@@ -530,6 +553,7 @@ _mk_lib_bundles() {
   esac
 }
 
+# _mk_lib_bundles ; exit
 
 # fetch or update llvm sources
 SOURCE_CHANGED=false
@@ -559,7 +583,6 @@ else
   _log "$(_relpath "$LLVM_DESTDIR") is up to date. To rebuild: $0 ${REBUILD_ARGS[@]}"
 fi
 
-_mk_lib_bundles
 
 #—— END —————————————————————————————————————————————————————————————————————————————————
 #
