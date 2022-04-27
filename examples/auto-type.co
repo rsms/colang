@@ -1,0 +1,9 @@
+
+fun foo() auto  // => fun foo() int
+  123
+
+fun bar() auto  // => fun bar() bool
+  true
+
+// fun bad() auto
+// // error: function declaration without implementation can not use auto return type
