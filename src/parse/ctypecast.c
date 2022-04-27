@@ -72,7 +72,8 @@ static Expr* cast_from_intlit(C* c, IntLitNode* n, Type* totype1) {
     case TC_int:  dst_tc = c->build->sint_type->typecode; break;
     case TC_uint: dst_tc = c->build->uint_type->typecode; break;
   }
-  assertf(dst_tc < TC_NUM_END, "%d", dst_tc);
+  assertf(dst_tc < TC_NUM_END,
+    "invalid totype: %d '%c'", dst_tc, TypeCodeEncoding(dst_tc));
   IntvalRange range = intval_range_tab[dst_tc];
 
   BasicTypeNode* fromtype = totype;

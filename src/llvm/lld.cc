@@ -190,6 +190,9 @@ static error build_args(
     }
   }
 
+  // args.emplace_back("-fno-unwind-tables");
+  // args.emplace_back("-dead_strip");
+
   return 0;
 }
 

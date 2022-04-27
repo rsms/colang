@@ -35,7 +35,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
   _( f32       , 'f' , TF_KindF32  | TF_Size4  | TF_Signed )                               \
   _( f64       , 'F' , TF_KindF64  | TF_Size8  | TF_Signed )                               \
   _( f128      , 'F' , TF_KindF128 | TF_Size16 | TF_Signed )                               \
-  _( int       , 'i' , TF_KindInt            | TF_Signed )                                 \
+  _( int       , 'i' , TF_KindInt              | TF_Signed )                               \
   _( uint      , 'u' , TF_KindInt )                                                        \
   _( rawptr    , '*' , TF_KindPointer )                                                    \
 // end DEF_TYPE_CODES_BASIC_PUB

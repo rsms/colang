@@ -159,6 +159,23 @@ DEF_TEST(aesc_parsec) {
     auto t = &tests[tidx];
     usize len = strlen(t->input);
     AEscParser p = aesc_mkparser(AESC_DEFAULT_ATTR);
+    // aesc_parser_init(&p, AESC_DEFAULT_ATTR);
+
+    AEscParser p2 = {
+      .attr        = AESC_DEFAULT_ATTR,
+      .defaultattr = AESC_DEFAULT_ATTR,
+    };
+    // dlog("x %u", p.attr.fg8);
+    // AEscParser p2;
+    // aesc_parser_init(&p2, AESC_DEFAULT_ATTR);
+
+    AEscAttr adef = AESC_DEFAULT_ATTR;
+    sfmt_repr(tmpbuf[0], sizeof(tmpbuf[0]), &adef, sizeof(AEscAttr));
+    sfmt_repr(tmpbuf[1], sizeof(tmpbuf[1]), &p.attr, sizeof(AEscAttr));
+    sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), &p2.attr, sizeof(AEscAttr));
+    log("adef:        \"%s\"", tmpbuf[0]);
+    log("&p.attr:     \"%s\"", tmpbuf[1]);
+    log("&p2.attr:    \"%s\"", tmpbuf[2]);
 
     sfmt_repr(tmpbuf[0], sizeof(tmpbuf[0]), t->input, len);
     //dlog("————— %s ————", tmpbuf[0]);
@@ -183,6 +200,11 @@ DEF_TEST(aesc_parsec) {
       if (expect_attr && memcmp(expect_attr, &p.attr, sizeof(p.attr)) != 0) {
         sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), t->input, len);
         log("\"%s\"", tmpbuf[2]);
+
+        sfmt_repr(tmpbuf[1], sizeof(tmpbuf[1]), expect_attr, sizeof(p.attr));
+        sfmt_repr(tmpbuf[2], sizeof(tmpbuf[2]), &p.attr, sizeof(p.attr));
+        log("expect_attr: \"%s\"", tmpbuf[1]);
+        log("&p.attr:     \"%s\"", tmpbuf[2]);
 
         fmtattr(*expect_attr, tmpbuf[0], sizeof(tmpbuf[0]));
         fmtattr(p.attr, tmpbuf[1], sizeof(tmpbuf[1]));

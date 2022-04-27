@@ -395,7 +395,6 @@ static void scopestackGrow(Parser* p) {
 
 
 static void scopestackCheckUnused(Parser* p) {
-  // only run when p->build->debug==true
   assert(p->scopestack.len > 0);
   uintptr i = p->scopestack.len;
   uintptr base = p->scopestack.base;
@@ -403,7 +402,7 @@ static void scopestackCheckUnused(Parser* p) {
     Sym key = (Sym)p->scopestack.ptr[i];
     i--;
     Node* n = (Node*)p->scopestack.ptr[i];
-    //dlog(">>  %s => %s %s", key, nodename(n), FMTNODE(n,0));
+    // dlog(">>  %s => %s %s", key, nodename(n), FMTNODE(n,0));
     if UNLIKELY(key != kSym__ && is_LocalNode(n) && ((LocalNode*)n)->nrefs == 0) {
       // TODO: combine the error message with that of package-level reporter
       LocalNode* local = (LocalNode*)n;
@@ -454,7 +453,7 @@ static void popScope(Parser* p) {
 
 inline static void popScopeAndCheckUnused(Parser* p) {
   // check for unused locals and parameters
-  if (p->build->debug && p->scopestack.len - p->scopestack.base > 1)
+  if (p->scopestack.len - p->scopestack.base > 1)
     scopestackCheckUnused(p);
   popScope(p);
 }
@@ -741,14 +740,20 @@ static Expr* pExpr(Parser* p, int precedence, PFlag fl) {
 
 //!PrefixParselet TNil
 static Node* PNil(Parser* p, PFlag fl) {
+  auto id = mknode(p, Id);
+  id->name = p->name;
+  id->target = kExpr_nil;
   nexttok(p);
-  return as_Node(kExpr_nil);
+  return as_Node(id);
 }
 
 //!PrefixParselet TAuto
 static Node* PAuto(Parser* p, PFlag fl) {
+  auto id = mknode(p, IdType);
+  id->name = p->name;
+  id->target = kType_auto;
   nexttok(p);
-  return as_Node(kType_auto);
+  return as_Node(id);
 }
 
 

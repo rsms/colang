@@ -862,18 +862,19 @@ static Val build_nil(B* b, NilNode* n, const char* vname) {
 
 
 static Val build_boollit(B* b, BoolLitNode* n, const char* vname) {
-  return n->irval = LLVMConstInt(b->t_bool, n->ival, false);
+  // note: must not set n->irval since n is shared const
+  return LLVMConstInt(b->t_bool, n->ival, false);
 }
 
 
 static Val build_intlit(B* b, IntLitNode* n, const char* vname) {
   bool sign_extend = n->type->tflags & TF_Signed;
-  return n->irval = LLVMConstInt(get_type(b, n->type), n->ival, sign_extend);
+  return LLVMConstInt(get_type(b, n->type), n->ival, sign_extend);
 }
 
 
 static Val build_floatlit(B* b, FloatLitNode* n, const char* vname) {
-  return n->irval = LLVMConstReal(get_type(b, n->type), n->fval);
+  return LLVMConstReal(get_type(b, n->type), n->fval);
 }
 
 
@@ -976,8 +977,10 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
   }
 
   // don't build unused variables
-  if (NodeIsUnused(n) && b->build->opt > OptNone)
+  if (NodeIsUnused(n) && b->build->opt > OptNone) {
+    dlog2("skipping unused var");
     return b->v_int_0;
+  }
 
   // build initializer
   Val init;
@@ -1390,7 +1393,7 @@ static Val _build_expr(B* b, Expr* np, const char* vname) {
   NCASE(Array)      return build_array(b, n, vname);
   NCASE(Block)      return build_block(b, n, vname);
   NCASE(Fun)        return build_fun(b, n, vname);
-  NCASE(Template)      return build_template(b, n, vname);
+  NCASE(Template)   return build_template(b, n, vname);
   NCASE(Call)       return build_call(b, n, vname);
   NCASE(TypeCast)   return build_typecast(b, n, vname);
   NCASE(Const)      return build_const(b, n, vname);

@@ -65,7 +65,12 @@ typedef struct AEscParser {
 
 
 // aesc_mkparser returns a parser initialized with default attributes
-static AEscParser aesc_mkparser(AEscAttr defaultattr);
+// static AEscParser aesc_mkparser(AEscAttr defaultattr);
+// Note: macro instead of an inline function because of a bug in clang 14;
+// code generated for aarch64 when using an inline function and passing a
+// literal struct initializer causes members of unions to not be zeroed.
+#define aesc_mkparser(a) \
+  ((AEscParser){ .attr = a, .defaultattr = a })
 
 // aesc_parser_init initializes a parser with initial & default attributes.
 // After this call, the parser state is expecting an ESC byte to begin a sequence.
@@ -74,7 +79,7 @@ static void aesc_parser_init(AEscParser* p, AEscAttr defaultattr);
 // aesc_parsec parses the next byte of input
 AEscParseState aesc_parsec(AEscParser* p, char c);
 
-//
+// AESC_DEFAULT_ATTR is the default attribute
 #define AESC_DEFAULT_ATTR ((AEscAttr){.fg8=ANSI_COLOR_WHITE})
 
 inline static bool aesc_attr_eq(const AEscAttr* a, const AEscAttr* b) {
@@ -127,17 +132,22 @@ inline static bool aesc_attr_flags_eq(const AEscAttr* a, const AEscAttr* b) {
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal
 
-inline static AEscParser aesc_mkparser(AEscAttr defaultattr) {
-  AEscParser p;
-  aesc_parser_init(&p, defaultattr);
-  return p;
-}
+// // bug in clang 14:
+// // code generated for aarch64 when using an inline function and passing a
+// // literal struct initializer causes members of unions to not be zeroed.
+// static AEscParser aesc_mkparser(AEscAttr defaultattr);
+// inline static AEscParser aesc_mkparser(AEscAttr defaultattr) {
+//   return (AEscParser){
+//     .attr        = defaultattr,
+//     .defaultattr = defaultattr,
+//   };
+//   // bug: retval.attr.fgrgb[2] is uninitialized
+// }
 
 inline static void aesc_parser_init(AEscParser* p, AEscAttr defaultattr) {
-  *p = (AEscParser){
-    .attr        = defaultattr,
-    .defaultattr = defaultattr,
-  };
+  memset(p, 0xff, sizeof(*p));
+  p->attr = defaultattr;
+  p->defaultattr = defaultattr;
 }
 
 END_INTERFACE

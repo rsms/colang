@@ -1,11 +1,6 @@
 // this file is used for development and may not make sense or even compile
 
-
-fun main(x int)
-  // a = [1,2,3] ; r = &a // a promoted to mut, typeof(r) = mut&[int 3]
-  // const r = &[1,2,3] // typeof(r) = &[int 3]
-  // var r mut&[i8] ; r = &[1,2,3] // typeof(r) = mut&[i8]
-  var v [i8] ; r = &v
+fun foo(x int) auto
 
 
 /* C

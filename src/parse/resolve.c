@@ -424,6 +424,8 @@ static FunTypeNode* resolve_fun_proto(R* r, FunNode* n) {
   if (n->result) {
     n->result = as_Type(resolve(r, n->result));
     t->result = unbox_id_type(n->result);
+  } else {
+    t->result = kType_nil;
   }
 
   r->flags = rflags; // restore
@@ -434,18 +436,30 @@ static FunTypeNode* resolve_fun_proto(R* r, FunNode* n) {
 static Node* resolve_fun(R* r, FunNode* n) {
   FunTypeNode* t = resolve_fun_proto(r, n);
 
-  if (!n->body)
+  if (!n->body) {
+    if UNLIKELY(t->result == kType_auto) {
+      // e.g. "fun foo() auto" without body
+      errf(r, n,
+        "function declaration without implementation can not use auto return type");
+    }
     return as_Node(n);
+  }
 
   // resolve function body
   Type* typecontext = set_typecontext(r, t->result);
   n->body = resolve_expr(r, n->body);
   r->typecontext = typecontext;
 
-  if UNLIKELY(
-    t->result && t->result != kType_nil &&
-    !b_typeeq(r->build, t->result, n->body->type) &&
-    r->build->errcount == 0)
+  // check result type
+  if (t->result == kType_auto) {
+    // result type inferred from body type
+    t->result = n->body->type;
+  } else if (t->result == kType_nil) {
+    // no result
+    // TODO: update last expression of body if needed (eg decrement var refcount.)
+  } else if UNLIKELY(
+    t->result && t->result != kType_nil && r->build->errcount == 0 &&
+    !b_typeeq(r->build, t->result, n->body->type) )
   {
     // TODO: focus the message on the first return expression of n->body
     // which is of a different type than t->result
@@ -964,9 +978,13 @@ static Node* resolve_field(R* r, FieldNode* n) {
 
 
 static Node* resolve_intlit(R* r, IntLitNode* n) {
-  Type* t = kType_int;
-  if (r->typecontext && r->typecontext->kind != NTemplateParamType)
-    t = r->typecontext;
+  Type* t = (
+    r->typecontext &&
+    r->typecontext->kind != NTemplateParamType &&
+    r->typecontext != kType_auto ?
+      r->typecontext :
+      kType_int
+  );
   Expr* n2 = ctypecast_implicit(r->build, n, t, NULL, n);
   return as_Node(n2);
 }

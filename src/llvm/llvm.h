@@ -11,12 +11,6 @@ typedef struct BuildCtx BuildCtx;
 
 ASSUME_NONNULL_BEGIN
 
-#ifdef __cplusplus
-  #define EXTERN_C extern "C"
-#else
-  #define EXTERN_C
-#endif
-
 // The following enums are copied from include/llvm/ADT/Triple.h and
 // MUST BE UPDATED when llvm is updated.
 // TODO: automate generating these enums from C++ header.
@@ -208,8 +202,8 @@ typedef struct {
 typedef struct {
   const char*          target_triple; // target machine triple
   const char* nullable outfile; // output file. NULL for no output
-  u32                  infilec; // input file count
   const char**         infilev; // input file array
+  u32                  infilec; // input file count
   int                  lto_level;
   bool                 strip_dead;
 } CoLLVMLink;
@@ -226,6 +220,7 @@ typedef enum CoLLVMEmitType {
   CoLLVMEmit_ir,  // LLVM IR text (.ll)
   CoLLVMEmit_bc,  // LLVM bitcode (.bc)
 } CoLLVMEmitType;
+
 typedef enum CoLLVMEmitFlags {
   CoLLVMEmit_debug = 1 << 0, // include names and analytical information in comments
 } CoLLVMEmitFlags;
