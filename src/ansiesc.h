@@ -65,12 +65,7 @@ typedef struct AEscParser {
 
 
 // aesc_mkparser returns a parser initialized with default attributes
-// static AEscParser aesc_mkparser(AEscAttr defaultattr);
-// Note: macro instead of an inline function because of a bug in clang 14;
-// code generated for aarch64 when using an inline function and passing a
-// literal struct initializer causes members of unions to not be zeroed.
-#define aesc_mkparser(a) \
-  ((AEscParser){ .attr = a, .defaultattr = a })
+static AEscParser aesc_mkparser(AEscAttr defaultattr);
 
 // aesc_parser_init initializes a parser with initial & default attributes.
 // After this call, the parser state is expecting an ESC byte to begin a sequence.
@@ -80,7 +75,7 @@ static void aesc_parser_init(AEscParser* p, AEscAttr defaultattr);
 AEscParseState aesc_parsec(AEscParser* p, char c);
 
 // AESC_DEFAULT_ATTR is the default attribute
-#define AESC_DEFAULT_ATTR ((AEscAttr){.fg8=ANSI_COLOR_WHITE})
+#define AESC_DEFAULT_ATTR ((AEscAttr){.fgrgb={ANSI_COLOR_WHITE},.bgrgb={0}})
 
 inline static bool aesc_attr_eq(const AEscAttr* a, const AEscAttr* b) {
   return *(u64*)a == *(u64*)b;
@@ -132,20 +127,15 @@ inline static bool aesc_attr_flags_eq(const AEscAttr* a, const AEscAttr* b) {
 //———————————————————————————————————————————————————————————————————————————————————————
 // internal
 
-// // bug in clang 14:
-// // code generated for aarch64 when using an inline function and passing a
-// // literal struct initializer causes members of unions to not be zeroed.
-// static AEscParser aesc_mkparser(AEscAttr defaultattr);
-// inline static AEscParser aesc_mkparser(AEscAttr defaultattr) {
-//   return (AEscParser){
-//     .attr        = defaultattr,
-//     .defaultattr = defaultattr,
-//   };
-//   // bug: retval.attr.fgrgb[2] is uninitialized
-// }
+inline static AEscParser aesc_mkparser(AEscAttr defaultattr) {
+  return (AEscParser){
+    .attr        = defaultattr,
+    .defaultattr = defaultattr,
+  };
+}
 
 inline static void aesc_parser_init(AEscParser* p, AEscAttr defaultattr) {
-  memset(p, 0xff, sizeof(*p));
+  memset(p, 0, sizeof(*p));
   p->attr = defaultattr;
   p->defaultattr = defaultattr;
 }

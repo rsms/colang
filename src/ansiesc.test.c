@@ -71,17 +71,17 @@ static void fmtattr(AEscAttr a, char* buf, usize bufcap) {
 
 
 DEF_TEST(aesc_parsec) {
-  #define DEFAULT_FG AESC_DEFAULT_ATTR.fg8
-  #define DEFAULT_BG AESC_DEFAULT_ATTR.bg8
+  #define DEFAULT_FG AESC_DEFAULT_ATTR.fgrgb[0]
+  #define DEFAULT_BG AESC_DEFAULT_ATTR.bgrgb[0]
 
   static char tmpbuf[3][256];
   static const AEscAttr
     a_def_def = AESC_DEFAULT_ATTR,
     a_red_def = {
-      .fg8 = ANSI_COLOR_RED, .bg8 = DEFAULT_BG,
+      .fgrgb = {ANSI_COLOR_RED}, .bgrgb = {DEFAULT_BG},
     },
     a_red_blue = {
-      .fg8 = ANSI_COLOR_RED, .bg8 = ANSI_COLOR_BLUE,
+      .fgrgb = {ANSI_COLOR_RED}, .bgrgb = {ANSI_COLOR_BLUE},
     },
     a_203_def  = {
       .fg256 = 203, .fgtype=1,
@@ -98,15 +98,15 @@ DEF_TEST(aesc_parsec) {
       .bgrgb = {0x02,0x01,0xFF}, .bgtype=2,
     },
     a_white_red_dim = {
-      .fg8 = ANSI_COLOR_WHITE, .bg8 = ANSI_COLOR_RED,
+      .fgrgb = {ANSI_COLOR_WHITE}, .bgrgb = {ANSI_COLOR_RED},
       .dim = 1,
     },
     a_DEF_def = {
-      .fg8 = DEFAULT_FG, .bg8 = DEFAULT_BG, .fg8bright = true,
+      .fgrgb = {DEFAULT_FG, /*fg8bright*/1}, .bgrgb = {DEFAULT_BG},
       .bold = 1,
     },
     a_DEF_def_dim = {
-      .fg8 = DEFAULT_FG, .bg8 = DEFAULT_BG,
+      .fgrgb = {DEFAULT_FG}, .bgrgb = {DEFAULT_BG},
       .bold = 1, .dim = 1,
     };
 
@@ -159,13 +159,13 @@ DEF_TEST(aesc_parsec) {
     auto t = &tests[tidx];
     usize len = strlen(t->input);
     AEscParser p = aesc_mkparser(AESC_DEFAULT_ATTR);
-    // aesc_parser_init(&p, AESC_DEFAULT_ATTR);
+
+    // bgrgb
 
     AEscParser p2 = {
       .attr        = AESC_DEFAULT_ATTR,
       .defaultattr = AESC_DEFAULT_ATTR,
     };
-    // dlog("x %u", p.attr.fg8);
     // AEscParser p2;
     // aesc_parser_init(&p2, AESC_DEFAULT_ATTR);
 
