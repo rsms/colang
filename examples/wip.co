@@ -1,7 +1,24 @@
 // this file is used for development and may not make sense or even compile
 
-fun foo(x int) auto
+fun main(cs &[i8], ms mut&[i8]) auto
+  // a = [1,2,3] ; r = &a // a promoted to mut, typeof(r) = mut&[int 3]
+  // const r = &[1,2,3] // typeof(r) = &[int 3]
+  // var r mut&[i8] ; r = &[1,2,3] // typeof(r) = mut&[i8]
+  // var v [i8] ; r = &v
+  // var v [i8 3] ; &v // ptr
+  // var v [i8] ; const r &[i8] = &v // cslice
+  //
+  // var v [i8] ; &v // mslice* -> mslice
+  // var v [i8] ; const r &[i8] = &v // mslice* -> cslice
+  // var v [i8 3] ; const r &[i8] = &v // T* -> cslice
+  // var v [i8 3] ; var r mut&[i8] = &v // T* -> mslice
+  // var r &[i8] ; r = cs // cslice -> cslice
+  var r mut&[i8] ; r = ms // mslice -> mslice
+  // var r mut&[i8] ; r = cs // cslice -> mslice -- error
 
+
+// fun fail1() &[i8]  // r is mut&[i8]
+//   var v [i8] ; r = &v
 
 /* C
 typedef struct cslice { const void* p; uint len; } cslice;

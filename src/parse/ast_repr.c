@@ -576,7 +576,7 @@ static void _write_node1(Repr* r, const Node* n) {
   if (fl & NF_CustomInit)  meta_write_entry(m, "custominit");
   if (fl & NF_Unsafe)      meta_write_entry(m, "unsafe");
   if (fl & NF_Shared)      meta_write_entry(m, "shared");
-  if (fl & NF_HasShared)   meta_write_entry(m, "HASSHARED");
+  if (fl & NF_Mem)         meta_write_entry(m, "mem");
   meta_end(m);
 
   write_node_fields(r, n);

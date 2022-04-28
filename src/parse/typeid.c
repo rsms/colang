@@ -50,7 +50,7 @@ bool _typeid_append(Str* s, const Type* t) {
       MUSTTAIL return _typeid_append(s, assertnotnull(((IdTypeNode*)t)->target));
 
     case NRefType:
-      str_appendc(s, TypeCodeEncoding(TC_ref));
+      str_appendc(s, TypeCodeEncoding(NodeIsConst(t) ? TC_ref : TC_mutref));
       MUSTTAIL return _typeid_append(s, assertnotnull(as_RefTypeNode(t)->elem));
 
     case NArrayType:

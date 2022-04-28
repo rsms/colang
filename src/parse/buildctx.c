@@ -432,15 +432,17 @@ bool _b_typelteq(BuildCtx* b, Type* dst, Type* src) {
   if (k != src->kind)
     return false;
 
-  // &[T] <= &[T N]
+  // &[T] <= &[T]
   if (k == NRefType) {
     ArrayTypeNode* larray = (ArrayTypeNode*)((RefTypeNode*)dst)->elem;
     ArrayTypeNode* rarray = (ArrayTypeNode*)((RefTypeNode*)src)->elem;
-    if (larray->kind == NArrayType) {
+    if (larray->kind == NArrayType && rarray->kind == NArrayType) {
+      // &[T]    <= &[T…] | mut&[T…]
+      // mut&[T] <= mut&[T…]
       return (
-        (rarray->kind == NArrayType) &&
-        ( b_typeeq(b, larray->elem, rarray->elem) &
-          (larray->size == 0) & (larray->sizeexpr == NULL) )
+        b_typeeq(b, larray->elem, rarray->elem) &&
+        larray->size == 0 &&
+        (NodeIsConst(dst) || !NodeIsConst(src))
       );
     }
   }

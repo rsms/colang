@@ -37,7 +37,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
   _( f128      , 'F' , TF_KindF128 | TF_Size16 | TF_Signed )                               \
   _( int       , 'i' , TF_KindInt              | TF_Signed )                               \
   _( uint      , 'u' , TF_KindInt )                                                        \
-  _( rawptr    , '*' , TF_KindPointer )                                                    \
+  _( rawptr    , '#' , TF_KindPointer )                                                    \
 // end DEF_TYPE_CODES_BASIC_PUB
 #define DEF_TYPE_CODES_BASIC(_)                                                            \
   _( nil       , '0' , TF_KindVoid )                                                       \
@@ -48,6 +48,7 @@ typedef u8  TypeKind;  // TF_Kind* constants (part of TypeFlags)
 // end DEF_TYPE_CODES_PUB
 #define DEF_TYPE_CODES_ETC(_)                                                              \
   _( ref       , '&' , TF_KindPointer ) /* pointer memory address                        */\
+  _( mutref    , '*' , TF_KindPointer ) /* pointer memory address                        */\
   _( fun       , '^' , TF_KindFunc )                                                       \
   _( array     , '[' , TF_KindArray )                                                      \
   _( arrayEnd  , ']' , TF_KindVoid )                                                       \

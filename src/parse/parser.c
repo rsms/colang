@@ -890,6 +890,7 @@ static LocalNode* make_local(
 
 // promote_local_to_mut makes a var definitively mutable
 static void promote_local_to_mut(Parser* p, LocalNode* n) {
+  n->flags |= NF_Mem;
   if (n->kind == NParam)
     return;
   Type* t = n->type;
@@ -1366,6 +1367,9 @@ static Node* PRef(Parser* p, PFlag fl) {
   if (is_IdNode(target) && ((IdNode*)target)->target)
     target = ((IdNode*)target)->target;
 
+  // target must have a memory location
+  target->flags |= NF_Mem;
+
   // mutability
   if (p->ctxtype) {
     NodeSetConstCond(ref, fl & PFlagConst);
@@ -1393,20 +1397,32 @@ static Node* PRef(Parser* p, PFlag fl) {
 
   // check compatibility with any current context type, e.g. for local initializer
   if (p->ctxtype) {
-    if (UNLIKELY(
-      !is_RefTypeNode(p->ctxtype) ||
-      !b_typeeq(p->build, ((RefTypeNode*)p->ctxtype)->elem, elemtype)) )
-    {
-      // not a ref type or a ref type of incompatible element type
+    if UNLIKELY(!is_RefTypeNode(p->ctxtype)) {
       syntaxerrp(p, ref->pos,
-        "cannot use expression of type %s&%s; expected type %s",
-        NodeIsConst(ref) ? "" : "mut", FMTNODE(elemtype,0), FMTNODE(p->ctxtype,1) );
+        "expected type %s; found reference type", FMTNODE(p->ctxtype,0));
       return as_Node(ref);
     }
+
+    RefTypeNode* ctxt = (RefTypeNode*)p->ctxtype;
+
+    if (!b_typeeq(p->build, ctxt->elem, elemtype)) {
+      // &[T] <= &[T N]
+      if LIKELY(
+        is_ArrayTypeNode(ctxt->elem) && is_ArrayTypeNode(elemtype) &&
+        ((ArrayTypeNode*)ctxt->elem)->size == 0 )
+      {
+        // pass
+      } else {
+        syntaxerrp(p, ref->pos,
+          "incompatible reference type %s&%s; expected %s",
+          NodeIsConst(ref) ? "" : "mut", FMTNODE(elemtype,0), FMTNODE(p->ctxtype,1) );
+        return as_Node(ref);
+      }
+    }
     // context type matches; can we use it?
-    if (NodeIsConst(((RefTypeNode*)p->ctxtype)->elem) == NodeIsConst(elemtype)) {
+    if (NodeIsConst(ctxt->elem) == NodeIsConst(elemtype)) {
       // Note: this saves us from the mknode call later on but apart from that
-      // yields an equivalent type and return value.
+      // yields an equivalent return value.
       ref->type = p->ctxtype;
       return as_Node(ref);
     }
@@ -1778,8 +1794,10 @@ static Expr* pBlock(Parser* p, PFlag fl, bool may_simplify) {
   // Note: if end_block(p) fails, a syntax error is logged
   if (end_block(p) && cn) {
     // if last expression is a local, increment its refcount
-    if (is_LocalNode(cn))
+    if (is_LocalNode(cn)) {
       NodeRefLocal(as_LocalNode(cn));
+      NodeClearUnused(cn);
+    }
 
     // last expression is used as rvalue
     block->a.v[block->a.len - 1] = use_as_rvalue(p, cn);

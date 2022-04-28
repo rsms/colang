@@ -25,9 +25,13 @@ ASSUME_NONNULL_BEGIN
 // llvm_module_optimize1 is the part of llvm_module_optimize implemented in C++
 EXTERN_C error llvm_module_optimize1(CoLLVMModule* m, const CoLLVMBuild*, char O);
 
+EXTERN_C LLVMContextRef CoLLVMContextCreate();
+
 EXTERN_C LLVMValueRef CoLLVMBuildGlobalString(
   LLVMBuilderRef B, const char* data, usize len, const char* vname);
 
 EXTERN_C u64 CoLLVMArrayTypeLength(LLVMTypeRef array_ty);
+
+EXTERN_C LLVMTypeRef CoLLVMOpaquePointerType(LLVMContextRef C, unsigned AddressSpace);
 
 ASSUME_NONNULL_END

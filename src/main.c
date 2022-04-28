@@ -44,10 +44,10 @@ static CliOption cliopts[] = {
   {"unsafe", 0, "", CLI_T_BOOL, "Build witout runtime safety checks" },
   {"small", 0, "", CLI_T_BOOL, "Bias optimizations toward minimizing code size" },
   {"output", 'o', "<file>", CLI_T_STR, "Write output to <file>" },
-  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package" },
   {"output-asm", 0, "<file>", CLI_T_STR, "Write machine assembly to <file>" },
   {"output-ir", 0, "<file>", CLI_T_STR, "Write IR source to <file>" },
   {"opt", 'O', "<level>", CLI_T_STR, "Set specific optimization level (0-3, s)" },
+  {"pkgname", 0, "<name>", CLI_T_STR, "Use <name> for package" },
 
   #if CO_TESTING_ENABLED
   {"test-only", 0, "", CLI_T_BOOL, "Exit after running unit tests" },
@@ -233,68 +233,6 @@ static void init_copath_vars() {
 }
 
 
-#ifdef WITH_LLVM
-  static int main2_llvm(BuildCtx* build) {
-    // initialize llvm
-    auto t = logtime_start("[llvm] init:");
-    PANIC_ON_ERROR( llvm_init() );
-    logtime_end(t);
-
-    // build module
-    // build->opt = OptSpeed;
-    CoLLVMBuild buildopt = {
-      .target_triple = llvm_host_triple(),
-      .enable_tsan = false,
-      .enable_lto = false,
-    };
-    CoLLVMModule m;
-    t = logtime_start("[llvm] build module:");
-    PANIC_ON_ERROR( llvm_build(build, &m, &buildopt) );
-    logtime_end(t);
-
-    // #if DEBUG
-    // dlog("═════════════════════════════════════════════════════════════════════");
-    // llvm_module_dump(&m);
-    // dlog("═════════════════════════════════════════════════════════════════════");
-    // #endif
-
-    const char* outfile = cliopt_str(cliopts, "output");
-    const char* outfile_ir = cliopt_str(cliopts, "output-ir");
-    const char* outfile_asm = cliopt_str(cliopts, "output-asm");
-
-    if (outfile_ir && outfile_ir[0])
-      PANIC_ON_ERROR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
-
-    if (outfile_asm && outfile_asm[0])
-      PANIC_ON_ERROR( llvm_module_emit(&m, outfile_asm, CoLLVMEmit_asm, 0) );
-
-    if (!outfile)
-      return 0;
-
-    // generate object code
-    Str outfile_o = str_dupcstr(outfile); str_appendcstr(&outfile_o, ".o");
-    t = logtime_start("[llvm] emit object file:");
-    PANIC_ON_ERROR( llvm_module_emit(&m, str_cstr(&outfile_o), CoLLVMEmit_obj, 0) );
-    logtime_end(t);
-
-    // link executable
-    const char* objfiles[] = { outfile_o.v };
-    CoLLVMLink link = {
-      .target_triple = buildopt.target_triple,
-      .outfile = outfile,
-      .infilec = countof(objfiles),
-      .infilev = objfiles,
-    };
-    t = logtime_start("[llvm] link executable:");
-    PANIC_ON_ERROR( llvm_link(&link) );
-    logtime_end(t);
-
-    //llvm_module_dispose(&m);
-    return 0;
-  }
-#endif
-
-
 
 static void set_pkgname_from_dir(BuildCtx* b, const char* filename) {
   // sets package name to the directory's name
@@ -388,6 +326,76 @@ static void add_sources(BuildCtx* build) {
     print_src_checksum(src);
   }
 }
+
+
+#ifdef WITH_LLVM
+static int main2_llvm(BuildCtx* build) {
+  const char* outfile = cliopt_str(cliopts, "output");
+  const char* outfile_ir = cliopt_str(cliopts, "output-ir");
+  const char* outfile_asm = cliopt_str(cliopts, "output-asm");
+
+  if ((!outfile || !outfile[0]) &&
+      (!outfile_ir || !outfile_ir[0]) &&
+      (!outfile_asm || !outfile_asm[0]) )
+  {
+    // no work to do
+    return 0;
+  }
+
+  // initialize llvm
+  auto t = logtime_start("[llvm] init:");
+  PANIC_ON_ERROR( llvm_init() );
+  logtime_end(t);
+
+  // build module
+  // build->opt = OptSpeed;
+  CoLLVMBuild buildopt = {
+    .target_triple = llvm_host_triple(),
+    .enable_tsan = false,
+    .enable_lto = false,
+  };
+  CoLLVMModule m;
+  t = logtime_start("[llvm] build module:");
+  PANIC_ON_ERROR( llvm_build(build, &m, &buildopt) );
+  logtime_end(t);
+
+  // #if DEBUG
+  // dlog("═════════════════════════════════════════════════════════════════════");
+  // llvm_module_dump(&m);
+  // dlog("═════════════════════════════════════════════════════════════════════");
+  // #endif
+
+  if (outfile_ir && outfile_ir[0])
+    PANIC_ON_ERROR( llvm_module_emit(&m, outfile_ir, CoLLVMEmit_ir, CoLLVMEmit_debug) );
+
+  if (outfile_asm && outfile_asm[0])
+    PANIC_ON_ERROR( llvm_module_emit(&m, outfile_asm, CoLLVMEmit_asm, 0) );
+
+  if (!outfile)
+    return 0;
+
+  // generate object code
+  Str outfile_o = str_dupcstr(outfile); str_appendcstr(&outfile_o, ".o");
+  t = logtime_start("[llvm] emit object file:");
+  PANIC_ON_ERROR( llvm_module_emit(&m, str_cstr(&outfile_o), CoLLVMEmit_obj, 0) );
+  logtime_end(t);
+
+  // link executable
+  const char* objfiles[] = { outfile_o.v };
+  CoLLVMLink link = {
+    .target_triple = buildopt.target_triple,
+    .outfile = outfile,
+    .infilec = countof(objfiles),
+    .infilev = objfiles,
+  };
+  t = logtime_start("[llvm] link executable:");
+  PANIC_ON_ERROR( llvm_link(&link) );
+  logtime_end(t);
+
+  //llvm_module_dispose(&m);
+  return 0;
+}
+#endif // WITH_LLVM
 
 
 int main(int argc, const char** argv) {

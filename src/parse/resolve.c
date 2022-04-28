@@ -928,7 +928,7 @@ static Node* resolve_ref(R* r, RefNode* n) {
 
   // the ref is mutable if the context is mutable
   bool is_const = NodeIsConst(n) || (typecontext && (typecontext->flags & NF_Const));
-  // NodeSetConstCond(t, is_const);
+  NodeSetConstCond(t, is_const);
   NodeSetConstCond(n, is_const);
 
   n->type = (Type*)t;
@@ -1087,7 +1087,7 @@ static Node* resolve_assign(R* r, AssignNode* n) {
     // storing to a local or field of array type is not allowed
     errf(r, n, "array type %s is not assignable", FMTNODE(n->type,0));
   } else if (!b_typelteq(r->build, n->type, n->val->type)) {
-    // convert rvalue (if it's a different type than dst)
+    // try to convert rvalue
     n->val = ctypecast_implicit(r->build, n->val, n->type, NULL, n);
   }
 

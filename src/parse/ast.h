@@ -261,7 +261,7 @@ enum NodeFlags {
   NF_CustomInit  = 1 << 8,  // struct has fields w/ non-zero initializer
   NF_Unsafe      = 1 << 9,  // Fun: is unsafe, Expr: unsafe context
   NF_Shared      = 1 << 10, // node is shared between multiple functions (template)
-  NF_HasShared   = 1 << 11, // TODO
+  NF_Mem         = 1 << 11, // [Local] is referenced; needs a memory location
 } END_ENUM(NodeFlags)
 
 #define NodeIsUnresolved(n) _NodeIsUnresolved(as_const_Node(n))

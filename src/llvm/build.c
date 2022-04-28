@@ -64,6 +64,7 @@ typedef struct B {
   Val   mgen_alloca; // alloca for failed ref (type "REF" { i32*, i32 })
 
   // type constants
+  Typ t_ptr; // opaque pointer type
   Typ t_void;
   Typ t_bool;
   Typ t_i8;
@@ -72,18 +73,20 @@ typedef struct B {
   Typ t_i64;
   Typ t_i128;
   Typ t_int; // t_i* type of at least pointer size
-  Typ t_i8ptr; // i8*
   Typ t_f32;
   Typ t_f64;
   Typ t_f128;
 
-  // ref struct types
-  Typ t_ref; // "mut&T", "&T"
+  // struct type constants
+  Typ t_cslice; // struct cslice<T> { const void* p; uint len; }
+  Typ t_mslice; // struct mslice<T> { void* p; uint len; uint cap; }
 
   // value constants
   Val v_i32_0;    // (i32)0
+  Val v_i32_1;    // (i32)1
+  Val v_i32_2;    // (i32)2
   Val v_int_0;    // (int)0
-  Val v_intptr_0; // (int*)NULL
+  Val v_nullptr; // (void*)NULL
 
   // metadata values
   Val md_br_likely;
@@ -193,16 +196,14 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
 #define assert_llvm_type_iskind(llvmtype, expect_typekind) \
   asserteq(LLVMGetTypeKind(llvmtype), (expect_typekind))
 
-// TODO: Find a different way to implement this macro since
-// calling LLVMGetElementType on a pointer type is being deprecated in LLVM
-// as part of the migration to opaque pointers.
-#define assert_llvm_type_isptrkind(llvmtype, expect_typekind) do { \
-  asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind); \
-  asserteq(LLVMGetTypeKind(LLVMGetElementType(llvmtype)), (expect_typekind)); \
-} while(0)
-
 #define assert_llvm_type_isptr(llvmtype) \
   asserteq(LLVMGetTypeKind(llvmtype), LLVMPointerTypeKind)
+
+#define assert_llvm_type_is_struct(llvmtype) \
+  asserteq(LLVMGetTypeKind(llvmtype), LLVMStructTypeKind)
+
+#define assert_llvm_type_is_array(llvmtype) \
+  asserteq(LLVMGetTypeKind(llvmtype), LLVMArrayTypeKind)
 
 // we check for so many null values in this file that a shorthand increases legibility
 #define notnull assertnotnull_debug
@@ -216,7 +217,7 @@ static_assert(sizeof(LLVMRealPredicate) <= sizeof(u32), "");
 
 
 static Val make_uint(Typ t, u64 v) { return LLVMConstInt(t, v, /*sign_extend*/false); }
-static Val make_sint(Typ t, u64 v) { return LLVMConstInt(t, v, /*sign_extend*/true); }
+//static Val make_sint(Typ t, u64 v) { return LLVMConstInt(t, v, /*sign_extend*/true); }
 
 
 static error builder_init(B* b, CoLLVMModule* m) {
@@ -231,6 +232,7 @@ static error builder_init(B* b, CoLLVMModule* m) {
 
     // constants
     // note: no disposal needed of built-in types
+    .t_ptr  = CoLLVMOpaquePointerType(ctx, 0),
     .t_void = LLVMVoidTypeInContext(ctx),
     .t_bool = LLVMInt1TypeInContext(ctx),
     .t_i8   = LLVMInt8TypeInContext(ctx),
@@ -259,13 +261,18 @@ static error builder_init(B* b, CoLLVMModule* m) {
     "builder was configured with a different int type (%u) than module (%u)",
     TF_Size(b->build->sint_type->tflags), LLVMGetIntTypeWidth(b->t_int)/8);
 
-  // initialize common types
-  b->t_i8ptr = LLVMPointerType(b->t_i8, 0);
-
   // initialize common constant values
   b->v_i32_0 = make_uint(b->t_i32, 0);
+  b->v_i32_1 = make_uint(b->t_i32, 1);
+  b->v_i32_2 = make_uint(b->t_i32, 2);
   b->v_int_0 = make_uint(b->t_int, 0);
-  b->v_intptr_0 = LLVMConstNull(LLVMPointerType(b->t_int, 0));
+  b->v_nullptr = LLVMConstNull(b->t_ptr);
+
+  // initialize type constants
+  b->t_cslice = LLVMStructCreateNamed(ctx, "_.cslice");
+  LLVMStructSetBody(b->t_cslice, (Typ[]){ b->t_ptr, b->t_int }, 2, /*packed*/false);
+  b->t_mslice = LLVMStructCreateNamed(ctx, "_.mslice");
+  LLVMStructSetBody(b->t_mslice, (Typ[]){ b->t_ptr, b->t_int, b->t_int }, 3, false);
 
   // FPM: Apply per-function optimizations. (NULL to disable.)
   // Really only useful for JIT; for offline compilation we use module-wide passes.
@@ -352,6 +359,11 @@ inline static Block get_current_block(B* b) {
        tmp1__ = 0, b->flags = prev__)
 
 
+#define local_has_mem(n) _local_has_mem(as_LocalNode(n))
+static bool _local_has_mem(LocalNode* n) {
+  return (n->flags & NF_Mem) || (n->flags & NF_Const) == 0;
+}
+
 
 //———————————————————————————————————————————————————————————————————————————————————————
 // begin misc helper functions
@@ -389,12 +401,6 @@ inline static Block get_current_block(B* b) {
     // avoid printing entire function bodies (just use its type)
     Typ ty = LLVMTypeOf(v);
     LLVMTypeKind tk = LLVMGetTypeKind(ty);
-    while (tk == LLVMPointerTypeKind) {
-      // TODO: LLVMGetElementType on pointers is deprecated; find another way to do this,
-      // to get the function type from a value.
-      ty = LLVMGetElementType(ty);
-      tk = LLVMGetTypeKind(ty);
-    }
     if (tk == LLVMFunctionTypeKind) {
       s = LLVMPrintTypeToString(ty);
     } else {
@@ -452,7 +458,7 @@ static Typ get_basic_type(B* b, BasicTypeNode* tn) {
     case TC_f64:  return b->t_f64;
     case TC_f128: return b->t_f128;
 
-    case TC_rawptr: return b->t_i8ptr;
+    case TC_rawptr: return b->t_ptr;
 
     case TC_nil:
     case TC_ideal:
@@ -489,32 +495,12 @@ static Typ make_fun_type(B* b, FunTypeNode* tn) {
 }
 
 
-static Typ make_cslice_type(B* b, Typ elem) {
-  // struct cslice<T> { const T* p; uint len; }
-  Typ types[] = { LLVMPointerType(elem, 0), b->t_int };
-  return LLVMStructTypeInContext(b->ctx, types, countof(types), /*packed*/false);
-}
-
-
-static Typ make_slice_type(B* b, Typ elem) {
-  // struct slice<T> { T* p; uint len; uint cap; }
-  Typ types[] = { LLVMPointerType(elem, 0), b->t_int, b->t_int };
-  return LLVMStructTypeInContext(b->ctx, types, countof(types), /*packed*/false);
-}
-
-
-static Typ make_dynarray_type(B* b, Typ elem) {
-  // struct dynarray<T> { T* p; uint len; uint cap; }
-  return make_slice_type(b, elem);
-}
-
-
 static Typ make_array_type(B* b, ArrayTypeNode* tn) {
   Typ elemty = get_type(b, tn->elem);
 
-  // [T] => dynarray<T>
+  // [T] => cslice|mslice
   if (tn->size == 0)
-    return make_dynarray_type(b, elemty);
+    return NodeIsConst(tn) ? b->t_cslice : b->t_mslice;
 
   // [T N] => T[N]
   return LLVMArrayType(elemty, tn->size);
@@ -522,21 +508,18 @@ static Typ make_array_type(B* b, ArrayTypeNode* tn) {
 
 
 static Typ make_ref_type(B* b, RefTypeNode* t) {
-  // &[T] => cslice<T>
-  // mut&[T] => slice<T>
+  // Ref of array is a slice
+  //   mut&[T N] │ T*
+  //      &[T N] │ const T*
+  //   mut&[T]   │ struct mslice { T* p; uint len; uint cap; }
+  //      &[T]   │ struct cslice { const T* p; uint len; }
+  //
   ArrayTypeNode* arrayt = (ArrayTypeNode*)t->elem;
-  if (t->elem->kind == NArrayType && arrayt->size == 0) {
-    Typ elemty = get_type(b, arrayt->elem);
-    if (NodeIsConst(t))
-      return make_cslice_type(b, elemty);
-    return make_slice_type(b, elemty);
-  }
+  if (t->elem->kind == NArrayType && arrayt->size == 0)
+    return NodeIsConst(t) ? b->t_cslice : b->t_mslice;
 
   // &T => T*
-  if (b->build->safe)
-    dlog("TODO safe deref wrapper type");
-  Typ elemty = get_type(b, t->elem);
-  return LLVMPointerType(elemty, 0);
+  return b->t_ptr;
 }
 
 
@@ -550,6 +533,8 @@ static Typ _get_type(B* b, Type* np) {
   Typ t = get_interned_type(b, np);
   if (t)
     return t;
+
+  // dlog("make complex type %s %s", nodename(np), FMTNODE(np,0));
 
   switch ((enum NodeKind)np->kind) { case NBad: {
     NCASE(FunType)   t = make_fun_type(b, n); break;
@@ -630,18 +615,38 @@ static Val build_default_value(B* b, Type* t) {
 }
 
 
+// Val BUILD_GEPX(B* b, const char* vname, Typ t, Val ptr, (Val[]){ ... })
+// Note on GEP indices:
+//   For e.g. srct="&[int 3]":
+//   - the first index is to the Nth array at the address ([int 3])
+//   - the second index is to the Nth element of the array (int)
+//   For ConstGEP the indices "roll around" automatically:
+//   - GEP(srcv, 0, 2) =>
+//     3rd element of the firt array at srcv
+//   - GEP(srcv, 0, 3) => GEP(srcv, 1, 0) =>
+//     0th element of the next array at srcv
+//
+#define BUILD_GEPX(b, vname, aggr_type, aggr_ptr, indices...) \
+  _BUILD_GEPX(b, vname, aggr_type, aggr_ptr, ((Val[]){ indices }))
+#define _BUILD_GEPX(b, vname, aggr_type, aggr_ptr, indices) ( \
+  assert_llvm_type_isptr(LLVMTypeOf(aggr_ptr)), \
+  LLVMBuildInBoundsGEP2( \
+    (b)->builder, (aggr_type), (aggr_ptr), indices, countof(indices), vname) \
+)
+
+// Val BUILD_GEPX_LOAD(B* b, const char* vname, Typ et, Typ at, Val aptr, (Val[]){ ... })
+#define BUILD_GEPX_LOAD(b, vname, elem_ty, aggr_type, aggr_ptr, indices...) \
+  build_load(b, elem_ty, \
+    _BUILD_GEPX(b, "", aggr_type, aggr_ptr, ((Val[]){ indices })), vname)
+
 static Val build_store(B* b, Val dst, Val val) {
   #if DEBUG
-  assertnotnull(dst);
-  assertnotnull(val);
-  Typ dst_type = LLVMTypeOf(dst);
-  assertf(LLVMGetTypeKind(dst_type) == LLVMPointerTypeKind,
-    "dst_type %s is not a pointer type",
-    fmttyp(LLVMGetElementType(dst_type)) );
-  if (LLVMTypeOf(val) != LLVMGetElementType(dst_type)) {
-    panic("store destination type %s != source type %s",
-      fmttyp(LLVMGetElementType(dst_type)), fmttyp(LLVMTypeOf(val)));
-  }
+    assertnotnull(dst);
+    assertnotnull(val);
+    Typ dst_type = LLVMTypeOf(dst);
+    assertf(LLVMGetTypeKind(dst_type) == LLVMPointerTypeKind,
+      "dst_type %s is not a pointer type",
+      fmttyp(LLVMGetElementType(dst_type)) );
   #endif
   return LLVMBuildStore(b->builder, val, dst);
 }
@@ -649,14 +654,10 @@ static Val build_store(B* b, Val dst, Val val) {
 
 static Val build_load(B* b, Typ elem_ty, Val src, const char* vname) {
   #if DEBUG
-  assertnotnull(elem_ty);
-  assertnotnull(src);
-  Typ src_type = LLVMTypeOf(src);
-  asserteq(LLVMGetTypeKind(src_type), LLVMPointerTypeKind);
-  if (elem_ty != LLVMGetElementType(src_type)) {
-    panic("load destination type %s != source type %s",
-      fmttyp(elem_ty), fmttyp(LLVMGetElementType(src_type)));
-  }
+    assertnotnull(elem_ty);
+    assertnotnull(src);
+    Typ src_type = LLVMTypeOf(src);
+    asserteq(LLVMGetTypeKind(src_type), LLVMPointerTypeKind);
   #endif
   return LLVMBuildLoad2(b->builder, elem_ty, src, vname);
 }
@@ -855,9 +856,7 @@ static void build_pkg(B* b, PkgNode* n) {
 
 
 static Val build_nil(B* b, NilNode* n, const char* vname) {
-  if (b->flags & BFL_RVAL)
-    dlog("TODO build rval nil (depends on outer type)");
-  return b->v_intptr_0;
+  return b->v_nullptr;
 }
 
 
@@ -969,7 +968,7 @@ static Val build_templateparam(B* b, TemplateParamNode* n, const char* vname) {
 
 static Val build_var(B* b, VarNode* n, const char* vname) {
   if (n->irval) {
-    if (!NodeIsConst(n) && (b->flags & BFL_RVAL)) {
+    if (local_has_mem(n) && (b->flags & BFL_RVAL)) {
       Typ ty = get_type(b, n->type);
       return build_load(b, ty, n->irval, n->name);
     }
@@ -979,7 +978,8 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
   // don't build unused variables
   if (NodeIsUnused(n) && b->build->opt > OptNone) {
     dlog2("skipping unused var");
-    return b->v_int_0;
+    return NULL;
+    // return LLVMGetPoison(get_type(b, n->type));
   }
 
   // build initializer
@@ -991,7 +991,7 @@ static Val build_var(B* b, VarNode* n, const char* vname) {
   }
 
   // immutable var is represented by its initializer (no stack space)
-  if (NodeIsConst(n)) {
+  if (!local_has_mem(n)) {
     n->irval = init;
     return n->irval;
   }
@@ -1013,39 +1013,6 @@ static Val build_param(B* b, ParamNode* n, const char* vname) {
     return paramval;
   Typ ty = get_type(b, n->type);
   return build_load(b, ty, paramval, vname);
-}
-
-
-static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
-  LocalNode* dstn = as_LocalNode(n->dst);
-  Val dst = build_lval(b, n->dst, dstn->name);
-  Val val = build_rval(b, n->val, "");
-  build_store(b, dst, val);
-  return val;
-}
-
-
-static Val build_assign_tuple(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
-}
-
-static Val build_assign_index(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
-}
-
-static Val build_assign_selector(B* b, AssignNode* n, const char* vname) {
-  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
-}
-
-static Val build_assign(B* b, AssignNode* n, const char* vname) {
-  switch (assertnotnull(n->dst)->kind) {
-    case NLocal_BEG ... NLocal_END: return build_assign_local(b, n, vname);
-    case NTuple:                    return build_assign_tuple(b, n, vname);
-    case NIndex:                    return build_assign_index(b, n, vname);
-    case NSelector:                 return build_assign_selector(b, n, vname);
-  }
-  assertf(0,"invalid assignment destination %s", nodename(n->dst));
-  return NULL;
 }
 
 
@@ -1102,7 +1069,11 @@ static Val build_block(B* b, BlockNode* n, const char* vname) {
   for (; i < n->a.len - 1; i++)
      build_expr(b, n->a.v[i], "");
   // last expr of block is its value
-  return build_expr(b, n->a.v[i], "");
+  BFlags flags = b->flags;
+  SET_FLAG(b->flags, BFL_RVAL, NodeIsRValue(n));
+  Val v = build_expr(b, n->a.v[i], "");
+  b->flags = flags;
+  return v;
 }
 
 
@@ -1193,7 +1164,7 @@ static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
 static Val build_cslice_struct1(B* b, Val array_ptr) {
   // (cslice<T>){ GEP(array_ptr), len(array_ptr) }
   Typ array_ty = LLVMTypeOf(array_ptr); // i.e. [N x T]*
-  assert_llvm_type_isptrkind(array_ty, LLVMArrayTypeKind);
+  assert_llvm_type_isptr(array_ty);
   assert(LLVMIsConstant(array_ptr));
   Typ elem_ty = LLVMGetElementType(array_ty); // i.e. [N x T]
   Val indices[] = { b->v_i32_0, b->v_i32_0 };
@@ -1212,133 +1183,121 @@ static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
   assert(NodeIsConst(n));
   if (!vname[0])
     vname = "str";
-  Val gv = CoLLVMBuildGlobalString(b->builder, n->p, n->len, vname); // [N x i8]*
-  n->irval = build_cslice_struct1(b, gv); // [N x i8]* => { u8* p=GEP, len=N }
-  // TODO: convert to using build_cslice_struct
+  n->irval = CoLLVMBuildGlobalString(b->builder, n->p, n->len, vname); // [N x i8]*
+  // TODO: automatic cast to slice from sized array, eg "var x [i8] = str".
+  // Typ srct = LLVMArrayType(b->t_i8, n->len);
+  // Val srcv = LLVMConstGEP2(srct, n->irval, (Val[]){ b->v_i32_0, b->v_i32_0 }, 2);
+  // Val lenv = make_uint(b->t_int, n->len);
+  // n->irval = LLVMConstNamedStruct(b->t_cslice, (Val[]){ srcv, lenv }, 2);
   return n->irval;
 }
 
 
-// build_slice_struct does array[start:len]
-static Val build_slice_struct(
-  B* b, Typ array_ty, Val srcv, Val startv, Val lenv, Val capv)
-{
-  assert_llvm_type_isptr(LLVMTypeOf(srcv));
-  // struct slice<T> { T* p; uint len; uint cap; } = { GEP(srcv, 0, start), lenv, capv }
-  if (!LLVMIsConstant(srcv) || !LLVMIsConstant(startv) ||
-      !LLVMIsConstant(lenv) || !LLVMIsConstant(capv))
-  {
-    dlog("TODO: non-const build_slice_struct");
-    return b->v_int_0;
-  }
-  assert(LLVMConstIntGetZExtValue(lenv) <= LLVMConstIntGetZExtValue(capv));
-  Val fieldvals[] = {
-    // GEP indices:
-    //   For e.g. array_ty="&[int 3]":
-    //   - the first index is to the Nth array at the address ([int 3])
-    //   - the second index is to the Nth element of the array (int)
-    //   For ConstGEP the indices "roll around" automatically:
-    //   - GEP(srcv, 0, 2) =>
-    //     3rd element of the firt array at srcv
-    //   - GEP(srcv, 0, 3) => GEP(srcv, 1, 0) =>
-    //     0th element of the next array at srcv
-    LLVMConstGEP2(array_ty, srcv, (Val[]){ b->v_i32_0, startv }, 2),
-    lenv,
-    capv,
-  };
-  return LLVMConstStructInContext(b->ctx, fieldvals, countof(fieldvals), /*packed*/false);
-}
+static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_const) {
+  // srcv is one of the following:
+  //   %mslice
+  //   %cslice
+  //   %mslice*
+  //   %cslice*
+  //   [N x T]*
+  // result is one of the following:
+  //   %mslice (when as_const = false)
+  //   %cslice (when as_const = true)
+  Typ srct = get_type(b, srctype); // [N x T] | %mslice | %cslice
+  Val startv = b->v_i32_0; // TODO: argument + use for slice op eg. "x[1:3]"
+  Val lenv;
+  Val capv = NULL;
+  bool src_is_ptr = LLVMTypeOf(srcv) == b->t_ptr;
 
-
-static Val build_cslice_struct(B* b, Typ array_ty, Val srcv, Val startv, Val lenv) {
-  // struct cslice<T> { const T* p; uint len; } = { GEP(srcv, 0, start), lenv }
-  assert_llvm_type_isptr(LLVMTypeOf(srcv));
-  if (!LLVMIsConstant(srcv) || !LLVMIsConstant(startv) ||  !LLVMIsConstant(lenv)) {
-    dlog("TODO: non-const build_cslice_struct");
-    return b->v_int_0;
+  if (src_is_ptr && srctype->size) {
+    // srcv is T*
+    dlog("srcv: T*");
+    assert_llvm_type_is_array(srct);
+    lenv = make_uint(b->t_int, srctype->size);
+    capv = lenv;
+  } else if (src_is_ptr) {
+    // srcv is mslice*|cslice*
+    dlog("srcv: mslice*|cslice*");
+    assert_llvm_type_is_struct(srct);
+    if (NodeIsConst(srctype) == as_const) {
+      // if typeof(*source)==typeof(result) then just load
+      return build_load(b, srct, srcv, "");
+    }
+    // void* srcv = &src->p
+    // uint* lenv = &src->len
+    // uint* capv = &src->cap  // if as_const=true
+    lenv = BUILD_GEPX_LOAD(b, "slice.len", b->t_int, srct, srcv, b->v_i32_0, b->v_i32_1);
+    capv = lenv;
+    if (!as_const && !NodeIsConst(srctype)) {
+      capv = BUILD_GEPX_LOAD(
+        b, "slice.cap", b->t_int, srct, srcv, b->v_i32_0, b->v_i32_2);
+    }
+    srcv = BUILD_GEPX(b, "slice.p", srct, srcv, b->v_i32_0, b->v_i32_0);
+  } else {
+    // srcv is mslice|cslice
+    assert(LLVMTypeOf(srcv) == b->t_cslice || LLVMTypeOf(srcv) == b->t_mslice);
+    assert_llvm_type_is_struct(srct);
+    panic("TODO: srcv is mslice|cslice (not a pointer)");
   }
-  Val fieldvals[] = {
-    LLVMConstGEP2(array_ty, srcv, (Val[]){ b->v_i32_0, startv }, 2),
-    lenv,
-  };
-  return LLVMConstStructInContext(b->ctx, fieldvals, countof(fieldvals), /*packed*/false);
-}
 
+  // build result slice
+  Typ slicetyp = as_const ? b->t_cslice : b->t_mslice;
 
-// len(v)
-static Val build_len(B* b, Type* t, Val v) {
-  if (!is_ArrayTypeNode(t)) {
-    dlog("TODO %s (%s) %s:%d", __FUNCTION__, nodename(t), __FILE__, __LINE__);
-    return b->v_int_0;
+  if (LLVMIsConstant(srcv) && LLVMIsConstant(startv) && LLVMIsConstant(lenv)) {
+    // return (Slice){ srcv, lenv, capv };
+    if (!as_const) {
+      assertnotnull(capv);
+      assert(LLVMIsConstant(capv)); // capv is const if lenv is
+      assert(LLVMConstIntGetZExtValue(lenv) <= LLVMConstIntGetZExtValue(capv));
+    }
+    srcv = LLVMConstGEP2(srct, srcv, (Val[]){ b->v_i32_0, startv }, 2);
+    u32 nvals = 3 - (u32)as_const; // skip cap when as_const=true
+    return LLVMConstNamedStruct(slicetyp, (Val[]){ srcv, lenv, capv }, nvals);
   }
-  ArrayTypeNode* at = as_ArrayTypeNode(t);
-  if (at->size) {
-    // sized type, e.g. [int 3]
-    return make_uint(b->t_int, at->size);
-  }
-  dlog("TODO %s (%s) %s:%d", __FUNCTION__, nodename(t), __FILE__, __LINE__);
-  return b->v_int_0;
+
+  // Slice slice;
+  // slice.p = srcv
+  // slice.len = lenv
+  // slice.cap = capv
+  // return *slice;
+  Val mem = LLVMBuildAlloca(b->builder, slicetyp, "slice");
+  build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 0, "slice.p"), srcv);
+  build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 1, "slice.len"), lenv);
+  if (!as_const)
+    build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 2, "slice.cap"), capv);
+  return build_load(b, slicetyp, mem, "");
 }
 
 
 static Val build_array_ref(B* b, RefNode* n, const char* vname) {
   // references to arrays are special since they yield slices:
   //
-  // unsafe mode:
   //       [T N] │ T mem[N]
-  //       [T]   │ struct slice  { T* p; uint len; uint cap; }
   //   mut&[T N] │ T*
   //      &[T N] │ const T*
-  //   mut&[T]   │ struct slice  { T* p; uint len; uint cap; }
-  //      &[T]   │ struct cslice { const T* p; uint len; }
-  //
-  // safe mode:
-  //       [T N] │ T mem[N]
-  //       [T]   │ struct slice  { T* p; uint len; uint cap; }
-  //   mut&[T N] │ struct slice  { T* p; uint len; uint cap; }
-  //      &[T N] │ struct cslice { const T* p; uint len; }
-  //   mut&[T]   │ struct slice  { T* p; uint len; uint cap; }
+  //       [T]   │ struct mslice { T* p; uint len; uint cap; }
+  //   mut&[T]   │ struct mslice { T* p; uint len; uint cap; }
   //      &[T]   │ struct cslice { const T* p; uint len; }
   //
 
   RefTypeNode* t = as_RefTypeNode(n->type);
-  ArrayTypeNode* at = as_ArrayTypeNode(t->elem);
-  assert(is_ArrayTypeNode(n->target->type));
+  ArrayTypeNode* arrayt = as_ArrayTypeNode(t->elem);
+  assert_is_ArrayTypeNode(n->target->type);
 
   Val srcv = build_lval(b, n->target, "");
-  assert_llvm_type_isptr(LLVMTypeOf(srcv));
-  Typ srct = get_type(b, n->target->type);
+  // note: LLVMTypeOf(srcv) might be different from get_type(b, n->target->type)
+  // since build_lval does not include loads of locals.
+  // So, if n->target names a local, srcv is a pointer to its alloca.
 
-  Val lenv = build_len(b, n->target->type, srcv);
-  Val capv = lenv; // TODO FIXME
-
-  if (at->size) {
-    // e.g. &[int 3]
-    // srcv is a pointer to the array, e.g. [3 x i64]*
-    lenv = make_uint(b->t_int, at->size);
-    capv = lenv;
-  } else {
-    // e.g. &[int]
-    // srcv is a pointer to a slice or cslice, e.g. { i64*, i64, i64 }* or { i64*, i64 }*
-    dlog("NodeIsConst(n->target): %d", NodeIsConst(n->target));
-    Val gepidx[] = { b->v_i32_0, b->v_i32_0 };
-    dlog("srct: %s", fmttyp(srct));
-    dlog("srcv: %s", fmtval(srcv));
-    srcv = LLVMBuildInBoundsGEP2(b->builder, srct, srcv, gepidx, countof(gepidx), "");
-    dlog("srcv: %s", fmtval(srcv));
-    dlog("LLVMTypeOf(srcv): %s", fmttyp(LLVMTypeOf(srcv)));
+  if (arrayt->size && LLVMTypeOf(srcv) == b->t_ptr) {
+    // &[T N] is represented by a plain pointer.
+    // e.g. "var x [int 3]; &x"
+    return n->irval = srcv;
   }
 
-  // type of result (sans pointer), e.g. { i8*, i64, i64 }
-  Typ array_ty = get_type(b, at);
-
-  if (NodeIsConst(n)) {
-    // struct cslice<T> { const T* p; uint len; }
-    n->irval = build_cslice_struct(b, array_ty, srcv, b->v_i32_0, lenv);
-    return n->irval;
-  }
-  // struct slice<T> { T* p; uint len; uint cap; }
-  n->irval = build_slice_struct(b, array_ty, srcv, b->v_i32_0, lenv, capv);
+  dlog("build_array_ref calling build_slice_struct");
+  n->irval = build_slice_struct(
+    b, as_ArrayTypeNode(n->target->type), srcv, NodeIsConst(n));
   return n->irval;
 }
 
@@ -1346,12 +1305,65 @@ static Val build_array_ref(B* b, RefNode* n, const char* vname) {
 static Val build_ref(B* b, RefNode* n, const char* vname) {
   RefTypeNode* t = as_RefTypeNode(n->type);
   if (is_ArrayTypeNode(t->elem))
-    return n->irval = build_array_ref(b, n, vname);
+    return build_array_ref(b, n, vname);
 
   dlog("TODO: ref to non-array (%s) type", nodename(t->elem));
   n->irval = build_lval(b, n->target, "");
   assert_llvm_type_isptr(LLVMTypeOf(n->irval));
   return n->irval;
+}
+
+
+static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
+  LocalNode* dstn = as_LocalNode(n->dst);
+  Val dst = build_lval(b, n->dst, dstn->name);
+  Val val = build_rval(b, n->val, "");
+
+  // implicit conversion from pointer-to-sized-array to slice
+  //   e.g. "var r mut&[i8] ; r = &[1,2,3]"
+  //   Here, dst = "r" and val = "&[1,2,3]".
+  //   "r" is of unsized type and is represented by struct mslice { ptr, i64, i64 },
+  //   but "&[1,2,3]" is sized type mut&[int 3] and represented by ptr (to the array.)
+  //   In this scenario we need to create an ad-hoc slice that we can store to "r".
+  if ( is_RefTypeNode(n->val->type) &&
+       is_ArrayTypeNode(((RefTypeNode*)n->val->type)->elem) )
+  {
+    assert(is_RefTypeNode(n->dst->type));
+    assert(is_ArrayTypeNode(((RefTypeNode*)n->dst->type)->elem));
+    ArrayTypeNode* dst_arrayt = (ArrayTypeNode*)((RefTypeNode*)n->dst->type)->elem;
+    ArrayTypeNode* val_arrayt = (ArrayTypeNode*)((RefTypeNode*)n->val->type)->elem;
+    if (dst_arrayt->size == 0 && val_arrayt->size != 0) {
+      dlog("build_assign_local calling build_slice_struct");
+      val = build_slice_struct(b, val_arrayt, val, NodeIsConst(n->dst));
+    }
+  }
+
+  build_store(b, dst, val);
+  return val;
+}
+
+
+static Val build_assign_tuple(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
+}
+
+static Val build_assign_index(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
+}
+
+static Val build_assign_selector(B* b, AssignNode* n, const char* vname) {
+  dlog("TODO %s  %s:%d", __FUNCTION__, __FILE__, __LINE__); return b->v_int_0;
+}
+
+static Val build_assign(B* b, AssignNode* n, const char* vname) {
+  switch (assertnotnull(n->dst)->kind) {
+    case NLocal_BEG ... NLocal_END: return build_assign_local(b, n, vname);
+    case NTuple:                    return build_assign_tuple(b, n, vname);
+    case NIndex:                    return build_assign_index(b, n, vname);
+    case NSelector:                 return build_assign_selector(b, n, vname);
+  }
+  assertf(0,"invalid assignment destination %s", nodename(n->dst));
+  return NULL;
 }
 
 
@@ -1467,13 +1479,13 @@ error llvm_module_build(CoLLVMModule* m, const CoLLVMBuild* opt) {
     char* errmsg;
     bool ok = LLVMVerifyModule(b->mod, LLVMPrintMessageAction, &errmsg) == 0;
     if (!ok) {
-      log("\e[33;1m——————————————————————— LLVMVerifyModule ———————————————————————\e[0m");
+      log("\n\e[33;1m————————————————————— LLVMVerifyModule —————————————————————\e[0m");
       int len = strlen(errmsg);
       log("%.*s", (int)(len && errmsg[len-1] == '\n' ? len - 1 : len), errmsg);
       LLVMDisposeMessage(errmsg);
-      log("————————————————————————————————————————————————————————————————");
+      log("————————————————————————————————————————————————————————————");
       LLVMDumpModule(b->mod);
-      log("————————————————————————————————————————————————————————————————");
+      log("————————————————————————————————————————————————————————————");
       builder_dispose(b);
       return err_invalid;
     }

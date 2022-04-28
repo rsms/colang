@@ -69,7 +69,7 @@ static error select_target_machine(
 
 void llvm_module_init(CoLLVMModule* m, BuildCtx* build, const char* name) {
   m->build = build;
-  m->M = LLVMModuleCreateWithNameInContext(name, LLVMContextCreate());
+  m->M = LLVMModuleCreateWithNameInContext(name, CoLLVMContextCreate());
   m->TM = NULL;
 }
 

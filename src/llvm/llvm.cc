@@ -416,6 +416,14 @@ bool llvm_write_archive(
 }
 
 
+LLVMContextRef CoLLVMContextCreate() {
+  auto ctx = new LLVMContext();
+  // Enable opaque pointers. This will be the default in future LLVM releases.
+  ctx->enableOpaquePointers();
+  return wrap(ctx);
+}
+
+
 LLVMValueRef CoLLVMBuildGlobalString(
   LLVMBuilderRef B, const char* data, usize len, const char* vname)
 {
@@ -447,3 +455,9 @@ LLVMValueRef CoLLVMBuildGlobalString(
 u64 CoLLVMArrayTypeLength(LLVMTypeRef array_ty) {
   return unwrap<ArrayType>(array_ty)->getNumElements();
 }
+
+
+LLVMTypeRef CoLLVMOpaquePointerType(LLVMContextRef C, unsigned AddressSpace) {
+  return wrap(PointerType::get(*unwrap(C), AddressSpace));
+}
+
