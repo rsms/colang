@@ -1160,23 +1160,6 @@ static Val build_typecast(B* b, TypeCastNode* n, const char* vname) {
 }
 
 
-
-static Val build_cslice_struct1(B* b, Val array_ptr) {
-  // (cslice<T>){ GEP(array_ptr), len(array_ptr) }
-  Typ array_ty = LLVMTypeOf(array_ptr); // i.e. [N x T]*
-  assert_llvm_type_isptr(array_ty);
-  assert(LLVMIsConstant(array_ptr));
-  Typ elem_ty = LLVMGetElementType(array_ty); // i.e. [N x T]
-  Val indices[] = { b->v_i32_0, b->v_i32_0 };
-  Val constfields[] = {
-    LLVMConstGEP2(elem_ty, array_ptr, indices, countof(indices)),
-    make_uint(b->t_int, CoLLVMArrayTypeLength(elem_ty)),
-  };
-  bool packed = false;
-  return LLVMConstStructInContext(b->ctx, constfields, countof(constfields), packed);
-}
-
-
 static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
   if (n->irval)
     return n->irval;
@@ -1193,7 +1176,9 @@ static Val build_strlit(B* b, StrLitNode* n, const char* vname) {
 }
 
 
-static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_const) {
+static Val build_slice_struct(
+  B* b, Type* srctype, Val srcv, bool as_const, Val nullable dst_mem)
+{
   // srcv is one of the following:
   //   %mslice
   //   %cslice
@@ -1203,17 +1188,27 @@ static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_co
   // result is one of the following:
   //   %mslice (when as_const = false)
   //   %cslice (when as_const = true)
-  Typ srct = get_type(b, srctype); // [N x T] | %mslice | %cslice
+
+  ArrayTypeNode* srcarraytype;
+  if (is_ArrayTypeNode(srctype)) {
+    // [T N]
+    srcarraytype = (ArrayTypeNode*)srctype;
+  } else {
+    // [T] | &[T] | &[T N]
+    srcarraytype = as_ArrayTypeNode(as_RefTypeNode(srctype)->elem);
+  }
+
+  Typ srct = get_type(b, srcarraytype); // [N x T] | %mslice | %cslice
   Val startv = b->v_i32_0; // TODO: argument + use for slice op eg. "x[1:3]"
   Val lenv;
   Val capv = NULL;
   bool src_is_ptr = LLVMTypeOf(srcv) == b->t_ptr;
 
-  if (src_is_ptr && srctype->size) {
+  if (src_is_ptr && srcarraytype->size) {
     // srcv is T*
     dlog("srcv: T*");
     assert_llvm_type_is_array(srct);
-    lenv = make_uint(b->t_int, srctype->size);
+    lenv = make_uint(b->t_int, srcarraytype->size);
     capv = lenv;
   } else if (src_is_ptr) {
     // srcv is mslice*|cslice*
@@ -1221,7 +1216,10 @@ static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_co
     assert_llvm_type_is_struct(srct);
     if (NodeIsConst(srctype) == as_const) {
       // if typeof(*source)==typeof(result) then just load
-      return build_load(b, srct, srcv, "");
+      Val v = build_load(b, srct, srcv, "");
+      if (dst_mem)
+        build_store(b, dst_mem, v);
+      return v;
     }
     // void* srcv = &src->p
     // uint* lenv = &src->len
@@ -1237,7 +1235,20 @@ static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_co
     // srcv is mslice|cslice
     assert(LLVMTypeOf(srcv) == b->t_cslice || LLVMTypeOf(srcv) == b->t_mslice);
     assert_llvm_type_is_struct(srct);
-    panic("TODO: srcv is mslice|cslice (not a pointer)");
+    dlog("srcv: mslice|cslice");
+    if (NodeIsConst(srctype) == as_const) {
+      if (dst_mem)
+        build_store(b, dst_mem, srcv);
+      return srcv;
+    }
+    // void* srcv = &src.p
+    // uint* lenv = &src.len
+    // uint* capv = &src.cap  // if as_const=true
+    lenv = LLVMBuildExtractValue(b->builder, srcv, 1, "slice.len");
+    capv = lenv;
+    if (!NodeIsConst(srctype))
+      capv = LLVMBuildExtractValue(b->builder, srcv, 1, "slice.cap");
+    srcv = LLVMBuildExtractValue(b->builder, srcv, 0, "slice.p");
   }
 
   // build result slice
@@ -1252,7 +1263,10 @@ static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_co
     }
     srcv = LLVMConstGEP2(srct, srcv, (Val[]){ b->v_i32_0, startv }, 2);
     u32 nvals = 3 - (u32)as_const; // skip cap when as_const=true
-    return LLVMConstNamedStruct(slicetyp, (Val[]){ srcv, lenv, capv }, nvals);
+    srcv = LLVMConstNamedStruct(slicetyp, (Val[]){ srcv, lenv, capv }, nvals);
+    if (dst_mem)
+      build_store(b, dst_mem, srcv);
+    return srcv;
   }
 
   // Slice slice;
@@ -1260,12 +1274,14 @@ static Val build_slice_struct(B* b, ArrayTypeNode* srctype, Val srcv, bool as_co
   // slice.len = lenv
   // slice.cap = capv
   // return *slice;
-  Val mem = LLVMBuildAlloca(b->builder, slicetyp, "slice");
+  Val mem = dst_mem ? dst_mem : LLVMBuildAlloca(b->builder, slicetyp, "slice");
   build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 0, "slice.p"), srcv);
   build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 1, "slice.len"), lenv);
   if (!as_const)
     build_store(b, LLVMBuildStructGEP2(b->builder, slicetyp, mem, 2, "slice.cap"), capv);
-  return build_load(b, slicetyp, mem, "");
+  if (!dst_mem || (b->flags & BFL_RVAL))
+    return build_load(b, slicetyp, mem, "");
+  return mem;
 }
 
 
@@ -1296,8 +1312,7 @@ static Val build_array_ref(B* b, RefNode* n, const char* vname) {
   }
 
   dlog("build_array_ref calling build_slice_struct");
-  n->irval = build_slice_struct(
-    b, as_ArrayTypeNode(n->target->type), srcv, NodeIsConst(n));
+  n->irval = build_slice_struct(b, n->target->type, srcv, NodeIsConst(n), NULL);
   return n->irval;
 }
 
@@ -1319,23 +1334,14 @@ static Val build_assign_local(B* b, AssignNode* n, const char* vname) {
   Val dst = build_lval(b, n->dst, dstn->name);
   Val val = build_rval(b, n->val, "");
 
-  // implicit conversion from pointer-to-sized-array to slice
-  //   e.g. "var r mut&[i8] ; r = &[1,2,3]"
-  //   Here, dst = "r" and val = "&[1,2,3]".
-  //   "r" is of unsized type and is represented by struct mslice { ptr, i64, i64 },
-  //   but "&[1,2,3]" is sized type mut&[int 3] and represented by ptr (to the array.)
-  //   In this scenario we need to create an ad-hoc slice that we can store to "r".
-  if ( is_RefTypeNode(n->val->type) &&
-       is_ArrayTypeNode(((RefTypeNode*)n->val->type)->elem) )
-  {
-    assert(is_RefTypeNode(n->dst->type));
-    assert(is_ArrayTypeNode(((RefTypeNode*)n->dst->type)->elem));
-    ArrayTypeNode* dst_arrayt = (ArrayTypeNode*)((RefTypeNode*)n->dst->type)->elem;
-    ArrayTypeNode* val_arrayt = (ArrayTypeNode*)((RefTypeNode*)n->val->type)->elem;
-    if (dst_arrayt->size == 0 && val_arrayt->size != 0) {
-      dlog("build_assign_local calling build_slice_struct");
-      val = build_slice_struct(b, val_arrayt, val, NodeIsConst(n->dst));
-    }
+  // implicit conversion: ( [T N] | &[T N] | &[T] ) => &[T]
+  RefTypeNode* reft = (RefTypeNode*)n->dst->type;
+  if (reft->kind == NRefType && is_ArrayTypeNode(reft->elem)) {
+    BFlags flags = b->flags;
+    SET_FLAG(b->flags, BFL_RVAL, NodeIsRValue(n));
+    Val v = build_slice_struct(b, n->val->type, val, NodeIsConst(n->dst->type), dst);
+    b->flags = flags;
+    return v;
   }
 
   build_store(b, dst, val);

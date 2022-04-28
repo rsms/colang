@@ -708,7 +708,6 @@ static void write_node_fields(Repr* r, const Node* np) {
     write_node(r, n->receiver);
     write_array(r, as_NodeArray(&n->args));
   NCASE(TypeCast)
-    write_node(r, n->type);
     write_node(r, n->expr);
 
   // -- types --

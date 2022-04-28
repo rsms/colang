@@ -100,6 +100,45 @@ static Expr* cast_from_intlit(C* c, IntLitNode* n, Type* totype1) {
 }
 
 
+static Expr* cast_to_refslice(C* c, Expr* srcn, RefTypeNode* dstt) {
+  // totype is a ref slice: &[T]
+  //
+  //       [T N] │ T mem[N]
+  //   mut&[T N] │ T*
+  //      &[T N] │ const T*
+  //       [T]   │ struct mslice { T* p; uint len; uint cap; }
+  //   mut&[T]   │ struct mslice { T* p; uint len; uint cap; }
+  //      &[T]   │ struct cslice { const T* p; uint len; }
+  //
+  Type* srct = unbox_id_type(srcn->type);
+  ArrayTypeNode* dstarrayt = as_ArrayTypeNode(dstt->elem);
+  ArrayTypeNode* srcarrayt = (ArrayTypeNode*)srct;
+
+  if (srct->kind == NRefType && is_ArrayTypeNode(((RefTypeNode*)srct)->elem)) {
+    srcarrayt = (ArrayTypeNode*)((RefTypeNode*)srct)->elem;
+  } else if (srct->kind != NArrayType) {
+    // incompatible: source is not a slice nor an array
+    return srcn;
+  }
+
+  if (!b_typeeq(c->build, srcarrayt->elem, dstarrayt->elem)) {
+    // incompatible: arrays have incompatible element types, eg "[i8] <> [u32]"
+    return srcn;
+  }
+
+  if (!NodeIsConst(dstt) && NodeIsConst(srct)) {
+    // incompatible: cannot convert immutable ref to mutable
+    return srcn;
+  }
+
+  TypeCastNode* tc = b_mknode(c->build, TypeCast, srcn->pos);
+  tc->expr = srcn;
+  tc->type = as_Type(dstt);
+  *c->resultp = CTypecastConverted;
+  return as_Expr(tc);
+}
+
+
 Expr* _ctypecast(
   BuildCtx* b, Expr* n, Type* totype,
   CTypecastResult* nullable resp, Node* nullable report_usernode, CTypecastFlags flags)
@@ -132,8 +171,16 @@ Expr* _ctypecast(
 
   if (n->kind == NIntLit) {
     n = cast_from_intlit(c, (IntLitNode*)n, totype);
-  } else {
-    dlog("TODO ctypecast of %s", nodename(n));
+  } else if (n->type) {
+    RefTypeNode* dstreft = (RefTypeNode*)totype;
+    if (dstreft->kind == NRefType && is_ArrayTypeNode(dstreft->elem)) {
+      // totype is a ref slice: &[T]
+      n = cast_to_refslice(c, n, dstreft);
+    } else {
+      Type* srct = unbox_id_type(n->type);
+      dlog("TODO ctypecast: (%s -> %s) %s -> %s",
+        nodename(srct), nodename(totype), FMTNODE(srct,0), FMTNODE(totype,1));
+    }
   }
 
   report_result(c, n, totype, report_usernode ? report_usernode : as_Node(n));

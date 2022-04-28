@@ -893,13 +893,8 @@ static void promote_local_to_mut(Parser* p, LocalNode* n) {
   n->flags |= NF_Mem;
   if (n->kind == NParam)
     return;
-  Type* t = n->type;
-  // &[T N] => &[T]
-  if (t && is_RefTypeNode(t) && is_ArrayTypeNode(((RefTypeNode*)t)->elem)) {
-    ArrayTypeNode* at = (ArrayTypeNode*)((RefTypeNode*)t)->elem;
-    if (at->size || at->sizeexpr)
-      n->type = mkref_type_mut(p, mkarray_type(p, at->elem, 0));
-  }
+  assert(n->kind != NConst);
+  NodeClearConst(n);
 }
 
 
@@ -1164,7 +1159,7 @@ static Node* pArrayType(Parser* p, PFlag fl) {
     if (zn) {
       if (UNLIKELY(zn->ival > 0xFFFFFFFF))
         syntaxerrp(p, n->sizeexpr->pos, "array size too large");
-      n->size = (u32)zn->ival;
+      n->size = zn->ival;
     } else {
       // likely referencing a global constant yet to be parsed.
       // the type resolver will resolve its size when sizeexpr is known.
@@ -1175,7 +1170,6 @@ static Node* pArrayType(Parser* p, PFlag fl) {
 
   n->endpos = currpos(p);
   want(p, TRBrack);
-  // return InternASTType(p->build, n);
   return as_Node(n);
 }
 
@@ -1360,7 +1354,8 @@ static Node* PRef(Parser* p, PFlag fl) {
   }
 
   // reference target
-  Expr* target = ref->target = pExpr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
+  Expr* target = pExpr(p, PREC_LOWEST, (fl & ~PFlagType) | PFlagRValue);
+  ref->target = target;
   NodeTransferUnresolved(ref, target);
 
   // if the target is an id, use the id's target
@@ -1377,7 +1372,6 @@ static Node* PRef(Parser* p, PFlag fl) {
     if (is_LocalNode(target) && !is_ConstNode(target)) {
       // since we're making a mutable ref, treat it as a local store,
       // making sure the target local is upgraded to "mut".
-      NodeClearConst(target);
       NodeClearConst(ref->target);
       promote_local_to_mut(p, as_LocalNode(target));
     } else {
