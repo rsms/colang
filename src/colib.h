@@ -5,7 +5,6 @@
 //
 #ifndef CO_LIB
 #define CO_LIB
-#include "colib.h"
 
 #ifndef __cplusplus
   typedef _Bool bool;
